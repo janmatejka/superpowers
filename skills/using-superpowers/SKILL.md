@@ -39,6 +39,15 @@ If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "alw
 
 Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
 
+## UMS Contract
+
+Load [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) before relying on any Memory Bank-aware skill behavior.
+
+**Fail closed:**
+- If the contract cannot be read, stop.
+- If `MB_ROOT` is ambiguous, stop.
+- Do not guess a fallback root or write outside the contract-defined scope.
+
 # Using Skills
 
 ## The Rule
@@ -115,3 +124,4 @@ The skill itself tells you which.
 ## User Instructions
 
 Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+

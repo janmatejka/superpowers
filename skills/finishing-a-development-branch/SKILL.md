@@ -7,6 +7,10 @@ description: Use when implementation is complete, all tests pass, and you need t
 
 ## Overview
 
+## UMS Contract
+
+Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Do not duplicate that machinery here.
+
 Guide completion of development work by presenting clear options and handling chosen workflow.
 
 **Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.
@@ -249,3 +253,4 @@ git worktree prune  # Self-healing: clean up any stale registrations
 - Clean up worktree for Options 1 & 4 only
 - `cd` to main repo root before worktree removal
 - Run `git worktree prune` after removal
+

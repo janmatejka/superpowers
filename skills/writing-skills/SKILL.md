@@ -7,6 +7,10 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 ## Overview
 
+## UMS Contract
+
+Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Do not duplicate that machinery here.
+
 **Writing skills IS Test-Driven Development applied to process documentation.**
 
 **Personal skills live in agent-specific directories (`~/.claude/skills` for Claude Code, `~/.agents/skills/` for Codex)** 
@@ -111,6 +115,7 @@ description: Use when [specific triggering conditions and symptoms]
 # Skill Name
 
 ## Overview
+
 What is this? Core principle in 1-2 sentences.
 
 ## When to Use
@@ -653,3 +658,4 @@ Same cycle: RED (baseline) → GREEN (write skill) → REFACTOR (close loopholes
 Same benefits: Better quality, fewer surprises, bulletproof results.
 
 If you follow TDD for code, follow it for skills. It's the same discipline applied to documentation.
+

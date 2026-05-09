@@ -7,6 +7,10 @@ description: Use when about to claim work is complete, fixed, or passing, before
 
 ## Overview
 
+## UMS Contract
+
+Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Do not duplicate that machinery here.
+
 Claiming work is complete without verification is dishonesty, not efficiency.
 
 **Core principle:** Evidence before claims, always.
@@ -137,3 +141,4 @@ From 24 failure memories:
 Run the command. Read the output. THEN claim the result.
 
 This is non-negotiable.
+

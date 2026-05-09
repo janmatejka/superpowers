@@ -7,6 +7,10 @@ description: Use when implementing any feature or bugfix, before writing impleme
 
 ## Overview
 
+## UMS Contract
+
+Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Do not duplicate that machinery here.
+
 Write the test first. Watch it fail. Write minimal code to pass.
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
@@ -369,3 +373,4 @@ Otherwise → not TDD
 ```
 
 No exceptions without your human partner's permission.
+
