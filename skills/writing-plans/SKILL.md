@@ -17,7 +17,22 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 ## UMS Contract
 
-Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Use the canonical Memory Bank artifact for plan output unless the user explicitly asks for a compatibility pointer file.
+Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Use the canonical Memory Bank artifact for plan output unless the user explicitly asks for a compatibility pointer file.
+
+## UMS Implementation Plan Refiner Mode
+
+When this skill is invoked inside an active UMS Memory Bank workflow, it is not a standalone planning workflow. It is an Implementation Plan Refiner delegated by `mb-plan` or explicitly requested by the user as a refiner signal.
+
+In UMS mode:
+- Read the current goal, scope, technical design, affected MBs, and boundaries from the active proposal referenced by root `context.md`.
+- Return concrete content for the active proposal's `## Implementation Plan`, `## Verification Scope`, and any blocking questions or missing requirements.
+- Keep runtime progress out of the proposal. Do not write `## Implementation Checklist`, `## Auto Loop State`, task status checkboxes, or worker progress markers into the proposal.
+- Do not create or require `docs/plans/*`, `docs/superpowers/plans/*`, `docs/superpowers/specs/*`, or any separate Superpowers plan file.
+- Do not add the standalone plan document header below as a new artifact. If a heading is useful, use ordinary proposal section content under `## Implementation Plan`.
+- Use ordered steps or plain bullets for implementation sequencing. Checkbox tracking belongs only in root `context.md`, generated and maintained by `mb-plan`, `mb-act`, or `mb-auto`.
+- Return the refined plan back to `mb-plan`. Do not ask the user to choose between Subagent-Driven and Inline Execution from this skill while UMS mode is active.
+
+If a user explicitly asks for a standalone external Superpowers plan while UMS mode is active, warn that it violates the default single-artifact contract and proceed only after explicit confirmation of a compatible pointer file or exception.
 
 ## Scope Check
 
@@ -45,6 +60,8 @@ This structure informs the task decomposition. Each task should produce self-con
 
 ## Plan Document Header
 
+Standalone Superpowers plans outside UMS mode use this header. In UMS mode, do not create this header as a new document; refine the active proposal sections instead.
+
 **Every plan MUST start with this header:**
 
 ```markdown
@@ -62,6 +79,8 @@ This structure informs the task decomposition. Each task should produce self-con
 ```
 
 ## Task Structure
+
+Outside UMS mode, task steps may use checkbox syntax for standalone tracking. In UMS mode, avoid checkbox runtime tracking in the proposal; use headings, ordered lists, or plain bullets so `mb-plan` can derive root `context.md` checklist entries.
 
 ````markdown
 ### Task N: [Component Name]
@@ -133,6 +152,8 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 
 ## Execution Handoff
+
+In UMS mode, skip this standalone execution handoff. Return the refined implementation plan to `mb-plan`; `mb-plan`, `mb-act`, and `mb-auto` own checklist generation, execution routing, commits, and root `context.md` progress.
 
 After saving the plan, offer execution choice:
 

@@ -11,7 +11,17 @@ Start by understanding the current project context, then ask questions one at a 
 
 ## UMS Contract
 
-Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Use the canonical Memory Bank artifact for design output unless the user explicitly asks for a compatibility pointer file.
+Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Use the canonical Memory Bank artifact for design output unless the user explicitly asks for a compatibility pointer file.
+
+## UMS Guardrail
+
+This skill remains freely invokable for discovery, solution variants, and validating direction. When a UMS Memory Bank workflow is active, brainstorming must not become a parallel canonical planning workflow.
+
+In UMS mode:
+- Do not create a separate canonical spec, design, or plan artifact outside the active proposal referenced by root `context.md`.
+- Do not create `docs/plans/*`, `docs/superpowers/plans/*`, `docs/superpowers/specs/*`, or any standalone Superpowers plan/spec file unless the user explicitly confirms a compatible pointer file or exception.
+- Do not force a standalone `writing-plans` invocation as the terminal state.
+- If implementation-plan refinement is needed, return a refiner signal to `mb-plan`; `mb-plan` decides when to invoke `writing-plans` as UMS Implementation Plan Refiner.
 
 <HARD-GATE>
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
@@ -33,7 +43,7 @@ You MUST create a task for each of these items and complete them in order:
 6. **Write design doc** — write the validated design into the canonical artifact defined by the contract.
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+9. **Transition to implementation** — outside UMS mode, invoke writing-plans skill to create implementation plan; in UMS mode, return control to `mb-plan` with a refiner signal if needed
 
 ## Process Flow
 
@@ -49,7 +59,7 @@ digraph brainstorming {
     "Write design doc" [shape=box];
     "Spec self-review\n(fix inline)" [shape=box];
     "User reviews spec?" [shape=diamond];
-    "Invoke writing-plans skill" [shape=doublecircle];
+    "Invoke writing-plans skill\n(or UMS refiner signal to mb-plan)" [shape=doublecircle];
 
     "Explore project context" -> "Visual questions ahead?";
     "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
@@ -63,11 +73,13 @@ digraph brainstorming {
     "Write design doc" -> "Spec self-review\n(fix inline)";
     "Spec self-review\n(fix inline)" -> "User reviews spec?";
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
-    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+    "User reviews spec?" -> "Invoke writing-plans skill\n(or UMS refiner signal to mb-plan)" [label="approved"];
 }
 ```
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+**Outside UMS mode, the terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+
+**In UMS mode, the terminal state is returning control to `mb-plan`.** If a detailed implementation plan is needed, report that `writing-plans` should be used as the active proposal's Implementation Plan Refiner rather than starting a standalone Superpowers plan workflow.
 
 ## The Process
 
@@ -138,6 +150,8 @@ Wait for the user's response. If they request changes, make them and re-run the 
 
 - Invoke the writing-plans skill to create a detailed implementation plan
 - Do NOT invoke any other skill. writing-plans is the next step.
+
+In UMS mode, do not invoke standalone `writing-plans` directly from brainstorming. Return the approved discovery/design output to `mb-plan`; it owns the decision to call `writing-plans` as a refiner and all writes to the active proposal and root `context.md`.
 
 ## Key Principles
 

@@ -15,7 +15,16 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 ## UMS Contract
 
-Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Treat the plan artifact as canonical; do not assume a separate Superpowers plan file.
+Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Treat the plan artifact as canonical; do not assume a separate Superpowers plan file.
+
+## UMS Mode
+
+When this skill is used inside an active UMS Memory Bank workflow:
+- Read the implementation plan from the active proposal referenced by root `context.md`.
+- Do not require or create a standalone Superpowers plan file.
+- Do not write task progress, checkboxes, review status, commit status, or auto-loop state into the proposal or any separate plan artifact.
+- Report task outcomes back to the orchestrator. Only `mb-act` or `mb-auto` may update root `context.md` with checklist progress, current item, verification, commit, break gate, or blocked state.
+- If the active proposal lacks enough plan detail to dispatch a worker safely, stop and report the missing requirement to the orchestrator instead of inventing a parallel plan.
 
 ## When to Use
 
@@ -64,12 +73,12 @@ digraph process {
         "Mark task complete in TodoWrite" [shape=box];
     }
 
-    "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
+    "Read active proposal plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
     "More tasks remain?" [shape=diamond];
     "Dispatch final code reviewer subagent for entire implementation" [shape=box];
     "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
-    "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (./implementer-prompt.md)";
+    "Read active proposal plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer subagent asks questions?";
     "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
     "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
@@ -134,7 +143,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 ```
 You: I'm using Subagent-Driven Development to execute this plan.
 
-[Read the active Memory Bank plan artifact once]
+[Read the active Memory Bank proposal plan once]
 [Extract all 5 tasks with full text and context]
 [Create TodoWrite with all tasks]
 
@@ -272,7 +281,7 @@ Done!
 
 **Required workflow skills:**
 - **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:writing-plans** - Creates the plan this skill executes
+- **superpowers:writing-plans** - Creates or refines the plan this skill executes; in UMS mode this means the active proposal's `## Implementation Plan`
 - **superpowers:requesting-code-review** - Code review template for reviewer subagents
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
 

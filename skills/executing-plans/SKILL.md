@@ -9,7 +9,16 @@ description: Use when you have a written implementation plan to execute in a sep
 
 ## UMS Contract
 
-Follow [UMS_MEMORY_BANK_CONTRACT](../UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Do not duplicate that machinery here.
+Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, single-artifact behavior, and fail-closed rules. Do not duplicate that machinery here.
+
+## UMS Mode
+
+When this skill is used inside an active UMS Memory Bank workflow:
+- Read the implementation plan from the active proposal referenced by root `context.md`.
+- Do not require or create a standalone Superpowers plan file.
+- Do not introduce independent progress tracking outside root `context.md`.
+- Do not write checklist state, auto-loop state, verification status, commit status, or blocked state into the proposal. Only `mb-act` or `mb-auto` may update root `context.md`.
+- If the active proposal is missing the details needed to execute safely, stop and report the gap to the orchestrator rather than inventing a separate plan.
 
 Load plan, review critically, execute all tasks, report when complete.
 
@@ -20,7 +29,7 @@ Load plan, review critically, execute all tasks, report when complete.
 ## The Process
 
 ### Step 1: Load and Review Plan
-1. Read plan file
+1. Read plan file, or in UMS mode read the `## Implementation Plan` from the active proposal
 2. Review critically - identify any questions or concerns about the plan
 3. If concerns: Raise them with your human partner before starting
 4. If no concerns: Create TodoWrite and proceed
@@ -70,6 +79,6 @@ After all tasks complete and verified:
 
 **Required workflow skills:**
 - **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:writing-plans** - Creates the plan this skill executes
+- **superpowers:writing-plans** - Creates or refines the plan this skill executes; in UMS mode this means the active proposal's `## Implementation Plan`
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
 
