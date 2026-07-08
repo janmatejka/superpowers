@@ -1,0 +1,4 @@
+# The upstream root .gitignore excludes any `.claude/` directory (local agent
+# config). This layer's ums/.claude/ is real content - re-include it here so
+# the exclusion stays additive (no edit to the upstream .gitignore).
+!.claude/

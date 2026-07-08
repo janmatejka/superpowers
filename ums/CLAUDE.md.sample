@@ -1,0 +1,21 @@
+# CLAUDE.md
+
+## Memory Bank contract
+
+Na začátku práce (a znovu po jakékoli kompaktaci/sumarizaci kontextu) načti a dodržuj kontrakt v [.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md). Definuje `MB_ROOT` discovery, třívrstvý model adresářů (`CTX_DIR`/`PLAN_MB`/`AFFECTED_MBS`), proposal pár, Target-MB discovery, harvest a fail-closed chování.
+
+## Superpowers × Memory Bank (uživatelské preference)
+
+Superpowers skilly řídí workflow; Memory Bank je dokumentová vrstva. Tyto preference jsou závazné:
+
+- **Umístění dokumentů:** návrhové spec dokumenty ukládej jako `<PLAN_MB>/proposals/active/proposal_<slug>-design.md`, implementační plány jako `<PLAN_MB>/proposals/active/proposal_<slug>.md`. **Nikdy nezapisuj do `docs/superpowers/` ani `docs/plans/`** (blokováno hookem). `PLAN_MB` = `Target MB Pin` z `memory-bank/context.md`; pokud pin chybí, proveď Target-MB discovery dle kontraktu ještě před zápisem spec.
+- **Kontext před návrhem:** před navrhováním přístupů si přečti `brief.md`, `product.md`, `architecture.md`, `tech.md` cílové Memory Bank (existující z nich).
+- **Jazyk:** výstupy pro uživatele, proposaly, MB dokumenty, commit messages a Jira komentáře česky; AI-facing instrukce a mezivýstupy subagentů anglicky.
+- **Dokončení větve:** finishing-a-development-branch v tomto repu zahrnuje harvest znalostí skillem `mb-harvest` (viz overlay ve skillu) — bez harvestu se práce neuzavírá.
+- **Model routing:** při spouštění subagentů respektuj `## Model Routing` z `memory-bank/context.md` (role Worker/Reviewer/Summarizer — viz kontrakt).
+
+## Zákaz git worktree
+
+V tomto monorepu se **nesmí používat git worktree** — ani přes `EnterWorktree`/`ExitWorktree` (zablokováno v [.claude/settings.json](.claude/settings.json)), ani volbou `isolation: "worktree"` u nástrojů Agent nebo Workflow. Tuto volbu u těchto nástrojů nikdy nevybírej, i když by se pro paralelní/izolovanou práci jinak nabízela.
+
+Důvod: monorepo je extrémně rozsáhlé, takže vytvoření dalšího git worktree je nákladné (čas i místo na disku) a v praxi působí spíš potíže než užitek. Pracuj přímo v existujícím pracovním adresáři — místo worktree vytvoř feature větev přímo v pracovním adresáři (branch-in-place), než začneš commitovat návrh či implementaci.
