@@ -95,16 +95,28 @@ pwsh ums/sync-with-monorepo.ps1 -Agent gemini    # block in GEMINI.md (no skills
 pwsh ums/sync-with-monorepo.ps1 -Agent kilocode  # block in .kilocode/rules/ums-memory-bank.md
 ```
 
-For these agents the script performs a one-way deploy of the portable subset
-(`Direction` is ignored): the skills content where the agent supports skills,
-and the `CLAUDE.md.sample` preference block into the agent's instructions file
-— wrapped in `UMS-MEMORY-BANK BEGIN/END` markers (re-runs replace the block in
-place), with skill-pack paths repointed and a note that the write-guard and
-worktree denies are advisory (contract text) rather than mechanical there.
-Per-agent target paths are a config table (`$AgentTargets`) at the top of the
-script — adjust there if a harness expects a different layout. Most of these
-targets are gitignored in the monorepo, i.e. local per-developer deploys.
-Running the script bare in a console asks for the agent interactively.
+For these agents the script performs a one-way deploy (`Direction` is
+ignored): the skills content where the agent supports skills, the glue
+artifacts (`hooks/`, `scripts/` — merged file-by-file, never wiping existing
+content; `settings.json` is deliberately NOT deployed since it is Claude
+Code's registration format and would clobber e.g. `.gemini/settings.json` —
+hook wiring is manual per harness), and the `CLAUDE.md.sample` preference
+block into the agent's instructions file — wrapped in `UMS-MEMORY-BANK
+BEGIN/END` markers (re-runs replace the block in place), with skill-pack
+paths repointed and a note that the write-guard and worktree denies are
+advisory (contract text) rather than mechanical there.
+
+**User-profile install:** add `-Scope UserProfile` to install into the
+current user's profile instead of the monorepo (e.g. `~/.claude/skills/`,
+`~/.codex/AGENTS.md`) — always a one-way deploy, for `claude` too. The
+deployed preference block gets a scoping preamble so the rules apply only
+when working in the UMS monorepo; the user's own hooks and instructions
+files are preserved (merge/append semantics).
+
+Per-agent, per-scope target paths are a config table (`$AgentTargets`) at the
+top of the script — adjust there if a harness expects a different layout.
+Most monorepo-side targets are gitignored, i.e. local per-developer deploys.
+Running the script bare in a console asks for agent and scope interactively.
 
 ## Deployment to the monorepo from scratch
 

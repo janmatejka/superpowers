@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
     Syncs the UMS Memory Bank integration layer between this fork branch
-    (ums-memory-bank, directory ums/) and the UMS monorepo — for Claude Code
-    two-way, for other AI agents as a one-way deploy of the portable subset.
+    (ums-memory-bank, directory ums/) and a deployment target: the UMS
+    monorepo (default) or the current user's profile. Claude Code in the
+    monorepo is two-way; every other combination is a one-way deploy.
 
 .DESCRIPTION
-    Agent 'claude' (default) — two-way sync of the UMS-owned file set
-    (everything in the monorepo's .claude/ EXCEPT the 14 vendored superpowers
-    skill directories):
+    Agent 'claude' + Scope 'Monorepo' (default) — two-way sync of the
+    UMS-owned file set (everything in the monorepo's .claude/ EXCEPT the 14
+    vendored superpowers skill directories):
 
       FromMonorepo (default):  <monorepo>/.claude/*  ->  <fork>/ums/.claude/*
                                <monorepo>/CLAUDE.md  ->  <fork>/ums/CLAUDE.md.sample
@@ -16,19 +17,23 @@
     The monorepo is the LIVE deployment and the normal master copy; run the
     default direction after changing the layer in the monorepo.
 
-    Other agents (codex, gemini, kilocode) — one-way DEPLOY into the monorepo
-    (the Direction parameter is ignored). Deploys the PORTABLE subset from
-    this fork's ums/ layer:
+    Every other combination — other agents (codex, gemini, kilocode) and/or
+    Scope 'UserProfile' — is a one-way DEPLOY from this fork's ums/ layer
+    (the Direction parameter is ignored):
       * the skills content (shared/ contract + mb-* utilities) into the
         agent's skills directory, where the agent supports one,
+      * glue artifacts (hooks/, scripts/, and any future non-settings items
+        of ums/.claude) into the agent's config directory — merged file-by-
+        file, never wiping existing content; settings.json is deliberately
+        NOT deployed (it is Claude Code's registration file and would clobber
+        e.g. an existing .gemini/settings.json — hook registration is manual
+        per harness),
       * the CLAUDE.md.sample preference block into the agent's instructions
         file, wrapped in UMS-MEMORY-BANK BEGIN/END markers (re-runs replace
-        the marked block in place),
-      * plus a note that the mechanical enforcement (PreToolUse write-guard,
-        permission denies, skillOverrides) exists only in Claude Code — for
-        these agents the rules apply as instructions text.
-    Per-agent target paths live in the $AgentTargets table below — adjust
-    there if a harness expects a different layout.
+        the marked block in place). UserProfile deploys prepend a scoping
+        line so the rules apply only when working in the UMS monorepo.
+    Per-agent target paths (per scope) live in the $AgentTargets table below
+    — adjust there if a harness expects a different layout.
 
     Vendored superpowers skills are never synced by this script - they are
     produced in the monorepo by .claude/scripts/revendor-superpowers.ps1
@@ -46,23 +51,40 @@ param(
     [string]$Direction = 'FromMonorepo',
     [ValidateSet('claude', 'codex', 'gemini', 'kilocode')]
     [string]$Agent = 'claude',
+    [ValidateSet('Monorepo', 'UserProfile')]
+    [string]$Scope = 'Monorepo',
     [string]$MonorepoRoot = 'D:\_datasys\ums',
-    [string]$ForkUmsDir = $PSScriptRoot
+    [string]$ForkUmsDir = $PSScriptRoot,
+    # Test/advanced override of the user-profile root used by -Scope UserProfile.
+    [string]$UserProfileRoot = $HOME
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Per-agent monorepo-side targets (relative to $MonorepoRoot).
-#   SkillsDir    - where the agent discovers project-level skills (null = the
-#                  agent has no skills mechanism; only the instructions block
-#                  is deployed)
-#   Instructions - the agent's instructions file that receives the preference
-#                  block from CLAUDE.md.sample
+# Per-agent, per-scope targets (paths relative to the scope root — monorepo
+# root or the user profile).
+#   SkillsDir    - where the agent discovers skills (null = no skills
+#                  mechanism; only glue + the instructions block is deployed)
+#   ConfigDir    - agent config directory receiving glue artifacts (hooks/,
+#                  scripts/, ...)
+#   Instructions - instructions file that receives the preference block
 $AgentTargets = @{
-    claude   = @{ SkillsDir = '.claude\skills'; Instructions = 'CLAUDE.md' }
-    codex    = @{ SkillsDir = '.agents\skills'; Instructions = 'AGENTS.md' }
-    gemini   = @{ SkillsDir = $null;            Instructions = 'GEMINI.md' }
-    kilocode = @{ SkillsDir = $null;            Instructions = '.kilocode\rules\ums-memory-bank.md' }
+    claude = @{
+        Monorepo    = @{ SkillsDir = '.claude\skills'; ConfigDir = '.claude'; Instructions = 'CLAUDE.md' }
+        UserProfile = @{ SkillsDir = '.claude\skills'; ConfigDir = '.claude'; Instructions = '.claude\CLAUDE.md' }
+    }
+    codex = @{
+        Monorepo    = @{ SkillsDir = '.agents\skills'; ConfigDir = '.codex'; Instructions = 'AGENTS.md' }
+        UserProfile = @{ SkillsDir = '.agents\skills'; ConfigDir = '.codex'; Instructions = '.codex\AGENTS.md' }
+    }
+    gemini = @{
+        Monorepo    = @{ SkillsDir = $null; ConfigDir = '.gemini'; Instructions = 'GEMINI.md' }
+        UserProfile = @{ SkillsDir = $null; ConfigDir = '.gemini'; Instructions = '.gemini\GEMINI.md' }
+    }
+    kilocode = @{
+        Monorepo    = @{ SkillsDir = $null; ConfigDir = '.kilocode'; Instructions = '.kilocode\rules\ums-memory-bank.md' }
+        UserProfile = @{ SkillsDir = $null; ConfigDir = '.kilocode'; Instructions = '.kilocode\rules\ums-memory-bank.md' }
+    }
 }
 
 # ------------------------------------------------- interactive parameter setup
@@ -79,13 +101,20 @@ if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
 
     $agentNames = @('claude', 'codex', 'gemini', 'kilocode')
     do {
-        $agentAnswer = Read-WithDefault 'Target AI agent: 1 = claude (two-way sync), 2 = codex, 3 = gemini, 4 = kilocode (2-4 = deploy only)' '1'
+        $agentAnswer = Read-WithDefault 'Target AI agent: 1 = claude, 2 = codex, 3 = gemini, 4 = kilocode' '1'
         $valid = $agentAnswer -in @('1', '2', '3', '4') -or $agentAnswer -in $agentNames
         if (-not $valid) { Write-Host '  Enter 1-4 or an agent name.' -ForegroundColor Yellow }
     } until ($valid)
     $Agent = if ($agentAnswer -in $agentNames) { $agentAnswer } else { $agentNames[[int]$agentAnswer - 1] }
 
-    if ($Agent -eq 'claude') {
+    do {
+        $scopeAnswer = Read-WithDefault "Scope: 1 = Monorepo ($MonorepoRoot), 2 = UserProfile ($UserProfileRoot)" '1'
+        $valid = $scopeAnswer -in @('1', '2', 'Monorepo', 'UserProfile')
+        if (-not $valid) { Write-Host '  Enter 1, 2, Monorepo, or UserProfile.' -ForegroundColor Yellow }
+    } until ($valid)
+    $Scope = if ($scopeAnswer -in @('2', 'UserProfile')) { 'UserProfile' } else { 'Monorepo' }
+
+    if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
         do {
             $dirAnswer = Read-WithDefault 'Direction: 1 = FromMonorepo (monorepo -> fork), 2 = ToMonorepo (fork -> monorepo)' '1'
             $valid = $dirAnswer -in @('1', '2', 'FromMonorepo', 'ToMonorepo')
@@ -94,26 +123,30 @@ if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
         $Direction = if ($dirAnswer -in @('2', 'ToMonorepo')) { 'ToMonorepo' } else { 'FromMonorepo' }
     }
     else {
-        Write-Host "  Agent '$Agent' supports deploy only (fork -> monorepo); Direction is ignored." -ForegroundColor DarkGray
+        Write-Host "  This combination is deploy-only (fork -> target); Direction is ignored." -ForegroundColor DarkGray
     }
 
-    $attempts = 0
-    do {
-        $MonorepoRoot = Read-WithDefault 'Monorepo root' $MonorepoRoot
-        $valid = Test-Path (Join-Path $MonorepoRoot '.claude')
-        if (-not $valid) {
-            Write-Host "  No .claude/ found under '$MonorepoRoot'." -ForegroundColor Yellow
-            if ((++$attempts) -ge 3) { throw "Monorepo root not valid after 3 attempts." }
-        }
-    } until ($valid)
+    if ($Scope -eq 'Monorepo') {
+        $attempts = 0
+        do {
+            $MonorepoRoot = Read-WithDefault 'Monorepo root' $MonorepoRoot
+            $valid = Test-Path (Join-Path $MonorepoRoot '.claude')
+            if (-not $valid) {
+                Write-Host "  No .claude/ found under '$MonorepoRoot'." -ForegroundColor Yellow
+                if ((++$attempts) -ge 3) { throw "Monorepo root not valid after 3 attempts." }
+            }
+        } until ($valid)
+    }
 
     $ForkUmsDir = Read-WithDefault 'Fork ums/ directory' $ForkUmsDir
 
-    Write-Host "Agent=$Agent  Direction=$Direction  MonorepoRoot=$MonorepoRoot  ForkUmsDir=$ForkUmsDir" -ForegroundColor Cyan
+    Write-Host "Agent=$Agent  Scope=$Scope  Direction=$Direction  MonorepoRoot=$MonorepoRoot  ForkUmsDir=$ForkUmsDir" -ForegroundColor Cyan
 }
 
 # ------------------------------------------------------------ shared helpers
 function Copy-Mirrored([string]$Src, [string]$Dst) {
+    # Replaces the destination item entirely - use ONLY for directories this
+    # layer owns outright (skill dirs).
     if (-not (Test-Path $Src)) { throw "Source item missing: $Src" }
     if (Test-Path -PathType Container $Src) {
         if (Test-Path $Dst) { Remove-Item -Recurse -Force $Dst }
@@ -123,6 +156,18 @@ function Copy-Mirrored([string]$Src, [string]$Dst) {
     else {
         New-Item -ItemType Directory -Force (Split-Path $Dst) | Out-Null
         Copy-Item -Force $Src $Dst
+    }
+}
+
+function Copy-Merged([string]$Src, [string]$Dst) {
+    # Merges into the destination: overwrites same-named files, never deletes
+    # anything else - safe for shared config dirs (e.g. ~/.claude/hooks with
+    # the user's own hooks).
+    Get-ChildItem -Path $Src -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($Src.Length).TrimStart('\', '/')
+        $dstFile = Join-Path $Dst $rel
+        New-Item -ItemType Directory -Force (Split-Path $dstFile) | Out-Null
+        Copy-Item -Force $_.FullName $dstFile
     }
 }
 
@@ -153,10 +198,10 @@ function Set-MarkedBlock([string]$File, [string]$Content) {
 }
 
 $forkClaude = Join-Path $ForkUmsDir '.claude'
-$target = $AgentTargets[$Agent]
+$target = $AgentTargets[$Agent][$Scope]
 
-# ------------------------------------------------------------------ claude ---
-if ($Agent -eq 'claude') {
+# --------------------------------------------- claude + monorepo: two-way sync
+if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $monoClaude = Join-Path $MonorepoRoot '.claude'
     if (-not (Test-Path $monoClaude)) { throw "Monorepo .claude not found at $monoClaude" }
 
@@ -186,13 +231,15 @@ if ($Agent -eq 'claude') {
     if ($Direction -eq 'FromMonorepo') { Copy-Item -Force $monoClaudeMd $forkSample; Write-Host 'synced CLAUDE.md -> CLAUDE.md.sample' }
     else                               { Copy-Item -Force $forkSample $monoClaudeMd; Write-Host 'synced CLAUDE.md.sample -> CLAUDE.md' }
 
-    Write-Host "Done (claude, $Direction)." -ForegroundColor Cyan
+    Write-Host "Done (claude, Monorepo, $Direction)." -ForegroundColor Cyan
 }
-# ------------------------------------------------------- other agents: deploy
+# ------------------------------------- everything else: one-way deploy
 else {
-    # Portable skills content -> agent's skills directory (when it has one).
+    $baseRoot = if ($Scope -eq 'UserProfile') { $UserProfileRoot } else { $MonorepoRoot }
+
+    # 1. Portable skills content -> agent's skills directory (when it has one).
     if ($target.SkillsDir) {
-        $dstSkills = Join-Path $MonorepoRoot $target.SkillsDir
+        $dstSkills = Join-Path $baseRoot $target.SkillsDir
         $items = @('shared') + (Get-ChildItem -Path (Join-Path $forkClaude 'skills') -Directory -Filter 'mb-*' |
             ForEach-Object { $_.Name })
         foreach ($name in $items) {
@@ -201,25 +248,52 @@ else {
         }
     }
     else {
-        Write-Host "Agent '$Agent' has no skills directory - deploying instructions block only." -ForegroundColor DarkGray
+        Write-Host "Agent '$Agent' has no skills directory - deploying glue + instructions block only." -ForegroundColor DarkGray
     }
 
-    # Preference block from CLAUDE.md.sample -> agent's instructions file.
+    # 2. Glue artifacts (hooks/, scripts/, any future non-settings items of
+    #    ums/.claude) -> agent's config dir. Merged, never wiping existing
+    #    content. settings.json is intentionally skipped: it is Claude Code's
+    #    registration file and would clobber the agent's own settings (e.g.
+    #    .gemini/settings.json); register hooks manually per harness.
+    $dstConfig = Join-Path $baseRoot $target.ConfigDir
+    Get-ChildItem -Path $forkClaude -Directory |
+        Where-Object { $_.Name -ne 'skills' } |
+        ForEach-Object {
+            Copy-Merged $_.FullName (Join-Path $dstConfig $_.Name)
+            Write-Host "deployed $($_.Name)\ -> $($target.ConfigDir)\$($_.Name)\ (merged)"
+        }
+    if (-not ($Agent -eq 'claude')) {
+        Write-Host "note: settings.json not deployed (Claude Code registration format) - wire hooks manually for '$Agent'." -ForegroundColor DarkGray
+    }
+    elseif ($Scope -eq 'UserProfile') {
+        Write-Host "note: settings.json not deployed - merge hook registration into $($target.ConfigDir)\settings.json manually if wanted." -ForegroundColor DarkGray
+    }
+
+    # 3. Preference block from CLAUDE.md.sample -> agent's instructions file.
     $content = (Get-Content -Path (Join-Path $ForkUmsDir 'CLAUDE.md.sample') -Raw) -replace "`r`n", "`n"
     if ($target.SkillsDir) {
         # Repoint skill-pack references to the agent's own skills location.
         $skillsFwd = $target.SkillsDir -replace '\\', '/'
         $content = $content -replace [regex]::Escape('.claude/skills/'), "$skillsFwd/"
     }
-    $content += @"
+    if ($Scope -eq 'UserProfile') {
+        $preamble = "> **Rozsah platnosti:** následující pravidla platí POUZE při práci v UMS`n" +
+                    "> monorepu (``$MonorepoRoot``). V jiných projektech je ignoruj.`n`n"
+        $content = $preamble + $content
+    }
+    if ($Agent -ne 'claude') {
+        $content += @"
 
 > Pozn. pro tento nástroj: mechanická vynucení (PreToolUse write-guard,
 > permission deny EnterWorktree/ExitWorktree, skillOverrides) existují jen
 > v Claude Code — zde platí výše uvedená pravidla jako závazný text.
 "@
-    $instrFile = Join-Path $MonorepoRoot $target.Instructions
+    }
+    $instrFile = Join-Path $baseRoot $target.Instructions
     Set-MarkedBlock $instrFile $content
     Write-Host "deployed preference block -> $($target.Instructions)"
 
-    Write-Host "Done ($Agent, deploy). Note: this file set may be gitignored in the monorepo (local per-developer deploy)." -ForegroundColor Cyan
+    $scopeNote = if ($Scope -eq 'UserProfile') { "user profile $baseRoot" } else { 'monorepo (this file set may be gitignored there - local per-developer deploy)' }
+    Write-Host "Done ($Agent, $Scope deploy -> $scopeNote)." -ForegroundColor Cyan
 }
