@@ -34,12 +34,12 @@ UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-developmen
 | mb-jira-update | [mb-jira-update/SKILL.md](../mb-jira-update/SKILL.md) | České shrnutí implementace do Jira |
 | mb-model-routing | [mb-model-routing/SKILL.md](../mb-model-routing/SKILL.md) | Správa `## Model Routing` bloku v context.md |
 
-## Deprecated stuby (MB v1 → v2)
+## Odstraněné v1 skilly (MB v1 → v2)
 
-Lifecycle převzalo superpowers workflow. Stuby přesměrovávají a budou smazány
-po přechodném období (~1–2 měsíce po rolloutu).
+Lifecycle převzalo superpowers workflow; v1 orchestrační skilly byly odstraněny.
+Mapování náhrad (pokud někdo zavolá starý název, přesměruj podle tabulky):
 
-| Skill | Náhrada |
+| Odstraněný skill | Náhrada |
 |---|---|
 | mb-plan | brainstorming (Target-MB discovery proběhne v něm) + writing-plans |
 | mb-act | subagent-driven-development / executing-plans |
