@@ -18,7 +18,7 @@ layer injected into it. The normative rules are in
 ums/
 ├── README.md                 ← this file
 ├── CLAUDE.md.sample          ← monorepo root CLAUDE.md (user-preference lever)
-├── sync-with-monorepo.ps1    ← mirrors the UMS-owned file set fork ⇄ monorepo
+├── sync-with-monorepo.ps1    ← fork ⇄ monorepo sync (claude) + deploy for other agents (-Agent)
 └── .claude/
     ├── settings.json         ← Claude Code glue (hooks, permission denies, skillOverrides)
     ├── hooks/deny-superpowers-docs.mjs   ← PreToolUse write-guard (Claude Code)
@@ -87,10 +87,24 @@ connection configured per harness.
 | Worktree ban | `permissions.deny: EnterWorktree/ExitWorktree` + `skillOverrides: using-git-worktrees: off` | No shown equivalent — degrade to the ban text in the instructions file; `using-git-worktrees` itself honors a declared preference ("work in place") |
 | Model routing for subagents | `## Model Routing` in `memory-bank/context.md` consumed per contract | Portable in principle (contract text); effective only where the harness exposes a model parameter on subagent dispatch |
 
-Deploying to a non-Claude harness in the monorepo therefore means: mirror the
-`CLAUDE.md.sample` preference block into that harness's instructions file
-(`AGENTS.md`, etc.) and accept that the write-guard and worktree denies are
-advisory (contract text) rather than mechanical there.
+Deploying to a non-Claude harness is automated by the sync script:
+
+```powershell
+pwsh ums/sync-with-monorepo.ps1 -Agent codex     # skills -> .agents/skills/ + block in AGENTS.md
+pwsh ums/sync-with-monorepo.ps1 -Agent gemini    # block in GEMINI.md (no skills mechanism)
+pwsh ums/sync-with-monorepo.ps1 -Agent kilocode  # block in .kilocode/rules/ums-memory-bank.md
+```
+
+For these agents the script performs a one-way deploy of the portable subset
+(`Direction` is ignored): the skills content where the agent supports skills,
+and the `CLAUDE.md.sample` preference block into the agent's instructions file
+— wrapped in `UMS-MEMORY-BANK BEGIN/END` markers (re-runs replace the block in
+place), with skill-pack paths repointed and a note that the write-guard and
+worktree denies are advisory (contract text) rather than mechanical there.
+Per-agent target paths are a config table (`$AgentTargets`) at the top of the
+script — adjust there if a harness expects a different layout. Most of these
+targets are gitignored in the monorepo, i.e. local per-developer deploys.
+Running the script bare in a console asks for the agent interactively.
 
 ## Deployment to the monorepo from scratch
 
