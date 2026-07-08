@@ -18,6 +18,11 @@
     Vendored superpowers skills are never synced by this script - they are
     produced in the monorepo by .claude/scripts/revendor-superpowers.ps1
     from this repo's skills/ tree.
+
+    Run WITHOUT parameters in an interactive console to be prompted for each
+    parameter with its default offered (Enter accepts the default). In a
+    non-interactive context (redirected stdin, pwsh -NonInteractive) the
+    defaults are used silently, so automation keeps working.
 #>
 #Requires -Version 7
 [CmdletBinding()]
@@ -29,6 +34,40 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# ------------------------------------------------- interactive parameter setup
+function Read-WithDefault([string]$Prompt, [string]$Default) {
+    $answer = Read-Host "$Prompt [$Default]"
+    if ([string]::IsNullOrWhiteSpace($answer)) { $Default } else { $answer.Trim() }
+}
+
+$isNonInteractive = [Console]::IsInputRedirected -or
+    ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
+
+if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
+    Write-Host 'No parameters given - interactive setup (Enter = default):' -ForegroundColor Cyan
+
+    do {
+        $dirAnswer = Read-WithDefault 'Direction: 1 = FromMonorepo (monorepo -> fork), 2 = ToMonorepo (fork -> monorepo)' '1'
+        $valid = $dirAnswer -in @('1', '2', 'FromMonorepo', 'ToMonorepo')
+        if (-not $valid) { Write-Host '  Enter 1, 2, FromMonorepo, or ToMonorepo.' -ForegroundColor Yellow }
+    } until ($valid)
+    $Direction = if ($dirAnswer -in @('2', 'ToMonorepo')) { 'ToMonorepo' } else { 'FromMonorepo' }
+
+    $attempts = 0
+    do {
+        $MonorepoRoot = Read-WithDefault 'Monorepo root' $MonorepoRoot
+        $valid = Test-Path (Join-Path $MonorepoRoot '.claude')
+        if (-not $valid) {
+            Write-Host "  No .claude/ found under '$MonorepoRoot'." -ForegroundColor Yellow
+            if ((++$attempts) -ge 3) { throw "Monorepo root not valid after 3 attempts." }
+        }
+    } until ($valid)
+
+    $ForkUmsDir = Read-WithDefault 'Fork ums/ directory' $ForkUmsDir
+
+    Write-Host "Direction=$Direction  MonorepoRoot=$MonorepoRoot  ForkUmsDir=$ForkUmsDir" -ForegroundColor Cyan
+}
 
 $monoClaude = Join-Path $MonorepoRoot '.claude'
 $forkClaude = Join-Path $ForkUmsDir '.claude'
