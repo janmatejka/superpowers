@@ -113,3 +113,29 @@ Before proposing changes to skill design, workflow philosophy, or architecture, 
 - One problem per PR
 - Test on at least one harness and report results in the environment table
 - Describe the problem you solved, not just what you changed
+
+<!-- UMS-MEMORY-BANK BEGIN (fork-only section, exists on branch ums-memory-bank; keep at end of file for conflict-free upstream merges) -->
+
+## Integrace s UMS Memory Bank (jen tento fork)
+
+Tento fork (`janmatejka/superpowers`, upstream remote `vanila` = obra/superpowers) nese integraci s UMS Memory Bank v2. S uživatelem komunikuj v této agendě česky.
+
+### Role větví — dodržuj striktně
+
+- **`main`** = čisté read-only zrcadlo upstreamu (fast-forward na `vanila/main`). NIKDY na něj nedávej UMS obsah; slouží jako zdroj vendoringu a pro případné upstream PR.
+- **`ums-memory-bank`** = jediná větev s UMS obsahem, VÝHRADNĚ v adresáři `ums/` (aditivní model). Mimo `ums/` na této větvi neměň žádný soubor (jediná tolerovaná výjimka je tato sekce CLAUDE.md na konci souboru). Díky tomu je `git merge vanila/main` vždy bezkonfliktní.
+- Stará v5 integrace je archivovaná v tagu `archive/mb-integrace-v5-era`; větev `origin/mb-integrace` je obsoletní.
+
+### Architektura MB v2 (zkráceně)
+
+Superpowers řídí workflow (brainstorming → writing-plans → subagent-driven-development → finishing); Memory Bank je dokumentová vrstva. Proposal = pár `proposal_<slug>-design.md` + `proposal_<slug>.md` v `<PLAN_MB>/proposals/active/`; `context.md` nese jen Jira + Target MB Pin + slug + Model Routing; harvest dělá skill `mb-harvest` z overlay kroku 4.5 ve finishing. Přesně 3 overlay bloky (brainstorming, SDD, finishing) generované z `ums/.claude/skills/shared/overlays/*.overlay.md`. Worktrees jsou v UMS zakázané (branch-in-place). Normativní zdroj: `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`; detaily a matice kompatibility harness: `ums/README.md`.
+
+### Živé nasazení a synchronizace
+
+- Živá (master) kopie vrstvy je v monorepu `d:\_datasys\ums` (`.claude/` + `CLAUDE.md`); fork `ums/` je redistribuovatelné zrcadlo.
+- Sync/deploy: `pwsh ums/sync-with-monorepo.ps1` — bez parametrů interaktivní nabídka; `-Agent claude|codex|gemini|kilocode`, `-Scope Monorepo|UserProfile`, pro claude+Monorepo obousměrně (`-Direction`), jinak jednosměrný deploy. `settings.json` se na ne-Claude cíle záměrně nenasazuje; glue se merguje bez mazání cizích souborů.
+- Upgrade upstreamu: v monorepu `revendor-superpowers.ps1 -Tag <nový> -NoOverlays` (commit „vanilla sync") → `-OverlaysOnly` (commit „overlay"). Anchor-miss overlay fragmentu = detektor driftu upstreamu, ne chyba k obejití. Vendorované soubory v monorepu nikdy needituj mimo `<!-- UMS-OVERLAY -->` bloky.
+- Pozor Windows: `git archive` + `core.autocrlf=true` rozbíjí CRLF konverzí bash skripty bez přípony — revendor skript normalizuje na LF; v monorepu platí `.gitattributes: .claude/skills/** text eol=lf`.
+- Upstream `.gitignore` ignoruje každý `.claude/` adresář — `ums/.gitignore` s `!.claude/` to aditivně neguje; při přesunech souborů na to nezapomeň.
+
+<!-- UMS-MEMORY-BANK END -->
