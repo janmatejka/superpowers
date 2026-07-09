@@ -11,13 +11,15 @@ Adjustments to the checklist above:
 - **Item 1 (Explore project context)** additionally requires: as soon as the
   affected code area is identifiable, run Target-MB discovery per the
   contract's "Target-MB Discovery & Pinning" section (scan active proposal
-  pairs, evidence tags, A/B/C disambiguation — the user always decides), ask
-  for the Jira ticket (one question; "none" is a valid answer), persist
-  `Target MB Pin`, `Jira`, `Proposal` slug and `Started` into
-  `memory-bank/context.md`, then read `<PLAN_MB>/brief.md`, `product.md`,
-  `architecture.md`, `tech.md` (those that exist) as design context. Create a
-  todo for this. If the affected area only becomes clear later in the dialog,
-  this step MUST complete before item 6.
+  pairs, evidence tags, A/B/C disambiguation — the user always decides;
+  activate a matching queued proposal from `proposals/next/` by moving its
+  files to `active/` and using the draft as design seed), ask for the Jira
+  ticket (one question; "none" is a valid answer), persist `Target MB Pin`,
+  `Jira`, `Proposal` slug and `Started` into `memory-bank/context.md`, then
+  read `<PLAN_MB>/brief.md`, `product.md`, `architecture.md`, `tech.md`
+  (those that exist) as design context. Create a todo for this. If the
+  affected area only becomes clear later in the dialog, this step MUST
+  complete before item 6.
 - **Item 6 (Write design doc)**: save to
   `<PLAN_MB>/proposals/active/proposal_<slug>-design.md` (Czech content,
   header per the contract's "Superpowers Document Placement" section) instead

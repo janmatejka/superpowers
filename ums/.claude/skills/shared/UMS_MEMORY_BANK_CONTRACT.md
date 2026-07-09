@@ -80,7 +80,7 @@ Before reading or writing any Memory Bank file, verify that
   the next step is the superpowers workflow — Target-MB Discovery & Pinning
   (below) creates `context.md` during brainstorming.
 - **Project MB (`PLAN_MB`)** — creates `<MB_ROOT>/<path>/memory-bank/` with
-  `proposals/{active,completed,abandoned}/` and project docs. Used when
+  `proposals/{next,active,completed,abandoned}/` and project docs. Used when
   initializing project MBs for new components. Does not touch `CTX_DIR`.
 
 ## Scope Lock (Memory Bank documents only)
@@ -131,10 +131,30 @@ Rules:
 - A design file without its plan sibling is a valid intermediate state
   (between brainstorming and writing-plans).
 
-**Slug convention:** `<jira>_<short_snake_case_topic>` when a ticket exists
-(e.g. `ums_3302_toast_reconcile`), otherwise `<short_snake_case_topic>`.
-ASCII only, no diacritics, no dates in the name (dates live in `Started` and
-git history).
+**Naming:** `proposal_<slug>.md` / `proposal_<slug>-design.md`. The slug
+MUST start with the ticket code whenever one is known:
+`<jira>_<short_snake_case_topic>`, with the ticket code normalized to
+lowercase snake case (`UMS-3302` → `ums_3302_toast_reconcile`); without a
+known ticket use `<short_snake_case_topic>` alone. ASCII only, no
+diacritics, no dates in the name (dates live in `Started` and git history).
+When the ticket becomes known later (e.g. at activation of a preliminary
+proposal), rename the slug's files to include it.
+
+**Preliminary proposals (`next/`):** work items may be planned ahead of time
+as preliminary proposals in `<MB>/proposals/next/` — any number may queue
+there, unlike the single work item in `active/`. A preliminary proposal is a
+draft: a single `proposal_<slug>.md`, optionally already accompanied by a
+`proposal_<slug>-design.md`. Rules:
+
+- Creating or editing a preliminary proposal does NOT touch `context.md`,
+  does not require the IDLE state, and does not pin a Target MB — it is
+  planning, not active work.
+- When work on it starts, ALL files of its slug move from `next/` to
+  `active/` (see Target-MB Discovery & Pinning) and the normal workflow
+  continues — brainstorming treats the moved draft as seed input for the
+  design, refining it rather than starting from scratch.
+- Queued items in `next/` never count against the two-actives guard.
+- A queued item that is dropped without being started moves to `abandoned/`.
 
 **Grandfather clause:** a legacy single-file `proposal_*.md` in
 `proposals/active/` (created under contract v1) is a valid plan artifact.
@@ -206,16 +226,27 @@ identifiable — always before the design document is written.
        requires explicit cross-project confirmation).
    - Zero trusted candidates → do not guess. Ask the user for the target
      project path, or route to `mb-init` for a new component.
-6. Ask for the Jira ticket (one question; "none" is a valid answer).
-7. **Two-actives guard:** if an active proposal (pair or legacy single) with a
+6. **Preliminary-queue activation:** check the selected MB's
+   `proposals/next/` for a queued preliminary proposal matching the work
+   (explicit user reference, ticket code, or topic — when the match is only
+   probable, confirm with the user). On confirmation, move ALL files of its
+   slug from `next/` to `active/`, reuse its slug and ticket, and treat the
+   draft as seed input for the design. No match → continue with a fresh
+   proposal.
+7. Ask for the Jira ticket (one question; "none" is a valid answer; skip if
+   already known from the activated preliminary proposal). If the ticket is
+   known and the slug does not start with its code, rename the slug's files
+   accordingly (Naming rule in Active Proposal Pair).
+8. **Two-actives guard:** if an active proposal (pair or legacy single) with a
    *different* slug already exists anywhere under `<MB_ROOT>`, stop and ask
    the user — finish it (`finishing-a-development-branch` → harvest) or
-   abandon it (`mb-abort`) before pinning new work.
-8. Persist into `CTX_DIR/context.md` (creating the file if absent):
+   abandon it (`mb-abort`) before pinning new work. Only `active/` counts;
+   queued items in `next/` are ignored by this guard.
+9. Persist into `CTX_DIR/context.md` (creating the file if absent):
    `Target MB Pin`, `Jira`, `Proposal` slug, `Started` (see the schema below).
-9. Invalidation: the pin (and thus `PLAN_MB`) becomes invalid when the active
-   proposal slug changes or the pinned path no longer exists — re-run this
-   discovery, do not silently fall back.
+10. Invalidation: the pin (and thus `PLAN_MB`) becomes invalid when the active
+    proposal slug changes or the pinned path no longer exists — re-run this
+    discovery, do not silently fall back.
 
 ## `context.md` Schema & Writers
 

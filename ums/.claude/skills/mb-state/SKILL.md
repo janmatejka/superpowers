@@ -42,7 +42,12 @@ metadata:
     `mb-abort`.
 - **Two-actives check:** scan `**/memory-bank/proposals/active/proposal_*.md`
   (group pairs by slug); any active slug different from the pinned one is a
-  warning — recommend finishing or `mb-abort` before new work.
+  warning — recommend finishing or `mb-abort` before new work. Queued items
+  in `proposals/next/` are NOT counted here.
+- **Preliminary queue:** scan `**/memory-bank/proposals/next/proposal_*.md`
+  (group by slug per owning MB) and list the queued preliminary proposals —
+  they activate by moving to `active/` when work on them starts (contract,
+  Target-MB Discovery & Pinning).
 - Execution progress: does `.superpowers/sdd/progress.md` exist? (Presence =
   plan execution in flight; content shows the last completed task.)
 - Git: current branch (`git branch --show-current`), work on main/master is a
@@ -63,9 +68,11 @@ Zahájeno: <Started> <(⚠️ starší než 7 dní)>
 Exekuce: [.superpowers/sdd/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
 Další aktivní proposaly: <žádné | ⚠️ výčet cizích slugů>
+Fronta (proposals/next/): <prázdná | výčet slugů s vlastnící MB>
 
 Další krok:
 - IDLE → popiš, co chceš postavit (spustí se brainstorming); mb-scan pro analýzu
+- fronta neprázdná → řekni, že chceš začít na některém z fronty (přesun next/ → active/ proběhne v brainstormingu)
 - jen návrh → pokračuj writing-plans
 - kompletní pár → exekuce dle hlavičky plánu (subagent-driven-development)
 - hotová implementace → finishing-a-development-branch (harvest gate)

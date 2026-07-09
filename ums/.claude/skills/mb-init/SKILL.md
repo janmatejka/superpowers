@@ -162,6 +162,7 @@ Create the target `memory-bank/` (`<CTX_DIR>/` in orchestration-root mode, `<PLA
 - `product.md`
 - `architecture.md`
 - `tech.md`
+- `proposals/next/`
 - `proposals/active/`
 - `proposals/completed/`
 - `proposals/abandoned/`
@@ -178,7 +179,7 @@ Always include:
 
 - `Cílová MB: <PLAN_MB>/` (v režimu orchestračního kořene: `<CTX_DIR>/`)
 - `Reason: git-root discovery`
-- `Updated files: brief.md, product.md, architecture.md, tech.md, proposals/active/, proposals/completed/, proposals/abandoned/`
+- `Updated files: brief.md, product.md, architecture.md, tech.md, proposals/next/, proposals/active/, proposals/completed/, proposals/abandoned/`
 
 ### 5. Next step
 
