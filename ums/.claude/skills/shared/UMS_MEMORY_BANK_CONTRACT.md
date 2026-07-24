@@ -21,7 +21,7 @@ Consumers of this contract:
    finishing-a-development-branch).
 2. **`mb-*` utility skills** — `mb-init`, `mb-state`, `mb-scan`, `mb-sync`,
    `mb-harvest`, `mb-abort`, `mb-git-commit`, `mb-git-message`,
-   `mb-jira-update`, `mb-model-routing`.
+   `mb-jira-update`.
 3. Any other agent or session working with Memory Bank documents.
 
 ## Three-Tier Directory Model
@@ -30,7 +30,7 @@ UMS Memory Bank uses a three-tier directory model across the monorepo:
 
 - **`CTX_DIR`** — `<MB_ROOT>/memory-bank/` — the orchestration root of the
   repository. Holds `context.md` (Jira link, `Target MB Pin`, `Proposal` slug,
-  `Started`, `Model Routing`).
+  `Started`).
 - **`PLAN_MB`** — `<MB_ROOT>/<Target MB Pin>` — the project Memory Bank the
   current work targets. Holds the active proposal pair and the project
   documents (`brief.md`, `product.md`, `architecture.md`, `tech.md`,
@@ -275,28 +275,17 @@ Active state:
 - **Target MB Pin:** <relative path>/memory-bank/
 - **Proposal:** <slug>
 - **Started:** YYYY-MM-DD
-
-## Model Routing
-
-- **Model Profile:** …
-- **Orchestrator Model:** …
-- **Worker Model:** …
-- **Reviewer Model:** …
-- **Summarizer Model:** …
-- **Fallback Policy:** ask | downgrade | stop
-- **Budget Hint:** …
 ```
 
 IDLE state: replace the `## Active Work` items with
 `(No active work - IDLE phase)`; keep the `- **Jira:** …` line of the last
-work item if it existed; preserve `## Model Routing` exactly.
+work item if it existed.
 
 Writers (no other writer is allowed):
 
 - **The driving session** during Target-MB Discovery & Pinning — creates or
   updates `## Active Work`.
 - **`mb-harvest`** (and `mb-abort`) — resets `## Active Work` to IDLE.
-- **`mb-model-routing`** — owns the `## Model Routing` block.
 
 The v1 fields `Status`, `Run Mode`, `Execution Mode`, `Loop Mode`,
 `Affected MBs`, `Implementation Checklist`, and `Auto Loop State` are
@@ -356,54 +345,29 @@ code.
 
 All harvested document content is Czech.
 
-## Model Routing Consumption
+## Dispatch Model Policy
 
-Root `context.md` may carry a `## Model Routing` block (set by
-`mb-model-routing`) that assigns a model to four roles:
+Model selection is owned by the superpowers workflow. SDD's **Model
+Selection** section scales the model to each task's size, complexity and risk
+(cheap for mechanical work, a standard tier for integration/judgment, the most
+capable model for design and the final whole-branch review, one tier up for a
+stuck fix round). UMS does **not** pin models per role and carries no
+`## Model Routing` block.
 
-- **Orchestrator Model** — the driving session: planning, decisions, state
-  transitions.
-- **Worker Model** — a delegated subagent doing implementation, research, or
-  drafting work.
-- **Reviewer Model** — a delegated subagent performing review, verification,
-  or critique.
-- **Summarizer Model** — a delegated subagent producing a summary (commit
-  message, Jira comment, harvest note) with no technical decision authority.
+UMS adds one guard so routine bookkeeping never runs on an expensive model by
+accident: a dispatch whose entire job is **summarization or read-only
+inspection** — commit messages, Jira comments, harvest notes, read-only scans,
+reality-verification passes — SHOULD request the cheapest capable tier.
+Everything else follows the skill's own Model Selection.
 
-Role mapping for the vendored superpowers v6 surface:
+Always specify the model explicitly when dispatching a subagent. An omitted
+model inherits the session's model (often the most capable and most
+expensive), which silently defeats both the superpowers tiering and this
+guard.
 
-| Dispatch | Role |
-|---|---|
-| SDD implementer subagent, fix subagent | Worker |
-| SDD task reviewer, final whole-branch reviewer (requesting-code-review) | Reviewer |
-| Commit-message / Jira / harvest summarization dispatches | Summarizer |
-| The driving session itself | Orchestrator |
-
-Any skill that spawns a subagent, delegated session, or isolated subprocess
-MUST:
-
-1. Read `<CTX_DIR>/context.md` → `## Model Routing`.
-2. Map the subagent's purpose to one of the four roles and request that
-   role's model for the spawn (e.g. the `model` parameter of the Agent tool).
-3. When the block is present, the role's model IS the dispatch model —
-   it takes precedence over the skill's own model-selection heuristics
-   (e.g. SDD's Model Selection tiering). If the block is absent, or the
-   mapped role's value is `runtime-default`, use the skill's own default
-   selection logic.
-   **Downward-scaling exception (Reviewer only):** the routing value is a
-   ceiling, not a floor — for a small, mechanical, low-risk diff (docs, skill
-   files, config, single-file mechanical change) the dispatching skill's own
-   size/risk scaling MAY select one tier below the Reviewer model. Never scale
-   the final whole-branch review down, and never scale any role up past the
-   routing value.
-4. If the resolved model is unavailable, honor `Fallback Policy`
-   (`ask` | `downgrade` | `stop`); treat a missing `Fallback Policy` as
-   `downgrade`.
-
-This rule is additive: it never overrides a more specific per-skill
+This policy is additive: it never overrides a more specific per-skill
 instruction that already names an exact model or session-isolation
-requirement. Sessions outside any Memory Bank workflow (no `context.md`, or
-no `## Model Routing`) are unaffected.
+requirement. Sessions outside any Memory Bank workflow are unaffected.
 
 ## Language Contract
 

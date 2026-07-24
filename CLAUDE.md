@@ -128,7 +128,7 @@ Tento fork (`janmatejka/superpowers`, upstream remote `vanila` = obra/superpower
 
 ### Architektura MB v2 (zkráceně)
 
-Superpowers řídí workflow (brainstorming → writing-plans → subagent-driven-development → finishing); Memory Bank je dokumentová vrstva. Proposal = pár `proposal_<slug>-design.md` + `proposal_<slug>.md` v `<PLAN_MB>/proposals/active/`; `context.md` nese jen Jira + Target MB Pin + slug + Model Routing; harvest dělá skill `mb-harvest` z overlay kroku 4.5 ve finishing. Přesně 3 overlay bloky (brainstorming, SDD, finishing) generované z `ums/.claude/skills/shared/overlays/*.overlay.md`. Worktrees jsou v UMS zakázané (branch-in-place). Normativní zdroj: `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`; detaily a matice kompatibility harness: `ums/README.md`.
+Superpowers řídí workflow (brainstorming → writing-plans → subagent-driven-development → finishing); Memory Bank je dokumentová vrstva. Proposal = pár `proposal_<slug>-design.md` + `proposal_<slug>.md` v `<PLAN_MB>/proposals/active/`; `context.md` nese jen Jira + Target MB Pin + slug; harvest dělá skill `mb-harvest` z overlay kroku 4.5 ve finishing. Volbu modelu řídí superpowers (SDD Model Selection), UMS nepřipíná modely (jen nejlevnější tier pro summarizaci/read-only — viz Dispatch Model Policy). Přesně 3 overlay bloky (brainstorming, SDD, finishing) generované z `ums/.claude/skills/shared/overlays/*.overlay.md`. Worktrees jsou v UMS zakázané (branch-in-place). Normativní zdroj: `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`; detaily a matice kompatibility harness: `ums/README.md`.
 
 ### Živé nasazení a synchronizace
 

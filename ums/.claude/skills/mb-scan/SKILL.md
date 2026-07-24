@@ -170,7 +170,7 @@ Scope lock remains active until command completion.
 - The delegated worker MUST re-activate this skill (or equivalent command instructions) in the delegated session and perform its own Context Handshake before analysis or edits.
 - Parent session should pass only minimal handoff: `MB_ROOT`, the target path if already known, and the requested action.
 - Fallback: If runtime lacks subagents or isolated subprocess support, execute this command in the current session (unless explicitly blocked by command restrictions).
-- If delegation proceeds and root `context.md` has a `## Model Routing` block, dispatch the delegated worker with `Worker Model` per [Model Routing Consumption](../shared/UMS_MEMORY_BANK_CONTRACT.md#model-routing-consumption).
+- If delegation proceeds, dispatch the delegated worker on the cheapest capable tier — scanning is read-only inspection (see [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy)).
 
 ### 2. Derive Phase
 

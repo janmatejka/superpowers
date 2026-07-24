@@ -13,7 +13,7 @@ Superpowers skilly řídí workflow; Memory Bank je dokumentová vrstva. Tyto pr
 - **Jazyk:** výstupy pro uživatele, proposaly, MB dokumenty, commit messages a Jira komentáře česky; AI-facing instrukce a mezivýstupy subagentů anglicky.
 - **Exekuce plánu (SDD):** před dispatchem prvního tasku ověř baseline — postav dotčené projekty a spusť cílené testy na bázi větve; pre-existing rozbití vyřeš/reportuj předem, ne uprostřed tasku. Eskalační body plánu („zastav a reportuj uživateli") smíš odložit na konec větve, pokud neblokují navazující tasky; skutečně blokující rozhodnutí běh zastaví.
 - **Dokončení větve:** finishing-a-development-branch v tomto repu zahrnuje harvest znalostí skillem `mb-harvest` (viz overlay ve skillu) — bez harvestu se práce neuzavírá. Merge do develop dělej vždy `--no-ff` (explicitní merge commit dle konvence repa).
-- **Model routing:** při spouštění subagentů respektuj `## Model Routing` z `memory-bank/context.md` (role Worker/Reviewer/Summarizer — viz kontrakt).
+- **Volba modelu:** volbu modelu řídí superpowers (SDD sekce Model Selection — škáluje dle složitosti a rizika tasku). UMS nepřipíná modely; jediná pojistka: čistě summarizační/read-only dispatche (commit messages, Jira komenty, harvest notes, read-only scany) běží na nejlevnějším tieru (viz kontrakt, Dispatch Model Policy). Model vždy uváděj u dispatche explicitně.
 
 ## Zákaz git worktree
 

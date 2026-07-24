@@ -62,8 +62,8 @@ unchanged. Never touch proposals of other Memory Banks.
 
 Overwrite `<CTX_DIR>/context.md` with the IDLE baseline per the contract
 schema: `## Active Work` → `(No active work - IDLE phase)` + keep the
-`- **Jira:** …` line if it existed; preserve the whole `## Model Routing`
-block exactly. Do not preserve any other section or history.
+`- **Jira:** …` line if it existed. Do not preserve any other section or
+history.
 
 ### 5. Announce (Czech)
 

@@ -28,7 +28,7 @@ metadata:
 ### 1. Gather state (read-only)
 
 - `<CTX_DIR>/context.md` → `Jira`, `Target MB Pin`, `Proposal` slug,
-  `Started`, `Model Routing` presence. Missing file or IDLE content →
+  `Started`. Missing file or IDLE content →
   `PHASE = IDLE`, otherwise `ACTIVE_WORK`. Ignore stale v1 fields (`Status`,
   `Run Mode`, `Execution Mode`, `Implementation Checklist`,
   `Auto Loop State`) — the v2 schema abolished them; their presence is worth

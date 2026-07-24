@@ -24,9 +24,10 @@ dispatch prompts are English (Language Contract).
    snapshot → generate + `-Check`). Its findings feed the agenda (mismatches
    are dirty-set candidates). In JIRA-less mode, run `mb-epic-graph` with
    `-Source Proposals -ProposalPath <members>` — no Jira fetch.
-6. Read `## Model Routing` from `<MB_ROOT>/memory-bank/context.md`; map any
-   sub-dispatch you make: read-only code verification / drafting = Worker,
-   review or critique = Reviewer, summarization = Summarizer.
+6. For any sub-dispatch you make, follow the contract's Dispatch Model Policy:
+   read-only code verification and summarization run on the cheapest capable
+   tier; review/critique scales per superpowers Model Selection. Always set
+   the model explicitly.
 
 ## 1. Window selection (what to propose in the handshake)
 
@@ -59,8 +60,9 @@ Wait for confirmation or narrowing. The human always decides the agenda.
    proposal(s) in scope + their header dependency fields (`Blokováno:`/
    `Blokuje:`/`Souvisí:`/`Vyčleněno z:`/`Vyčleněno do:`) and the linked
    sibling proposals (both directions), instead of tickets + Jira links.
-2. **Reality verification:** dispatch a READ-ONLY exploration (Worker model)
-   that confirms/refutes EVERY factual claim of the tickets/items in scope
+2. **Reality verification:** dispatch a READ-ONLY exploration (cheapest
+   capable tier — read-only inspection) that confirms/refutes EVERY factual
+   claim of the tickets/items in scope
    with `file:line` in current code and maps the affected code seams. Output
    categories: confirmed / refuted / newly-found. Newly-found facts become new
    ledger items (state `otevřená`, owner `nepřiřazeno` until decided).

@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Before your first response this session, invoke the Skill tool with skill: using-superpowers to establish how to find and use skills. Then read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md (Memory Bank contract v2) and memory-bank/context.md (Target MB Pin, Model Routing) before relying on any Memory Bank-aware behavior.\"}}'"
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Before your first response this session, invoke the Skill tool with skill: using-superpowers to establish how to find and use skills. Then read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md (Memory Bank contract v2) and memory-bank/context.md (Target MB Pin) before relying on any Memory Bank-aware behavior.\"}}'"
           }
         ]
       }

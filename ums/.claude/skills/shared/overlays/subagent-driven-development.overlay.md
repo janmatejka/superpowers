@@ -4,15 +4,11 @@
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
 
-- **Model routing:** `memory-bank/context.md` → `## Model Routing` maps roles
-  to models (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Model Routing
-  Consumption"). Role map: implementer and fix subagents → Worker Model; task
-  reviewer and final whole-branch reviewer → Reviewer Model;
-  summarization-only dispatches (commit messages, Jira comments, harvest
-  notes) → Summarizer Model. When the block is present, the role's model IS
-  the dispatch model; the Model Selection tiering above applies only when the
-  block is absent or the role's value is `runtime-default`. Honor
-  `Fallback Policy` (missing = `downgrade`).
+- **Model selection:** follow the Model Selection section above — UMS pins no
+  models. One UMS guard (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Dispatch
+  Model Policy"): summarization-only dispatches (Czech commit messages, Jira
+  comments, harvest notes) use the cheapest capable tier. Always set the model
+  explicitly on every dispatch.
 - **Language:** dispatch prompts, task briefs, implementer/reviewer reports
   and the progress ledger stay English. Commit messages produced by
   implementer subagents MUST be Czech — state this in every implementer

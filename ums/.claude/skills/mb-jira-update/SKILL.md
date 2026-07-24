@@ -14,7 +14,7 @@ metadata:
 **Action:** Extract implementation status and deployment instructions from active proposals and publish a summary comment to Jira.
 **Precondition:** `- **Jira:** <ID>` must exist in `<CTX_DIR>/context.md` (or be provided in the user prompt).
 
-**Model routing:** If invoked as a delegated/isolated session (e.g. offered by `mb-harvest` from the finishing-a-development-branch harvest gate) and root `context.md` has a `## Model Routing` block, that session runs under `Summarizer Model` per [Model Routing Consumption](../shared/UMS_MEMORY_BANK_CONTRACT.md#model-routing-consumption).
+**Model selection:** producing the Czech Jira note is summarization work — if invoked as a delegated/isolated session (e.g. offered by `mb-harvest` from the finishing-a-development-branch harvest gate), run it on the cheapest capable tier (see [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy)).
 
 ---
 

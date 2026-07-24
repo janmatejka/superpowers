@@ -9,7 +9,7 @@ metadata:
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
 > especially "Preliminary proposals (`next/`)", "Superpowers Document
-> Placement", "Language Contract", and "Model Routing Consumption".
+> Placement", "Language Contract", and "Dispatch Model Policy".
 
 # Epic Elaboration (bounded-window fixpoint)
 
@@ -123,4 +123,4 @@ vocabulary, invariants, and Jira sync mechanics, read
 | New ledger | Copy [ledger-template.md](ledger-template.md) → `memory-bank/epics/<epic>/ledger.md`, fill items from the source doc |
 | Design conversation inside a window | brainstorming skill's method (one question at a time, sections as you go), scoped to the agenda |
 | Preliminary plan draft structure | writing-plans structure, saved as `proposals/next/proposal_<slug>.md` |
-| Sub-dispatch models | `## Model Routing` in root `context.md` (verification dispatch = Worker, review = Reviewer) |
+| Sub-dispatch models | [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy): read-only reality-verification dispatch = cheapest capable tier; review scaled per superpowers Model Selection |

@@ -23,8 +23,9 @@ reset `context.md` to IDLE.
 invoked from the finishing-a-development-branch Harvest Gate, that overlay owns
 the commit. When invoked standalone, offer `mb-git-commit` at the end.
 
-**Model routing:** when harvesting is delegated to a subagent, that dispatch
-runs under **Summarizer Model** per the contract's Model Routing Consumption.
+**Model selection:** harvesting is summarization work — when delegated to a
+subagent, dispatch it on the cheapest capable tier (contract, Dispatch Model
+Policy).
 
 ---
 
@@ -108,9 +109,8 @@ it and `mb-init`/the next brainstorming recreate it on demand.
 **Only if every affected MB update succeeded**, overwrite
 `<CTX_DIR>/context.md` with the IDLE baseline per the contract schema:
 `## Active Work` → `(No active work - IDLE phase)` + keep the `- **Jira:** …`
-line of the finished work item; preserve the whole `## Model Routing` block
-exactly. On partial failure, leave `context.md` unchanged and report which MBs
-failed.
+line of the finished work item. On partial failure, leave `context.md`
+unchanged and report which MBs failed.
 
 ### 6. Announce (Czech)
 

@@ -142,7 +142,7 @@ Scope lock remains active until command completion.
 - Shared repository state means the same repo, branch, worktree, and staging area.
 - The delegated worker MUST re-activate this skill (or equivalent command instructions) in its own session and verify git state before any write.
 - If shared git state cannot be guaranteed, do not execute the final git write in the delegated worker; return the prepared result to the parent session or keep the entire command in the parent session.
-- If delegation proceeds and root `context.md` has a `## Model Routing` block, dispatch the delegated worker with `Summarizer Model` per [Model Routing Consumption](../shared/UMS_MEMORY_BANK_CONTRACT.md#model-routing-consumption).
+- If delegation proceeds, dispatch the delegated worker on the cheapest capable tier — this is summarization/bookkeeping work (see [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy)).
 
 ## Idle Git Fallback
 
