@@ -211,8 +211,13 @@ function Invoke-Verify {
     }
 
     Step 'Verify: no CRLF in bash scripts'
+    # Only bash scripts must be LF — Git Bash chokes on a CRLF shebang. That is
+    # extension-less shebang files in a scripts/ dir, plus any .sh. PowerShell
+    # (.ps1/.psm1) is CRLF-safe and is normalized to LF on commit by
+    # .gitattributes, so a CRLF working-tree copy is not a defect — skip it to
+    # avoid false positives on UMS utility scripts (e.g. mb-epic-* scripts).
     Get-ChildItem -Path $SkillsRoot -Recurse -File |
-        Where-Object { $_.Directory.Name -eq 'scripts' -or $_.Extension -eq '.sh' } |
+        Where-Object { ($_.Extension -eq '.sh') -or ($_.Directory.Name -eq 'scripts' -and $_.Extension -eq '') } |
         ForEach-Object {
             if ((Get-Content -Path $_.FullName -Raw) -match "`r") {
                 $problems.Add("CRLF found in script: $($_.FullName.Substring($SkillsRoot.Length + 1))")
@@ -220,12 +225,17 @@ function Invoke-Verify {
         }
 
     Step 'Verify: SDD scripts run under Git Bash'
+    # v6.2.0 sdd-workspace is plan-scoped: it requires a PLAN_FILE argument and
+    # creates .superpowers/sdd/<plan-basename>/. Feed it a throwaway plan file.
     $sddWs = '.claude/skills/subagent-driven-development/scripts/sdd-workspace'
     Push-Location $UmsRoot
     try {
-        $out = bash $sddWs 2>&1
+        $planFile = '.superpowers-revendor-verify.md'
+        Set-Content -Path (Join-Path $UmsRoot $planFile) -Value '# revendor verify plan' -NoNewline
+        $out = bash $sddWs $planFile 2>&1
         if ($LASTEXITCODE -ne 0 -or -not $out) { $problems.Add("sdd-workspace failed (exit $LASTEXITCODE): $out") }
-        elseif (-not (Test-Path (Join-Path $UmsRoot '.superpowers\sdd'))) { $problems.Add('sdd-workspace did not create .superpowers/sdd') }
+        elseif (-not (Test-Path (Join-Path $UmsRoot '.superpowers\sdd\.superpowers-revendor-verify'))) { $problems.Add('sdd-workspace did not create the plan workspace') }
+        Remove-Item -Path (Join-Path $UmsRoot $planFile) -Force -ErrorAction SilentlyContinue
     } finally { Pop-Location }
 
     if ($problems.Count -gt 0) {

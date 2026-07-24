@@ -1,9 +1,9 @@
 # Vendored Superpowers skills
 
 - Upstream: https://github.com/obra/superpowers.git (mirror: C:\Users\matejka\source\repos\superpowers)
-- Tag: v6.1.1
-- Commit: d884ae04edebef577e82ff7c4e143debd0bbec99
-- Vendored on top of repo state: 2026-07-06 (by .claude/scripts/revendor-superpowers.ps1)
+- Tag: v6.2.0
+- Commit: 3dcbd5c4b48e02263fbf4a3c01e3fe4f81d584d9
+- Vendored on top of repo state: 2026-07-24 (by .claude/scripts/revendor-superpowers.ps1)
 - Skills:
   brainstorming
   dispatching-parallel-agents
