@@ -1,8 +1,38 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(diff:*)",
+      "Bash(sed:*)",
+      "Bash(find:*)",
+      "Bash(test:*)",
+      "Bash(echo:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git branch:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git stash list:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Test-Path:*)",
+      "PowerShell(Select-String:*)"
+    ],
     "deny": [
       "EnterWorktree",
-      "ExitWorktree"
+      "ExitWorktree",
+      "Bash(rm -rf:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git push:*)"
     ]
   },
   "skillOverrides": {
@@ -27,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostCompact\",\"additionalContext\":\"Context was just compacted. Before continuing, invoke the Skill tool with skill: using-superpowers to re-establish how to find and use skills, re-read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md and memory-bank/context.md (Target MB Pin); if you are executing a plan, also re-read .superpowers/sdd/progress.md.\"}}'"
+            "command": "echo '{\"systemMessage\":\"Context was just compacted. Before continuing, invoke the Skill tool with skill: using-superpowers to re-establish how to find and use skills, re-read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md and memory-bank/context.md (Target MB Pin); if you are executing a plan, also re-read .superpowers/sdd/progress.md.\"}'"
           }
         ]
       }
@@ -39,6 +69,17 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/deny-superpowers-docs.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/bpmn-validate.ps1\""
           }
         ]
       }

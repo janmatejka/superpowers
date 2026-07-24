@@ -223,7 +223,7 @@ Replace broad staging with scoped staging. Stage only files that belong to the c
 
 - source-code changes produced by the superpowers workflow (plan tasks),
 - Memory Bank document updates under <CTX_DIR>/, <PLAN_MB>/, and relevant <AFFECTED_MBS>/,
-- proposal pair moves from `proposals/active/` to `proposals/completed/` or `proposals/abandoned/`.
+- proposal archival: on completion the design `proposal_<slug>-design.md` moves `proposals/active/`→`proposals/completed/` and the implementation plan `proposal_<slug>.md` is deleted; on abandon both halves move `proposals/active/`→`proposals/abandoned/`.
 
 Rules:
 
@@ -233,6 +233,15 @@ Rules:
 Example:
 
 - `git add <changed source paths> <CTX_DIR>/ <PLAN_MB>/` (AFFECTED_MBS are staged according to the current work item)
+### Role in the SDD flow (clarification)
+
+During subagent-driven-development the implementer subagents commit directly —
+the commit conventions (scoped staging, Czech message, ticket prefix, ` - `
+detail lines) travel in their dispatch prompts, mirroring this skill. This
+skill is for standalone/orchestrator commits (harvest, cleanup, meta changes);
+do not treat the two paths as divergent truths — this file is the source the
+dispatch prompts mirror.
+
 ### Commit message policy (MANDATORY)
 
 Keep commit text aligned to Memory Bank state:

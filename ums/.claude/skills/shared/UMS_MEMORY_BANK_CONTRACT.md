@@ -125,11 +125,22 @@ Rules:
 - Task progress lives in the plan file's checkboxes and in
   `.superpowers/sdd/progress.md` — **not** in `context.md`. The v1
   `Implementation Checklist` and `Auto Loop State` are abolished.
-- **Pair integrity:** the two files are archived together (to `completed/` or
-  `abandoned/`), never separately. If one half is missing at archive time,
-  warn and archive what exists.
+- **Archival asymmetry:** on **completion** (harvest → `completed/`) only the
+  design half `proposal_<slug>-design.md` is retained; the implementation plan
+  `proposal_<slug>.md` is **deleted** — after implementation its task steps are
+  spent, and code, git history and the harvested current-state MB docs carry
+  the outcome. If there is no design half (grandfathered single plan), archive
+  that plan to `completed/` instead of deleting it, so a record remains. On
+  **abandon** (`mb-abort` / Discard → `abandoned/`) both halves move together,
+  unchanged, nothing deleted. If a half is missing at archive time, warn and
+  handle what exists.
 - A design file without its plan sibling is a valid intermediate state
   (between brainstorming and writing-plans).
+- An empty `proposals/active/` directory may be absent from the working tree
+  (git does not track empty directories; no `.gitkeep` convention). Skills
+  MUST tolerate the missing directory and recreate it on demand when placing
+  a new proposal — absence of `active/` means "no active work", not a broken
+  Memory Bank.
 
 **Naming:** `proposal_<slug>.md` / `proposal_<slug>-design.md`. The slug
 MUST start with the ticket code whenever one is known:
@@ -330,9 +341,13 @@ code.
      and `brief.md`/`product.md` only if core features or UX changed.
    - Continue with remaining affected MBs if one update fails; capture
      failures for the final report.
-4. **Archive:** move the proposal pair from `active/` to `completed/`
-   unchanged (historical record). Abandon path (`mb-abort`, or Discard in
-   finishing) moves it to `abandoned/` instead.
+4. **Archive:** move only the design half `proposal_<slug>-design.md` from
+   `active/` to `completed/` unchanged (durable spec record) and **delete** the
+   implementation plan `proposal_<slug>.md` (remove the file; the harvest
+   commit records the deletion). If there is no design half (grandfathered
+   single plan), archive that plan to `completed/` so a record remains. Abandon
+   path (`mb-abort`, or Discard in finishing) moves BOTH halves to `abandoned/`
+   instead, deleting nothing.
 5. **Reset:** only if every affected MB update succeeds, reset
    `context.md` `## Active Work` to IDLE per the schema above. On partial
    failure, leave `context.md` unchanged and report.
@@ -375,6 +390,12 @@ MUST:
    (e.g. SDD's Model Selection tiering). If the block is absent, or the
    mapped role's value is `runtime-default`, use the skill's own default
    selection logic.
+   **Downward-scaling exception (Reviewer only):** the routing value is a
+   ceiling, not a floor — for a small, mechanical, low-risk diff (docs, skill
+   files, config, single-file mechanical change) the dispatching skill's own
+   size/risk scaling MAY select one tier below the Reviewer model. Never scale
+   the final whole-branch review down, and never scale any role up past the
+   routing value.
 4. If the resolved model is unavailable, honor `Fallback Policy`
    (`ask` | `downgrade` | `stop`); treat a missing `Fallback Policy` as
    `downgrade`.

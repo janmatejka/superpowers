@@ -1,6 +1,6 @@
 ---
 name: mb-harvest
-description: Harvest knowledge into Memory Bank documents, archive the active proposal pair, reset context.md to IDLE. Invoked by finishing-a-development-branch (UMS Harvest Gate) or standalone when completed work needs harvesting.
+description: Harvest knowledge into Memory Bank documents, archive the design proposal (delete the implementation plan), reset context.md to IDLE. Invoked by finishing-a-development-branch (UMS Harvest Gate) or standalone when completed work needs harvesting.
 license: MIT
 metadata:
   author: UMS Project
@@ -15,7 +15,8 @@ metadata:
 # Command: mb-harvest
 
 **Action:** Fold implemented knowledge into the affected Memory Bank documents,
-archive the active proposal pair to `completed/`, reset `context.md` to IDLE.
+archive the design proposal to `completed/` and delete the implementation plan,
+reset `context.md` to IDLE.
 **Execution:** Autonomous — no confirmation.
 
 **⛔ GIT PROHIBITION:** no `git commit`/`add`/`push` from this skill. When
@@ -77,11 +78,30 @@ narrating removals. History lives in `proposals/completed/` and git.
 Continue with remaining affected MBs if one update fails; collect failures for
 the final report. All harvested content is Czech.
 
-### 4. Archive the pair
+**Staleness sweep (cheap, MANDATORY):** for each affected MB, grep ALL its
+`memory-bank/*.md` documents (not just architecture/tech) for the key symbols,
+element ids, and variable names touched by the branch diff. A hit in a document
+you were not planning to update is a staleness candidate — read the surrounding
+section and fold it to current state too. This catches documents that previous
+harvests missed (e.g. a workflow walkthrough doc still describing pre-refactor
+variable names or superseded semantics).
 
-Move `proposal_<slug>-design.md` and `proposal_<slug>.md` from
-`<PLAN_MB>/proposals/active/` to `<PLAN_MB>/proposals/completed/`, unchanged
-(historical record). Never touch proposals of other Memory Banks.
+### 4. Archive the design, delete the plan
+
+Move `proposal_<slug>-design.md` from `<PLAN_MB>/proposals/active/` to
+`<PLAN_MB>/proposals/completed/`, unchanged (durable spec record), and
+**delete** the implementation plan `proposal_<slug>.md` from `active/` — after
+implementation its task steps are spent; code, git history and the harvested
+current-state MB docs carry the outcome. (No git here — the file removal is
+recorded by the harvest commit owned by the finishing overlay / `mb-git-commit`.)
+If there is no design half (grandfathered single plan), archive that plan to
+`completed/` instead of deleting it, so a record remains. Never touch proposals
+of other Memory Banks.
+
+Note: after archiving the last file, the now-empty `active/` directory
+disappears from the working tree (git does not track empty directories; the
+repo has no `.gitkeep` convention). This is expected — discovery globs tolerate
+it and `mb-init`/the next brainstorming recreate it on demand.
 
 ### 5. Reset context.md (conditional)
 
@@ -96,7 +116,7 @@ failed.
 
 > „✅ Práce sklizena do Memory Bank."
 > - Cílová MB: `<PLAN_MB>/`, aktualizované dokumenty: …
-> - Archivováno: `proposals/completed/proposal_<slug>*.md`
+> - Archivováno (jen design): `proposals/completed/proposal_<slug>-design.md`; implementační plán `proposal_<slug>.md` smazán
 > - Případné neúspěchy: …
 >
 > 💡 Pokud je navázán Jira tiket, nabídni `mb-jira-update`.

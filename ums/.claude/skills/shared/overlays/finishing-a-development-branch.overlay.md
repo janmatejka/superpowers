@@ -7,10 +7,11 @@
 After the user chooses and BEFORE executing the choice:
 
 - **Choice 1, 2, or 3** → invoke the `mb-harvest` skill. It harvests
-  knowledge into the affected Memory Bank documents, archives the active
-  proposal pair to `proposals/completed/`, resets `memory-bank/context.md` to
-  IDLE and offers `mb-jira-update`. Commit the resulting Memory Bank changes
-  on this branch (Czech commit message), then execute the chosen option.
+  knowledge into the affected Memory Bank documents, archives the design
+  proposal to `proposals/completed/` (deleting the implementation plan),
+  resets `memory-bank/context.md` to IDLE and offers `mb-jira-update`. Commit
+  the resulting Memory Bank changes on this branch (Czech commit message),
+  then execute the chosen option.
 - **Choice 4 (Discard)** → do NOT harvest. After the typed confirmation, move
   the active proposal pair to `proposals/abandoned/` and reset
   `memory-bank/context.md` to IDLE before deleting the branch.

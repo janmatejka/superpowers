@@ -1,0 +1,6 @@
+{ "issues": [
+  { "key": "DEMO-1", "fields": { "summary": "Epic", "issuetype": {"name":"Epic"}, "status": {"name":"To Do"}, "issuelinks": [] } },
+  { "key": "DEMO-2", "fields": { "summary": "First", "issuetype": {"name":"Story"}, "status": {"name":"To Do"},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-3"} } ] } },
+  { "key": "DEMO-3", "fields": { "summary": "Second", "issuetype": {"name":"Story"}, "status": {"name":"To Do"}, "issuelinks": [] } }
+] }

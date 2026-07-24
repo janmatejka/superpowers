@@ -33,6 +33,8 @@ UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-developmen
 | mb-git-commit | [mb-git-commit/SKILL.md](../mb-git-commit/SKILL.md) | Scoped commit (nikdy push) |
 | mb-jira-update | [mb-jira-update/SKILL.md](../mb-jira-update/SKILL.md) | České shrnutí implementace do Jira |
 | mb-model-routing | [mb-model-routing/SKILL.md](../mb-model-routing/SKILL.md) | Správa `## Model Routing` bloku v context.md |
+| mb-epic-elaboration | [mb-epic-elaboration/SKILL.md](../mb-epic-elaboration/SKILL.md) | Iterativní rozpracování epiku po ohraničených oknech (evidence ledger, dirty-set, invarianty; preliminary proposaly v `next/`) |
+| mb-epic-graph | [mb-epic-graph/SKILL.md](../mb-epic-graph/SKILL.md) | Generovaný graf závislostí epiku z Jira linků + konzistenční orákulum prose ↔ linky (read-only skript) |
 
 ## Odstraněné v1 skilly (MB v1 → v2)
 

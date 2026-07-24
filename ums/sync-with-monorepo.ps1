@@ -205,11 +205,12 @@ if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $monoClaude = Join-Path $MonorepoRoot '.claude'
     if (-not (Test-Path $monoClaude)) { throw "Monorepo .claude not found at $monoClaude" }
 
-    # UMS-owned items relative to the .claude/ root. skills/mb-* is discovered
-    # dynamically on the source side so new mb-* skills are picked up.
+    # UMS-owned items relative to the .claude/ root. skills/mb-* AND hooks/* are
+    # discovered dynamically on the source side so new mb-* skills or hooks are
+    # picked up without editing this script (settings.json registers hooks by
+    # path, so an un-mirrored hook would be a dangling reference).
     $staticItems = @(
         'settings.json',
-        'hooks\deny-superpowers-docs.mjs',
         'scripts\revendor-superpowers.ps1',
         'skills\shared'
     )
@@ -220,7 +221,12 @@ if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $mbSkills = Get-ChildItem -Path (Join-Path $srcClaude 'skills') -Directory -Filter 'mb-*' |
         ForEach-Object { "skills\$($_.Name)" }
 
-    foreach ($rel in $staticItems + $mbSkills) {
+    $srcHooks = Join-Path $srcClaude 'hooks'
+    $hooks = if (Test-Path $srcHooks) {
+        Get-ChildItem -Path $srcHooks -File | ForEach-Object { "hooks\$($_.Name)" }
+    } else { @() }
+
+    foreach ($rel in $staticItems + $mbSkills + $hooks) {
         Copy-Mirrored (Join-Path $srcClaude $rel) (Join-Path $dstClaude $rel)
         Write-Host "synced $rel"
     }

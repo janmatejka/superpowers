@@ -224,7 +224,7 @@ Scope lock remains active until command completion.
 |:--|:---------|:---------|:---------|
 | Phase | Any | ACTIVE_WORK (finishing) | Any |
 | Writes | Memory Bank | Memory Bank | None |
-| Proposal | No | Archives the pair | No |
+| Proposal | No | Archives design, deletes plan | No |
 | Purpose | Sync docs | Harvest knowledge & archive | Analysis |
 
 ---

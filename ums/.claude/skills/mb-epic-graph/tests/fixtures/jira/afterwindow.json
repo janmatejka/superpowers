@@ -1,0 +1,5 @@
+{ "issues": [
+  { "key": "DEMO-1", "fields": { "summary": "Epic", "issuetype": {"name":"Epic"}, "status": {"name":"To Do"}, "issuelinks": [] } },
+  { "key": "DEMO-4", "fields": { "summary": "AfterWindow", "issuetype": {"name":"Story"}, "status": {"name":"To Do"},
+      "description": "DEMO-5 protoze tenhle velky ukol musi blokuje tamten tiket.", "issuelinks": [] } }
+] }

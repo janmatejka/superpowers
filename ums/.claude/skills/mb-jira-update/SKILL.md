@@ -4,7 +4,7 @@ description: Extract implementation status and deployment instructions from acti
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.0"
+  version: "2.1"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the proposal pair model, and fail-closed rules.
@@ -145,7 +145,7 @@ Scope lock remains active until command completion.
 ### 2. Information Extraction
 - Read the content of `<CTX_DIR>/context.md`.
 - Prefer data from the active proposal pair (design + plan) resolved from the `Proposal` slug in root `context.md` when active work exists.
-- If the proposal was already finalized and archived, read the most relevant completed proposal or finalization handoff from `<PLAN_MB>/proposals/completed/proposal_*.md` (the glob matches both pair halves — strip `-design` and group by slug).
+- If the proposal was already finalized and archived, read the completed design proposal `<PLAN_MB>/proposals/completed/proposal_<slug>-design.md` (after harvest only the design half is retained there; the implementation plan is deleted).
 - Do not fail only because the proposal is no longer active when a completed proposal/finalization handoff is available.
 - Extract the following information:
   - **Summary of changes:** What was implemented or modified.
@@ -161,7 +161,7 @@ Scope lock remains active until command completion.
 ### 4. Build Referenced File Set (Priority Order)
 - Build list of link targets in this order:
   1. Changed deployment-relevant configuration files (typically `scripts/config.json` and other changed config files).
-  2. Changed stable Memory Bank docs (`architecture.md`, `tech.md`, `brief.md`/`product.md`, the active proposal pair `proposal_<slug>-design.md` / `proposal_<slug>.md`).
+  2. Changed stable Memory Bank docs (`architecture.md`, `tech.md`, `brief.md`/`product.md`, the design proposal `proposal_<slug>-design.md` — the durable artifact kept after completion; the implementation plan `proposal_<slug>.md` exists only while work is active and is deleted at harvest).
   3. `context.md` only as a supplementary source, because it is unstable.
 - Keep only paths that exist and are inside the same git repository as `MB_ROOT`.
 - If the resulting file set is large, noisy, or spans many files from the same area, replace the file list with a single module-level link (the smallest meaningful directory that contains the touched files) instead of enumerating every file.
@@ -189,6 +189,25 @@ Scope lock remains active until command completion.
   - where `<commit-sha>` is stable SHA from step 5/6 and `<relative-path>` is repo-relative path.
 - Branch fallback is disabled by default.
 - Only explicit user override may enable branch fallback; without explicit override stay fail-closed.
+
+### 7b. Refresh the proposal link in the ticket description
+- Besides the comment, keep ONE canonical, up-to-date link to the proposal in
+  the ticket **description**, so it is always discoverable (not buried in
+  comment history).
+- Maintain a single line of the exact form, pointing at the **design**
+  proposal `proposal_<slug>-design.md` (the durable artifact retained in
+  `completed/`) — never the implementation plan `proposal_<slug>.md`, which is
+  deleted at harvest:
+  `**Návrh (proposal):** [proposal_<slug>-design.md](<commit-pinned URL from §7>)`
+- Idempotent update: if such a line already exists, replace it (refresh SHA +
+  path, and re-point it from a stale plan filename to the design proposal if
+  needed); otherwise insert it near the top of the description. Change nothing
+  else in the description. Use `editJiraIssue` (contentFormat markdown).
+- The permalink resolves once the pinned commit is on Bitbucket; if the branch
+  is not yet pushed, the link goes live on the next push (expected).
+- `mb-epic-graph -Check` reports `TIKET BEZ ODKAZU NA PROPOSAL` until the line
+  is present, and `ODKAZ NA NEEXISTUJÍCÍ PROPOSAL` if it points at a stale
+  filename — both VAROVÁNÍ.
 
 ### 8. Publish to Jira
 - First compose the Jira comment body in Czech as a brief, professional implementation note for the delivery team.
