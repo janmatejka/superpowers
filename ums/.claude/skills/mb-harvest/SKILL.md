@@ -1,6 +1,6 @@
 ---
 name: mb-harvest
-description: Harvest knowledge into Memory Bank documents, archive the design proposal (delete the implementation plan), reset context.md to IDLE. Invoked by finishing-a-development-branch (UMS Harvest Gate) or standalone when completed work needs harvesting.
+description: Harvest knowledge into Memory Bank documents, archive the design document (delete the implementation plan), reset context.md to IDLE. Invoked by finishing-a-development-branch (UMS Harvest Gate) or standalone when completed work needs harvesting.
 license: MIT
 metadata:
   author: UMS Project
@@ -41,13 +41,15 @@ Policy).
 
 ### 1. Preconditions (fail-closed)
 
-- Read `<CTX_DIR>/context.md` → `Target MB Pin`, `Proposal` slug, `Jira`.
+- Read `<CTX_DIR>/context.md` → `Target MB Pin`, `Work item` slug (legacy
+  `Proposal` accepted), `Jira`.
 - `PLAN_MB = <MB_ROOT>/<Target MB Pin>` must exist.
 - The active proposal must exist in `<PLAN_MB>/proposals/active/` and match
-  the slug: the pair `proposal_<slug>-design.md` + `proposal_<slug>.md`, or a
-  grandfathered single `proposal_<slug>.md`. A missing plan half with a
-  present design half is a warning (archive what exists); a slug mismatch or
-  empty `active/` is a hard stop — report and suggest `mb-state`.
+  the slug: the pair `design_<slug>.md` + `plan_<slug>.md` (legacy
+  `proposal_<slug>-design.md` + `proposal_<slug>.md`), or a grandfathered
+  single plan file. A missing plan half with a present design half is a
+  warning (archive what exists); a slug mismatch or empty `active/` is a hard
+  stop — report and suggest `mb-state`.
 
 ### 2. Derive affected MBs
 
@@ -89,9 +91,10 @@ variable names or superseded semantics).
 
 ### 4. Archive the design, delete the plan
 
-Move `proposal_<slug>-design.md` from `<PLAN_MB>/proposals/active/` to
-`<PLAN_MB>/proposals/completed/`, unchanged (durable spec record), and
-**delete** the implementation plan `proposal_<slug>.md` from `active/` — after
+Move the design half (`design_<slug>.md`, legacy `proposal_<slug>-design.md`)
+from `<PLAN_MB>/proposals/active/` to `<PLAN_MB>/proposals/completed/`,
+unchanged (durable spec record), and **delete** the plan half (`plan_<slug>.md`,
+legacy `proposal_<slug>.md`) from `active/` — after
 implementation its task steps are spent; code, git history and the harvested
 current-state MB docs carry the outcome. (No git here — the file removal is
 recorded by the harvest commit owned by the finishing overlay / `mb-git-commit`.)
@@ -116,7 +119,7 @@ unchanged and report which MBs failed.
 
 > „✅ Práce sklizena do Memory Bank."
 > - Cílová MB: `<PLAN_MB>/`, aktualizované dokumenty: …
-> - Archivováno (jen design): `proposals/completed/proposal_<slug>-design.md`; implementační plán `proposal_<slug>.md` smazán
+> - Archivováno (jen design): `proposals/completed/design_<slug>.md`; implementační plán `plan_<slug>.md` smazán (u legacy práce původní proposal_ názvy)
 > - Případné neúspěchy: …
 >
 > 💡 Pokud je navázán Jira tiket, nabídni `mb-jira-update`.

@@ -34,15 +34,17 @@ archive/reset via the UMS Harvest Gate overlay.
 
 ### 1. Preconditions
 
-- Read `<CTX_DIR>/context.md` → `Target MB Pin`, `Proposal` slug.
-- The active proposal (pair `proposal_<slug>-design.md` + `proposal_<slug>.md`,
-  or a grandfathered single file) must exist in
-  `<PLAN_MB>/proposals/active/`. If not, report and suggest `mb-state`.
+- Read `<CTX_DIR>/context.md` → `Target MB Pin`, `Work item` slug (legacy
+  `Proposal` accepted).
+- The active proposal (pair `design_<slug>.md` + `plan_<slug>.md` (legacy
+  `proposal_<slug>-design.md` + `proposal_<slug>.md`), or a grandfathered
+  single plan file) must exist in `<PLAN_MB>/proposals/active/`. If not,
+  report and suggest `mb-state`.
 
 ### 2. Confirmation (Czech)
 
 ```
-⚠️ Zahodit práci na: proposal_<slug>*.md
+⚠️ Zahodit práci na: <soubory work itemu dle skutečných názvů>
 
 Proposal pár bude archivován do: <PLAN_MB>/proposals/abandoned/
 Změny v kódu NEBUDOU vráceny — případný revert proveď ručně přes git.
@@ -54,7 +56,7 @@ Proceed only on exact "yes"; otherwise cancel and suggest `mb-state`.
 
 ### 3. Archive the pair
 
-Move `proposal_<slug>-design.md` and `proposal_<slug>.md` (whichever exist)
+Move the design and plan halves (whichever exist, either naming style)
 from `<PLAN_MB>/proposals/active/` to `<PLAN_MB>/proposals/abandoned/`,
 unchanged. Never touch proposals of other Memory Banks.
 
@@ -64,6 +66,15 @@ Overwrite `<CTX_DIR>/context.md` with the IDLE baseline per the contract
 schema: `## Active Work` → `(No active work - IDLE phase)` + keep the
 `- **Jira:** …` line if it existed. Do not preserve any other section or
 history.
+
+### 4b. Jira cleanup (Design Review only)
+
+If `context.md` carried a `Review:` line, or the linked ticket is in the
+"Design Review" status: offer (Czech, user confirms) the cleanup per the
+contract's Architect Review Gate — transition the ticket back to
+"In Progress" (or its previous status), restore the assignee to the original
+resolver, clear the `Flagged` field. Without cleanup the architect keeps a
+live review assignment for abandoned work — say so in the warning.
 
 ### 5. Announce (Czech)
 
