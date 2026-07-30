@@ -30,7 +30,7 @@ Consumers of this contract:
 UMS Memory Bank uses a three-tier directory model across the monorepo:
 
 - **`CTX_DIR`** — `<MB_ROOT>/memory-bank/` — the orchestration root of the
-  repository. Holds `context.md` (Jira link, `Target MB Pin`, `Proposal` slug,
+  repository. Holds `context.md` (Jira link, `Target MB Pin`, `Work item` slug,
   `Started`).
 - **`PLAN_MB`** — `<MB_ROOT>/<Target MB Pin>` — the project Memory Bank the
   current work targets. Holds the active design + plan pair and the project
@@ -336,7 +336,7 @@ overlay, or standalone). Code is the source of truth; documentation follows
 code.
 
 1. **Preconditions (fail-closed):** `context.md` has a `Target MB Pin` and
-   `Proposal` slug; the active proposal (pair or legacy single) exists in
+   `Work item` slug; the active proposal (pair or legacy single) exists in
    `<PLAN_MB>/proposals/active/` and matches the slug.
 2. **Affected MBs:** derive from
    `git diff --name-only $(git merge-base <base> HEAD)..HEAD`, mapping each
