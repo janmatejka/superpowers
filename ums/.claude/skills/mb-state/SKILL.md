@@ -27,27 +27,34 @@ metadata:
 
 ### 1. Gather state (read-only)
 
-- `<CTX_DIR>/context.md` → `Jira`, `Target MB Pin`, `Proposal` slug,
-  `Started`. Missing file or IDLE content →
+- `<CTX_DIR>/context.md` → `Jira`, `Target MB Pin`, `Work item` slug (legacy
+  `Proposal` accepted), `Started`. Missing file or IDLE content →
   `PHASE = IDLE`, otherwise `ACTIVE_WORK`. Ignore stale v1 fields (`Status`,
   `Run Mode`, `Execution Mode`, `Implementation Checklist`,
   `Auto Loop State`) — the v2 schema abolished them; their presence is worth
   a one-line note suggesting a reset at the next harvest.
-- Pair completeness in `<PLAN_MB>/proposals/active/`:
-  - `proposal_<slug>-design.md` + `proposal_<slug>.md` → complete pair,
-  - design only → „rozpracovaný návrh (chybí plán)" — valid state between
-    brainstorming and writing-plans,
-  - plan only (single file) → grandfathered v1 proposal — valid,
+- Pair completeness in `<PLAN_MB>/proposals/active/` (per the contract's
+  Discovery & pairing rule — both naming styles):
+  - `design_<slug>.md` + `plan_<slug>.md` (or legacy pair) → complete pair,
+  - design half only → „rozpracovaný návrh (chybí plán)" — valid state
+    between brainstorming and writing-plans,
+  - plan-style single file (legacy `proposal_<slug>.md`) → grandfathered v1
+    work item — valid,
   - nothing / slug mismatch → inconsistent, recommend `mb-harvest` audit or
     `mb-abort`.
-- **Two-actives check:** scan `**/memory-bank/proposals/active/proposal_*.md`
-  (group pairs by slug); any active slug different from the pinned one is a
-  warning — recommend finishing or `mb-abort` before new work. Queued items
-  in `proposals/next/` are NOT counted here.
-- **Preliminary queue:** scan `**/memory-bank/proposals/next/proposal_*.md`
-  (group by slug per owning MB) and list the queued preliminary proposals —
-  they activate by moving to `active/` when work on them starts (contract,
-  Target-MB Discovery & Pinning).
+- **Review pending:** a `- **Review:** design-review requested YYYY-MM-DD`
+  line in `## Active Work` means the design sits with the architect — the
+  workflow is parked (no writing-plans) until `mb-architect-review` resume.
+- **Two-actives check:** scan
+  `**/memory-bank/proposals/active/{design_,plan_,proposal_}*.md` (group by
+  slug per the pairing rule); any active slug different from the pinned one
+  is a warning — recommend finishing or `mb-abort` before new work. Queued
+  items in `proposals/next/` are NOT counted here.
+- **Preliminary queue:** scan
+  `**/memory-bank/proposals/next/{design_,plan_,proposal_}*.md` (group by
+  slug per the pairing rule, per owning MB) and list the queued preliminary
+  proposals — they activate by moving to `active/` when work on them starts
+  (contract, Target-MB Discovery & Pinning).
 - Execution progress: does `.superpowers/sdd/progress.md` exist? (Presence =
   plan execution in flight; content shows the last completed task.)
 - Git: current branch (`git branch --show-current`), work on main/master is a
@@ -63,7 +70,8 @@ metadata:
 Projekt: <name>   Kořen: <MB_ROOT>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
-Proposal: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
+Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
+Review: <žádné | ⏳ čeká na design review u architekta od YYYY-MM-DD>
 Zahájeno: <Started> <(⚠️ starší než 7 dní)>
 Exekuce: [.superpowers/sdd/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
@@ -75,6 +83,7 @@ Další krok:
 - fronta neprázdná → řekni, že chceš začít na některém z fronty (přesun next/ → active/ proběhne v brainstormingu)
 - jen návrh → pokračuj writing-plans
 - kompletní pár → exekuce dle hlavičky plánu (subagent-driven-development)
+- čeká na review → mb-architect-review (resume) po vrácení tiketu; writing-plans je do té doby blokován
 - hotová implementace → finishing-a-development-branch (harvest gate)
 - opuštěná práce → mb-abort; pozdní sklizeň → mb-harvest
 ```
