@@ -144,7 +144,7 @@ Scope lock remains active until command completion.
 
 ### 2. Information Extraction
 - Read the content of `<CTX_DIR>/context.md`.
-- Prefer data from the active proposal pair (design + plan) resolved from the `Proposal` slug in root `context.md` when active work exists.
+- Prefer data from the active proposal pair (design + plan) resolved from the `Work item` slug (legacy `Proposal` accepted) in root `context.md` when active work exists.
 - If the proposal was already finalized and archived, read the completed design document `<PLAN_MB>/proposals/completed/design_<slug>.md` (or legacy `proposal_<slug>-design.md`) (after harvest only the design half is retained there; the implementation plan is deleted).
 - Do not fail only because the proposal is no longer active when a completed proposal/finalization handoff is available.
 - Extract the following information:
