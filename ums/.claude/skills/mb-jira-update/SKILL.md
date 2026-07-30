@@ -49,7 +49,7 @@ Rules:
 
 If `<CTX_DIR>/context.md` exists, read the `## Active Work` → `Target MB Pin` field to derive `PLAN_MB`. If the pin is missing, `context.md` does not exist, or the pin points to a non-existent directory, `PLAN_MB` is **undefined**. Do NOT silently default to `<CTX_DIR>`.
 
-When `PLAN_MB` is undefined, this skill does not select a target itself — Target-MB Discovery & Pinning runs in the superpowers workflow (during brainstorming) per `UMS_MEMORY_BANK_CONTRACT.md`: discovery scan for `**/memory-bank/proposals/active/proposal_*.md` (the glob matches both pair halves — strip a trailing `-design` from the file stem and group by slug; one pair or grandfathered legacy single file = one candidate) → evidence tags (`seed_hit`, `active_hit`, `explicit_hit`, `untrusted`) → A/B/C disambiguation (where options A/B/C represent specific candidate Memory Banks (MBs) derived dynamically from the current conversation context; the agent provides recommendations, but the choice is always made by the user) → persist `Target MB Pin`.
+When `PLAN_MB` is undefined, this skill does not select a target itself — Target-MB Discovery & Pinning runs in the superpowers workflow (during brainstorming) per `UMS_MEMORY_BANK_CONTRACT.md`: discovery scan for `**/memory-bank/proposals/active/` files matching `{design_,plan_,proposal_}*.md` (apply the contract's [Discovery & pairing rule](../shared/UMS_MEMORY_BANK_CONTRACT.md#active-work-item-design--plan-pair)) → evidence tags (`seed_hit`, `active_hit`, `explicit_hit`, `untrusted`) → A/B/C disambiguation (where options A/B/C represent specific candidate Memory Banks (MBs) derived dynamically from the current conversation context; the agent provides recommendations, but the choice is always made by the user) → persist `Target MB Pin`.
 
 If the protocol is exhausted and no trusted candidate remains, STOP and ask the user to confirm `<CTX_DIR>` as the target or provide an explicit path. Do NOT silently fall back to `<CTX_DIR>`. If the user confirms `<CTX_DIR>`, use it as `PLAN_MB`.
 
@@ -82,7 +82,7 @@ Rules:
 Read the root state first, then the work it points to:
 
 - read `<CTX_DIR>/context.md`
-- read the active proposal pair (or grandfathered legacy single file) referenced by the `Proposal` slug in `## Active Work`
+- read the active proposal pair (or grandfathered legacy single file) referenced by the `Work item` slug (legacy `Proposal` accepted) in `## Active Work`
 - read any project docs explicitly needed for the current workflow step; task progress lives in the plan file's checkboxes and `.superpowers/sdd/progress.md`, not in `context.md`
 
 Then:
@@ -98,7 +98,7 @@ Then:
 Do a lightweight refresh from the root state:
 
 - read `<CTX_DIR>/context.md`
-- inspect the active proposal pair referenced by the `Proposal` slug in `## Active Work`
+- inspect the active proposal pair referenced by the `Work item` slug (legacy `Proposal` accepted) in `## Active Work`
 - refresh any Memory Bank files touched by the current workflow step (affected MBs are derived from the git diff at harvest, not tracked in `context.md`)
 - validate fingerprints against cache; if mismatch appears or the touched set is broader than expected, switch to full reload
 - emit marker: `[Memory Bank: Cached - <ProjectName> @ <MB_ROOT>]`
@@ -114,13 +114,13 @@ This policy keeps context fresh while preventing redundant full reads between ta
 - Read the `## Active Work` section in `<CTX_DIR>/context.md`.
 - If `## Active Work` is empty or contains `(No active work - IDLE phase)`, set `PHASE = IDLE`.
 - Otherwise set `PHASE = ACTIVE_WORK`.
-- The `Proposal` slug in root `context.md` is only a pointer to the active proposal pair; it is not the phase source.
+- The `Work item` slug (legacy `Proposal`) in root `context.md` is only a pointer to the active proposal pair; it is not the phase source.
 - Ignore any abolished v1 state fields when found in a stale file (contract v2 lists them).
 
 ### Phase Implications
 
 - **IDLE:** No active work in root `context.md`; new work starts with the superpowers workflow (describe what to build → brainstorming)
-- **ACTIVE_WORK:** Root `context.md` contains active work; the referenced proposal pair (`proposal_<slug>-design.md` + `proposal_<slug>.md`, or a grandfathered legacy single file) lives under `<PLAN_MB>/proposals/active/`. The sub-phase is read from the workflow artifacts, not from `context.md`:
+- **ACTIVE_WORK:** Root `context.md` contains active work; the referenced proposal pair (`design_<slug>.md` + `plan_<slug>.md`, legacy `proposal_<slug>-design.md` + `proposal_<slug>.md`, or a grandfathered single plan file) lives under `<PLAN_MB>/proposals/active/`. The sub-phase is read from the workflow artifacts, not from `context.md`:
   - **Design only** (no plan sibling yet): between brainstorming and writing-plans
   - **Pair complete, no task progress:** ready for subagent-driven-development / executing-plans
   - **Tasks in progress:** plan checkboxes and `.superpowers/sdd/progress.md` show partial completion
@@ -145,7 +145,7 @@ Scope lock remains active until command completion.
 ### 2. Information Extraction
 - Read the content of `<CTX_DIR>/context.md`.
 - Prefer data from the active proposal pair (design + plan) resolved from the `Proposal` slug in root `context.md` when active work exists.
-- If the proposal was already finalized and archived, read the completed design proposal `<PLAN_MB>/proposals/completed/proposal_<slug>-design.md` (after harvest only the design half is retained there; the implementation plan is deleted).
+- If the proposal was already finalized and archived, read the completed design document `<PLAN_MB>/proposals/completed/design_<slug>.md` (or legacy `proposal_<slug>-design.md`) (after harvest only the design half is retained there; the implementation plan is deleted).
 - Do not fail only because the proposal is no longer active when a completed proposal/finalization handoff is available.
 - Extract the following information:
   - **Summary of changes:** What was implemented or modified.
@@ -161,7 +161,7 @@ Scope lock remains active until command completion.
 ### 4. Build Referenced File Set (Priority Order)
 - Build list of link targets in this order:
   1. Changed deployment-relevant configuration files (typically `scripts/config.json` and other changed config files).
-  2. Changed stable Memory Bank docs (`architecture.md`, `tech.md`, `brief.md`/`product.md`, the design proposal `proposal_<slug>-design.md` — the durable artifact kept after completion; the implementation plan `proposal_<slug>.md` exists only while work is active and is deleted at harvest).
+  2. Changed stable Memory Bank docs (`architecture.md`, `tech.md`, `brief.md`/`product.md`, the design document `design_<slug>.md` (or legacy `proposal_<slug>-design.md`) — the durable artifact kept after completion; the implementation plan `plan_<slug>.md` (or legacy `proposal_<slug>.md`) exists only while work is active and is deleted at harvest).
   3. `context.md` only as a supplementary source, because it is unstable.
 - Keep only paths that exist and are inside the same git repository as `MB_ROOT`.
 - If the resulting file set is large, noisy, or spans many files from the same area, replace the file list with a single module-level link (the smallest meaningful directory that contains the touched files) instead of enumerating every file.
@@ -195,14 +195,15 @@ Scope lock remains active until command completion.
   the ticket **description**, so it is always discoverable (not buried in
   comment history).
 - Maintain a single line of the exact form, pointing at the **design**
-  proposal `proposal_<slug>-design.md` (the durable artifact retained in
-  `completed/`) — never the implementation plan `proposal_<slug>.md`, which is
-  deleted at harvest:
-  `**Návrh (proposal):** [proposal_<slug>-design.md](<commit-pinned URL from §7>)`
-- Idempotent update: if such a line already exists, replace it (refresh SHA +
-  path, and re-point it from a stale plan filename to the design proposal if
-  needed); otherwise insert it near the top of the description. Change nothing
-  else in the description. Use `editJiraIssue` (contentFormat markdown).
+  document (`design_<slug>.md`, or legacy `proposal_<slug>-design.md`) — the
+  durable artifact retained in `completed/` — never the implementation plan,
+  which is deleted at harvest:
+  `**Návrh (design):** [<design-file>.md](<commit-pinned URL from §7>)`
+- Idempotent update: if such a line already exists — including the legacy
+  form `**Návrh (proposal):** …` — replace it (refresh SHA + path, re-point a
+  stale plan/legacy filename to the design document); otherwise insert it
+  near the top of the description. Change nothing else in the description.
+  Use `editJiraIssue` (contentFormat markdown).
 - The permalink resolves once the pinned commit is on Bitbucket; if the branch
   is not yet pushed, the link goes live on the next push (expected).
 - `mb-epic-graph -Check` reports `TIKET BEZ ODKAZU NA PROPOSAL` until the line
@@ -225,4 +226,20 @@ Scope lock remains active until command completion.
 > "✅ Jira ticket updated."
 > - **Ticket:** <Ticket ID>
 > - **Content:** (brief preview of the posted message)
+
+### 10. Finalization mode (finishing gate only)
+
+Invoked EXPLICITLY by the finishing-a-development-branch overlay after a
+successful local merge (Option 1) with a linked ticket — never self-selected,
+never in standalone invocations (standalone runs NEVER change ticket status).
+
+After the comment publishes successfully:
+
+1. Transition the ticket directly to **"Test"** (the "Review" status is
+   skipped by team convention). Use `getTransitionsForJiraIssue` +
+   `transitionJiraIssue`; a missing "Test" transition is a WARNING to the
+   user, not a rollback — the comment stays published.
+2. Clear the `Flagged` field if present (leftover from a manually skipped
+   architect-review resume).
+3. Report (Czech): comment link, new status, flag state.
 
