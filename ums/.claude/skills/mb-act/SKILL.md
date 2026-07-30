@@ -13,7 +13,7 @@ Retired in Memory Bank v2 — Superpowers is the driving workflow
 (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`).
 
 **Instead:** execute the active plan
-(`<PLAN_MB>/proposals/active/proposal_<slug>.md`) via
+(`<PLAN_MB>/proposals/active/plan_<slug>.md`, legacy `proposal_<slug>.md` naming grandfathered) via
 `subagent-driven-development` (recommended) or `executing-plans`, exactly as
 the plan's "For agentic workers" header says. Task progress lives in the plan
 checkboxes and `.superpowers/sdd/progress.md`, not in `context.md`.

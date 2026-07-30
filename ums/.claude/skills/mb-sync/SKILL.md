@@ -93,7 +93,7 @@ Rules:
 Read the root state first, then the work it points to:
 
 - read `<CTX_DIR>/context.md`
-- read the active proposal pair (or grandfathered legacy single file) referenced by the `Proposal` slug in `## Active Work`
+- read the active proposal pair (or grandfathered legacy single file) referenced by the `Work item` slug (legacy `Proposal` accepted) in `## Active Work`
 - read any project docs explicitly needed for the current workflow step; task progress lives in the plan file's checkboxes and `.superpowers/sdd/progress.md`, not in `context.md`
 
 Then:
@@ -109,7 +109,7 @@ Then:
 Do a lightweight refresh from the root state:
 
 - read `<CTX_DIR>/context.md`
-- inspect the active proposal pair referenced by the `Proposal` slug in `## Active Work`
+- inspect the active proposal pair referenced by the `Work item` slug (legacy `Proposal` accepted) in `## Active Work`
 - refresh any Memory Bank files touched by the current workflow step (affected MBs are derived from the git diff at harvest, not tracked in `context.md`)
 - validate fingerprints against cache; if mismatch appears or the touched set is broader than expected, switch to full reload
 - emit marker: `[Memory Bank: Cached - <ProjectName> @ <MB_ROOT>]`
@@ -125,13 +125,13 @@ This policy keeps context fresh while preventing redundant full reads between ta
 - Read the `## Active Work` section in `<CTX_DIR>/context.md`.
 - If `## Active Work` is empty or contains `(No active work - IDLE phase)`, set `PHASE = IDLE`.
 - Otherwise set `PHASE = ACTIVE_WORK`.
-- The `Proposal` slug in root `context.md` is only a pointer to the active proposal pair; it is not the phase source.
+- The `Work item` slug (legacy `Proposal`) in root `context.md` is only a pointer to the active proposal pair; it is not the phase source.
 - Ignore any abolished v1 state fields when found in a stale file (contract v2 lists them).
 
 ### Phase Implications
 
 - **IDLE:** No active work in root `context.md`; new work starts with the superpowers workflow (describe what to build → brainstorming)
-- **ACTIVE_WORK:** Root `context.md` contains active work; the referenced proposal pair (`proposal_<slug>-design.md` + `proposal_<slug>.md`, or a grandfathered legacy single file) lives under `<PLAN_MB>/proposals/active/`. The sub-phase is read from the workflow artifacts, not from `context.md`:
+- **ACTIVE_WORK:** Root `context.md` contains active work; the referenced proposal pair (`design_<slug>.md` + `plan_<slug>.md`, legacy `proposal_*` naming, or a grandfathered single plan file) lives under `<PLAN_MB>/proposals/active/`. The sub-phase is read from the workflow artifacts, not from `context.md`:
   - **Design only** (no plan sibling yet): between brainstorming and writing-plans
   - **Pair complete, no task progress:** ready for subagent-driven-development / executing-plans
   - **Tasks in progress:** plan checkboxes and `.superpowers/sdd/progress.md` show partial completion
@@ -224,7 +224,7 @@ Scope lock remains active until command completion.
 |:--|:---------|:---------|:---------|
 | Phase | Any | ACTIVE_WORK (finishing) | Any |
 | Writes | Memory Bank | Memory Bank | None |
-| Proposal | No | Archives design, deletes plan | No |
+| Work item (design+plan) | No | Archives design, deletes plan | No |
 | Purpose | Sync docs | Harvest knowledge & archive | Analysis |
 
 ---

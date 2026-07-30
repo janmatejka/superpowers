@@ -7,7 +7,7 @@ metadata:
   version: "2.0"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the proposal pair model, and fail-closed rules.
+> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the work item (design + plan pair) model, and fail-closed rules.
 
 # Command: mb-init
 
@@ -52,7 +52,7 @@ Before any Memory Bank write operation:
 
 Where:
 - `CTX_DIR` = orchestration state (root `context.md`)
-- `PLAN_MB` = active proposal Memory Bank
+- `PLAN_MB` = the Memory Bank of the active work item
 - `AFFECTED_MBS` = harvest/sync targets
 
 Scope lock remains active until command completion.

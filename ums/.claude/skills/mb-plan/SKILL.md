@@ -15,8 +15,8 @@ Retired in Memory Bank v2 — Superpowers is the driving workflow
 **Instead:** describe what you want to build. The `brainstorming` skill picks
 it up, runs Target-MB Discovery & Pinning (A/B/C question, Jira question, pin
 into `memory-bank/context.md`) and writes
-`<PLAN_MB>/proposals/active/proposal_<slug>-design.md`; `writing-plans` then
-adds `proposal_<slug>.md`.
+`<PLAN_MB>/proposals/active/design_<slug>.md` (legacy `proposal_<slug>-design.md` naming grandfathered); `writing-plans` then
+adds `plan_<slug>.md` (legacy `proposal_<slug>.md` naming grandfathered).
 
 Announce this redirect to the user in Czech. Do NOT execute any v1
 orchestration: do not write `context.md` from here, do not create proposals.
