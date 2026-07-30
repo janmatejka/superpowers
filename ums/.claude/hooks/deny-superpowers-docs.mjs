@@ -22,7 +22,7 @@ process.stdin.on('end', () => {
           permissionDecision: 'deny',
           permissionDecisionReason:
             'UMS: spec/plan dokumenty patří do <PLAN_MB>/proposals/active/ ' +
-            '(proposal_<slug>-design.md / proposal_<slug>.md), ne do docs/superpowers/ ani docs/plans/. ' +
+            '(design_<slug>.md / plan_<slug>.md; legacy proposal_* grandfathered), ne do docs/superpowers/ ani docs/plans/. ' +
             'Pokud Target MB Pin chybí, proveď Target-MB discovery dle ' +
             '.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md (Superpowers Document Placement, Target-MB Discovery & Pinning).',
         },

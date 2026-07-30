@@ -8,7 +8,10 @@ upstream `obra/superpowers`.
 **Model:** vendored superpowers skills (v6.1.1) drive the workflow
 (`brainstorming → writing-plans → subagent-driven-development →
 finishing-a-development-branch`); the Memory Bank is the document/knowledge
-layer injected into it. The normative rules are in
+layer injected into it. Between brainstorming and writing-plans sits an
+optional Architect Review Gate (`mb-architect-review`, request/resume) for
+non-trivial designs with a linked Jira ticket — while it is pending,
+writing-plans does not start. The normative rules are in
 [`.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md)
 (contract v2).
 
@@ -72,8 +75,8 @@ only the bootstrap and tool mapping differ (`docs/porting-to-a-new-harness.md`).
 The UMS layer follows the same split:
 
 **Portable (any harness that loads skills):** the contract, the mb-* skills,
-the overlay fragments, and the proposal-pair document conventions are plain
-markdown — they work wherever superpowers skills load (Claude Code, Codex
+the overlay fragments, and the work-item (design+plan pair) document
+conventions are plain markdown — they work wherever superpowers skills load (Claude Code, Codex
 native discovery, Cursor, Copilot CLI, Kimi, OpenCode, pi). The mb-* skills
 use only git + filesystem + markdown; `mb-jira-update` needs an Atlassian MCP
 connection configured per harness.
