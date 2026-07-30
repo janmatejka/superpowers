@@ -374,6 +374,67 @@ code.
 
 All harvested document content is Czech.
 
+## Architect Review Gate
+
+An approved design may be reviewed by a **human architect** before planning
+and implementation. The gate is mediated by the Jira ticket and implemented
+by the `mb-architect-review` skill (modes: request / respond / resume). The
+brainstorming overlay ALWAYS offers the gate after the user approves the spec
+when a Jira ticket is linked (with a yes/no recommendation based on
+non-triviality: new component or service, architecture/contract changes,
+cross-project impact, DB migration, security impact). No ticket → no offer.
+
+**State lives in the ticket branch.** All interaction over a ticket happens
+on that ticket's branch; every handoff (request and respond) ends with the
+state committed and — with explicit user approval — pushed to origin. The
+design document, `context.md` (including the `Review:` line) and any notes
+are thus available to both sides and to Bitbucket links. Recommended branch
+naming: include the ticket code (e.g. `feature/ums-3302-toast-reconcile`).
+
+**Push policy:** NEVER push silently. Offer every push explicitly (state the
+branch and outgoing commits) and wait for user approval; refusal stops the
+handoff. Steps are ordered so one handoff needs exactly one push.
+
+**Branch sync** (first step of respond and resume): resolve the ticket branch
+in this order — branch name from the request comment (authoritative) → remote
+branches whose name contains the ticket code (`git ls-remote --heads origin`,
+case-insensitive) → ask the user; multiple ambiguous candidates always ask.
+Require a clean working tree (dirty = STOP, no auto-stash). Then
+`git fetch origin`, checkout the ticket branch and fast-forward to origin;
+a diverged local branch = STOP and report. Only after branch sync read
+`context.md` and the design document — both live on the ticket branch.
+
+**Jira conventions:**
+
+- Status flow: request transitions the ticket to **"Design Review"**; the
+  architect's respond leaves the status unchanged; resume transitions to
+  **"In Progress"**. Missing "Design Review" transition = fail-closed STOP
+  with an instruction to create the status (prerequisite).
+- **Flag** (`Flagged` field, value Impediment): set by respond when returning
+  the ticket, cleared by resume (and by mb-jira-update finalization if still
+  present). Team convention: a flag means "work returned to you — attend to
+  it" (same as a tester returning a bug).
+- **AgentSessions** (customfield_11248, Paragraph): request APPENDS one line
+  `YYYY-MM-DD <harness> <session-id> — design review request (<ticket>)`.
+  Session id is best-effort per harness; if undetectable, write the line
+  without an id and tell the user. If the field is unavailable, put the same
+  line into the request comment instead.
+- The request comment records the **original resolver** (accountId +
+  displayName) and the **ticket branch name** — respond needs both.
+
+**Fail-closed rules:**
+
+- While `context.md` carries the `Review:` line, continuing the workflow
+  (writing-plans and beyond) is blocked; the correct continuation is
+  `mb-architect-review` resume.
+- Discard/abort paths (`mb-abort`, finishing Discard) with a ticket sitting
+  in "Design Review" MUST offer Jira cleanup: transition back, restore
+  assignee, clear the flag.
+- Respond without a request comment (architect assigned manually): ask the
+  user for the return assignee and branch; never guess.
+- Resume without the flag (architect answered manually in Jira): warn and
+  continue only after user confirmation.
+
 ## Dispatch Model Policy
 
 Model selection is owned by the superpowers workflow. SDD's **Model
