@@ -8,7 +8,7 @@ metadata:
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Active Proposal Pair" and "`context.md` Schema & Writers".
+> especially "Active Work Item (Design + Plan Pair)" and "`context.md` Schema & Writers".
 > This skill is the abandon-path counterpart of `mb-harvest`.
 
 # Command: mb-abort
@@ -46,7 +46,7 @@ archive/reset via the UMS Harvest Gate overlay.
 ```
 ⚠️ Zahodit práci na: <soubory work itemu dle skutečných názvů>
 
-Proposal pár bude archivován do: <PLAN_MB>/proposals/abandoned/
+Pár návrh+plán bude archivován do: <PLAN_MB>/proposals/abandoned/
 Změny v kódu NEBUDOU vráceny — případný revert proveď ručně přes git.
 
 Potvrď 'yes' pro pokračování.

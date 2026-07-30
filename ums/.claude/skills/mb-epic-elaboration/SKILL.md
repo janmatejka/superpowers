@@ -8,7 +8,7 @@ metadata:
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Preliminary proposals (`next/`)", "Superpowers Document
+> especially "Preliminary work items (`next/`)", "Superpowers Document
 > Placement", "Language Contract", and "Dispatch Model Policy".
 
 # Epic Elaboration (bounded-window fixpoint)
@@ -58,7 +58,7 @@ only in Jira.
 | 4 | **Decide** — targeted questions to the human ONE AT A TIME; each answer folds in before the next question | No batched question lists, no "otevřené otázky" files deferred to the end |
 | 5 | **Write the slice** — reformulate ticket text, write/refine PRELIMINARY design drafts (`design_<slug>.md`) in `<owner MB>/proposals/next/` (Czech; NO pinning, NOT `active/`), decisions folded INTO scope, item owners updated in ledger | Only artifacts inside the window |
 | 6 | **Record ripple** — every impact on OTHER tickets (moved item, changed dependency, corrected premise, new ticket) goes to the ledger dirty-set. DO NOT fix them now | Ripple recorded, not chased |
-| 7 | **Close** — sync the window's slice to Jira (after user approval): ticket texts, created tickets, link changes; regenerate the graph via the `mb-epic-graph` skill; its `-Check` must pass for the window's items; update ledger (window `uzavřeno`, item/ticket states, cleaned dirty rows); ONE commit for the window (`mb-git-commit`); after the commit, refresh each window ticket's `**Návrh (proposal):**` commit-pinned link (per `mb-jira-update` §5–7) (JIRA-less: sync = úprava hlaviček/těl proposalů místo Jiry; krok s odkazy na proposaly odpadá — uzly JSOU proposaly) | Window internally consistent: ticket ↔ proposal ↔ links ↔ graph agree for its items, and every ticket that owns a proposal links to it, even if the rest of the epic is unfinished |
+| 7 | **Close** — sync the window's slice to Jira (after user approval): ticket texts, created tickets, link changes; regenerate the graph via the `mb-epic-graph` skill; its `-Check` must pass for the window's items; update ledger (window `uzavřeno`, item/ticket states, cleaned dirty rows); ONE commit for the window (`mb-git-commit`); after the commit, refresh each window ticket's `**Návrh (design):**` commit-pinned link (per `mb-jira-update` §5–7) (JIRA-less: sync = úprava hlaviček/těl proposalů místo Jiry; krok s odkazy na proposaly odpadá — uzly JSOU proposaly) | Window internally consistent: ticket ↔ proposal ↔ links ↔ graph agree for its items, and every ticket that owns a proposal links to it, even if the rest of the epic is unfinished |
 
 For the detailed per-window routine, window sizing/selection, ledger state
 vocabulary, invariants, and Jira sync mechanics, read

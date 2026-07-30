@@ -8,7 +8,7 @@ metadata:
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Harvest Contract", "Active Proposal Pair" and "`context.md`
+> especially "Harvest Contract", "Active Work Item (Design + Plan Pair)" and "`context.md`
 > Schema & Writers". This skill is the only IDLE-resetting writer of
 > `context.md` besides `mb-abort`.
 

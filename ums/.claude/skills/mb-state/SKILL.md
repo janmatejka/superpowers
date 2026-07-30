@@ -8,7 +8,7 @@ metadata:
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Active Proposal Pair" and "`context.md` Schema & Writers".
+> especially "Active Work Item (Design + Plan Pair)" and "`context.md` Schema & Writers".
 
 # Command: mb-state
 
