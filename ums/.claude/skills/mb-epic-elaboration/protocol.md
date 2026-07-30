@@ -81,8 +81,8 @@ Wait for confirmation or narrowing. The human always decides the agenda.
    INTO scope/design text (not appended as patch notes). Use the
    brainstorming method for the conversation; use the writing-plans structure
    if the elaboration level already warrants a plan draft. Placement:
-   `<owner component MB>/proposals/next/proposal_<slug>.md`
-   (+ optional `-design.md`), slug per contract naming
+   `<owner component MB>/proposals/next/design_<slug>.md` (legacy
+   `proposal_*` files remain valid), slug per contract naming
    (`<jira>_<short_snake_case_topic>`). NO `context.md` pinning, NO
    `active/`. Header carries `**Jira:**`, `**Blokováno:**`/`**Blokuje:**`/
    `**Souvisí:**`/`**Vyčleněno z:**`/`**Vyčleněno do:**` lines that MUST

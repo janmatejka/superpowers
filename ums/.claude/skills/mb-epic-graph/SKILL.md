@@ -88,13 +88,15 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
 - `-Source`: `Jira` (výchozí) nebo `Proposals`; volí, odkud se berou uzly a
   hrany. `Jira` vyžaduje `-InputFile`; `Proposals` vyžaduje `-ProposalPath`.
 - `-ProposalPath`: v Jira režimu doplňuje prose-check o lokální
-  preliminary proposaly (atribuce přes jejich `**Jira:**` hlavičku nebo
-  slug) a sytí stavový glyph tabulky vln: tiket s živým proposalem
-  (`next/` nebo `active/`) se čte jako „návrh hotov"; bez `-ProposalPath`
-  glyph degraduje na ✅/🔨/▶️/⛔. V Proposals režimu je to **primární zdroj
-  uzlů** — skript enumeruje členy epiku jako `proposal_*.md` pod touto
-  cestou (indexní soubor typu `_prehled.md` uzlem není); dvojice
-  `proposal_x.md` + `proposal_x-design.md` se sloučí do jednoho uzlu (slug).
+  preliminary proposaly/design drafty (atribuce přes jejich `**Jira:**`
+  hlavičku nebo slug) a sytí stavový glyph tabulky vln: tiket s živým
+  proposalem/draftem (`next/` nebo `active/`) se čte jako „návrh hotov";
+  bez `-ProposalPath` glyph degraduje na ✅/🔨/▶️/⛔. V Proposals režimu je
+  to **primární zdroj uzlů** — skript enumeruje členy epiku jako
+  `{design_,plan_,proposal_}*.md` pod touto cestou (indexní soubor typu
+  `_prehled.md` uzlem není); párování souborů do jednoho uzlu (slug) —
+  např. `design_<slug>.md`, nebo legacy dvojice `proposal_x.md` +
+  `proposal_x-design.md` — se řídí kontraktní Discovery & pairing rule.
 - `-NoStatus`: suppress the per-ticket status glyph (see below); by default the
   wave table leads each ticket with one merged status symbol.
 - `-ProjectKeys`: extra project prefixes for mention detection (defaults to
@@ -161,17 +163,21 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
     dofetchnout do druhého input souboru).
   - `CHYBĚJÍCÍ CÍL` (jen Proposals) — hlavička odkazuje na proposal soubor,
     který v `-ProposalPath` neexistuje (chyba).
-  - `TIKET BEZ ODKAZU NA PROPOSAL` (jen Jira) — a proposal is attributed to the
-    ticket (via its `**Jira:**` header) but the ticket description does not
-    reference the proposal file → add/refresh the `**Návrh (proposal):**`
-    commit-pinned link (VAROVÁNÍ; needs `-ProposalPath`). VAROVÁNÍ, not CHYBA,
-    on purpose: a commit-pinned link cannot exist before the window's commit,
-    so a hard gate would deadlock the close — the workflow refreshes links
-    post-commit.
+  - `TIKET BEZ ODKAZU NA PROPOSAL` (jen Jira) — a proposal/design draft is
+    attributed to the ticket (via its `**Jira:**` header) but the ticket
+    description does not reference the file → add/refresh the
+    `**Návrh (proposal):**` commit-pinned link (VAROVÁNÍ; needs
+    `-ProposalPath`). VAROVÁNÍ, not CHYBA, on purpose: a commit-pinned link
+    cannot exist before the window's commit, so a hard gate would deadlock
+    the close — the workflow refreshes links post-commit. The description-line
+    check accepts both the current `**Návrh (design):**` and the legacy
+    `**Návrh (proposal):**` forms.
   - `ODKAZ NA NEEXISTUJÍCÍ PROPOSAL` (jen Jira) — the description links a
-    `proposal_*.md` not among the known proposals (renamed/moved/deleted) →
-    refresh it (VAROVÁNÍ; needs `-ProposalPath` covering the relevant stages,
-    else it may misfire on proposals that live in a stage you did not pass).
+    `proposal_*.md`/`design_*.md` not among the known proposals/design drafts
+    (renamed/moved/deleted) → refresh it (VAROVÁNÍ; needs `-ProposalPath`
+    covering the relevant stages, else it may misfire on files that live in a
+    stage you did not pass). Same dual-form acceptance as above applies when
+    reading the description line.
 - The prose scan is a precision-tuned heuristic (line-bounded keyword
   windows; quoted meta-mentions like `(dříve „blokuje")` are skipped) — read
   each finding before acting on it.
