@@ -38,7 +38,7 @@ issue with issuetype "Epic" is used.
 
 .PARAMETER ProposalPath
 Files or directories with local proposal Markdown files (directories are
-searched recursively for "proposal_*.md"). In -Source Proposals this is the
+searched recursively for {design_,plan_,proposal_}*.md). In -Source Proposals this is the
 primary node/edge source: each file becomes a graph node (slug from its
 filename) and its header fields ("Blokuje", "Blokováno", "Souvisí",
 "Vyčleněno z/do") become graph edges. In -Source Jira (default) it instead
@@ -149,8 +149,13 @@ function Get-Field($issue, [string] $name) {
 
 function ConvertTo-Slug([string] $fileName) {
     $base = [IO.Path]::GetFileNameWithoutExtension($fileName)
-    $base = $base -replace '^proposal_', ''
-    $base = $base -replace '-design$', ''
+    if ($base -match '^proposal_') {
+        # legacy style: strip prefix, then the -design sibling suffix
+        $base = $base -replace '^proposal_', '' -replace '-design$', ''
+    } else {
+        # new style: strip exactly one prefix; no suffix handling
+        $base = $base -replace '^(design_|plan_)', ''
+    }
     return $base
 }
 function Split-HeaderBody([string] $text) {
@@ -184,7 +189,10 @@ $script:MdLinkRx = [regex]'\]\(\s*([^)\s]+\.md)\s*\)'
 
 function Get-ProposalFiles([string[]] $paths) {
     $files = foreach ($p in $paths) {
-        if (Test-Path -LiteralPath $p -PathType Container) { Get-ChildItem -LiteralPath $p -Recurse -Filter 'proposal_*.md' -File }
+        if (Test-Path -LiteralPath $p -PathType Container) {
+            Get-ChildItem -LiteralPath $p -Recurse -File |
+                Where-Object { $_.Name -match '^(proposal_|design_|plan_)[^\\/]*\.md$' }
+        }
         elseif (Test-Path -LiteralPath $p) { Get-Item -LiteralPath $p }
         else { Write-Warning "Proposal path not found: $p" }
     }
@@ -482,7 +490,7 @@ function Get-ProseAssertions([string] $selfKey, [string] $text, [string] $source
 
 # ---------- graph outputs ------------------------------------------------------
 
-function ConvertTo-NodeId([string] $key) { return ($key -replace '[^A-Za-z0-9]', '') }
+function ConvertTo-NodeId([string] $key) { return ($key -replace '[^A-Za-z0-9_]', '') }
 function Get-Label([string] $key) {
     if ($issues.Contains($key)) {
         $i = $issues[$key]
@@ -858,11 +866,14 @@ if ($Check) {
             $referenced = @($names | Where-Object { $iss.Desc -and $iss.Desc.Contains($_) })
             if ($referenced.Count -eq 0) {
                 $findings += @{ Severity = 'VAROVÁNÍ'; Code = 'TIKET BEZ ODKAZU NA PROPOSAL'
-                    Text = "$($iss.Key): má přiřazený proposal ($($names -join ', ')), ale popis tiketu na něj neodkazuje. Doplň řádek «**Návrh (proposal):**» s commit-pinned odkazem (tvar viz mb-jira-update §7)." }
+                    Text = "$($iss.Key): má přiřazený proposal ($($names -join ', ')), ale popis tiketu na něj neodkazuje. Doplň řádek «**Návrh (design):**» s commit-pinned odkazem (tvar viz mb-jira-update §7)." }
             }
         }
         # 6b. description references a proposal_*.md that is not among known proposals (renamed/moved/deleted)
-        $propRefRx = [regex]'proposal_[A-Za-z0-9_]+(?:-design)?\.md'
+        # legacy proposal_* names match anywhere; new design_/plan_ names only when
+        # the reference path sits under a proposals/<state>/ directory (avoids false
+        # positives on ordinary docs/design_*.md links)
+        $propRefRx = [regex]'(?:proposal_[A-Za-z0-9_]+(?:-design)?|(?<=proposals/(?:next|active|completed|abandoned)/)(?:design_|plan_)[A-Za-z0-9_]+)\.md'
         foreach ($iss in $issues.Values) {
             if ($iss.Key -eq $EpicKey -or -not $iss.Desc) { continue }
             $seenRef = @{}

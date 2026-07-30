@@ -50,4 +50,13 @@ Write-Host 'Jira mode: prose-corpus attribution still runs (PROPOSAL BEZ TIKETU 
 $jp = Invoke-Graph @('-Source','Jira','-InputFile',$snap,'-EpicKey','DEMO-1','-ProposalPath',$basic,'-Check')
 Assert-Match $jp.Out 'PROPOSAL BEZ TIKETU' 'jira mode still emits PROPOSAL BEZ TIKETU for unattributed proposals'
 
+Write-Host 'Proposal mode: new-style design_/plan_ naming'
+$ns = Join-Path $PSScriptRoot 'fixtures\newstyle'
+$rn = Invoke-Graph @('-Source','Proposals','-ProposalPath',$ns,'-EpicKey','demo','-Mermaid')
+Assert-Eq $rn.Code 0 'new style exit 0'
+Assert-Match $rn.Out 'na --> nb' 'blocks edge na->nb from design headers'
+Assert-Eq ([regex]::Matches($rn.Out, '(?m)^\s{4}na\[').Count) 1 'na node declared once (plan sibling merged)'
+Assert-Match $rn.Out '(?m)^\s{4}design_kolize\[' 'legacy proposal_design_kolize keeps slug design_kolize'
+Assert-Match $rn.Out '(?m)^\s{4}kolize\[' 'new design_kolize.md yields slug kolize (distinct node)'
+
 Complete-Tests
