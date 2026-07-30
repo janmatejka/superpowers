@@ -1,8 +1,9 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.0
-- Supersedes v1 (the mb-plan/mb-act orchestration model). See `VENDORED_FROM.md`
-  for the vendored Superpowers version this contract is written against.
+- **Contract-Version:** 2.1
+- Supersedes v2.0 (renames the document pair to `design_`/`plan_`, adds the
+  Architect Review Gate). v1 (mb-plan/mb-act orchestration) remains superseded.
+  See `VENDORED_FROM.md` for the vendored Superpowers version.
 
 ## Purpose & Roles
 
@@ -32,7 +33,7 @@ UMS Memory Bank uses a three-tier directory model across the monorepo:
   repository. Holds `context.md` (Jira link, `Target MB Pin`, `Proposal` slug,
   `Started`).
 - **`PLAN_MB`** — `<MB_ROOT>/<Target MB Pin>` — the project Memory Bank the
-  current work targets. Holds the active proposal pair and the project
+  current work targets. Holds the active design + plan pair and the project
   documents (`brief.md`, `product.md`, `architecture.md`, `tech.md`,
   `tasks.md`).
 - **`AFFECTED_MBS`** — the set of project Memory Banks touched by a harvest.
@@ -107,14 +108,14 @@ Other rules:
   contains them.
 - Do not hardcode machine-specific or repository-root absolute paths.
 
-## Active Proposal Pair
+## Active Work Item (Design + Plan Pair)
 
-One active work item per repository = one **proposal pair** in
+One active work item per repository = one **design + plan pair** in
 `<PLAN_MB>/proposals/active/`:
 
-- **`proposal_<slug>-design.md`** — the spec, written by `brainstorming`
+- **`design_<slug>.md`** — the spec, written by `brainstorming`
   (intent source of truth).
-- **`proposal_<slug>.md`** — the implementation plan, written by
+- **`plan_<slug>.md`** — the implementation plan, written by
   `writing-plans` (execution source of truth). On conflict between the two,
   the plan governs execution; report the discrepancy to the user.
 
@@ -123,55 +124,66 @@ Rules:
 - The pair is created by the superpowers workflow and is never duplicated into
   `docs/` or any parallel location.
 - Task progress lives in the plan file's checkboxes and in
-  `.superpowers/sdd/progress.md` — **not** in `context.md`. The v1
-  `Implementation Checklist` and `Auto Loop State` are abolished.
+  `.superpowers/sdd/progress.md` — **not** in `context.md`.
 - **Archival asymmetry:** on **completion** (harvest → `completed/`) only the
-  design half `proposal_<slug>-design.md` is retained; the implementation plan
-  `proposal_<slug>.md` is **deleted** — after implementation its task steps are
-  spent, and code, git history and the harvested current-state MB docs carry
-  the outcome. If there is no design half (grandfathered single plan), archive
-  that plan to `completed/` instead of deleting it, so a record remains. On
+  design half is retained; the plan half is **deleted** — after implementation
+  its task steps are spent; code, git history and the harvested current-state
+  MB docs carry the outcome. If there is no design half (grandfathered single
+  plan), archive that plan to `completed/` instead of deleting it. On
   **abandon** (`mb-abort` / Discard → `abandoned/`) both halves move together,
   unchanged, nothing deleted. If a half is missing at archive time, warn and
   handle what exists.
 - A design file without its plan sibling is a valid intermediate state
   (between brainstorming and writing-plans).
 - An empty `proposals/active/` directory may be absent from the working tree
-  (git does not track empty directories; no `.gitkeep` convention). Skills
-  MUST tolerate the missing directory and recreate it on demand when placing
-  a new proposal — absence of `active/` means "no active work", not a broken
-  Memory Bank.
+  (git does not track empty directories). Skills MUST tolerate the missing
+  directory and recreate it on demand — absence of `active/` means "no active
+  work", not a broken Memory Bank.
 
-**Naming:** `proposal_<slug>.md` / `proposal_<slug>-design.md`. The slug
-MUST start with the ticket code whenever one is known:
-`<jira>_<short_snake_case_topic>`, with the ticket code normalized to
-lowercase snake case (`UMS-3302` → `ums_3302_toast_reconcile`); without a
-known ticket use `<short_snake_case_topic>` alone. ASCII only, no
-diacritics, no dates in the name (dates live in `Started` and git history).
-When the ticket becomes known later (e.g. at activation of a preliminary
-proposal), rename the slug's files to include it.
+**Naming:** `design_<slug>.md` / `plan_<slug>.md`. The slug MUST start with
+the ticket code whenever one is known: `<jira>_<short_snake_case_topic>`,
+ticket code normalized to lowercase snake case
+(`UMS-3302` → `ums_3302_toast_reconcile`); without a known ticket use
+`<short_snake_case_topic>` alone. ASCII only, no diacritics, no dates in the
+name. When the ticket becomes known later, rename the slug's files to include
+it (within the same naming style).
 
-**Preliminary proposals (`next/`):** work items may be planned ahead of time
-as preliminary proposals in `<MB>/proposals/next/` — any number may queue
-there, unlike the single work item in `active/`. A preliminary proposal is a
-draft: a single `proposal_<slug>.md`, optionally already accompanied by a
-`proposal_<slug>-design.md`. Rules:
+**Grandfather clause (legacy `proposal_` naming):** files named
+`proposal_<slug>-design.md` (design half) and `proposal_<slug>.md` (plan
+half, or a v1 single plan) remain valid artifacts wherever they rest —
+`active/`, `next/`, `completed/`, `abandoned/`. Never rename or convert them,
+with ONE exception: activating a queued legacy draft from `next/` converts
+the work item to the new style (see Preliminary work items below). One work
+item uses exactly one naming style; a mixed pair (legacy design + new plan or
+vice versa) must never be created. Never touch archived files in
+`proposals/completed/`.
 
-- Creating or editing a preliminary proposal does NOT touch `context.md`,
-  does not require the IDLE state, and does not pin a Target MB — it is
-  planning, not active work.
-- When work on it starts, ALL files of its slug move from `next/` to
-  `active/` (see Target-MB Discovery & Pinning) and the normal workflow
-  continues — brainstorming treats the moved draft as seed input for the
-  design, refining it rather than starting from scratch.
+**Discovery & pairing rule (all skills):** match files
+`{design_,plan_,proposal_}*.md`; strip exactly ONE prefix
+`^(design_|plan_|proposal_)` from the file stem, and strip the `-design`
+suffix ONLY after the `proposal_` prefix; group by `(owning MB root, slug)`.
+One pair (or grandfathered single file) = one candidate. Thus `design_x.md`
+→ slug `x`, while legacy `proposal_design_x.md` → slug `design_x` — no
+mis-pairing.
+
+**Preliminary work items (`next/`):** work may be planned ahead as design
+drafts in `<MB>/proposals/next/` — any number may queue there. A preliminary
+draft is a single **`design_<slug>.md`** with design-document structure
+(`## Cíl`, `## Scope`, `## Technický návrh`, scaled to what is known).
+Detailed implementation plans are NOT written ahead — the plan is produced by
+writing-plans after activation. Rules:
+
+- Creating or editing a preliminary draft does NOT touch `context.md`, does
+  not require the IDLE state, and does not pin a Target MB.
+- When work starts, ALL files of the slug move from `next/` to `active/`
+  (see Target-MB Discovery & Pinning). A legacy `proposal_*` draft is renamed
+  to `design_<slug>.md` during this move — the only permitted legacy
+  conversion; its content serves as the design seed regardless of its
+  original structure, and brainstorming refines it rather than starting from
+  scratch.
 - Queued items in `next/` never count against the two-actives guard.
-- A queued item that is dropped without being started moves to `abandoned/`.
-
-**Grandfather clause:** a legacy single-file `proposal_*.md` in
-`proposals/active/` (created under contract v1) is a valid plan artifact.
-New work always produces the two-file pair. Harvest and archive treat legacy
-single files the same as pairs. Never convert or touch the archived proposals
-in `proposals/completed/`.
+- A queued item dropped without being started moves to `abandoned/`
+  unrenamed.
 
 ## Superpowers Document Placement
 
@@ -181,29 +193,29 @@ this default)"*. The preference in this repository is:
 
 | Superpowers artifact | Default upstream location | UMS location |
 |---|---|---|
-| Design/spec (brainstorming) | `docs/superpowers/specs/…-design.md` | `<PLAN_MB>/proposals/active/proposal_<slug>-design.md` |
-| Implementation plan (writing-plans) | `docs/superpowers/plans/….md` | `<PLAN_MB>/proposals/active/proposal_<slug>.md` |
+| Design/spec (brainstorming) | `docs/superpowers/specs/…-design.md` | `<PLAN_MB>/proposals/active/design_<slug>.md` |
+| Implementation plan (writing-plans) | `docs/superpowers/plans/….md` | `<PLAN_MB>/proposals/active/plan_<slug>.md` |
 
 Prohibited locations (mechanically enforced by a PreToolUse hook):
 `docs/superpowers/specs/`, `docs/superpowers/plans/`, `docs/plans/`.
 
 Document headers:
 
-- `proposal_<slug>-design.md` starts with:
+- `design_<slug>.md` starts with:
   ```markdown
   # Návrh: <název>
 
   - **Jira:** UMS-XXXX | (žádný tiket)
   - **Target MB:** <relative path>/memory-bank/
-  - **Plán:** [proposal_<slug>.md](proposal_<slug>.md)
+  - **Plán:** [plan_<slug>.md](plan_<slug>.md)
   - **Vytvořeno:** YYYY-MM-DD
   ```
   Body sections follow the established proposal corpus: `## Cíl`, `## Scope`,
   `## Technický návrh`, `## Dopady`, `## Rizika` (scaled to complexity).
-- `proposal_<slug>.md` keeps the upstream plan header verbatim (the
+- `plan_<slug>.md` keeps the upstream plan header verbatim (the
   "For agentic workers: REQUIRED SUB-SKILL …" block is load-bearing for
   subagent-driven-development), followed by an MB metadata block (`**Jira:**`,
-  `**Návrh:** [proposal_<slug>-design.md](…)`, `**Target MB:**`), then the
+  `**Návrh:** [design_<slug>.md](design_<slug>.md)`, `**Target MB:**`), then the
   upstream structure (`## Global Constraints`, tasks with `**Interfaces:**`
   and checkbox steps).
 
@@ -212,10 +224,12 @@ Document headers:
 Runs **during brainstorming**, as soon as the affected code area is
 identifiable — always before the design document is written.
 
-1. Scan `**/memory-bank/proposals/active/proposal_*.md` under `<MB_ROOT>`.
-2. Normalize each match to its owning `memory-bank/` root; strip a trailing
-   `-design` from the file stem and group by `(owning MB root, slug)` — one
-   pair (or legacy single file) = one candidate.
+1. Scan `**/memory-bank/proposals/active/` for `{design_,plan_,proposal_}*.md`
+   under `<MB_ROOT>`.
+2. Normalize each match to its owning `memory-bank/` root; apply the
+   Discovery & pairing rule (Active Work Item section): strip exactly one
+   prefix, `-design` only after `proposal_`, group by `(owning MB root,
+   slug)` — one pair (or legacy single file) = one candidate.
 3. Treat `CTX_DIR` as the orchestration root and exclude it from
    affected-project discovery unless the work is intentionally repo-wide.
 4. Derive deterministic evidence tags per candidate root:
@@ -241,20 +255,22 @@ identifiable — always before the design document is written.
    `proposals/next/` for a queued preliminary proposal matching the work
    (explicit user reference, ticket code, or topic — when the match is only
    probable, confirm with the user). On confirmation, move ALL files of its
-   slug from `next/` to `active/`, reuse its slug and ticket, and treat the
-   draft as seed input for the design. No match → continue with a fresh
-   proposal.
+   slug from `next/` to `active/`, renaming a legacy `proposal_*` draft to
+   `design_<slug>.md` (the only permitted legacy conversion), reuse its slug
+   and ticket, and treat the draft as seed input for the design. No match →
+   continue with a fresh proposal.
 7. Ask for the Jira ticket (one question; "none" is a valid answer; skip if
    already known from the activated preliminary proposal). If the ticket is
    known and the slug does not start with its code, rename the slug's files
-   accordingly (Naming rule in Active Proposal Pair).
+   accordingly (Naming rule in the Active Work Item section).
 8. **Two-actives guard:** if an active proposal (pair or legacy single) with a
    *different* slug already exists anywhere under `<MB_ROOT>`, stop and ask
    the user — finish it (`finishing-a-development-branch` → harvest) or
    abandon it (`mb-abort`) before pinning new work. Only `active/` counts;
    queued items in `next/` are ignored by this guard.
 9. Persist into `CTX_DIR/context.md` (creating the file if absent):
-   `Target MB Pin`, `Jira`, `Proposal` slug, `Started` (see the schema below).
+   `Target MB Pin`, `Jira`, `Work item` slug and `Started` (see the schema
+   below).
 10. Invalidation: the pin (and thus `PLAN_MB`) becomes invalid when the active
     proposal slug changes or the pinned path no longer exists — re-run this
     discovery, do not silently fall back.
@@ -262,7 +278,7 @@ identifiable — always before the design document is written.
 ## `context.md` Schema & Writers
 
 `<CTX_DIR>/context.md` is a small state file — the workflow itself lives in
-the superpowers skills and the proposal pair.
+the superpowers skills and the design + plan pair.
 
 Active state:
 
@@ -273,19 +289,31 @@ Active state:
 
 - **Jira:** UMS-XXXX (https://jira.datasys.cz/browse/UMS-XXXX)
 - **Target MB Pin:** <relative path>/memory-bank/
-- **Proposal:** <slug>
+- **Work item:** <slug>
 - **Started:** YYYY-MM-DD
+- **Review:** design-review requested YYYY-MM-DD
 ```
+
+The `Review:` line is OPTIONAL — present only between an architect-review
+request and its resume (see Architect Review Gate). While present, the
+superpowers workflow MUST NOT continue past brainstorming (no writing-plans);
+the correct continuation is `mb-architect-review` (resume).
 
 IDLE state: replace the `## Active Work` items with
 `(No active work - IDLE phase)`; keep the `- **Jira:** …` line of the last
 work item if it existed.
+
+Readers MUST accept the legacy field name `- **Proposal:**` as an alias of
+`- **Work item:**` (stale files from contract v2.0); writers write only
+`Work item`.
 
 Writers (no other writer is allowed):
 
 - **The driving session** during Target-MB Discovery & Pinning — creates or
   updates `## Active Work`.
 - **`mb-harvest`** (and `mb-abort`) — resets `## Active Work` to IDLE.
+- **`mb-architect-review`** — adds (request) and removes (resume) the
+  `Review:` line only.
 
 The v1 fields `Status`, `Run Mode`, `Execution Mode`, `Loop Mode`,
 `Affected MBs`, `Implementation Checklist`, and `Auto Loop State` are
@@ -330,12 +358,13 @@ code.
      and `brief.md`/`product.md` only if core features or UX changed.
    - Continue with remaining affected MBs if one update fails; capture
      failures for the final report.
-4. **Archive:** move only the design half `proposal_<slug>-design.md` from
-   `active/` to `completed/` unchanged (durable spec record) and **delete** the
-   implementation plan `proposal_<slug>.md` (remove the file; the harvest
-   commit records the deletion). If there is no design half (grandfathered
-   single plan), archive that plan to `completed/` so a record remains. Abandon
-   path (`mb-abort`, or Discard in finishing) moves BOTH halves to `abandoned/`
+4. **Archive:** move only the design half `design_<slug>.md` (or legacy
+   `proposal_<slug>-design.md`) from `active/` to `completed/` unchanged
+   (durable spec record) and **delete** the plan half `plan_<slug>.md` (or
+   legacy `proposal_<slug>.md`) (remove the file; the harvest commit records
+   the deletion). If there is no design half (grandfathered single plan),
+   archive that plan to `completed/` so a record remains. Abandon path
+   (`mb-abort`, or Discard in finishing) moves BOTH halves to `abandoned/`
    instead, deleting nothing.
 5. **Reset:** only if every affected MB update succeeds, reset
    `context.md` `## Active Work` to IDLE per the schema above. On partial
