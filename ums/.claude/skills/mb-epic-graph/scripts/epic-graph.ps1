@@ -673,7 +673,7 @@ function Get-StatusGlyph([string] $k) {
     if ($proposalLive.ContainsKey($k)) {
         if ($unblocked) { return '▶️' } else { return '⏳' }   # návrh hotov: připraveno / čeká
     }
-    if ($unblocked) { return '🆕' } else { return '⛔' }        # bez návrhu: k rozpracování / blokováno
+    if ($unblocked) { return '💡' } else { return '⛔' }        # bez návrhu: k rozpracování / blokováno
 }
 function Get-CellText([string] $k) {
     $url = Get-TicketUrl $k
@@ -928,7 +928,7 @@ if (-not $NoStatus) {
     if ($Source -eq 'Proposals') {
         [void]$report.AppendLine('**První ikona = stav proposalu** (fáze složky + připravenost, sloučeno do jedné): ✅ hotovo (completed) · 🔨 implementuje se (active) · ▶️ připraveno k implementaci (odblokováno) · ⏳ čeká na blokátory · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
     } else {
-        [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 🆕 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
+        [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 💡 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
     }
     [void]$report.AppendLine('')
 }

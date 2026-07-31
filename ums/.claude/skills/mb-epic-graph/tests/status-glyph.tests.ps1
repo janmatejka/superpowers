@@ -18,4 +18,11 @@ Assert-Match $bare.Out '❔ \S+ \[DEMO-17\]' 'DEMO-17 (blocker Cancelled) -> ❔
 Assert-Match $bare.Out '❔ \S+ \[DEMO-10\]' 'DEMO-10 (empty status, unblocked) -> ❔'
 Assert-NotMatch $bare.Out '▶️ \S+ \[DEMO-6\]' 'no ▶️ without proposal information'
 
+Write-Host 'Jira mode with -ProposalPath: no proposal -> 💡, live draft blocked -> ⏳'
+Assert-Match $full.Out '💡 \S+ \[DEMO-6\]'  'DEMO-6 (unblocked, no proposal) -> 💡'
+Assert-Match $full.Out '💡 \S+ \[DEMO-17\]' 'DEMO-17 (blocker Cancelled, no proposal) -> 💡'
+Assert-Match $full.Out '💡 \S+ \[DEMO-10\]' 'DEMO-10 (empty status, no proposal) -> 💡'
+Assert-Match $full.Out '⏳ \S+ \[DEMO-4\]'  'DEMO-4 (draft in next/, blocked by In Progress) -> ⏳'
+Assert-NotMatch $full.Out '🆕' '🆕 is retired from the whole family'
+
 Complete-Tests
