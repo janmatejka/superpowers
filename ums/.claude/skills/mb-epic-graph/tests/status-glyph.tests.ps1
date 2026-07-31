@@ -12,4 +12,10 @@ $full = Invoke-Graph @('-Source','Jira','-InputFile',$status,'-EpicKey','DEMO-0'
 Assert-Eq $full.Code 0 'run with -ProposalPath exits 0'
 Assert-Match $bare.Out '\[DEMO-10\]' 'ticket with empty status object still lands in the table'
 
+Write-Host 'Jira mode without -ProposalPath: unblocked To Do is ❔ (proposal state unknown)'
+Assert-Match $bare.Out '❔ \S+ \[DEMO-6\]'  'DEMO-6 (blocker Done, no proposal info) -> ❔'
+Assert-Match $bare.Out '❔ \S+ \[DEMO-17\]' 'DEMO-17 (blocker Cancelled) -> ❔'
+Assert-Match $bare.Out '❔ \S+ \[DEMO-10\]' 'DEMO-10 (empty status, unblocked) -> ❔'
+Assert-NotMatch $bare.Out '▶️ \S+ \[DEMO-6\]' 'no ▶️ without proposal information'
+
 Complete-Tests

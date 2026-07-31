@@ -665,8 +665,10 @@ function Get-StatusGlyph([string] $k) {
     # To-Do (kategorie 'new' nebo neznámá): rozliš připravenost × proposal
     $unblocked = Test-Unblocked $k
     if (-not $proposalInfoAvailable) {
-        # bez -ProposalPath: 4-stavová degradace (bez rozlišení proposalu)
-        if ($unblocked) { return '▶️' } else { return '⛔' }
+        # bez -ProposalPath o návrzích nic nevíme: ❔ = odblokováno, stav návrhu
+        # neznámý. ▶️ zůstává vyhrazeno pro „návrh existuje" (viz níže), aby
+        # ikona netvrdila víc, než skript ví.
+        if ($unblocked) { return '❔' } else { return '⛔' }
     }
     if ($proposalLive.ContainsKey($k)) {
         if ($unblocked) { return '▶️' } else { return '⏳' }   # návrh hotov: připraveno / čeká
