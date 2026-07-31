@@ -45,7 +45,7 @@ neobsahují (mají jen `status.name`) a stavové glyphy dosud nepokrývá žádn
 
 **Zahrnuto:** `ums/.claude/skills/mb-epic-graph/scripts/epic-graph.ps1`
 (logika + nápověda + legenda), `ums/.claude/skills/mb-epic-graph/SKILL.md`,
-`ums/.claude/skills/mb-epic-graph/tests/` (nová fixture + testy),
+`ums/.claude/skills/mb-epic-graph/tests/` (dvě nové fixtures + testy),
 `ums/.claude/skills/mb-epic-elaboration/protocol.md` (jedna věta o readiness).
 
 **Nezahrnuto a proč:**
@@ -161,31 +161,34 @@ Jiné výskyty 🆕 v `ums/` neexistují.
 
 Nová fixture `tests/fixtures/jira/status.json` — existující `snap.json`
 zůstává nedotčený (visí na něm současné testy a `statusCategory` neobsahuje).
-Fixture nese epic a tři blokující páry pokrývající všechny relevantní
-kategorie; klíče v tabulce jsou zástupné, ve fixture ponesou konzistentní
-projektový prefix:
+Nese epic, tři blokující páry pokrývající všechny tři kategorie stavů a jeden
+samostatný tiket;
+klíče v tabulce jsou zástupné, ve fixture ponesou konzistentní projektový
+prefix. Druhá nová fixture `tests/fixtures/status_proposals/next/` obsahuje dva
+design drafty s hlavičkou `**Jira:**` mířící na tikety B a D — díky nim jde
+v jednom běhu pokrýt celá rodina glyphů:
 
-| tiket | stav | blokuje | glyph bez `-ProposalPath` |
-|---|---|---|---|
-| A | Test | B | 🧪 |
-| B | To Do | — | ▶️ (odblokován) |
-| C | In Progress | D | 🔨 |
-| D | To Do | — | ⛔ (stále blokován) |
-| E | Done | F | ✅ |
-| F | To Do | — | ▶️ |
+| tiket | stav | blokuje | návrh | bez `-ProposalPath` | s `-ProposalPath` |
+|---|---|---|---|---|---|
+| A | Test | B | — | 🧪 | 🧪 |
+| B | To Do | — | ano | ▶️ | ▶️ (návrh + odblokováno) |
+| C | In Progress | D | — | 🔨 | 🔨 |
+| D | To Do | — | ano | ⛔ | ⏳ (návrh, ale blokován) |
+| E | Done | F | — | ✅ | ✅ |
+| F | To Do | — | — | ▶️ | 💡 (odblokováno, bez návrhu) |
+| G | test | — | — | 🧪 | 🧪 |
 
 Testy v `tests/e2e.tests.ps1`:
 
-1. Glyphy a odblokování dle tabulky výše (běh bez `-ProposalPath`) — jádro
-   změny.
-2. Match na názvu je case-insensitive a „In Progress" zůstává 🔨 — pojistka,
-   že se chování nezobecnilo na celou kategorii `indeterminate`. Varianta
-   `test` malými písmeny bude přímo v fixture jako sedmý tiket.
-3. `-NoStatus` potlačí i 🧪.
-4. Tentýž běh **s** `-ProposalPath` mířícím na složku bez proposalů náležejících
-   těmto tiketům: A zůstává 🧪 a odblokované tikety bez návrhu nesou 💡
-   (nikoli 🆕) — pokrývá plnou rodinu glyphů a chrání proti návratu 🆕 při
-   budoucím revendoringu.
+1. Běh bez `-ProposalPath` — glyphy a odblokování dle pátého sloupce; jádro
+   změny (B a F přešly z ⛔ na ▶️ tím, že jejich blokátory jsou Test / Done).
+2. Běh s `-ProposalPath` — glyphy dle šestého sloupce; pokrývá celou rodinu
+   včetně 💡 (nikoli 🆕, tedy pojistka proti návratu starého glyphu při
+   budoucím revendoringu) a přechodu D → ⏳ vs. B → ▶️.
+3. Tiket G (stav `test` malými písmeny) nese 🧪 a „In Progress" zůstává 🔨 —
+   match je case-insensitive a nezobecnil se na celou kategorii
+   `indeterminate`.
+4. `-NoStatus` potlačí i 🧪.
 
 ### 6. Dokumentace rozpracování epiku
 
@@ -205,10 +208,10 @@ jediný blokátor sedí v testu.
 ## Rizika
 
 - **Tiket vrácený z testu** (Test → In Progress / To Do) odblokování zase
-  odebere a následník se vrátí na ⛔. Akceptováno: graf se vždy generuje
+  odebere a následník se vrátí na ⛔, resp. ⏳. Akceptováno: graf se vždy generuje
   z aktuálního snapshotu, žádný stav si nepamatuje.
 - **Přejmenování stavu v Jiře** rozbije match podle názvu potichu (tiket by se
   začal chovat jako In Progress). Zmírnění: konstanta je na jednom místě
   s komentářem, který uvádí i `id 10205`.
 - Riziko rozšíření na celou kategorii `indeterminate` (a tedy odblokování už
-  při započetí práce) hlídá test č. 2.
+  při započetí práce) hlídá test č. 3.
