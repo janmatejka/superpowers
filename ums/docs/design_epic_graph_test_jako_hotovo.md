@@ -12,8 +12,7 @@ Tiket, který je v Jiře ve stavu **Test**, má v plánovacích výstupech skill
 plánovat a implementovat, zatímco předchůdce ještě sedí v testu. Zároveň má
 zůstat na dashboardu odlišitelný od skutečně uzavřené práce.
 
-Přidruženě: rodina stavových glyphů se zlepšuje v čitelnosti — 🆕 se pletlo
-s ▶️ a nahrazuje ho 💡.
+Přidruženě: 🆕 se v tabulce vln plete s ▶️, proto ho nahrazuje 💡.
 
 ## Zjištěný stav (ověřeno proti živé Jiře)
 
@@ -40,13 +39,12 @@ Dnešní chování `ums/.claude/skills/mb-epic-graph/scripts/epic-graph.ps1`:
   vln nerozeznatelný od rozpracovaného.
 
 Fixtures v `mb-epic-graph/tests/fixtures/jira/` pole `statusCategory` vůbec
-neobsahují (mají jen `status.name`), stavové glyphy dosud nemá pokryté žádný
-test.
+neobsahují (mají jen `status.name`) a stavové glyphy dosud nepokrývá žádný test.
 
 ## Scope
 
 **Zahrnuto:** `ums/.claude/skills/mb-epic-graph/scripts/epic-graph.ps1`
-(logika + nápověda), `ums/.claude/skills/mb-epic-graph/SKILL.md`,
+(logika + nápověda + legenda), `ums/.claude/skills/mb-epic-graph/SKILL.md`,
 `ums/.claude/skills/mb-epic-graph/tests/` (nová fixture + testy),
 `ums/.claude/skills/mb-epic-elaboration/protocol.md` (jedna věta o readiness).
 
@@ -56,18 +54,19 @@ test.
   Jira stavy nesahá.
 - `mb-jira-update` — stav „Test" jen *nastavuje* při finalizaci, nikdy
   nevyhodnocuje.
-- `mb-epic-elaboration` ledger — jeho stav `hotov` je *rozpracovanost* tiketu
-  (všechny položky `uzavřená`, nic dirty), nikoli implementační stav; readiness
-  si bere z `mb-epic-graph`. Mění se tam jen dokumentační věta.
+- `mb-epic-elaboration` ledger a jeho `ledger-status.ps1` — stav `hotov` je
+  *rozpracovanost* tiketu (všechny položky `uzavřená`, nic dirty), nikoli
+  implementační stav; readiness si protokol bere z `mb-epic-graph`. Mění se tam
+  jen jedna dokumentační věta.
 - Mermaid label — už dnes vypisuje jméno stavu verbatim, tedy „Test".
 - `UMS_MEMORY_BANK_CONTRACT.md` a `CLAUDE.md.sample` — nejde o kontraktní
   chování MB vrstvy.
 
 ## Technický návrh
 
-### 1. Rozpoznání stavu (`epic-graph.ps1`)
+### 1. Rozpoznání stavu
 
-Pevná konstanta ve skriptu (bez parametru CLI):
+Pevná konstanta v `epic-graph.ps1` (bez parametru CLI):
 
 ```powershell
 # Stavy, které se pro plánování počítají jako hotové, i když jejich
@@ -83,9 +82,10 @@ function Test-DoneForPlanning([string] $key) { ... }
 ```
 
 Vrací `$true`, když `StatusCat -eq 'done'` **nebo** normalizovaný název stavu
-leží v `$TestStatusNames`. Normalizace názvu: `Trim()` +
-`Remove-Diacritics` (helper už ve skriptu je) + `ToLowerInvariant()` — match je
-tedy case-insensitive a nezávislý na diakritice.
+leží v `$TestStatusNames`; pro klíč mimo `$issues` (externí tiket) vrací
+`$false`, tedy stejně konzervativně jako dnešní kód. Normalizace názvu:
+`Trim()` + `Remove-Diacritics` (helper už ve skriptu je) +
+`ToLowerInvariant()` — match je case-insensitive a nezávislý na diakritice.
 
 ### 2. Odblokování následníků
 
@@ -93,35 +93,30 @@ tedy case-insensitive a nezávislý na diakritice.
 `Test-DoneForPlanning`. Ostatní semantika zůstává: blokátor s neznámým stavem
 (externí, mimo snapshot) se konzervativně počítá jako blokující.
 
-### 3. Stavová ikona
+### 3. Stavová ikona a rodina glyphů
 
 Do kaskády `Get-StatusGlyph` přijde nový stupeň **hned za ✅ a před 🔨** — jinak
 by ho přebilo jak `indeterminate`, tak `$proposalActive`:
 
 ```text
-done              → ✅
-název ∈ Test      → 🧪     ← nový stupeň
+StatusCat = done              → ✅
+název ∈ $TestStatusNames      → 🧪     ← nový stupeň
 indeterminate / aktivní proposal → 🔨
-…zbytek kaskády bez změny v logice (▶️ / ⏳ / 💡 / ⛔)
+…zbytek kaskády logicky bez změny (▶️ / ⏳ / 💡 / ⛔)
 ```
 
 ✅ zůstává vyhrazeno pro kategorii `done` (Done, Cancelled). Tiket v Testu tedy
-odblokuje následníky (dostanou ▶️ místo ⛔), ale sám nese 🧪, takže je na
-dashboardu rozeznatelný od uzavřené práce.
+odblokuje své následníky — ti přejdou z ⏳ na ▶️ (mají-li živý proposal), resp.
+z ⛔ na 💡 (bez proposalu) — ale sám nese 🧪, takže je na dashboardu
+rozeznatelný od uzavřené práce.
 
-Režim `-Source Proposals` se nemění: uzly jsou proposaly a `StatusCat` tam
-vzniká ze stage složky (`completed` → `done`, `active` → `indeterminate`,
-jinak `new`), takže 🧪 v tomto režimu nikdy nevznikne. Zdokumentovat explicitně.
+Zároveň se stav „k rozpracování (odblokováno, bez návrhu)" přeznačuje z 🆕 na
+**💡**: 🆕 se v běžných terminálových fontech renderuje jako podobně velký
+tmavý blok jako ▶️ a v tabulce vln se s ním plete. 💡 sedne i sémanticky
+(chybí návrh, tiket čeká na rozmyšlení) a nepere se ani s ▶️, ani s ⏳ či 🧪.
+Chování se nemění, jde o čistou výměnu symbolu.
 
-### 4. Náhrada 🆕 za 💡 (čitelnost rodiny glyphů)
-
-🆕 a ▶️ se v běžných terminálových fontech renderují jako podobně velký
-modrý/tmavý blok a na dashboardu se pletou. Stav „k rozpracování (odblokováno,
-bez návrhu)" proto přechází z 🆕 na **💡** — sedne i sémanticky (chybí návrh,
-tikét čeká na rozmyšlení) a žlutá svislá silueta se neplete ani s ▶️, ani
-s ⏳ či 🧪. Chování se nemění, jde o čistou výměnu symbolu.
-
-Výsledná rodina:
+Výsledná rodina (Jira režim, plný — tj. s `-ProposalPath`):
 
 ```text
 ✅ hotovo
@@ -133,31 +128,44 @@ Výsledná rodina:
 ⛔ blokováno
 ```
 
-Výskyty 🆕 k výměně (všechny, jinde v `ums/` glyph není):
-`epic-graph.ps1` řádek 66 (`.PARAMETER NoStatus`), 674 (kaskáda),
-929 (legenda tabulky vln) a `mb-epic-graph/SKILL.md` řádek 126.
+Bez `-ProposalPath` zůstává degradace na podmnožinu — nově ✅/🧪/🔨/▶️/⛔
+(💡 a ⏳ vyžadují informaci o proposalech).
 
-### 5. Legendy a nápověda
+Režim `-Source Proposals` se nemění: uzly jsou proposaly a `StatusCat` tam
+vzniká ze stage složky (`completed` → `done`, `active` → `indeterminate`,
+jinak `new`), takže 🧪 v tomto režimu nikdy nevznikne; 🆕 se v jeho legendě
+nevyskytuje už dnes (proposal uzly stav „bez návrhu" nemají). Obojí
+zdokumentovat explicitně.
 
-Doplnit „🧪 v testu (počítá se jako hotový)" a přepsat 🆕 → 💡 v:
+### 4. Místa k úpravě (legendy a nápověda)
 
-- legendě tabulky vln pro Jira režim (`**První ikona = stav tiketu**`),
-- `.PARAMETER NoStatus` v hlavičce skriptu a `.SYNOPSIS`/`.DESCRIPTION` tam,
-  kde se glyphy vypisují,
-- popisu glyphů v `mb-epic-graph/SKILL.md` (sekce „Use the outputs" a
-  `-NoStatus`).
+Doplnit 🧪 a přepsat 🆕 → 💡 přesně zde:
 
-Legenda pro Proposals režim (`**První ikona = stav proposalu**`) zůstává bez 🧪
-i bez 💡 — 🆕 se v ní nevyskytuje (proposal uzly stav „bez návrhu" nemají).
+| soubor | místo | úprava |
+|---|---|---|
+| `epic-graph.ps1` | `.PARAMETER NoStatus` (výčet glyphů i degradovaná varianta) | + 🧪, 🆕 → 💡 |
+| `epic-graph.ps1` | kaskáda `Get-StatusGlyph` | + stupeň 🧪, 🆕 → 💡 |
+| `epic-graph.ps1` | legenda tabulky vln, Jira režim (`**První ikona = stav tiketu**`) | + 🧪, 🆕 → 💡 |
+| `SKILL.md` | bullet `-ProposalPath` (degradovaný výčet `✅/🔨/▶️/⛔`) | + 🧪 |
+| `SKILL.md` | výčet glyphů v „Use the outputs" | + 🧪, 🆕 → 💡 |
 
-### 6. Testy
+Beze změny zůstávají: legenda pro Proposals režim
+(`**První ikona = stav proposalu**`) a popis Proposals režimu v `SKILL.md`
+(`completed/` = ✅, `active/` = 🔨, `next/` = ▶️/⏳) — jen se u nich doplní
+poznámka, že 🧪 se v tomto režimu nevyskytuje. `.SYNOPSIS`/`.DESCRIPTION`
+žádný výčet glyphů nenesou, takže se nemění.
+
+Jiné výskyty 🆕 v `ums/` neexistují.
+
+### 5. Testy
 
 Nová fixture `tests/fixtures/jira/status.json` — existující `snap.json`
 zůstává nedotčený (visí na něm současné testy a `statusCategory` neobsahuje).
-Fixture má epic a tři blokující páry se všemi relevantními kategoriemi (klíče
-v tabulce jsou zástupné, ve fixture ponesou konzistentní projektový prefix):
+Fixture nese epic a tři blokující páry pokrývající všechny relevantní
+kategorie; klíče v tabulce jsou zástupné, ve fixture ponesou konzistentní
+projektový prefix:
 
-| tiket | stav | blokuje | očekávaný glyph |
+| tiket | stav | blokuje | glyph bez `-ProposalPath` |
 |---|---|---|---|
 | A | Test | B | 🧪 |
 | B | To Do | — | ▶️ (odblokován) |
@@ -166,32 +174,33 @@ v tabulce jsou zástupné, ve fixture ponesou konzistentní projektový prefix):
 | E | Done | F | ✅ |
 | F | To Do | — | ▶️ |
 
-Testy v `tests/e2e.tests.ps1` (běží bez `-ProposalPath`, tedy v degradovaném
-4-stavovém režimu doplněném o 🧪):
+Testy v `tests/e2e.tests.ps1`:
 
-1. Glyphy a odblokování dle tabulky výše — pokrývá jádro změny.
-2. Match na názvu je case-insensitive (varianta `test` v fixture nebo druhá
-   drobná fixture) a „In Progress" zůstává 🔨 — pojistka, že se nezobecnilo
-   na celou kategorii `indeterminate`.
+1. Glyphy a odblokování dle tabulky výše (běh bez `-ProposalPath`) — jádro
+   změny.
+2. Match na názvu je case-insensitive a „In Progress" zůstává 🔨 — pojistka,
+   že se chování nezobecnilo na celou kategorii `indeterminate`. Varianta
+   `test` malými písmeny bude přímo v fixture jako sedmý tiket.
 3. `-NoStatus` potlačí i 🧪.
-4. Tiket odblokovaný a bez proposalu nese 💡 (nikoli 🆕) — proti návratu starého
-   glyphu při budoucím revendoringu.
+4. Tentýž běh **s** `-ProposalPath` mířícím na složku bez proposalů náležejících
+   těmto tiketům: A zůstává 🧪 a odblokované tikety bez návrhu nesou 💡
+   (nikoli 🆕) — pokrývá plnou rodinu glyphů a chrání proti návratu 🆕 při
+   budoucím revendoringu.
 
-### 7. Dokumentace rozpracování epiku
+### 6. Dokumentace rozpracování epiku
 
-`mb-epic-elaboration/protocol.md` — jedna věta u readiness/window selection:
-tiket ve stavu „Test" se počítá jako hotový, takže okno lze naplánovat i na
-tiket, jehož jediný blokátor sedí v testu.
+`mb-epic-elaboration/protocol.md` — jedna věta u výběru okna: tiket ve stavu
+„Test" se počítá jako hotový, takže okno lze naplánovat i na tiket, jehož
+jediný blokátor sedí v testu.
 
 ## Dopady
 
-- Tabulka vln v popisu epiku: tikety za tiketem v Testu se posunou z ⛔/⏳ na
-  ▶️/💡. Sloupce (vlny) se **nemění** — vlny počítá topologie `Blocks`, ne
-  stavy.
-- Všechny dosavadní 🆕 v grafech epiků se při regeneraci změní na 💡.
+- Tabulka vln v popisu epiku: tikety za tiketem v Testu se posunou z ⛔ na 💡,
+  resp. z ⏳ na ▶️. Sloupce (vlny) se **nemění** — vlny počítá topologie
+  `Blocks`, ne stavy.
+- Uložené `graph.md` v `memory-bank/epics/<epic>/` se při nejbližší regeneraci
+  diffnou o změněné glyphy (včetně všech dosavadních 🆕 → 💡) — očekávané.
 - Konzistenční oracle (`-Check`) se nemění; exit kódy zůstávají.
-- `graph.md` v `memory-bank/epics/<epic>/` se při nejbližší regeneraci
-  diffne o změněné glyphy — očekávané.
 
 ## Rizika
 
