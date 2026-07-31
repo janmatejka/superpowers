@@ -238,7 +238,7 @@ if ($Source -eq 'Jira') {
         $webUrl = if ($ri.PSObject.Properties['webUrl']) { [string]$ri.webUrl } else { '' }
         $issues[[string]$ri.key] = [pscustomobject]@{
             Key = [string]$ri.key; Summary = [string](Get-Field $ri 'summary')
-            Status = if ($statusObj) { [string]$statusObj.name } else { '' }
+            Status = if ($statusObj -and $statusObj.PSObject.Properties['name']) { [string]$statusObj.name } else { '' }
             StatusCat = if ($statusObj -and $statusObj.PSObject.Properties['statusCategory'] -and $statusObj.statusCategory) { [string]$statusObj.statusCategory.key } else { '' }
             Type = if ($typeObj) { [string]$typeObj.name } else { '' }
             Parent = if ($parentObj) { [string]$parentObj.key } else { '' }

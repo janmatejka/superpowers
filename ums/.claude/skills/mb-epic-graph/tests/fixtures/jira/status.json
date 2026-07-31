@@ -1,0 +1,36 @@
+{ "issues": [
+  { "key": "DEMO-0",  "fields": { "summary": "Epic stavovych ikon", "issuetype": {"name":"Epic"},  "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-1",  "fields": { "summary": "[graf] Tiket v testu", "issuetype": {"name":"Story"}, "status": {"name":"Test","statusCategory":{"key":"indeterminate"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-2"} } ] } },
+  { "key": "DEMO-2",  "fields": { "summary": "[graf] Nasledník tiketu v testu", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-3",  "fields": { "summary": "[graf] Tiket v implementaci", "issuetype": {"name":"Story"}, "status": {"name":"In Progress","statusCategory":{"key":"indeterminate"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-4"} } ] } },
+  { "key": "DEMO-4",  "fields": { "summary": "[graf] Nasledník tiketu v implementaci", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-5",  "fields": { "summary": "[graf] Hotovy tiket", "issuetype": {"name":"Story"}, "status": {"name":"Done","statusCategory":{"key":"done"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-6"} } ] } },
+  { "key": "DEMO-6",  "fields": { "summary": "[graf] Nasledník hotoveho tiketu bez navrhu", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-7",  "fields": { "summary": "[graf] Tiket ve stavu malymi pismeny", "issuetype": {"name":"Story"}, "status": {"name":"test","statusCategory":{"key":"indeterminate"}}, "issuelinks": [] } },
+  { "key": "DEMO-8",  "fields": { "summary": "[graf] Tiket v testu s proposalem v active", "issuetype": {"name":"Story"}, "status": {"name":"Test","statusCategory":{"key":"indeterminate"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-9",  "fields": { "summary": "[graf] Tiket blokovany externim tiketem", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "inwardIssue": {"key":"DEMO-99"} } ] } },
+  { "key": "DEMO-10", "fields": { "summary": "[graf] Tiket s prazdnym stavem", "issuetype": {"name":"Story"}, "status": {}, "issuelinks": [] } },
+
+  { "key": "DEMO-11", "fields": { "summary": "[graf] Tiket v review", "issuetype": {"name":"Story"}, "status": {"name":"Review","statusCategory":{"key":"indeterminate"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-15"} } ] } },
+  { "key": "DEMO-12", "fields": { "summary": "[graf] Tiket v dokumentaci", "issuetype": {"name":"Story"}, "status": {"name":"Documentation","statusCategory":{"key":"indeterminate"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-13", "fields": { "summary": "[graf] Tiket v design review s proposalem v active", "issuetype": {"name":"Story"}, "status": {"name":"Design Review","statusCategory":{"key":"indeterminate"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-14"} } ] } },
+  { "key": "DEMO-14", "fields": { "summary": "[graf] Nasledník tiketu v design review", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-15", "fields": { "summary": "[graf] Nasledník tiketu v review", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+
+  { "key": "DEMO-16", "fields": { "summary": "[graf] Zruseny tiket", "issuetype": {"name":"Story"}, "status": {"name":"Cancelled","statusCategory":{"key":"done"}},
+      "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-17"} } ] } },
+  { "key": "DEMO-17", "fields": { "summary": "[graf] Nasledník zruseneho tiketu", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } }
+] }
