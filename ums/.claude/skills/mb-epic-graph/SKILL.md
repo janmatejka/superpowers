@@ -4,7 +4,7 @@ description: Use when you need a Jira epic's dependency view (the wave table for
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.3"
+  version: "1.4"
 ---
 
 # Command: mb-epic-graph
@@ -48,7 +48,10 @@ path directly; small results: write the JSON to a file yourself). Accepted
 shapes: `{issues:{nodes:[…]}}`, REST `{issues:[…]}`, bare issue array, single
 issue. Multiple files merge — fetch external blockers reported by the check
 (e.g. `key in (UMS-2884, …)`) into a second file when you want them fully
-labeled.
+labeled. The second query MUST use the SAME `fields` list: later files win on
+duplicate keys, so a snapshot without `status` silently strips a ticket's
+planning state and a ticket in `Test` would start blocking its successors
+again.
 
 Do NOT transform, filter, or summarize the JSON — the script normalizes it.
 
@@ -91,7 +94,8 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   preliminary proposaly/design drafty (atribuce přes jejich `**Jira:**`
   hlavičku nebo slug) a sytí stavový glyph tabulky vln: tiket s živým
   proposalem/draftem (`next/` nebo `active/`) se čte jako „návrh hotov";
-  bez `-ProposalPath` glyph degraduje na ✅/🔨/▶️/⛔. V Proposals režimu je
+  bez `-ProposalPath` glyph degraduje na ✅/🧪/👀/🔨/❔/⛔, kde ❔ = odblokováno,
+  stav návrhu neznámý (běh o návrzích nic neví, takže netvrdí ▶️). V Proposals režimu je
   to **primární zdroj uzlů** — skript enumeruje členy epiku jako
   `{design_,plan_,proposal_}*.md` pod touto cestou (indexní soubor typu
   `_prehled.md` uzlem není); párování souborů do jednoho uzlu (slug) —
@@ -121,15 +125,23 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   row right after its last-placed blocker (roots first, biggest stream first).
   Each ticket is prefixed by two inline markers, in this order: first a
   **status glyph**, then the **stream emoji**. The status glyph merges Jira
-  status category, blocker readiness and proposal existence into ONE symbol —
-  ✅ done · 🔨 in progress · ▶️ ready to implement (proposal + unblocked) ·
-  ⏳ proposal ready but still blocked · 🆕 ready to elaborate (unblocked, no
-  proposal) · ⛔ blocked — where "unblocked" = every `Blocks` blocker is done
-  (an external/unknown-status blocker counts as blocking; external tickets get
-  no glyph). In Proposals mode the glyph comes from the proposal stage
-  (`completed/` = ✅, `active/` = 🔨, `next/` = ▶️/⏳ by readiness). It uses a
-  symbolic family deliberately distinct from the
-  square/circle stream palette; suppress it with `-NoStatus`.
+  status (name AND category), blocker readiness and proposal existence into ONE
+  symbol — ✅ done · 🧪 in test/review/documentation, counts as done for
+  planning · 👀 in design review, waiting for the architect (still blocking) ·
+  🔨 in progress · ▶️ ready to implement (proposal + unblocked) · ⏳ proposal
+  ready but still blocked · 💡 ready to elaborate (unblocked, no proposal) ·
+  ⛔ blocked · ❔ unblocked but the run has no proposal information (no
+  `-ProposalPath`) — where "unblocked" = every `Blocks` blocker is DONE FOR
+  PLANNING, i.e. status category done (Done, Cancelled) or status name Test /
+  Review / Documentation (an external/unknown-status blocker counts as
+  blocking; external tickets get no glyph). Design Review deliberately keeps
+  blocking: a design under review is not an implementation. In Proposals mode
+  the glyph comes from the proposal stage (`completed/` = ✅, `active/` = 🔨,
+  `next/` = ▶️/⏳ by readiness, `abandoned/` = 💡/⛔ by readiness) and 🧪/👀/❔
+  never appear there, because the `**Stav:**` header field is free text and the
+  proposal's state is always known from its folder. It uses a symbolic family
+  deliberately distinct from the square/circle stream palette; suppress it
+  with `-NoStatus`.
   A stream emoji is inline before each ticket (no separate column): the emoji
   marks the primordial ancestor (foundational root) the ticket descends from,
   assigned dynamically from a palette per root that has descendants — a ticket

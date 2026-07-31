@@ -60,13 +60,21 @@ wave table).
 .PARAMETER NoStatus
 Suppress the per-ticket status glyph in the wave table (the leading symbol
 before the stream emoji). By default each ticket shows one merged status glyph
-derived from its Jira status category, blocker readiness, and — when
--ProposalPath is given — whether a live proposal exists: ✅ done, 🔨 in
-progress, ▶️ ready to implement (proposal + unblocked), ⏳ proposal ready but
-still blocked, 🆕 ready to elaborate (unblocked, no proposal), ⛔ blocked.
-Without -ProposalPath it degrades to ✅/🔨/▶️/⛔ (no proposal distinction).
+derived from its Jira status NAME and category, blocker readiness, and — when
+-ProposalPath is given — whether a live proposal exists: ✅ done, 🧪 in
+test/review/documentation (counts as done for planning), 👀 in design review
+(waiting for the architect, still blocking), 🔨 in progress, ▶️ ready to
+implement (proposal + unblocked), ⏳ proposal ready but still blocked,
+💡 ready to elaborate (unblocked, no proposal), ⛔ blocked.
+Without -ProposalPath it degrades to ✅/🧪/👀/🔨/❔/⛔, where ❔ means
+"unblocked, proposal state unknown" — the run has no proposal information, so
+it must not claim ▶️.
+"Done for planning" (i.e. a blocker that no longer blocks) = status category
+done (Done, Cancelled) or status name Test / Review / Documentation.
 In -Source Proposals the glyph comes from the proposal stage folder:
-completed/ = done, active/ = in progress, next/ = live proposal.
+completed/ = done, active/ = in progress, next/ = live proposal,
+abandoned/ = 💡 or ⛔ by readiness. The name-based 🧪/👀 never appear
+there, because the '**Stav:**' header field is free text.
 
 .PARAMETER JiraBaseUrl
 Base URL for ticket links in the wave table (default
@@ -238,7 +246,7 @@ if ($Source -eq 'Jira') {
         $webUrl = if ($ri.PSObject.Properties['webUrl']) { [string]$ri.webUrl } else { '' }
         $issues[[string]$ri.key] = [pscustomobject]@{
             Key = [string]$ri.key; Summary = [string](Get-Field $ri 'summary')
-            Status = if ($statusObj) { [string]$statusObj.name } else { '' }
+            Status = if ($statusObj -and $statusObj.PSObject.Properties['name']) { [string]$statusObj.name } else { '' }
             StatusCat = if ($statusObj -and $statusObj.PSObject.Properties['statusCategory'] -and $statusObj.statusCategory) { [string]$statusObj.statusCategory.key } else { '' }
             Type = if ($typeObj) { [string]$typeObj.name } else { '' }
             Parent = if ($parentObj) { [string]$parentObj.key } else { '' }
@@ -641,14 +649,49 @@ function Get-TicketUrl([string] $k) {
     if ($jiraBase) { return "$jiraBase/browse/$k" }
     return ''
 }
+
+# Stavy, které se pro plánování počítají jako hotové, i když jejich
+# statusCategory hotová není: práce je odvedená, dočítává se ocas.
+# Test (10205), Review (10206) a Documentation (11064) jsou v kategorii
+# indeterminate stejně jako In Progress (3) — rozlišit lze jen názvem.
+# Hodnoty jsou normalizované (lowercase, bez diakritiky).
+$script:DoneForPlanningStatusNames = @('test', 'review', 'documentation')
+
+# Stav, kdy tiket čeká na posouzení architektem. NENÍ hotový pro plánování
+# (návrh se ještě nepřevedl na implementaci), ale má vlastní ikonu, aby na něj
+# dashboard nikoho neposílal. V UMS workflow zatím není zapojen — podpora
+# dopředu (viz mb-architect-review a kontrakt, Architect Review Gate).
+$script:DesignReviewStatusNames = @('design review')
+
+function Test-StatusNameIn([string] $key, [string[]] $names) {
+    # Match podle NÁZVU stavu. Jen v Jira režimu — v Proposals režimu plní
+    # Status volnotextové hlavičkové pole '**Stav:**', takže hodnota „Test"
+    # by tiše měnila semantiku JIRA-less grafů. Uvnitř funkce je nutné
+    # $script:Source, parametr $Source zde není ve scope.
+    # Porovnání jde -contains (case-insensitive), NIKOLI .Contains().
+    if ($script:Source -ne 'Jira') { return $false }
+    if (-not $issues.Contains($key)) { return $false }
+    $n = (Remove-Diacritics ([string]$issues[$key].Status).Trim()).ToLowerInvariant()
+    if (-not $n) { return $false }
+    return ($names -contains $n)
+}
+
+function Test-DoneForPlanning([string] $key) {
+    # Hotový pro plánování = neblokuje své následníky.
+    if (-not $issues.Contains($key)) { return $false }   # externí tiket: konzervativně ne
+    if ($issues[$key].StatusCat -eq 'done') { return $true }
+    return (Test-StatusNameIn $key $script:DoneForPlanningStatusNames)
+}
+
 function Test-Unblocked([string] $k) {
-    # odblokováno = všechny přímé Blocks-blokátory jsou hotové (statusCategory=done).
+    # odblokováno = všechny přímé Blocks-blokátory jsou hotové pro plánování
+    # (kategorie done, nebo Test/Review/Documentation — viz Test-DoneForPlanning).
     # Blokátor s neznámým stavem (externí, mimo snapshot) se konzervativně počítá
     # jako blokující — pro přesnost doplň externí blokátory druhým snapshotem.
     $preds = @(@($blockedBy[$k]) | Where-Object { $_ })
     if ($preds.Count -eq 0) { return $true }
     foreach ($p in $preds) {
-        if (-not ($issues.Contains($p) -and $issues[$p].StatusCat -eq 'done')) { return $false }
+        if (-not (Test-DoneForPlanning $p)) { return $false }
     }
     return $true
 }
@@ -661,17 +704,22 @@ function Get-StatusGlyph([string] $k) {
     if (-not $issues.Contains($k)) { return '' }   # externí uzel bez známého stavu
     $cat = $issues[$k].StatusCat
     if ($cat -eq 'done') { return '✅' }                                    # hotovo
+    # Kroky 🧪/👀 MUSÍ předbíhat 'indeterminate' i $proposalActive (viz DEMO-8/DEMO-13).
+    if (Test-StatusNameIn $k $script:DoneForPlanningStatusNames) { return '🧪' }  # v testu/review/dokumentaci
+    if (Test-StatusNameIn $k $script:DesignReviewStatusNames) { return '👀' }     # čeká na architekta
     if ($cat -eq 'indeterminate' -or $proposalActive.ContainsKey($k)) { return '🔨' }  # implementuje se
     # To-Do (kategorie 'new' nebo neznámá): rozliš připravenost × proposal
     $unblocked = Test-Unblocked $k
     if (-not $proposalInfoAvailable) {
-        # bez -ProposalPath: 4-stavová degradace (bez rozlišení proposalu)
-        if ($unblocked) { return '▶️' } else { return '⛔' }
+        # bez -ProposalPath o návrzích nic nevíme: ❔ = odblokováno, stav návrhu
+        # neznámý. ▶️ zůstává vyhrazeno pro „návrh existuje" (viz níže), aby
+        # ikona netvrdila víc, než skript ví.
+        if ($unblocked) { return '❔' } else { return '⛔' }
     }
     if ($proposalLive.ContainsKey($k)) {
         if ($unblocked) { return '▶️' } else { return '⏳' }   # návrh hotov: připraveno / čeká
     }
-    if ($unblocked) { return '🆕' } else { return '⛔' }        # bez návrhu: k rozpracování / blokováno
+    if ($unblocked) { return '💡' } else { return '⛔' }        # bez návrhu: k rozpracování / blokováno
 }
 function Get-CellText([string] $k) {
     $url = Get-TicketUrl $k
@@ -924,9 +972,13 @@ $keyNote = if ($Source -eq 'Proposals') { 'Klíč = slug proposalu.' } else { 'K
 [void]$report.AppendLine('')
 if (-not $NoStatus) {
     if ($Source -eq 'Proposals') {
-        [void]$report.AppendLine('**První ikona = stav proposalu** (fáze složky + připravenost, sloučeno do jedné): ✅ hotovo (completed) · 🔨 implementuje se (active) · ▶️ připraveno k implementaci (odblokováno) · ⏳ čeká na blokátory · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
+        [void]$report.AppendLine('**První ikona = stav proposalu** (fáze složky + připravenost, sloučeno do jedné): ✅ hotovo (completed) · 🔨 implementuje se (active) · ▶️ připraveno k implementaci (odblokováno) · ⏳ čeká na blokátory · 💡 opuštěný návrh (abandoned) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové. Ikony 🧪/👀/❔ zde nevznikají — hlavičkové pole `**Stav:**` je volný text a stav návrhu je vždy znám ze složky.')
     } else {
-        [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 🆕 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
+        [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🧪 v testu/review/dokumentaci — počítá se jako hotový · 👀 v design review — čeká na architekta, nezačínej · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 💡 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno · ❔ odblokováno, stav návrhu neznámý (běh bez `-ProposalPath`). Odblokováno = všechny `Blocks`-blokátory hotové pro plánování (Done, Cancelled, Test, Review, Documentation).')
+        if (-not $proposalInfoAvailable) {
+            [void]$report.AppendLine('')
+            [void]$report.AppendLine('_Vygenerováno bez `-ProposalPath` — stav návrhů není znám, proto ❔ místo ▶️/⏳/💡._')
+        }
     }
     [void]$report.AppendLine('')
 }
