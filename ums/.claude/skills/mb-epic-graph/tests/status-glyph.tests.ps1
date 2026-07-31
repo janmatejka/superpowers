@@ -80,4 +80,13 @@ Assert-Match $bare.Out '(?m)^\|\s+\| ❔ \S+ \[DEMO-2\]' 'DEMO-2 sits in wave 1'
 Assert-Match $full.Out '(?m)^\| 🧪 \S+ \[DEMO-1\]'    'DEMO-1 sits in wave 0 (with -ProposalPath)'
 Assert-Match $full.Out '(?m)^\|\s+\| ▶️ \S+ \[DEMO-2\]' 'DEMO-2 sits in wave 1 (with -ProposalPath)'
 
+Write-Host 'Legend documents the whole family'
+Assert-Match $full.Out '🧪 v testu/review/dokumentaci' 'jira legend documents 🧪'
+Assert-Match $full.Out '👀 v design review' 'jira legend documents 👀'
+Assert-Match $full.Out '💡 k rozpracování' 'jira legend documents 💡'
+Assert-Match $full.Out '❔ odblokováno, stav návrhu neznámý' 'jira legend documents ❔'
+Assert-Match $full.Out 'hotové pro plánování' 'jira legend defines what unblocks a successor'
+Assert-Match $sp.Out '💡 opuštěný návrh' 'proposals legend documents the abandoned stage'
+Assert-NotMatch $sp.Out '🧪 v testu' 'proposals legend does not advertise 🧪 as a ticket state'
+
 Complete-Tests

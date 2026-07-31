@@ -60,13 +60,21 @@ wave table).
 .PARAMETER NoStatus
 Suppress the per-ticket status glyph in the wave table (the leading symbol
 before the stream emoji). By default each ticket shows one merged status glyph
-derived from its Jira status category, blocker readiness, and — when
--ProposalPath is given — whether a live proposal exists: ✅ done, 🔨 in
-progress, ▶️ ready to implement (proposal + unblocked), ⏳ proposal ready but
-still blocked, 🆕 ready to elaborate (unblocked, no proposal), ⛔ blocked.
-Without -ProposalPath it degrades to ✅/🔨/▶️/⛔ (no proposal distinction).
+derived from its Jira status NAME and category, blocker readiness, and — when
+-ProposalPath is given — whether a live proposal exists: ✅ done, 🧪 in
+test/review/documentation (counts as done for planning), 👀 in design review
+(waiting for the architect, still blocking), 🔨 in progress, ▶️ ready to
+implement (proposal + unblocked), ⏳ proposal ready but still blocked,
+💡 ready to elaborate (unblocked, no proposal), ⛔ blocked.
+Without -ProposalPath it degrades to ✅/🧪/👀/🔨/❔/⛔, where ❔ means
+"unblocked, proposal state unknown" — the run has no proposal information, so
+it must not claim ▶️.
+"Done for planning" (i.e. a blocker that no longer blocks) = status category
+done (Done, Cancelled) or status name Test / Review / Documentation.
 In -Source Proposals the glyph comes from the proposal stage folder:
-completed/ = done, active/ = in progress, next/ = live proposal.
+completed/ = done, active/ = in progress, next/ = live proposal,
+abandoned/ = 💡. The name-based 🧪/👀 never appear there, because the
+'**Stav:**' header field is free text.
 
 .PARAMETER JiraBaseUrl
 Base URL for ticket links in the wave table (default
@@ -963,9 +971,9 @@ $keyNote = if ($Source -eq 'Proposals') { 'Klíč = slug proposalu.' } else { 'K
 [void]$report.AppendLine('')
 if (-not $NoStatus) {
     if ($Source -eq 'Proposals') {
-        [void]$report.AppendLine('**První ikona = stav proposalu** (fáze složky + připravenost, sloučeno do jedné): ✅ hotovo (completed) · 🔨 implementuje se (active) · ▶️ připraveno k implementaci (odblokováno) · ⏳ čeká na blokátory · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
+        [void]$report.AppendLine('**První ikona = stav proposalu** (fáze složky + připravenost, sloučeno do jedné): ✅ hotovo (completed) · 🔨 implementuje se (active) · ▶️ připraveno k implementaci (odblokováno) · ⏳ čeká na blokátory · 💡 opuštěný návrh (abandoned) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové. Ikony 🧪/👀/❔ zde nevznikají — hlavičkové pole `**Stav:**` je volný text a stav návrhu je vždy znám ze složky.')
     } else {
-        [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 💡 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové.')
+        [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🧪 v testu/review/dokumentaci — počítá se jako hotový · 👀 v design review — čeká na architekta, nezačínej · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 💡 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno · ❔ odblokováno, stav návrhu neznámý (běh bez `-ProposalPath`). Odblokováno = všechny `Blocks`-blokátory hotové pro plánování (Done, Cancelled, Test, Review, Documentation).')
     }
     [void]$report.AppendLine('')
 }
