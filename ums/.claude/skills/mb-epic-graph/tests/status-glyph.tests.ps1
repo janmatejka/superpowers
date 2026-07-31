@@ -89,4 +89,12 @@ Assert-Match $full.Out 'hotové pro plánování' 'jira legend defines what unbl
 Assert-Match $sp.Out '💡 opuštěný návrh' 'proposals legend documents the abandoned stage'
 Assert-NotMatch $sp.Out '🧪 v testu' 'proposals legend does not advertise 🧪 as a ticket state'
 
+Write-Host 'Jira mode: an active/ work item outranks a stale To Do status'
+Assert-Match $full.Out '🔨 \S+ \[DEMO-18\]' 'DEMO-18 (To Do + proposal in active/) -> 🔨'
+Assert-Match $bare.Out '❔ \S+ \[DEMO-18\]' 'DEMO-18 without -ProposalPath -> ❔ (active/ is invisible there)'
+
+Write-Host 'Degraded run flags itself so a pasted report cannot be misread'
+Assert-Match $bare.Out 'stav návrhů není znám' 'run without -ProposalPath announces the degradation'
+Assert-NotMatch $full.Out 'stav návrhů není znám' 'run with -ProposalPath carries no degradation note'
+
 Complete-Tests

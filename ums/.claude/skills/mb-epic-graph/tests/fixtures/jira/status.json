@@ -32,5 +32,6 @@
 
   { "key": "DEMO-16", "fields": { "summary": "[graf] Zruseny tiket", "issuetype": {"name":"Story"}, "status": {"name":"Cancelled","statusCategory":{"key":"done"}},
       "issuelinks": [ { "type": {"name":"Blocks"}, "outwardIssue": {"key":"DEMO-17"} } ] } },
-  { "key": "DEMO-17", "fields": { "summary": "[graf] Nasledník zruseneho tiketu", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } }
+  { "key": "DEMO-17", "fields": { "summary": "[graf] Nasledník zruseneho tiketu", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } },
+  { "key": "DEMO-18", "fields": { "summary": "[graf] Tiket v To Do s proposalem v active", "issuetype": {"name":"Story"}, "status": {"name":"To Do","statusCategory":{"key":"new"}}, "issuelinks": [] } }
 ] }

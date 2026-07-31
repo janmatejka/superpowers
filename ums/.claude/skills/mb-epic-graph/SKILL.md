@@ -137,10 +137,11 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   blocking; external tickets get no glyph). Design Review deliberately keeps
   blocking: a design under review is not an implementation. In Proposals mode
   the glyph comes from the proposal stage (`completed/` = ✅, `active/` = 🔨,
-  `next/` = ▶️/⏳ by readiness, `abandoned/` = 💡/⛔ by readiness) and the
-  name-based 🧪/👀 never appear, because the `**Stav:**` header field is free
-  text. It uses a symbolic family deliberately distinct from the
-  square/circle stream palette; suppress it with `-NoStatus`.
+  `next/` = ▶️/⏳ by readiness, `abandoned/` = 💡/⛔ by readiness) and 🧪/👀/❔
+  never appear there, because the `**Stav:**` header field is free text and the
+  proposal's state is always known from its folder. It uses a symbolic family
+  deliberately distinct from the square/circle stream palette; suppress it
+  with `-NoStatus`.
   A stream emoji is inline before each ticket (no separate column): the emoji
   marks the primordial ancestor (foundational root) the ticket descends from,
   assigned dynamically from a palette per root that has descendants — a ticket

@@ -704,6 +704,7 @@ function Get-StatusGlyph([string] $k) {
     if (-not $issues.Contains($k)) { return '' }   # externí uzel bez známého stavu
     $cat = $issues[$k].StatusCat
     if ($cat -eq 'done') { return '✅' }                                    # hotovo
+    # Kroky 🧪/👀 MUSÍ předbíhat 'indeterminate' i $proposalActive (viz DEMO-8/DEMO-13).
     if (Test-StatusNameIn $k $script:DoneForPlanningStatusNames) { return '🧪' }  # v testu/review/dokumentaci
     if (Test-StatusNameIn $k $script:DesignReviewStatusNames) { return '👀' }     # čeká na architekta
     if ($cat -eq 'indeterminate' -or $proposalActive.ContainsKey($k)) { return '🔨' }  # implementuje se
@@ -974,6 +975,10 @@ if (-not $NoStatus) {
         [void]$report.AppendLine('**První ikona = stav proposalu** (fáze složky + připravenost, sloučeno do jedné): ✅ hotovo (completed) · 🔨 implementuje se (active) · ▶️ připraveno k implementaci (odblokováno) · ⏳ čeká na blokátory · 💡 opuštěný návrh (abandoned) · ⛔ blokováno. Odblokováno = všechny `Blocks`-blokátory hotové. Ikony 🧪/👀/❔ zde nevznikají — hlavičkové pole `**Stav:**` je volný text a stav návrhu je vždy znám ze složky.')
     } else {
         [void]$report.AppendLine('**První ikona = stav tiketu** (JIRA stav + připravenost + existence návrhu, sloučeno do jedné): ✅ hotovo · 🧪 v testu/review/dokumentaci — počítá se jako hotový · 👀 v design review — čeká na architekta, nezačínej · 🔨 implementuje se · ▶️ připraveno k implementaci (návrh hotov, odblokováno) · ⏳ návrh hotov, čeká na blokátory · 💡 k rozpracování (odblokováno, bez návrhu) · ⛔ blokováno · ❔ odblokováno, stav návrhu neznámý (běh bez `-ProposalPath`). Odblokováno = všechny `Blocks`-blokátory hotové pro plánování (Done, Cancelled, Test, Review, Documentation).')
+        if (-not $proposalInfoAvailable) {
+            [void]$report.AppendLine('')
+            [void]$report.AppendLine('_Vygenerováno bez `-ProposalPath` — stav návrhů není znám, proto ❔ místo ▶️/⏳/💡._')
+        }
     }
     [void]$report.AppendLine('')
 }
