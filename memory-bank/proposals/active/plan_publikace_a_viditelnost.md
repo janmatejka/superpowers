@@ -473,6 +473,7 @@ git commit -m "UMS: mb-doc-index — enumerace dokumentů napříč větvemi ori
 - Modify: `ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1`
 - Create: `ums/.claude/skills/mb-doc-index/tests/findings.tests.ps1`
 - Create: `ums/.claude/skills/mb-doc-index/SKILL.md`
+- Modify: `ums/.claude/skills/shared/SKILLS_MANIFEST.md` (registrace nového skillu)
 
 **Interfaces:**
 - Consumes: `New-FixtureRepo`, `Invoke-Index` (Task 2).
@@ -600,11 +601,19 @@ pwsh <this skill>/scripts/doc-index.ps1 `
   own test data.
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Zaregistruj skill do manifestu**
+
+Do tabulky `## Aktivní mb-* skilly` v `ums/.claude/skills/shared/SKILLS_MANIFEST.md` přidej řádek (za `mb-epic-graph`, ať jsou nástroje pohromadě):
+
+```markdown
+| mb-doc-index | [mb-doc-index/SKILL.md](../mb-doc-index/SKILL.md) | Read-only index dokumentů napříč větvemi origin (model tahu) + kolizní findings pro discovery |
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add ums/.claude/skills/mb-doc-index/
-git commit -m "UMS: mb-doc-index — findings, exit kódy a dokumentace skillu"
+git add ums/.claude/skills/mb-doc-index/ ums/.claude/skills/shared/SKILLS_MANIFEST.md
+git commit -m "UMS: mb-doc-index — findings, exit kódy, dokumentace a registrace skillu"
 ```
 
 ---
@@ -1031,6 +1040,7 @@ git commit -m "UMS: mb-state a mb-epic-elaboration konzumují index dokumentů"
 **Files:**
 - Modify: `ums/.claude/skills/mb-jira-update/SKILL.md` (§5–7, §10)
 - Modify: `ums/.claude/skills/mb-architect-review/SKILL.md` (Push Policy, krok 4)
+- Modify: `ums/.claude/skills/shared/SKILLS_MANIFEST.md` (popis `mb-architect-review` už neplatí)
 
 **Interfaces:**
 - Consumes: `## Publication Contract` (Task 1).
@@ -1092,17 +1102,21 @@ sees neither the design nor `context.md`.
 
 V kroku 4 režimu request nahraď `**Push the ticket branch** (fail-closed, explicit approval per Push Policy).` za `**Publish the ticket branch** (announced push per the Publication Contract; the pinned design commit MUST be reachable on origin before step 5 writes the link).`
 
-- [ ] **Step 5: Ověř, že nikde nezůstal starý slib**
+- [ ] **Step 5: Sjednoť popis v manifestu**
+
+V `ums/.claude/skills/shared/SKILLS_MANIFEST.md` nahraď v řádku `mb-architect-review` část `push jen se schválením` za `publikace větve dle Publication Contract` — dvouúrovňová politika starý popis ruší.
+
+- [ ] **Step 6: Ověř, že nikde nezůstal starý slib**
 
 ```bash
-grep -rn "goes live on the next push\|valid on next push\|explicit approval per Push Policy" ums/.claude/skills/
+grep -rn "goes live on the next push\|valid on next push\|explicit approval per Push Policy\|push jen se schválením" ums/.claude/
 ```
 Expected: žádný výstup.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add ums/.claude/skills/mb-jira-update/SKILL.md ums/.claude/skills/mb-architect-review/SKILL.md
+git add ums/.claude/skills/mb-jira-update/SKILL.md ums/.claude/skills/mb-architect-review/SKILL.md ums/.claude/skills/shared/SKILLS_MANIFEST.md
 git commit -m "UMS: mb-jira-update a mb-architect-review vynucují dosažitelnost commitu"
 ```
 
