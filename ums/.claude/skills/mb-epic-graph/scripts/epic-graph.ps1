@@ -649,6 +649,12 @@ function Get-TicketUrl([string] $k) {
 # Hodnoty jsou normalizované (lowercase, bez diakritiky).
 $script:DoneForPlanningStatusNames = @('test', 'review', 'documentation')
 
+# Stav, kdy tiket čeká na posouzení architektem. NENÍ hotový pro plánování
+# (návrh se ještě nepřevedl na implementaci), ale má vlastní ikonu, aby na něj
+# dashboard nikoho neposílal. V UMS workflow zatím není zapojen — podpora
+# dopředu (viz mb-architect-review a kontrakt, Architect Review Gate).
+$script:DesignReviewStatusNames = @('design review')
+
 function Test-StatusNameIn([string] $key, [string[]] $names) {
     # Match podle NÁZVU stavu. Jen v Jira režimu — v Proposals režimu plní
     # Status volnotextové hlavičkové pole '**Stav:**', takže hodnota „Test"
@@ -691,6 +697,7 @@ function Get-StatusGlyph([string] $k) {
     $cat = $issues[$k].StatusCat
     if ($cat -eq 'done') { return '✅' }                                    # hotovo
     if (Test-StatusNameIn $k $script:DoneForPlanningStatusNames) { return '🧪' }  # v testu/review/dokumentaci
+    if (Test-StatusNameIn $k $script:DesignReviewStatusNames) { return '👀' }     # čeká na architekta
     if ($cat -eq 'indeterminate' -or $proposalActive.ContainsKey($k)) { return '🔨' }  # implementuje se
     # To-Do (kategorie 'new' nebo neznámá): rozliš připravenost × proposal
     $unblocked = Test-Unblocked $k

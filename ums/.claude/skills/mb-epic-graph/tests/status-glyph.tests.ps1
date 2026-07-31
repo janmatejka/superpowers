@@ -49,4 +49,14 @@ Assert-NotMatch $sp.Out '🧪 \S+ \*\*alfa\*\*' 'proposal with **Stav:** Test do
 Assert-Match $sp.Out '▶️ \S+ \*\*alfa\*\*' 'alfa (live next/, unblocked) -> ▶️'
 Assert-Match $sp.Out '⏳ \S+ \*\*beta\*\*' 'beta (live next/, blocked by alfa) -> ⏳'
 
+Write-Host 'Jira mode: Design Review has its own glyph and keeps blocking'
+Assert-Match $bare.Out '👀 \S+ \[DEMO-13\]' 'DEMO-13 (Design Review) -> 👀'
+Assert-Match $full.Out '👀 \S+ \[DEMO-13\]' 'DEMO-13 (Design Review + active/ proposal) -> 👀, not 🔨'
+Assert-Match $bare.Out '⛔ \S+ \[DEMO-14\]' 'DEMO-14 (blocker in Design Review) stays ⛔ without proposal info'
+Assert-Match $full.Out '⛔ \S+ \[DEMO-14\]' 'DEMO-14 (blocker in Design Review, no proposal) stays ⛔'
+
+Write-Host 'Proposals mode: free-text **Stav:** Design Review must not be matched'
+Assert-NotMatch $sp.Out '👀 \S+ \*\*gama\*\*' 'proposal with **Stav:** Design Review does not get 👀'
+Assert-Match $sp.Out '▶️ \S+ \*\*gama\*\*' 'gama (live next/, unblocked) -> ▶️'
+
 Complete-Tests
