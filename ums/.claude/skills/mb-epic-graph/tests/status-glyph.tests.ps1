@@ -59,4 +59,25 @@ Write-Host 'Proposals mode: free-text **Stav:** Design Review must not be matche
 Assert-NotMatch $sp.Out '👀 \S+ \*\*gama\*\*' 'proposal with **Stav:** Design Review does not get 👀'
 Assert-Match $sp.Out '▶️ \S+ \*\*gama\*\*' 'gama (live next/, unblocked) -> ▶️'
 
+Write-Host 'Jira mode: done category and external blockers'
+Assert-Match $bare.Out '✅ \S+ \[DEMO-5\]'  'DEMO-5 (Done) -> ✅'
+Assert-Match $bare.Out '✅ \S+ \[DEMO-16\]' 'DEMO-16 (Cancelled, category done) -> ✅'
+Assert-Match $bare.Out '⛔ \S+ \[DEMO-9\]'  'DEMO-9 (blocker outside the snapshot) stays ⛔'
+Assert-NotMatch $bare.Out '(?:✅|🧪|👀|🔨|▶️|⏳|💡|⛔|❔) \S+ \[DEMO-99\]' 'external node DEMO-99 carries no status glyph'
+
+Write-Host 'Jira mode: -NoStatus suppresses the whole family'
+$ns = Invoke-Graph @('-Source','Jira','-InputFile',$status,'-EpicKey','DEMO-0','-ProposalPath',$props,'-NoStatus')
+Assert-Eq $ns.Code 0 '-NoStatus exits 0'
+Assert-Match $ns.Out '\[DEMO-1\]' 'tickets are still listed with -NoStatus'
+Assert-NotMatch $ns.Out '🧪' '-NoStatus suppresses 🧪'
+Assert-NotMatch $ns.Out '👀' '-NoStatus suppresses 👀'
+Assert-NotMatch $ns.Out '❔' '-NoStatus suppresses ❔'
+Assert-NotMatch $ns.Out '💡' '-NoStatus suppresses 💡'
+
+Write-Host 'Wave columns depend on Blocks topology only, not on status'
+Assert-Match $bare.Out '(?m)^\| 🧪 \S+ \[DEMO-1\]'    'DEMO-1 sits in wave 0'
+Assert-Match $bare.Out '(?m)^\|\s+\| ❔ \S+ \[DEMO-2\]' 'DEMO-2 sits in wave 1'
+Assert-Match $full.Out '(?m)^\| 🧪 \S+ \[DEMO-1\]'    'DEMO-1 sits in wave 0 (with -ProposalPath)'
+Assert-Match $full.Out '(?m)^\|\s+\| ▶️ \S+ \[DEMO-2\]' 'DEMO-2 sits in wave 1 (with -ProposalPath)'
+
 Complete-Tests
