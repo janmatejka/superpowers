@@ -28,4 +28,21 @@ Assert-Match $glob.Out 'ums_1_alfa' '-BranchGlob propustí odpovídající věte
 Assert-NotMatch $glob.Out 'ums_2_beta' '-BranchGlob odfiltruje ostatní větve'
 
 Remove-Item -Recurse -Force (Split-Path $fx.Work)
+
+# A genuine git-level failure in the traversal must surface as exit 1, not a
+# silent "clean, nothing found" empty table. Reproduced offline/deterministically
+# by pointing an origin remote-tracking ref at a well-formed but nonexistent
+# SHA-1: "git rev-parse --verify --quiet <BaseRef>" (a different, valid ref)
+# still succeeds, but "git log --remotes=origin --not <BaseRef> ..." must walk
+# ALL refs under refs/remotes/, including the broken one, and fails with
+# "fatal: bad object" — confirmed manually before writing this assertion.
+$fx2 = New-FixtureRepo
+$brokenRef = Join-Path $fx2.Work '.git\refs\remotes\origin\broken'
+New-Item -ItemType Directory -Force -Path (Split-Path $brokenRef) | Out-Null
+Set-Content -LiteralPath $brokenRef -Encoding ascii -Value '0123456789abcdef0123456789abcdef01234567'
+$broken = Invoke-Index @('-RepoPath', $fx2.Work, '-BaseRef', 'origin/develop', '-NoFetch')
+Assert-Eq $broken.Code 1 'poškozená vzdálená větev shodí traverzaci na exit 1, ne na tichou prázdnou tabulku'
+Assert-NotMatch $broken.Out 'Index dokumentů' 'při selhání traverzace se tabulka vůbec netiskne'
+
+Remove-Item -Recurse -Force (Split-Path $fx2.Work)
 Complete-Tests

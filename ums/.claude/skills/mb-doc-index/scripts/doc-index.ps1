@@ -75,7 +75,29 @@ if (-not $RepoPath) {
 # and recurse until the call stack overflows. Confirmed by running it.
 function Invoke-RepoGit([string[]] $GitArgs) { & git -C $RepoPath @GitArgs 2>$null }
 
-if (-not $NoFetch) { Invoke-RepoGit @('fetch', '--prune', 'origin') | Out-Null }
+# --- git-call failure semantics ---------------------------------------------
+# TRAVERSAL/DATA calls below (log, branch -r --contains, show, ls-tree,
+# rev-parse for the base snapshot) read data the rest of the script depends
+# on: a non-zero exit there is a genuine git-level FAILURE (corrupt pack, I/O
+# error, resource limits against a large real repo) and must exit 1 — never
+# be swallowed into "clean run, nothing found". Use Stop-OnGitFailure right
+# after each such call.
+# This is DELIBERATELY different from the "cat-file -e" PROBE further below
+# (existence check before reading a branch tip): its non-zero exit is a
+# legitimate ANSWER ("this path is not on that branch's tip"), not a
+# failure — it must keep meaning exactly that and must NEVER be routed
+# through Stop-OnGitFailure.
+function Stop-OnGitFailure([string] $What) {
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Selhání příkazu git ($What), exit kód ${LASTEXITCODE}: index nelze spolehlivě sestavit."
+        exit 1
+    }
+}
+
+if (-not $NoFetch) {
+    Invoke-RepoGit @('fetch', '--prune', 'origin') | Out-Null
+    Stop-OnGitFailure 'fetch --prune origin'
+}
 Invoke-RepoGit @('rev-parse', '--verify', '--quiet', $BaseRef) | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Error "Base ref not found: $BaseRef"; exit 1 }
 
@@ -107,6 +129,7 @@ $log = Invoke-RepoGit @(
     ':(glob)**/memory-bank/proposals/active/*.md',
     ':(glob)**/memory-bank/proposals/completed/*.md'
 )
+Stop-OnGitFailure 'log --remotes=origin --not <BaseRef>'
 
 # Records are separated by \x01; the header line is SHA \t ISO date \t author,
 # every following non-empty line is a path touched by that commit.
@@ -138,6 +161,7 @@ $seen = @{}   # "branch|path" -> $true once resolved (hit or miss)
 foreach ($commit in $commits) {
     if (@($commit.Paths).Count -eq 0) { continue }
     $branchLines = Invoke-RepoGit @('branch', '-r', '--contains', $commit.Sha)
+    Stop-OnGitFailure "branch -r --contains $($commit.Sha)"
     $branches = @($branchLines | ForEach-Object {
         $b = $_.Trim()
         if ($b -match '\s->\s') { return }   # skip "origin/HEAD -> origin/develop"
@@ -152,10 +176,15 @@ foreach ($commit in $commits) {
             if ($seen.ContainsKey($key)) { continue }
             $seen[$key] = $true
 
+            # PROBE, not a traversal/data call: non-zero here is the ANSWER
+            # "this path is not present at that branch's tip" (deleted/moved
+            # since), not a git failure — do NOT route through
+            # Stop-OnGitFailure, it would turn a legitimate miss into an abort.
             Invoke-RepoGit @('cat-file', '-e', "${branch}:${path}") | Out-Null
             if ($LASTEXITCODE -ne 0) { continue }   # deleted/moved since — nothing to index
 
             $content = Invoke-RepoGit @('show', "${branch}:${path}")
+            Stop-OnGitFailure "show ${branch}:${path}"
             $jira = Get-JiraHeader $content
 
             $entries += [pscustomobject]@{
@@ -214,18 +243,22 @@ foreach ($mbRoot in $mbRoots) {
 # Cheap: base content is normally visible anyway, so one snapshot per file
 # (BaseRef's own tip commit) is enough — no per-file history walk needed.
 $baseSha = (Invoke-RepoGit @('rev-parse', $BaseRef) | Select-Object -First 1)
+Stop-OnGitFailure "rev-parse $BaseRef"
 $baseMeta = (Invoke-RepoGit @('show', '-s', '--format=%cI%x09%an', $BaseRef) | Select-Object -First 1)
+Stop-OnGitFailure "show -s $BaseRef"
 $baseParts = @($baseMeta -split "`t")
 $baseDate = if ($baseParts.Count -ge 1) { $baseParts[0] } else { '' }
 $baseAuthor = if ($baseParts.Count -ge 2) { $baseParts[1] } else { '' }
 
 $baseTree = Invoke-RepoGit @('ls-tree', '-r', '--name-only', $BaseRef)
+Stop-OnGitFailure "ls-tree -r $BaseRef"
 foreach ($path in $baseTree) {
     $path = ($path -replace '\\', '/')
     if ($path -notmatch '(^|/)memory-bank/proposals/(next|active|completed)/[^/]+\.md$') { continue }
     if (Test-FixturePath $path) { continue }
 
     $content = Invoke-RepoGit @('show', "${BaseRef}:${path}")
+    Stop-OnGitFailure "show ${BaseRef}:${path}"
     $jira = Get-JiraHeader $content
 
     $entries += [pscustomobject]@{
