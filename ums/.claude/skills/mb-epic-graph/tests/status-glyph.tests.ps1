@@ -1,5 +1,5 @@
 # Status-glyph tests (Jira mode): rozhodovací matice z
-# ums/docs/design_epic_graph_test_jako_hotovo.md.
+# memory-bank/proposals/completed/design_epic_graph_test_jako_hotovo.md.
 # Běhy záměrně BEZ -Check (oracle by do výstupu vložil vlastní ✅).
 . (Join-Path $PSScriptRoot '_assert.ps1')
 $status = Join-Path $PSScriptRoot 'fixtures\jira\status.json'

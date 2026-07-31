@@ -123,12 +123,12 @@ Tento fork (`janmatejka/superpowers`, upstream remote `vanila` = obra/superpower
 ### Role větví — dodržuj striktně
 
 - **`main`** = čisté read-only zrcadlo upstreamu (fast-forward na `vanila/main`). NIKDY na něj nedávej UMS obsah; slouží jako zdroj vendoringu a pro případné upstream PR.
-- **`ums-memory-bank`** = jediná větev s UMS obsahem, VÝHRADNĚ v adresáři `ums/` (aditivní model). Mimo `ums/` na této větvi neměň žádný soubor (jediná tolerovaná výjimka je tato sekce CLAUDE.md na konci souboru). Díky tomu je `git merge vanila/main` vždy bezkonfliktní.
+- **`ums-memory-bank`** = jediná větev s UMS obsahem, VÝHRADNĚ v adresáři `ums/` (aditivní model). Mimo `ums/` na této větvi neměň žádný soubor; tolerované výjimky jsou právě dvě, obě jen nové soubory neexistující v upstreamu: tato sekce CLAUDE.md na konci souboru a `memory-bank/` (Memory Bank tohoto repa). Díky tomu je `git merge vanila/main` vždy bezkonfliktní.
 - Stará v5 integrace je archivovaná v tagu `archive/mb-integrace-v5-era`; větev `origin/mb-integrace` je obsoletní.
 
 ### Architektura MB v2 (zkráceně)
 
-Superpowers řídí workflow (brainstorming → writing-plans → subagent-driven-development → finishing); Memory Bank je dokumentová vrstva. Proposal = pár `proposal_<slug>-design.md` + `proposal_<slug>.md` v `<PLAN_MB>/proposals/active/`; `context.md` nese jen Jira + Target MB Pin + slug; harvest dělá skill `mb-harvest` z overlay kroku 4.5 ve finishing. Volbu modelu řídí superpowers (SDD Model Selection), UMS nepřipíná modely (jen nejlevnější tier pro summarizaci/read-only — viz Dispatch Model Policy). Přesně 3 overlay bloky (brainstorming, SDD, finishing) generované z `ums/.claude/skills/shared/overlays/*.overlay.md`. Worktrees jsou v UMS zakázané (branch-in-place). Normativní zdroj: `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`; detaily a matice kompatibility harness: `ums/README.md`.
+Superpowers řídí workflow (brainstorming → writing-plans → subagent-driven-development → finishing); Memory Bank je dokumentová vrstva. Pracovní položka = pár `design_<slug>.md` + `plan_<slug>.md` v `<PLAN_MB>/proposals/active/` (starší `proposal_<slug>-design.md` + `proposal_<slug>.md` zůstává platné tam, kde už leží); `context.md` nese jen Jira + Target MB Pin + slug; harvest dělá skill `mb-harvest` z overlay kroku 4.5 ve finishing. Volbu modelu řídí superpowers (SDD Model Selection), UMS nepřipíná modely (jen nejlevnější tier pro summarizaci/read-only — viz Dispatch Model Policy). Přesně 3 overlay bloky (brainstorming, SDD, finishing) generované z `ums/.claude/skills/shared/overlays/*.overlay.md`. Worktrees jsou v UMS zakázané (branch-in-place). Normativní zdroj: `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`; detaily a matice kompatibility harness: `ums/README.md`.
 
 ### Živé nasazení a synchronizace
 
@@ -137,5 +137,27 @@ Superpowers řídí workflow (brainstorming → writing-plans → subagent-drive
 - Upgrade upstreamu: v monorepu `revendor-superpowers.ps1 -Tag <nový> -NoOverlays` (commit „vanilla sync") → `-OverlaysOnly` (commit „overlay"). Anchor-miss overlay fragmentu = detektor driftu upstreamu, ne chyba k obejití. Vendorované soubory v monorepu nikdy needituj mimo `<!-- UMS-OVERLAY -->` bloky.
 - Pozor Windows: `git archive` + `core.autocrlf=true` rozbíjí CRLF konverzí bash skripty bez přípony — revendor skript normalizuje na LF; v monorepu platí `.gitattributes: .claude/skills/** text eol=lf`.
 - Upstream `.gitignore` ignoruje každý `.claude/` adresář — `ums/.gitignore` s `!.claude/` to aditivně neguje; při přesunech souborů na to nezapomeň.
+- Kořenový `.claude/` (a `.agents/skills/`) tohoto forku je netrackovaná **nasazená** kopie vrstvy, kterou sezení používá; autorita je `ums/.claude/`. Po změně zdroje nasazení obnov, jinak pracuješ se starou verzí.
+
+### Memory Bank tohoto repa
+
+`memory-bank/` je Memory Bank vývoje UMS vrstvy — plní současně roli `CTX_DIR` i `PLAN_MB` (práce je repo-wide, `Target MB Pin` míří na `memory-bank/`). [`architecture.md`](memory-bank/architecture.md) mapuje workflow superpowers, tři overlay body zásahu UMS, dokumentovou vrstvu a vendoring/deploy pipeline; [`brief.md`](memory-bank/brief.md) role větví a adresářů, [`tech.md`](memory-bank/tech.md) verze, hooky, testy a pasti prostředí. Memory Bank produktu UMS (`d:\_datasys\ums\memory-bank\`) je jiná MB — nemíchat.
+
+
+## Memory Bank contract
+
+Na začátku práce (a znovu po jakékoli kompaktaci/sumarizaci kontextu) načti a dodržuj kontrakt v [.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md). Definuje `MB_ROOT` discovery, třívrstvý model adresářů (`CTX_DIR`/`PLAN_MB`/`AFFECTED_MBS`), pár návrh+plán (work item), Target-MB discovery, harvest a fail-closed chování.
+
+## Superpowers × Memory Bank (uživatelské preference)
+
+Superpowers skilly řídí workflow; Memory Bank je dokumentová vrstva. Tyto preference jsou závazné:
+
+- **Umístění dokumentů:** návrhové spec dokumenty ukládej jako `<PLAN_MB>/proposals/active/design_<slug>.md`, implementační plány jako `<PLAN_MB>/proposals/active/plan_<slug>.md`. **Nikdy nezapisuj do `docs/superpowers/` ani `docs/plans/`** (blokováno hookem). `PLAN_MB` = `Target MB Pin` z `memory-bank/context.md`; pokud pin chybí, proveď Target-MB discovery dle kontraktu ještě před zápisem spec.
+- **Kontext před návrhem:** před navrhováním přístupů si přečti `brief.md`, `product.md`, `architecture.md`, `tech.md` cílové Memory Bank (existující z nich).
+- **Design review architektem:** po schválení návrhu s navázaným Jira tiketem VŽDY nabídni design review (skill `mb-architect-review`, režim request; doporučení dle netriviálnosti). Vyvolání architektem/řešitelem: `/mb-architect-review [UMS-XXXX]` — skill sám určí režim a přepne repo na tiketovou větev. Dokud je v `context.md` řádek `Review: design-review requested`, writing-plans nespouštěj.
+- **Jazyk:** výstupy pro uživatele, proposaly, MB dokumenty, commit messages a Jira komentáře česky; AI-facing instrukce a mezivýstupy subagentů anglicky.
+- **Exekuce plánu (SDD):** před dispatchem prvního tasku ověř baseline — postav dotčené projekty a spusť cílené testy na bázi větve; pre-existing rozbití vyřeš/reportuj předem, ne uprostřed tasku. Eskalační body plánu („zastav a reportuj uživateli") smíš odložit na konec větve, pokud neblokují navazující tasky; skutečně blokující rozhodnutí běh zastaví.
+- **Dokončení větve:** finishing-a-development-branch v tomto repu zahrnuje harvest znalostí skillem `mb-harvest` (viz overlay ve skillu) — bez harvestu se práce neuzavírá. Merge do develop dělej vždy `--no-ff` (explicitní merge commit dle konvence repa). Před merge do lokálního develop se zeptej na refresh z origin/develop (fetch + FF, žádný push; nahrazuje upstream git pull). Po úspěšném merge (Option 1) s tiketem spusť mb-jira-update ve finalizačním režimu — tiket jde přímo do „Test".
+- **Volba modelu:** volbu modelu řídí superpowers (SDD sekce Model Selection — škáluje dle složitosti a rizika tasku). UMS nepřipíná modely; jediná pojistka: čistě summarizační/read-only dispatche (commit messages, Jira komenty, harvest notes, read-only scany) běží na nejlevnějším tieru (viz kontrakt, Dispatch Model Policy). Model vždy uváděj u dispatche explicitně.
 
 <!-- UMS-MEMORY-BANK END -->
