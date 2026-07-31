@@ -146,10 +146,13 @@ commit SHA, datum a autor commitu.
   finding, který v discovery zastavuje (viz sekce 4);
 - **tentýž slug na více větvích** ve fázi `next` — dvojí rozpracování;
 - **slug ve frontě i dokončený** — obživlé `next/` po převzetí draftu;
-- **tiket s draftem na větvi a odkazem v Jiře na nedosažitelný commit** — dnešní
-  tichá porucha;
 - **cizí aktivní slugy jiných tiketů** — normální paralelní provoz, jen
   informace v reportu, nikdy stop.
+
+Index je čistě gitový nástroj a popisy tiketů nevidí, takže **nedosažitelný
+commit v už publikovaném odkazu nehlásí**. Dosažitelnost se vynucuje v okamžiku
+zápisu odkazu (`mb-jira-update` §7, sekce 6); průběžný audit dříve publikovaných
+odkazů je mimo rozsah této položky.
 
 ### 4. Zapojení do discovery a two-actives guardu
 
@@ -187,7 +190,8 @@ Změny v kontraktní sekci **Target-MB Discovery & Pinning**:
 - **`mb-epic-graph`:** nový parametr `-IndexFile` (JSON z `mb-doc-index`), aby
   stavový glyf „návrh hotov" viděl i drafty na cizích větvích; bez toho graf
   v paralelním provozu systematicky lže. Dva nové findings:
-  `DRAFT NA CIZÍ VĚTVI` (info) a `SLUG NA VÍCE VĚTVÍCH` (varování). Neznámé
+  `DRAFT NA CIZÍ VĚTVI` (info) a `DRAFT NA VÍCE VĚTVÍCH` (varování — stejný kód
+  jako v indexu, aby tentýž jev neměl dva názvy). Neznámé
   hlavičkové pole `**Převzato z:**` parser ignoruje.
 - **`mb-state`:** nová sekce „Cizí větve" — kdo drží co, s datem a s
   upozorněním na duplicitní slugy.
