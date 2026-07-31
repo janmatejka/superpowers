@@ -73,8 +73,8 @@ it must not claim ▶️.
 done (Done, Cancelled) or status name Test / Review / Documentation.
 In -Source Proposals the glyph comes from the proposal stage folder:
 completed/ = done, active/ = in progress, next/ = live proposal,
-abandoned/ = 💡. The name-based 🧪/👀 never appear there, because the
-'**Stav:**' header field is free text.
+abandoned/ = 💡 or ⛔ by readiness. The name-based 🧪/👀 never appear
+there, because the '**Stav:**' header field is free text.
 
 .PARAMETER JiraBaseUrl
 Base URL for ticket links in the wave table (default
