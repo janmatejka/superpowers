@@ -101,6 +101,32 @@ if (-not $NoFetch) {
 Invoke-RepoGit @('rev-parse', '--verify', '--quiet', $BaseRef) | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Error "Base ref not found: $BaseRef"; exit 1 }
 
+# --- own identity: which remote ref is "me", never a foreign-collision source
+# The actor's own already-pushed branch must never collide with their own
+# local work (contract: collisions are about OTHER actors, never yourself).
+# Prefers the current branch's configured upstream; falls back to a
+# same-named origin branch when no upstream is configured; returns '' when
+# neither exists — nothing to exclude in that case (e.g. detached HEAD, a
+# brand-new local branch never pushed).
+function Get-OwnRemoteRef() {
+    # PROBE, not a traversal/data call: a non-zero exit here means "no
+    # upstream configured" / "no such ref" / "detached HEAD" — a legitimate
+    # ANSWER, not a git failure. Never route through Stop-OnGitFailure.
+    $upstream = Invoke-RepoGit @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+    if ($LASTEXITCODE -eq 0 -and $upstream) { return (@($upstream)[0]).Trim() }
+
+    $branch = Invoke-RepoGit @('rev-parse', '--abbrev-ref', 'HEAD')
+    if ($LASTEXITCODE -ne 0 -or -not $branch) { return '' }
+    $branch = (@($branch)[0]).Trim()
+    if (-not $branch -or $branch -eq 'HEAD') { return '' }   # detached HEAD
+
+    $candidate = "origin/$branch"
+    Invoke-RepoGit @('rev-parse', '--verify', '--quiet', $candidate) | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $candidate }
+    return ''
+}
+$script:OwnRemoteRef = Get-OwnRemoteRef
+
 function Test-FixturePath([string] $Path) { return ($Path -match '/tests/fixtures/') }
 
 function Get-Slug([string] $Path) {
@@ -289,9 +315,16 @@ foreach ($path in $baseTree) {
 # work. A foreign entry that matches a local one by slug OR by non-empty jira
 # is the SAME work item in flight on two branches (a real collision); every
 # other foreign 'active' entry is just parallel work on something else and is
-# reported for awareness only, never fails the run.
+# reported for awareness only, never fails the run. The actor's OWN remote
+# ref ($script:OwnRemoteRef — their own branch's upstream, already-pushed
+# copy of their own work) is excluded from "foreign" entirely: nothing about
+# my own work, pushed or not, may ever be reported as a collision OR as
+# someone else's parallel work.
 $localActive = @($entries | Where-Object { $_.branch -eq 'local' -and $_.phase -eq 'active' })
-$foreignActive = @($entries | Where-Object { $_.phase -eq 'active' -and $_.branch -ne 'local' -and $_.branch -ne 'base' })
+$foreignActive = @($entries | Where-Object {
+    $_.phase -eq 'active' -and $_.branch -ne 'local' -and $_.branch -ne 'base' -and
+    $_.branch -ne $script:OwnRemoteRef
+})
 
 $collided = @{}   # "branch|path" -> $true once reported as a collision
 foreach ($le in $localActive) {
@@ -303,8 +336,11 @@ foreach ($le in $localActive) {
         $key = "$($fe.branch)|$($fe.path)"
         $collided[$key] = $true
         $dateOnly = if ($fe.date) { $fe.date.Substring(0, [Math]::Min(10, $fe.date.Length)) } else { '' }
+        # Minor fix: when the match was on slug only and the local entry has
+        # no jira, don't render an empty "()" — omit the parenthetical instead.
+        $jiraPart = if ($le.jira) { " ($($le.jira))" } else { '' }
         Add-Finding 'KOLIZE AKTIVNÍ PRÁCE' 'CHYBA' `
-            "$($le.slug) ($($le.jira)) je aktivní i na $($fe.branch) ($dateOnly, $($fe.author))"
+            "$($le.slug)$jiraPart je aktivní i na $($fe.branch) ($dateOnly, $($fe.author))"
     }
 }
 
@@ -316,12 +352,20 @@ foreach ($fe in $foreignActive) {
 }
 
 # DRAFT NA VÍCE VĚTVÍCH (VAROVÁNÍ) – the same queued (phase 'next') slug shows
-# up on 2+ distinct branches: either a genuine duplicate draft or a rebase/fork
-# the author forgot to clean up.
-$nextBySlug = @($entries | Where-Object { $_.phase -eq 'next' } | Group-Object slug)
+# up with 2+ distinct ACTORS behind it: either a genuine duplicate draft or a
+# rebase/fork the author forgot to clean up. 'base' is the shared baseline,
+# never an actor — any file that already exists unmodified in BaseRef's own
+# proposals/next/ always also shows up in the working tree of every branch
+# descended from it, so it must never count as a peer/duplicate source.
+# 'local' and the actor's own remote ref are the SAME actor (one person, one
+# piece of work, possibly also pushed) and collapse into a single key.
+$nextBySlug = @($entries | Where-Object { $_.phase -eq 'next' -and $_.branch -ne 'base' } | Group-Object slug)
 foreach ($g in $nextBySlug) {
+    $actors = @($g.Group | ForEach-Object {
+        if ($_.branch -eq 'local' -or $_.branch -eq $script:OwnRemoteRef) { 'ME' } else { $_.branch }
+    } | Select-Object -Unique)
+    if (@($actors).Count -lt 2) { continue }
     $branches = @($g.Group | Select-Object -ExpandProperty branch -Unique)
-    if (@($branches).Count -lt 2) { continue }
     Add-Finding 'DRAFT NA VÍCE VĚTVÍCH' 'VAROVÁNÍ' `
         "$($g.Name) je ve frontě (next) na více větvích: $($branches -join ', ')"
 }

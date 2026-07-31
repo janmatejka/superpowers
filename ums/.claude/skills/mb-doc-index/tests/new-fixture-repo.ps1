@@ -30,8 +30,14 @@ function New-FixtureRepo {
     & git init -b develop $work | Out-Null
     Invoke-Git $work @('remote', 'add', 'origin', $origin) | Out-Null
 
-    # base: one completed document
+    # base: one completed document, plus one already-queued document that
+    # never changes after this commit. This is the repro for a false
+    # "DRAFT NA VÍCE VĚTVÍCH": since every branch below descends from this
+    # same commit, the file shows up unmodified in BOTH the 'base' pseudo-branch
+    # (BaseRef content) AND the 'local' pseudo-branch (working tree of
+    # whichever branch is checked out) — that must count as ONE actor, not two.
     Add-Doc $work 'memory-bank/proposals/completed/design_hotovo.md' 'UMS-0'
+    Add-Doc $work 'memory-bank/proposals/next/design_ums_6_fronta.md' 'UMS-6'
     Invoke-Git $work @('commit', '-m', 'base') | Out-Null
     Invoke-Git $work @('push', '-u', 'origin', 'develop') | Out-Null
 
