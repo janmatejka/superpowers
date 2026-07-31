@@ -406,3 +406,48 @@ má deterministický tvar `"$statusGlyph $(Get-Emoji $k) $keyMd $sum"`
 
 Grep celého `ums/` potvrzuje, že žádný další konzument hotovosti Jira stavu
 v repu neexistuje.
+
+## Zaparkované nálezy (follow-up)
+
+Nálezy finálního review celé větve, které byly vědomě odloženy — žádný není
+nosný a nic na nich nestaví. Jsou tu proto, aby se neztratily; každý je
+samostatná práce, ne dodatek k této změně.
+
+1. **Chybí runner testů.** Skill má pět samostatných souborů
+   `tests/*.tests.ps1` a žádný `tests/run-all.ps1`; „projde všech pět" není
+   jediný příkaz, takže regresi zachytí jen ten, kdo si na všechny soubory
+   vzpomene. Reviewer to označil za největší slabinu odolnosti skillu — hrozba
+   není revendoring upstreamu (`epic-graph.ps1` je UMS autorský), ale
+   round-trip přes `sync-with-monorepo.ps1`.
+2. **Překlep v `-ProposalPath` se chová jako „návrh neexistuje".**
+   `$proposalInfoAvailable = [bool]$ProposalPath` se plní ze *stringu*, takže
+   neexistující cesta jen varuje, ale příznak zůstane `$true` a `$proposalLive`
+   prázdné — každý odblokovaný tiket pak dostane 💡 („odblokováno, bez návrhu")
+   místo ❔. To je přesně přeceňování, které tato změna odstraňovala, jen jinými
+   dveřmi. Levné zpevnění: nastavit příznak jen tehdy, když se aspoň jedna
+   zadaná cesta rozřešila.
+3. **Prázdné jméno stavu se vykresluje.** U tiketu s prázdným objektem
+   `status` (nově dosažitelný stav, viz Task 1) vypíše odsazený seznam `· __`
+   — což není platné Markdown zvýraznění a zobrazí se literálně — a Mermaid
+   label končí viselcem `· `. Řešením je vynechat suffix `· <stav>`, když je
+   jméno prázdné.
+4. **Legenda režimu Proposals nedopovídá ⛔.** Po této změně znamená ⛔ v tomto
+   režimu přesně „abandoned + blokováno" (`next/` + blokováno je ⏳, stupně 7/8
+   ⛔ vyrobit nemohou), legenda říká jen „blokováno". Stejná nepřesnost, jaká
+   vedla k doplnění položky 💡. Stage `abandoned` navíc nemá fixture, takže
+   tvrzení „💡/⛔ podle odblokování" je zdokumentované, ale netestované
+   (chování je předchozí, změnila se jen ikona).
+5. **Asymetrie `abandoned` vs. `Cancelled` není nikde zdůvodněná.** Opuštěný
+   *návrh* blokuje své následníky dál, zrušený *tiket* je odblokuje. Považujeme
+   to za správné (opuštění návrhu nezruší práci), ale návrh explicitně
+   argumentuje jen u `Cancelled` a zrcadlový případ nezmiňuje — čtenář o to
+   zakopne.
+6. **Plán cituje neexistující pravidlo.** `plan_…md`, Global Constraints,
+   odkazuje na `ums/.gitattributes` s `.claude/skills/** text eol=lf`. Ten
+   soubor ve forku není; kořenový `.gitattributes` kryje `*.md`/`*.json`, ale
+   **ne `*.ps1`**. Výsledek je v pořádku (LF), ale proto, že se tak psalo, ne
+   proto, že to atribut vynucuje.
+
+Nezaparkováno, uzavřeno rozhodnutím: nápověda `.PARAMETER NoStatus` říká „the
+name-based 🧪/👀 never appear there" bez ❔ — věta je záměrně o glyphech
+odvozených z **názvu** stavu a ❔ mezi ně nepatří.
