@@ -76,7 +76,7 @@ if (-not $RepoPath) {
 function Invoke-RepoGit([string[]] $GitArgs) { & git -C $RepoPath @GitArgs 2>$null }
 
 # --- git-call failure semantics ---------------------------------------------
-# TRAVERSAL/DATA calls below (log, branch -r --contains, show, ls-tree,
+# TRAVERSAL/DATA calls below (fetch, log, branch -r --contains, show, ls-tree,
 # rev-parse for the base snapshot) read data the rest of the script depends
 # on: a non-zero exit there is a genuine git-level FAILURE (corrupt pack, I/O
 # error, resource limits against a large real repo) and must exit 1 — never
@@ -118,6 +118,15 @@ function Get-JiraHeader([string[]] $Lines) {
         if ($ln -match '^-\s*\*\*Jira:\*\*\s*(.+?)\s*$') { return $Matches[1] }
     }
     return ''
+}
+
+# --- findings: collision/queue-state candidates for the user, never silent
+# fixes (contract: fail-closed). Severity CHYBA raises the exit code to 2 —
+# the fail-closed STOP for pinning new work; VAROVÁNÍ/INFO stay exit 0.
+$script:Findings = @()
+function Add-Finding([string] $Code, [string] $Severity, [string] $Message) {
+    $script:Findings += [pscustomobject]@{ code = $Code; severity = $Severity; message = $Message }
+    if ($Severity -eq 'CHYBA') { $script:ExitCode = 2 }
 }
 
 # --- one traversal: commits above the base that touched MB proposal paths ---
@@ -218,6 +227,7 @@ foreach ($mbRoot in $mbRoots) {
             $jira = Get-JiraHeader $lines
 
             $hist = Invoke-RepoGit @('log', '-1', '--format=%H%x09%cI%x09%an', 'HEAD', '--', $rel)
+            Stop-OnGitFailure "log -1 HEAD -- $rel"
             if ($hist) {
                 $p = ($hist | Select-Object -First 1) -split "`t"
                 $sha = $p[0]; $date = $p[1]; $author = $p[2]
@@ -273,6 +283,61 @@ foreach ($path in $baseTree) {
     }
 }
 
+# --- findings -----------------------------------------------------------------
+# KOLIZE AKTIVNÍ PRÁCE (CHYBA) vs. CIZÍ AKTIVNÍ PRÁCE (INFO) are two sides of
+# the same comparison: local 'active' work against foreign-branch 'active'
+# work. A foreign entry that matches a local one by slug OR by non-empty jira
+# is the SAME work item in flight on two branches (a real collision); every
+# other foreign 'active' entry is just parallel work on something else and is
+# reported for awareness only, never fails the run.
+$localActive = @($entries | Where-Object { $_.branch -eq 'local' -and $_.phase -eq 'active' })
+$foreignActive = @($entries | Where-Object { $_.phase -eq 'active' -and $_.branch -ne 'local' -and $_.branch -ne 'base' })
+
+$collided = @{}   # "branch|path" -> $true once reported as a collision
+foreach ($le in $localActive) {
+    foreach ($fe in $foreignActive) {
+        $sameSlug = ($le.slug -eq $fe.slug)
+        $sameJira = ([bool]$le.jira -and [bool]$fe.jira -and $le.jira -eq $fe.jira)
+        if (-not ($sameSlug -or $sameJira)) { continue }
+
+        $key = "$($fe.branch)|$($fe.path)"
+        $collided[$key] = $true
+        $dateOnly = if ($fe.date) { $fe.date.Substring(0, [Math]::Min(10, $fe.date.Length)) } else { '' }
+        Add-Finding 'KOLIZE AKTIVNÍ PRÁCE' 'CHYBA' `
+            "$($le.slug) ($($le.jira)) je aktivní i na $($fe.branch) ($dateOnly, $($fe.author))"
+    }
+}
+
+foreach ($fe in $foreignActive) {
+    $key = "$($fe.branch)|$($fe.path)"
+    if ($collided.ContainsKey($key)) { continue }   # already reported as a collision above
+    $jiraCell = if ($fe.jira) { $fe.jira } else { '(žádný tiket)' }
+    Add-Finding 'CIZÍ AKTIVNÍ PRÁCE' 'INFO' "$($fe.slug) ($jiraCell) je aktivní na $($fe.branch)"
+}
+
+# DRAFT NA VÍCE VĚTVÍCH (VAROVÁNÍ) – the same queued (phase 'next') slug shows
+# up on 2+ distinct branches: either a genuine duplicate draft or a rebase/fork
+# the author forgot to clean up.
+$nextBySlug = @($entries | Where-Object { $_.phase -eq 'next' } | Group-Object slug)
+foreach ($g in $nextBySlug) {
+    $branches = @($g.Group | Select-Object -ExpandProperty branch -Unique)
+    if (@($branches).Count -lt 2) { continue }
+    Add-Finding 'DRAFT NA VÍCE VĚTVÍCH' 'VAROVÁNÍ' `
+        "$($g.Name) je ve frontě (next) na více větvích: $($branches -join ', ')"
+}
+
+# FRONTA I DOKONČENO (VAROVÁNÍ) – the same slug is queued (next) somewhere and
+# already completed elsewhere: a resurrected/duplicated queue entry for work
+# that already shipped. This is the reason 'completed' entries are indexed at
+# all even though the table never prints them.
+$bySlug = @($entries | Group-Object slug)
+foreach ($g in $bySlug) {
+    $phases = @($g.Group | Select-Object -ExpandProperty phase -Unique)
+    if (-not (($phases -contains 'next') -and ($phases -contains 'completed'))) { continue }
+    Add-Finding 'FRONTA I DOKONČENO' 'VAROVÁNÍ' `
+        "$($g.Name) je zároveň ve frontě (next) i dokončený (completed)"
+}
+
 # --- output -------------------------------------------------------------------
 $printable = @($entries | Where-Object { $_.phase -in @('next', 'active') } |
     Sort-Object slug, branch)
@@ -288,16 +353,22 @@ foreach ($e in $printable) {
 }
 if (@($printable).Count -eq 0) { Write-Output '' ; Write-Output '_(žádné položky ve fázích next/active v okně -SinceDays)_' }
 
-# Findings (duplicate slugs, collisions, ...) land here in Task 3. Kept as an
-# empty array now so the JSON shape is already stable for later consumers.
-$findings = @()
+Write-Output ''
+Write-Output 'Nálezy:'
+if (@($script:Findings).Count -eq 0) {
+    Write-Output '_(žádné nálezy)_'
+} else {
+    foreach ($f in $script:Findings) {
+        Write-Output "$($f.severity)  $($f.code)  $($f.message)"
+    }
+}
 
 if ($Json) {
     $out = [pscustomobject]@{
         base      = $BaseRef
         generated = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         entries   = $entries
-        findings  = $findings
+        findings  = $script:Findings
     }
     $out | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Json -Encoding UTF8
 }

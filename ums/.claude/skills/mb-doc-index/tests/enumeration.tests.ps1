@@ -20,6 +20,9 @@ Assert-Eq $alfa.jira 'UMS-1' 'tiket se čte z hlavičky dokumentu'
 Assert-True ($alfa.commit.Length -ge 7) 'záznam nese commit SHA'
 Assert-Eq $idx.base 'origin/develop' 'JSON nese použitou bázi'
 
+$hotovoCount = @($idx.entries | Where-Object { $_.slug -eq 'hotovo' -and $_.phase -eq 'completed' }).Count
+Assert-True ($hotovoCount -gt 0) 'dokončené dokumenty JSOU v entries, jen se netisknou v tabulce'
+
 $stare = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch', '-SinceDays', '1000')
 Assert-Match $stare.Out 'ums_5_stare' 'vyšší -SinceDays starou větev zahrne'
 
