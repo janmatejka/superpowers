@@ -429,7 +429,8 @@ samostatná práce, ne dodatek k této změně.
 3. **Prázdné jméno stavu se vykresluje.** U tiketu s prázdným objektem
    `status` (nově dosažitelný stav, viz Task 1) vypíše odsazený seznam `· __`
    — což není platné Markdown zvýraznění a zobrazí se literálně — a Mermaid
-   label končí viselcem `· `. Řešením je vynechat suffix `· <stav>`, když je
+   label končí viselcem — odrážkou `·` a mezerou bez hodnoty. Řešením je
+   vynechat suffix `· <stav>`, když je
    jméno prázdné.
 4. **Legenda režimu Proposals nedopovídá ⛔.** Po této změně znamená ⛔ v tomto
    režimu přesně „abandoned + blokováno" (`next/` + blokováno je ⏳, stupně 7/8
