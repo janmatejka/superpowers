@@ -12,6 +12,9 @@ Tiket, který je v Jiře ve stavu **Test**, má v plánovacích výstupech skill
 plánovat a implementovat, zatímco předchůdce ještě sedí v testu. Zároveň má
 zůstat na dashboardu odlišitelný od skutečně uzavřené práce.
 
+Přidruženě: rodina stavových glyphů se zlepšuje v čitelnosti — 🆕 se pletlo
+s ▶️ a nahrazuje ho 💡.
+
 ## Zjištěný stav (ověřeno proti živé Jiře)
 
 Dotaz `project = UMS ORDER BY updated DESC` (100 tiketů, Atlassian MCP,
@@ -95,11 +98,11 @@ tedy case-insensitive a nezávislý na diakritice.
 Do kaskády `Get-StatusGlyph` přijde nový stupeň **hned za ✅ a před 🔨** — jinak
 by ho přebilo jak `indeterminate`, tak `$proposalActive`:
 
-```
+```text
 done              → ✅
 název ∈ Test      → 🧪     ← nový stupeň
 indeterminate / aktivní proposal → 🔨
-…zbytek kaskády bez změny (▶️ / ⏳ / 🆕 / ⛔)
+…zbytek kaskády bez změny v logice (▶️ / ⏳ / 💡 / ⛔)
 ```
 
 ✅ zůstává vyhrazeno pro kategorii `done` (Done, Cancelled). Tiket v Testu tedy
@@ -110,19 +113,44 @@ Režim `-Source Proposals` se nemění: uzly jsou proposaly a `StatusCat` tam
 vzniká ze stage složky (`completed` → `done`, `active` → `indeterminate`,
 jinak `new`), takže 🧪 v tomto režimu nikdy nevznikne. Zdokumentovat explicitně.
 
-### 4. Legendy a nápověda
+### 4. Náhrada 🆕 za 💡 (čitelnost rodiny glyphů)
 
-Doplnit „🧪 v testu (počítá se jako hotový)" do:
+🆕 a ▶️ se v běžných terminálových fontech renderují jako podobně velký
+modrý/tmavý blok a na dashboardu se pletou. Stav „k rozpracování (odblokováno,
+bez návrhu)" proto přechází z 🆕 na **💡** — sedne i sémanticky (chybí návrh,
+tikét čeká na rozmyšlení) a žlutá svislá silueta se neplete ani s ▶️, ani
+s ⏳ či 🧪. Chování se nemění, jde o čistou výměnu symbolu.
 
-- legendy tabulky vln pro Jira režim (`**První ikona = stav tiketu**`),
+Výsledná rodina:
+
+```text
+✅ hotovo
+🧪 v testu (počítá se jako hotový)
+🔨 implementuje se
+▶️ připraveno k implementaci (návrh hotov, odblokováno)
+⏳ návrh hotov, čeká na blokátory
+💡 k rozpracování (odblokováno, bez návrhu)
+⛔ blokováno
+```
+
+Výskyty 🆕 k výměně (všechny, jinde v `ums/` glyph není):
+`epic-graph.ps1` řádek 66 (`.PARAMETER NoStatus`), 674 (kaskáda),
+929 (legenda tabulky vln) a `mb-epic-graph/SKILL.md` řádek 126.
+
+### 5. Legendy a nápověda
+
+Doplnit „🧪 v testu (počítá se jako hotový)" a přepsat 🆕 → 💡 v:
+
+- legendě tabulky vln pro Jira režim (`**První ikona = stav tiketu**`),
 - `.PARAMETER NoStatus` v hlavičce skriptu a `.SYNOPSIS`/`.DESCRIPTION` tam,
   kde se glyphy vypisují,
 - popisu glyphů v `mb-epic-graph/SKILL.md` (sekce „Use the outputs" a
   `-NoStatus`).
 
-Legenda pro Proposals režim (`**První ikona = stav proposalu**`) zůstává bez 🧪.
+Legenda pro Proposals režim (`**První ikona = stav proposalu**`) zůstává bez 🧪
+i bez 💡 — 🆕 se v ní nevyskytuje (proposal uzly stav „bez návrhu" nemají).
 
-### 5. Testy
+### 6. Testy
 
 Nová fixture `tests/fixtures/jira/status.json` — existující `snap.json`
 zůstává nedotčený (visí na něm současné testy a `statusCategory` neobsahuje).
@@ -146,8 +174,10 @@ Testy v `tests/e2e.tests.ps1` (běží bez `-ProposalPath`, tedy v degradovaném
    drobná fixture) a „In Progress" zůstává 🔨 — pojistka, že se nezobecnilo
    na celou kategorii `indeterminate`.
 3. `-NoStatus` potlačí i 🧪.
+4. Tiket odblokovaný a bez proposalu nese 💡 (nikoli 🆕) — proti návratu starého
+   glyphu při budoucím revendoringu.
 
-### 6. Dokumentace rozpracování epiku
+### 7. Dokumentace rozpracování epiku
 
 `mb-epic-elaboration/protocol.md` — jedna věta u readiness/window selection:
 tiket ve stavu „Test" se počítá jako hotový, takže okno lze naplánovat i na
@@ -156,8 +186,9 @@ tiket, jehož jediný blokátor sedí v testu.
 ## Dopady
 
 - Tabulka vln v popisu epiku: tikety za tiketem v Testu se posunou z ⛔/⏳ na
-  ▶️/🆕. Sloupce (vlny) se **nemění** — vlny počítá topologie `Blocks`, ne
+  ▶️/💡. Sloupce (vlny) se **nemění** — vlny počítá topologie `Blocks`, ne
   stavy.
+- Všechny dosavadní 🆕 v grafech epiků se při regeneraci změní na 💡.
 - Konzistenční oracle (`-Check`) se nemění; exit kódy zůstávají.
 - `graph.md` v `memory-bank/epics/<epic>/` se při nejbližší regeneraci
   diffne o změněné glyphy — očekávané.
