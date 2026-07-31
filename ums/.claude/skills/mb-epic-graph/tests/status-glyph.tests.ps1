@@ -4,6 +4,7 @@
 . (Join-Path $PSScriptRoot '_assert.ps1')
 $status = Join-Path $PSScriptRoot 'fixtures\jira\status.json'
 $props  = Join-Path $PSScriptRoot 'fixtures\status_proposals'
+$stav   = Join-Path $PSScriptRoot 'fixtures\status_stav'
 
 Write-Host 'Jira mode: fixture runs (malformed status object must not crash)'
 $bare = Invoke-Graph @('-Source','Jira','-InputFile',$status,'-EpicKey','DEMO-0')
@@ -24,5 +25,28 @@ Assert-Match $full.Out '💡 \S+ \[DEMO-17\]' 'DEMO-17 (blocker Cancelled, no pr
 Assert-Match $full.Out '💡 \S+ \[DEMO-10\]' 'DEMO-10 (empty status, no proposal) -> 💡'
 Assert-Match $full.Out '⏳ \S+ \[DEMO-4\]'  'DEMO-4 (draft in next/, blocked by In Progress) -> ⏳'
 Assert-NotMatch $full.Out '🆕' '🆕 is retired from the whole family'
+
+Write-Host 'Jira mode: Test/Review/Documentation are done for planning'
+Assert-Match $bare.Out '🧪 \S+ \[DEMO-1\]'  'DEMO-1 (Test) -> 🧪'
+Assert-Match $bare.Out '🧪 \S+ \[DEMO-7\]'  'DEMO-7 (status name in lower case) -> 🧪'
+Assert-Match $bare.Out '🧪 \S+ \[DEMO-8\]'  'DEMO-8 (Test) -> 🧪 without proposal info'
+Assert-Match $full.Out '🧪 \S+ \[DEMO-8\]'  'DEMO-8 (Test + active/ proposal) -> 🧪, not 🔨'
+Assert-Match $bare.Out '🧪 \S+ \[DEMO-11\]' 'DEMO-11 (Review) -> 🧪'
+Assert-Match $bare.Out '🧪 \S+ \[DEMO-12\]' 'DEMO-12 (Documentation) -> 🧪'
+Assert-Match $bare.Out '🔨 \S+ \[DEMO-3\]'  'DEMO-3 (In Progress) stays 🔨 — no category-wide generalization'
+
+Write-Host 'Jira mode: successors of Test/Review are unblocked'
+Assert-Match $bare.Out '❔ \S+ \[DEMO-2\]'  'DEMO-2 (blocker in Test) -> ❔ without proposal info'
+Assert-Match $full.Out '▶️ \S+ \[DEMO-2\]'  'DEMO-2 (blocker in Test, draft in next/) -> ▶️'
+Assert-Match $bare.Out '❔ \S+ \[DEMO-15\]' 'DEMO-15 (blocker in Review) -> ❔'
+Assert-Match $full.Out '💡 \S+ \[DEMO-15\]' 'DEMO-15 (blocker in Review, no proposal) -> 💡'
+Assert-Match $bare.Out '⛔ \S+ \[DEMO-4\]'  'DEMO-4 (blocker In Progress) stays blocked'
+
+Write-Host 'Proposals mode: free-text **Stav:** must not be matched by name'
+$sp = Invoke-Graph @('-Source','Proposals','-ProposalPath',$stav,'-EpicKey','stav')
+Assert-Eq $sp.Code 0 'proposals mode exits 0'
+Assert-NotMatch $sp.Out '🧪 \S+ \*\*alfa\*\*' 'proposal with **Stav:** Test does not get 🧪'
+Assert-Match $sp.Out '▶️ \S+ \*\*alfa\*\*' 'alfa (live next/, unblocked) -> ▶️'
+Assert-Match $sp.Out '⏳ \S+ \*\*beta\*\*' 'beta (live next/, blocked by alfa) -> ⏳'
 
 Complete-Tests

@@ -641,14 +641,43 @@ function Get-TicketUrl([string] $k) {
     if ($jiraBase) { return "$jiraBase/browse/$k" }
     return ''
 }
+
+# Stavy, které se pro plánování počítají jako hotové, i když jejich
+# statusCategory hotová není: práce je odvedená, dočítává se ocas.
+# Test (10205), Review (10206) a Documentation (11064) jsou v kategorii
+# indeterminate stejně jako In Progress (3) — rozlišit lze jen názvem.
+# Hodnoty jsou normalizované (lowercase, bez diakritiky).
+$script:DoneForPlanningStatusNames = @('test', 'review', 'documentation')
+
+function Test-StatusNameIn([string] $key, [string[]] $names) {
+    # Match podle NÁZVU stavu. Jen v Jira režimu — v Proposals režimu plní
+    # Status volnotextové hlavičkové pole '**Stav:**', takže hodnota „Test"
+    # by tiše měnila semantiku JIRA-less grafů. Uvnitř funkce je nutné
+    # $script:Source, parametr $Source zde není ve scope.
+    # Porovnání jde -contains (case-insensitive), NIKOLI .Contains().
+    if ($script:Source -ne 'Jira') { return $false }
+    if (-not $issues.Contains($key)) { return $false }
+    $n = (Remove-Diacritics ([string]$issues[$key].Status).Trim()).ToLowerInvariant()
+    if (-not $n) { return $false }
+    return ($names -contains $n)
+}
+
+function Test-DoneForPlanning([string] $key) {
+    # Hotový pro plánování = neblokuje své následníky.
+    if (-not $issues.Contains($key)) { return $false }   # externí tiket: konzervativně ne
+    if ($issues[$key].StatusCat -eq 'done') { return $true }
+    return (Test-StatusNameIn $key $script:DoneForPlanningStatusNames)
+}
+
 function Test-Unblocked([string] $k) {
-    # odblokováno = všechny přímé Blocks-blokátory jsou hotové (statusCategory=done).
+    # odblokováno = všechny přímé Blocks-blokátory jsou hotové pro plánování
+    # (kategorie done, nebo Test/Review/Documentation — viz Test-DoneForPlanning).
     # Blokátor s neznámým stavem (externí, mimo snapshot) se konzervativně počítá
     # jako blokující — pro přesnost doplň externí blokátory druhým snapshotem.
     $preds = @(@($blockedBy[$k]) | Where-Object { $_ })
     if ($preds.Count -eq 0) { return $true }
     foreach ($p in $preds) {
-        if (-not ($issues.Contains($p) -and $issues[$p].StatusCat -eq 'done')) { return $false }
+        if (-not (Test-DoneForPlanning $p)) { return $false }
     }
     return $true
 }
@@ -661,6 +690,7 @@ function Get-StatusGlyph([string] $k) {
     if (-not $issues.Contains($k)) { return '' }   # externí uzel bez známého stavu
     $cat = $issues[$k].StatusCat
     if ($cat -eq 'done') { return '✅' }                                    # hotovo
+    if (Test-StatusNameIn $k $script:DoneForPlanningStatusNames) { return '🧪' }  # v testu/review/dokumentaci
     if ($cat -eq 'indeterminate' -or $proposalActive.ContainsKey($k)) { return '🔨' }  # implementuje se
     # To-Do (kategorie 'new' nebo neznámá): rozliš připravenost × proposal
     $unblocked = Test-Unblocked $k
