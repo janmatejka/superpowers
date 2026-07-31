@@ -1,8 +1,10 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.1
-- Supersedes v2.0 (renames the document pair to `design_`/`plan_`, adds the
-  Architect Review Gate). v1 (mb-plan/mb-act orchestration) remains superseded.
+- **Contract-Version:** 2.2
+- Supersedes v2.1 (adds the Publication Contract and Cross-Branch Visibility
+  sections and the two-tier push policy). v2.0 renamed the document pair to
+  `design_`/`plan_` and added the Architect Review Gate; v1
+  (mb-plan/mb-act orchestration) remains superseded.
   See `VENDORED_FROM.md` for the vendored Superpowers version.
 
 ## Purpose & Roles
@@ -225,7 +227,8 @@ Runs **during brainstorming**, as soon as the affected code area is
 identifiable — always before the design document is written.
 
 1. Scan `**/memory-bank/proposals/active/` for `{design_,plan_,proposal_}*.md`
-   under `<MB_ROOT>`.
+   under `<MB_ROOT>`, then run the `mb-doc-index` skill and take the candidate
+   set as the UNION of the local scan and the index over `origin`.
 2. Normalize each match to its owning `memory-bank/` root; apply the
    Discovery & pairing rule (Active Work Item section): strip exactly one
    prefix, `-design` only after `proposal_`, group by `(owning MB root,
@@ -259,6 +262,9 @@ identifiable — always before the design document is written.
    `design_<slug>.md` (the only permitted legacy conversion), reuse its slug
    and ticket, and treat the draft as seed input for the design. No match →
    continue with a fresh proposal.
+   The queued draft may live on a foreign branch — the index reports it. Take it
+   over by blob copy per Cross-Branch Visibility (never cherry-pick) and record
+   `**Převzato z:** <branch>@<sha>` in its header.
 7. Ask for the Jira ticket (one question; "none" is a valid answer; skip if
    already known from the activated preliminary proposal). If the ticket is
    known and the slug does not start with its code, rename the slug's files
@@ -268,6 +274,14 @@ identifiable — always before the design document is written.
    the user — finish it (`finishing-a-development-branch` → harvest) or
    abandon it (`mb-abort`) before pinning new work. Only `active/` counts;
    queued items in `next/` are ignored by this guard.
+   The two-actives guard stays LOCAL (one active work item per clone, because
+   `context.md` holds one pin); extending it to `origin` would forbid parallel
+   work across the team. Alongside it runs the **cross-clone collision check**:
+   the SAME slug or the SAME Jira ticket active on a foreign branch is a
+   fail-closed STOP (double work), and the report carries the branch and the last
+   commit date so the user can tell an abandoned branch from live work. Foreign
+   active slugs of OTHER tickets are normal parallel operation — list them, never
+   stop.
 9. Persist into `CTX_DIR/context.md` (creating the file if absent):
    `Target MB Pin`, `Jira`, `Work item` slug and `Started` (see the schema
    below).
@@ -374,6 +388,63 @@ code.
 
 All harvested document content is Czech.
 
+## Publication Contract
+
+**No reference without reachability.** Whenever the workflow names a git object
+outside this clone — a link in a ticket description or comment, a wave table, a
+handoff comment, a link in an epic ledger — the pinned commit MUST be reachable
+on `origin` at that moment. Verify mechanically:
+
+```bash
+git fetch origin
+git branch -r --contains <sha>     # empty result = not on origin
+```
+
+An unreachable commit is a fail-closed STOP with an offer to publish, never a
+warning.
+
+**Publication points** (when the actor's own branch is pushed):
+
+1. after the design document is written and committed (brainstorming),
+2. after the implementation plan is written and committed (before the first task
+   dispatch),
+3. at elaboration window closure, BEFORE writing links into Jira,
+4. before every handoff (design review request/respond is the reference
+   implementation).
+
+**Two-tier push policy:**
+
+| Tier | Rule |
+|---|---|
+| The actor's own ticket branch (unprotected) | The agent pushes it itself, without asking, but ALWAYS announces the branch and the outgoing commits. Force push is forbidden. |
+| Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
+
+Mechanically enforced for Claude Code by the PreToolUse hook
+`.claude/hooks/guard-git-push.mjs` (protected-ref deny-list, force/mirror/all/delete
+denied). Other harnesses follow this rule by contract text only, as with every
+other rule of this layer. `mb-git-commit` never pushes — publication is a
+workflow step at the points listed above, not a commit tool.
+
+## Cross-Branch Visibility
+
+Documents are never pushed into a shared branch to make them visible; they are
+**pulled** — discovered on `origin` across branches by the `mb-doc-index` skill
+(read-only). Rules:
+
+- Discovery candidates are the union of the local working tree and the document
+  index over `origin`.
+- **Taking over a draft from a foreign branch** is a blob copy
+  (`git show <ref>:<path> > <path>`), never a cherry-pick — an elaboration
+  window closes with ONE commit carrying the ledger, the graph and all of the
+  window's proposals, so a cherry-pick would drag in a foreign ledger. The
+  taken-over design document records `**Převzato z:** <branch>@<sha>`.
+- **A ticket branch is created from the CURRENT base ref** (fetch +
+  fast-forward), otherwise it cannot see already-merged planning.
+- **Resurrected queue:** after a takeover the original may still sit in `next/`
+  on the source branch and reappear in the base when that branch merges. This is
+  detected (`mb-doc-index`, `mb-epic-graph -Check`), not prevented; the cleanup
+  is one `git rm` by whoever sees the finding.
+
 ## Architect Review Gate
 
 An approved design may be reviewed by a **human architect** before planning
@@ -386,14 +457,16 @@ cross-project impact, DB migration, security impact). No ticket → no offer.
 
 **State lives in the ticket branch.** All interaction over a ticket happens
 on that ticket's branch; every handoff (request and respond) ends with the
-state committed and — with explicit user approval — pushed to origin. The
-design document, `context.md` (including the `Review:` line) and any notes
-are thus available to both sides and to Bitbucket links. Recommended branch
-naming: include the ticket code (e.g. `feature/ums-3302-toast-reconcile`).
+state committed and pushed to origin per the Publication Contract (the ticket
+branch is the actor's own branch, so the push is announced, not negotiated).
+The design document, `context.md` (including the `Review:` line) and any
+notes are thus available to both sides and to Bitbucket links. Recommended
+branch naming: include the ticket code (e.g. `feature/ums-3302-toast-reconcile`).
 
-**Push policy:** NEVER push silently. Offer every push explicitly (state the
-branch and outgoing commits) and wait for user approval; refusal stops the
-handoff. Steps are ordered so one handoff needs exactly one push.
+**Push policy:** per the Publication Contract — the ticket branch is the actor's
+own branch, so the handoff push is announced, not negotiated; shared branches are
+never pushed by the agent. Steps are ordered so one handoff needs exactly one
+push.
 
 **Branch sync** (first step of respond and resume): resolve the ticket branch
 in this order — branch name from the request comment (authoritative) → remote
@@ -514,7 +587,8 @@ When anything important is missing or ambiguous:
   repository, or artifact location.
 - Hard failures: missing git; missing root `memory-bank/`; undefined
   `PLAN_MB` at spec-write time; ambiguous target MB; a second active proposal
-  slug; mixed-language rule surfaces.
+  slug; mixed-language rule surfaces; an unreachable pinned commit at
+  publication time; the same slug or ticket active on a foreign branch.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
   `.superpowers/sdd/progress.md` ledger.
