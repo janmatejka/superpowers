@@ -21,6 +21,11 @@ After the user chooses and BEFORE executing the choice:
   **The answer to this question REPLACES the `git pull` of upstream Step 5
   Option 1 — never run `git pull` on the base branch in this repository.**
   Merge with `--no-ff` per repo convention.
+- **Option 1, after a green merge:** ask (Czech) „Publikovat `develop` na
+  origin?" and hand the user the exact command (`! git push origin develop`)
+  with the outgoing commits — the agent never pushes a shared branch. Until
+  it is published, `mb-jira-update` finalization stops at its publication
+  gate and the ticket does NOT move to „Test".
 - **After Option 1 completes successfully** (merge done, verification green)
   and a Jira ticket is linked: invoke `mb-jira-update` in **finalization
   mode** — after publishing the Czech summary comment it transitions the

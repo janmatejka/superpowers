@@ -11,7 +11,11 @@ Adjustments to the checklist above:
 - **Item 1 (Explore project context)** additionally requires: as soon as the
   affected code area is identifiable, run Target-MB discovery per the
   contract's "Target-MB Discovery & Pinning" section (scan active work items,
-  evidence tags, A/B/C disambiguation — the user always decides; activate a
+  run the mb-doc-index skill and treat the candidate set as the union of the
+  local scan and the index over origin; a KOLIZE AKTIVNÍ PRÁCE finding is a
+  fail-closed STOP (someone already works on this ticket), foreign active
+  work on other tickets is normal; evidence tags, A/B/C disambiguation — the
+  user always decides; activate a
   matching queued design draft from `proposals/next/` by moving its files to
   `active/` — a legacy `proposal_*` draft is renamed to `design_<slug>.md`
   during the move — and use the draft as design seed), ask for the Jira
@@ -26,7 +30,9 @@ Adjustments to the checklist above:
   the contract's "Superpowers Document Placement" section) instead of the
   default `docs/superpowers/specs/` path. Before committing, if you are on
   the default branch, create a feature branch in place first — git worktrees
-  are banned in this repository.
+  are banned in this repository. After committing the design, publish the
+  branch (Publication Contract, publication point 1) — an announced push of
+  your own ticket branch.
 - **Architect Review Gate (between item 8 and item 9):** when a Jira ticket
   is linked, ALWAYS offer a design review by a human architect after the
   user approves the spec — with your own yes/no recommendation based on

@@ -17,4 +17,8 @@
   The using-git-worktrees step resolves to branch-in-place: ensure you are on
   a feature branch (never main/master without explicit consent) and continue
   in the existing working directory.
+- **publikace** — before dispatching the first task, publish the branch with the
+  committed plan (Publication Contract, publication point 2): an announced push
+  of your own ticket branch, alongside the baseline build/test check. Shared
+  branches are never pushed by the agent.
 <!-- UMS-OVERLAY END -->
