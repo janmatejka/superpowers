@@ -12,6 +12,11 @@ UMS** s kódovacím agentem. Vrstva jim dává:
   (`design_<slug>.md` + `plan_<slug>.md`) na známém místě, ne v chatu.
 - **Napojení na Jira** — tiket je nosičem stavu: komentáře s implementačním
   souhrnem, přechody stavů, design review mezi řešitelem a architektem.
+- **Spolupráci více aktérů na jednom epiku** — každý pracuje ve svém clonu
+  a tiketové větvi; skill `mb-doc-index` řekne, kdo na čem už pracuje (jiná
+  větev se stejným slugem nebo tiketem je hlášená chyba, ne tichá kolize) a
+  publikační invariant zaručí, že odkaz zapsaný do Jiry vždy odkazuje na
+  commit, který na `origin` skutečně existuje.
 - **Češtinu na výstupu** — vše, co čte člověk nebo co zůstává v repozitáři
   (návrhy, plány, MB dokumenty, commit messages, Jira komentáře), je česky.
   AI-facing texty (těla skillů, dispatch prompty, task briefy, reporty
@@ -20,8 +25,10 @@ UMS** s kódovacím agentem. Vrstva jim dává:
 ## Jak vypadá práce s vrstvou
 
 1. Uživatel řekne, co chce postavit. Agent spustí `brainstorming`; ten navíc
-   vybere a **připne cílovou Memory Bank**, zeptá se na Jira tiket a přečte
-   dokumenty cílové MB jako kontext návrhu.
+   vybere a **připne cílovou Memory Bank** (kandidáty hledá i napříč větvemi
+   na `origin` přes `mb-doc-index` — kolize se stejným tiketem na cizí větvi
+   zastaví pinování), zeptá se na Jira tiket a přečte dokumenty cílové MB jako
+   kontext návrhu.
 2. Návrh se uloží jako `design_<slug>.md` do `proposals/active/` cílové MB.
    U netriviálních návrhů s tiketem agent nabídne **design review živým
    architektem** — tiket jde do stavu „Design Review" a práce se parkuje.
@@ -32,9 +39,10 @@ UMS** s kódovacím agentem. Vrstva jim dává:
    `proposals/completed/`, plán se maže, `context.md` se resetuje na IDLE
    a nabídne se aktualizace Jira tiketu.
 
-Uživatel může kdykoli zjistit stav (`mb-state`), zrušit rozpracovanou práci
-(`mb-abort`), dosynchronizovat dokumentaci s kódem (`mb-sync`) nebo si nechat
-vygenerovat graf závislostí epiku (`mb-epic-graph`).
+Uživatel může kdykoli zjistit stav (`mb-state`, včetně cizích větví a kolizí),
+zrušit rozpracovanou práci (`mb-abort`), dosynchronizovat dokumentaci s kódem
+(`mb-sync`), nechat vygenerovat graf závislostí epiku (`mb-epic-graph`) nebo
+zjistit, kdo na čem pracuje napříč větvemi (`mb-doc-index`).
 
 ## Rozpracování epiků
 
@@ -70,5 +78,8 @@ do monorepa (dvousměrně pro Claude Code) nebo do profilu uživatele
   `mb-plan` a `mb-act` jsou jen přesměrovací stuby.
 - **Nepoužívá git worktrees.** V monorepu UMS jsou zakázané (velikost repa);
   izolace se řeší větví na místě.
-- **Nikdy netlačí do remote bez souhlasu.** Push je vždy nabídnut a čeká na
-  potvrzení; `git push` je navíc v deny listu.
+- **Nikdy netlačí do sdílené větve bez souhlasu.** `develop`, `main`, `master`
+  a `release/*` agent nepushuje nikdy — připraví příkaz a čeká na uživatele
+  (lidská výjimka `UMS_ALLOW_SHARED_PUSH=1`). Vlastní tiketovou větev agent
+  pushuje sám, ale vždy ohlásí branch a commity; force push je zakázaný vždy.
+  Vynucuje to git `pre-push` hook, ne `permissions.deny`.
