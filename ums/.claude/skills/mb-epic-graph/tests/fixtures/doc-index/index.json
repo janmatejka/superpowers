@@ -1,0 +1,21 @@
+{
+  "base": "origin/develop",
+  "generated": "2026-07-30T10:00:00+02:00",
+  "entries": [
+    {
+      "slug": "demo_6", "jira": "DEMO-6", "phase": "next",
+      "path": "memory-bank/proposals/next/design_demo_6.md",
+      "branch": "origin/feature/demo-6-alfa",
+      "commit": "1111111111111111111111111111111111111111",
+      "date": "2026-07-30T09:00:00+02:00", "author": "Test"
+    },
+    {
+      "slug": "demo_6", "jira": "DEMO-6", "phase": "next",
+      "path": "memory-bank/proposals/next/design_demo_6.md",
+      "branch": "origin/feature/demo-6-alfa-dup",
+      "commit": "2222222222222222222222222222222222222222",
+      "date": "2026-07-29T09:00:00+02:00", "author": "Test"
+    }
+  ],
+  "findings": []
+}

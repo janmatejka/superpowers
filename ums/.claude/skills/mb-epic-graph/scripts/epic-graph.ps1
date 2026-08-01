@@ -46,6 +46,17 @@ attributes each file's prose to a ticket via its "**Jira:** KEY" header or a
 "_1234" slug fragment in the filename, so that prose participates in the
 consistency check.
 
+.PARAMETER IndexFile
+JSON produced by mb-doc-index's -Json (shape {entries:[{slug,jira,phase,
+branch,...}]}). Jira mode only. Feeds the SAME ticket->proposal map as
+-ProposalPath, so a draft that exists only on another actor's branch still
+counts as a live proposal for the status glyph (▶️/⏳ instead of 💡/❔). With
+-Check it also emits two findings: DRAFT NA CIZÍ VĚTVI (INFO, one per entry
+whose branch is not local/base) and DRAFT NA VÍCE VĚTVÍCH (VAROVÁNÍ, a queued
+"next"-phase draft with 2+ distinct branches). Both are informational only —
+they never raise the exit code, so ordinary parallel drafting across clones
+cannot fail the -Check gate.
+
 .PARAMETER Check
 Include the consistency-oracle section (prose vs links, symmetry, cycles).
 
@@ -100,6 +111,7 @@ param(
     [string[]] $InputFile,
     [string] $EpicKey,
     [string[]] $ProposalPath,
+    [string] $IndexFile = '',
     [string[]] $ProjectKeys,
     [switch] $Check,
     [switch] $IncludeEpicProse,
@@ -395,6 +407,35 @@ if ($Source -eq 'Jira' -and $ProposalPath) {
             if ($stage -eq 'active') { $proposalActive[$ticket] = $true }
             if ($stage -eq 'active' -or $stage -eq 'next') { $proposalLive[$ticket] = $true }
         } else { $unattributed += $f.FullName }
+    }
+}
+
+# ---------- doc-index entries (cross-branch proposal visibility) --------------
+# Jira mode only ("-Source Proposals" is out of scope for -IndexFile, see
+# SKILL.md). Entries from mb-doc-index's -Json output feed the SAME
+# ticket->proposal map used above for -ProposalPath ($proposalLive /
+# $proposalActive), so a draft that exists only on a colleague's branch still
+# counts as "návrh hotov" for the status glyph (Get-StatusGlyph below). Kept
+# separately in $script:indexEntries so the -Check section can turn it into
+# findings without re-reading the file; those findings (DRAFT NA CIZÍ VĚTVI,
+# DRAFT NA VÍCE VĚTVÍCH) are always INFO/VAROVÁNÍ and must never raise the
+# exit code — ordinary parallel drafting on another branch is expected in the
+# multi-actor setup this feeds, not a consistency error, and a CHYBA here
+# would block every elaboration-window closure.
+$script:indexEntries = @()
+if ($Source -eq 'Jira' -and $IndexFile) {
+    if (-not (Test-Path -LiteralPath $IndexFile)) { Write-Error "Index file not found: $IndexFile"; exit 1 }
+    $idxJson = Get-Content -LiteralPath $IndexFile -Raw | ConvertFrom-Json
+    if ($null -eq $idxJson -or -not $idxJson.PSObject.Properties['entries']) {
+        Write-Error "Unrecognized doc-index JSON (missing 'entries'): $IndexFile"; exit 1
+    }
+    $proposalInfoAvailable = $true
+    foreach ($e in @($idxJson.entries)) {
+        if (-not $e.PSObject.Properties['jira'] -or -not $e.jira) { continue }   # unattributed entry: no ticket to map to
+        $jira = [string]$e.jira; $phase = [string]$e.phase; $branch = [string]$e.branch
+        if ($phase -eq 'active' -or $phase -eq 'next') { $proposalLive[$jira] = $true }
+        if ($phase -eq 'active') { $proposalActive[$jira] = $true }
+        $script:indexEntries += [pscustomobject]@{ Jira = $jira; Slug = [string]$e.slug; Phase = $phase; Branch = $branch }
     }
 }
 
@@ -934,6 +975,25 @@ if ($Check) {
                         Text = "$($iss.Key): popis odkazuje na «$name», ale takový proposal mezi známými (-ProposalPath) není — přejmenován/přesunut/smazán? Obnov odkaz." }
                 }
             }
+        }
+    }
+    # 7. doc-index cross-branch drafts (Jira mode with -IndexFile only) —
+    #    surfaces WHERE a draft counted into $proposalLive/$proposalActive
+    #    above actually lives. Always INFO/VAROVÁNÍ, never CHYBA — see the
+    #    -IndexFile loading comment above for why this must not affect
+    #    $script:ExitCode.
+    foreach ($e in $script:indexEntries) {
+        if ($e.Branch -and $e.Branch -ne 'local' -and $e.Branch -ne 'base') {
+            $findings += @{ Severity = 'INFO'; Code = 'DRAFT NA CIZÍ VĚTVI'
+                Text = "$($e.Jira) ($($e.Slug)): návrh existuje na cizí větvi $($e.Branch)." }
+        }
+    }
+    foreach ($g in @($script:indexEntries | Where-Object { $_.Phase -eq 'next' } | Group-Object Slug)) {
+        $branches = @($g.Group | Select-Object -ExpandProperty Branch -Unique)
+        if (@($branches).Count -ge 2) {
+            $jiraForSlug = ($g.Group | Select-Object -First 1).Jira
+            $findings += @{ Severity = 'VAROVÁNÍ'; Code = 'DRAFT NA VÍCE VĚTVÍCH'
+                Text = "$($g.Name) ($jiraForSlug): návrh je ve frontě (next) na více větvích: $($branches -join ', ')." }
         }
     }
     if (@($findings | Where-Object { $_.Severity -eq 'CHYBA' }).Count -gt 0) { $script:ExitCode = 2 }

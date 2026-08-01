@@ -4,7 +4,7 @@ description: Use when you need a Jira epic's dependency view (the wave table for
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.4"
+  version: "1.5"
 ---
 
 # Command: mb-epic-graph
@@ -63,6 +63,7 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   -InputFile <snapshot.json>[, <externals.json>] `
   -EpicKey <EPIC> -Check `
   [-ProposalPath <component>/memory-bank/proposals/next[, …]] `
+  [-IndexFile <mb-doc-index -Json output>] `
   [-ProjectKeys UMS[, …]] `
   [-Mermaid] [-IndentedList] [-NoStatus] `
   [-JiraBaseUrl https://datasyscz.atlassian.net] `
@@ -101,6 +102,14 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   `_prehled.md` uzlem není); párování souborů do jednoho uzlu (slug) —
   např. `design_<slug>.md`, nebo legacy dvojice `proposal_x.md` +
   `proposal_x-design.md` — se řídí kontraktní Discovery & pairing rule.
+- `-IndexFile`: JSON z `mb-doc-index -Json` (`entries[].slug|jira|phase|branch|…`).
+  Jen v Jira režimu. Sytí stejnou mapu tiket → proposal jako `-ProposalPath` —
+  draft existující jen na cizí větvi (rozdělaná práce jiného actora ve
+  stejném epiku) se pak počítá jako „návrh hotov" pro glyph (▶️/⏳ místo
+  💡/❔). S `-Check` navíc hlásí `DRAFT NA CIZÍ VĚTVI` (info, za každý záznam
+  s větví jinou než `local`/`base`) a `DRAFT NA VÍCE VĚTVÍCH` (varování, fronta
+  „next" se 2+ různými větvemi) — obě jsou informativní, nikdy CHYBA, takže
+  paralelní rozpracovaný draft na jiné větvi nikdy nezavře bránu `-Check`.
 - `-NoStatus`: suppress the per-ticket status glyph (see below); by default the
   wave table leads each ticket with one merged status symbol.
 - `-ProjectKeys`: extra project prefixes for mention detection (defaults to
@@ -113,6 +122,8 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   `PROSE BEZ ODKAZU` a `CYKLUS`; `ASYMETRICKÝ ODKAZ`, `ODKAZ BEZ PROSE` a
   `TYP ODKAZU NESOUHLASÍ` jsou jen `VAROVÁNÍ` a `-Check` nezhazují —
   symetrie deklarací tedy pro průchod v Proposals režimu není nutná.
+  Findings z `-IndexFile` (`DRAFT NA CIZÍ VĚTVI`, `DRAFT NA VÍCE VĚTVÍCH`)
+  jsou vždy jen INFO/VAROVÁNÍ v obou režimech — nikdy nezvednou exit kód na 2.
 
 ### 3. Use the outputs
 
@@ -190,6 +201,17 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
     covering the relevant stages, else it may misfire on files that live in a
     stage you did not pass). Same dual-form acceptance as above applies when
     reading the description line.
+  - `DRAFT NA CIZÍ VĚTVI` (jen Jira, jen s `-IndexFile`) — an entry from
+    `mb-doc-index`'s index lives on a branch other than `local`/`base` (info;
+    it is exactly what feeds the ▶️/⏳ glyph for a colleague's draft — see
+    `-IndexFile` above).
+  - `DRAFT NA VÍCE VĚTVÍCH` (jen Jira, jen s `-IndexFile`) — the same queued
+    (`next`) draft shows up on 2+ distinct branches — a genuine duplicate
+    draft or a fork someone forgot to clean up (warning; same name as
+    `mb-doc-index` reports for its own perspective, so the two tools never
+    invent two labels for one phenomenon). Both of these are always
+    INFO/VAROVÁNÍ, never CHYBA — ordinary parallel drafting across clones
+    must never fail the `-Check` gate.
 - The prose scan is a precision-tuned heuristic (line-bounded keyword
   windows; quoted meta-mentions like `(dříve „blokuje")` are skipped) — read
   each finding before acting on it.

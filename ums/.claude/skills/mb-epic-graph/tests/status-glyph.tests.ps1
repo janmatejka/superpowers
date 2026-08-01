@@ -97,4 +97,29 @@ Write-Host 'Degraded run flags itself so a pasted report cannot be misread'
 Assert-Match $bare.Out 'stav návrhů není znám' 'run without -ProposalPath announces the degradation'
 Assert-NotMatch $full.Out 'stav návrhů není znám' 'run with -ProposalPath carries no degradation note'
 
+# --- -IndexFile: a draft living only on a foreign branch counts as "návrh hotov"
+$idx = Join-Path $PSScriptRoot 'fixtures/doc-index/index.json'
+$snap = Join-Path $PSScriptRoot 'fixtures/jira/status.json'
+$r = Invoke-Graph @('-InputFile', $snap, '-EpicKey', 'DEMO-0', '-Check', '-IndexFile', $idx)
+Assert-Match $r.Out '▶️|⏳' 'glyf zohlední návrh existující jen na cizí větvi'
+Assert-Match $r.Out 'DRAFT NA CIZÍ VĚTVI' 'graf hlásí draft na cizí větvi jako informaci'
+Assert-Match $r.Out 'DRAFT NA VÍCE VĚTVÍCH' 'graf hlásí tentýž draft na dvou větvích'
+Assert-True ($r.Code -ne 1) 'nové findings nejsou skriptová chyba'
+
+$without = Invoke-Graph @('-InputFile', $snap, '-EpicKey', 'DEMO-0', '-Check')
+Assert-NotMatch $without.Out 'DRAFT NA CIZÍ VĚTVI' 'bez -IndexFile se nové findings netiskne'
+Assert-Match $without.Out '💡|❔' 'bez -IndexFile zůstává tiket bez známého návrhu'
+
+Write-Host '-IndexFile findings never turn the -Check gate CHYBA (exit 2)'
+# fixtures/jira/clean.json has zero prose/link findings of its own on -Check,
+# so this isolates the -IndexFile contribution from the pre-existing findings
+# in status.json (which already trips exit 2 for unrelated reasons above).
+$clean = Join-Path $PSScriptRoot 'fixtures/jira/clean.json'
+$rCleanBase = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check')
+Assert-Eq $rCleanBase.Code 0 'baseline: clean snapshot has no findings of its own'
+$rCleanIdx = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check', '-IndexFile', $idx)
+Assert-Match $rCleanIdx.Out 'DRAFT NA CIZÍ VĚTVI' 'clean snapshot + -IndexFile still reports the info finding'
+Assert-Match $rCleanIdx.Out 'DRAFT NA VÍCE VĚTVÍCH' 'clean snapshot + -IndexFile still reports the warning finding'
+Assert-Eq $rCleanIdx.Code 0 '-IndexFile findings alone (INFO/VAROVÁNÍ) never raise exit code to 2'
+
 Complete-Tests

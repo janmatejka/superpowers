@@ -1,0 +1,5 @@
+{ "issues": [
+  { "key": "CLEAN-0", "fields": { "summary": "Epic", "issuetype": {"name":"Epic"}, "status": {"name":"To Do"}, "issuelinks": [] } },
+  { "key": "CLEAN-1", "fields": { "summary": "Samostatny tiket", "issuetype": {"name":"Story"}, "status": {"name":"To Do"},
+      "parent": {"key":"CLEAN-0"}, "description": "Bez zavislosti na jinych polozkach.", "issuelinks": [] } }
+] }
