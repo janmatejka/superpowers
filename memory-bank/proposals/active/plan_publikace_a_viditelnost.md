@@ -86,10 +86,14 @@ warning.
 | The actor's own ticket branch (unprotected) | The agent pushes it itself, without asking, but ALWAYS announces the branch and the outgoing commits. Force push is forbidden. |
 | Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
 
-Mechanically enforced for Claude Code by the PreToolUse hook
-`.claude/hooks/guard-git-push.mjs` (protected-ref deny-list, force/mirror/all/delete
-denied). Other harnesses follow this rule by contract text only, as with every
-other rule of this layer. `mb-git-commit` never pushes — publication is a
+Mechanically enforced by a git `pre-push` hook installed per clone (it rejects a
+protected destination ref, a deletion and a non-fast-forward); the Claude Code
+PreToolUse hook `.claude/hooks/guard-git-push.mjs` is only a fast early warning
+and lets through what it cannot parse. Other harnesses rely on the pre-push hook
+and on contract text, as with every other rule of this layer.
+(This paragraph was rewritten during Task 4 fix rounds 2–3 — the original
+"protected-ref deny-list" wording described a mechanism that two adversarial
+reviews defeated against a real remote; see the design document, section 2.) `mb-git-commit` never pushes — publication is a
 workflow step at the points listed above, not a commit tool.
 ```
 
