@@ -102,14 +102,25 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   `_prehled.md` uzlem není); párování souborů do jednoho uzlu (slug) —
   např. `design_<slug>.md`, nebo legacy dvojice `proposal_x.md` +
   `proposal_x-design.md` — se řídí kontraktní Discovery & pairing rule.
-- `-IndexFile`: JSON z `mb-doc-index -Json` (`entries[].slug|jira|phase|branch|…`).
-  Jen v Jira režimu. Sytí stejnou mapu tiket → proposal jako `-ProposalPath` —
-  draft existující jen na cizí větvi (rozdělaná práce jiného actora ve
-  stejném epiku) se pak počítá jako „návrh hotov" pro glyph (▶️/⏳ místo
-  💡/❔). S `-Check` navíc hlásí `DRAFT NA CIZÍ VĚTVI` (info, za každý záznam
-  s větví jinou než `local`/`base`) a `DRAFT NA VÍCE VĚTVÍCH` (varování, fronta
-  „next" se 2+ různými větvemi) — obě jsou informativní, nikdy CHYBA, takže
-  paralelní rozpracovaný draft na jiné větvi nikdy nezavře bránu `-Check`.
+- `-IndexFile`: JSON z `mb-doc-index -Json` (`entries[].slug|jira|phase|branch|…`
+  + top-level `findings[].code|severity|message`). Jen v Jira režimu. Sytí
+  stejnou mapu tiket → proposal jako `-ProposalPath` — draft existující jen na
+  cizí větvi (rozdělaná práce jiného actora ve stejném epiku) se pak počítá
+  jako „návrh hotov" pro glyph (▶️/⏳ místo 💡/❔). `mb-doc-index` produkuje
+  PROJEKTOVĚ ŠIROKÝ index (přes všechny epiky), takže s `-Check` se do reportu
+  promítají jen záznamy patřící TOMUTO epiku (stejná myšlenka jako scoping
+  `EXTERNÍ TIKET` na `$externalKeys`): `DRAFT NA CIZÍ VĚTVI` (info, za každý
+  in-scope záznam s větví jinou než `local`/`base`) a `DRAFT NA VÍCE VĚTVÍCH`
+  (varování) — tu druhou skript NEPOČÍTÁ znovu ze záznamů, ale přebírá přímo
+  z `findings` pole indexu (jediný zdroj pravdy — `mb-doc-index` už správně
+  vylučuje `base` a slučuje `local` s vlastní remote větví actora do jednoho
+  actora, takže naivní přepočet zde by hlásil duplicitu i u běžné neobsazené
+  fronty), přes mapování slug→jira ze stejného indexu, a jen pro tikety
+  v scope tohoto epiku. Chybějící `findings` pole v indexu se toleruje jako
+  prázdné. Obě findings jsou vždy jen INFO/VAROVÁNÍ — kód i severity jsou v
+  skriptu literály, nikdy převzaté ze vstupního souboru — takže paralelní
+  rozdělaný draft na jiné větvi (ani nepřátelský/poškozený index soubor)
+  nikdy nezavře bránu `-Check`.
 - `-NoStatus`: suppress the per-ticket status glyph (see below); by default the
   wave table leads each ticket with one merged status symbol.
 - `-ProjectKeys`: extra project prefixes for mention detection (defaults to
@@ -201,17 +212,28 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
     covering the relevant stages, else it may misfire on files that live in a
     stage you did not pass). Same dual-form acceptance as above applies when
     reading the description line.
-  - `DRAFT NA CIZÍ VĚTVI` (jen Jira, jen s `-IndexFile`) — an entry from
-    `mb-doc-index`'s index lives on a branch other than `local`/`base` (info;
-    it is exactly what feeds the ▶️/⏳ glyph for a colleague's draft — see
-    `-IndexFile` above).
+  - `DRAFT NA CIZÍ VĚTVI` (jen Jira, jen s `-IndexFile`) — an index entry FOR
+    A TICKET IN THIS EPIC's scope lives on a branch other than `local`/`base`
+    (info; it is exactly what feeds the ▶️/⏳ glyph for a colleague's draft —
+    see `-IndexFile` above). Computed by this script directly from the index
+    entries (graph-specific, tied to the glyph change) but scoped to this
+    epic's tickets — `mb-doc-index`'s index is project-wide, so an entry
+    belonging to another epic never appears here.
   - `DRAFT NA VÍCE VĚTVÍCH` (jen Jira, jen s `-IndexFile`) — the same queued
     (`next`) draft shows up on 2+ distinct branches — a genuine duplicate
     draft or a fork someone forgot to clean up (warning; same name as
     `mb-doc-index` reports for its own perspective, so the two tools never
-    invent two labels for one phenomenon). Both of these are always
-    INFO/VAROVÁNÍ, never CHYBA — ordinary parallel drafting across clones
-    must never fail the `-Check` gate.
+    invent two labels for one phenomenon). NOT recomputed here — passed
+    through from the index file's own `findings` array (single source of
+    truth: `mb-doc-index` already excludes the `base` pseudo-branch and
+    collapses `local` with the actor's own remote ref, which a naive
+    distinct-branch count in this script cannot know about and would
+    misfire on), filtered to findings whose subject ticket is in this
+    epic's scope. An index with no `findings` array is treated as empty,
+    not an error. Both of these findings are always INFO/VAROVÁNÍ — code and
+    severity are literals in this script, never read from the index file
+    (so even a corrupt/hostile index cannot fail the `-Check` gate) —
+    ordinary parallel drafting across clones must never fail it either.
 - The prose scan is a precision-tuned heuristic (line-bounded keyword
   windows; quoted meta-mentions like `(dříve „blokuje")` are skipped) — read
   each finding before acting on it.

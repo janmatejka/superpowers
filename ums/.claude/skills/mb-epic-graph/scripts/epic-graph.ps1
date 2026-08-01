@@ -415,23 +415,39 @@ if ($Source -eq 'Jira' -and $ProposalPath) {
 # SKILL.md). Entries from mb-doc-index's -Json output feed the SAME
 # ticket->proposal map used above for -ProposalPath ($proposalLive /
 # $proposalActive), so a draft that exists only on a colleague's branch still
-# counts as "návrh hotov" for the status glyph (Get-StatusGlyph below). Kept
-# separately in $script:indexEntries so the -Check section can turn it into
-# findings without re-reading the file; those findings (DRAFT NA CIZÍ VĚTVI,
-# DRAFT NA VÍCE VĚTVÍCH) are always INFO/VAROVÁNÍ and must never raise the
-# exit code — ordinary parallel drafting on another branch is expected in the
-# multi-actor setup this feeds, not a consistency error, and a CHYBA here
+# counts as "návrh hotov" for the status glyph (Get-StatusGlyph below) —
+# regardless of which epic that ticket belongs to (the glyph only ever
+# renders for THIS epic's rows anyway). Kept separately in
+# $script:indexEntries (and $script:idxJson, the raw parsed document) so the
+# -Check section below can turn it into findings without re-reading the file.
+# mb-doc-index produces a PROJECT-WIDE index, so the -Check section MUST
+# scope findings to this epic's tickets ($scopeKeys) — this loading loop does
+# not, on purpose (glyph lookups are per-ticket and harmless if fed a foreign
+# ticket that never gets a row). Findings from this feature (DRAFT NA CIZÍ
+# VĚTVI, DRAFT NA VÍCE VĚTVÍCH) are always INFO/VAROVÁNÍ and must never raise
+# the exit code — ordinary parallel drafting on another branch is expected in
+# the multi-actor setup this feeds, not a consistency error, and a CHYBA here
 # would block every elaboration-window closure.
 $script:indexEntries = @()
+$script:idxJson = $null
 if ($Source -eq 'Jira' -and $IndexFile) {
     if (-not (Test-Path -LiteralPath $IndexFile)) { Write-Error "Index file not found: $IndexFile"; exit 1 }
-    $idxJson = Get-Content -LiteralPath $IndexFile -Raw | ConvertFrom-Json
-    if ($null -eq $idxJson -or -not $idxJson.PSObject.Properties['entries']) {
+    $script:idxJson = Get-Content -LiteralPath $IndexFile -Raw | ConvertFrom-Json
+    if ($null -eq $script:idxJson -or -not $script:idxJson.PSObject.Properties['entries']) {
         Write-Error "Unrecognized doc-index JSON (missing 'entries'): $IndexFile"; exit 1
     }
     $proposalInfoAvailable = $true
-    foreach ($e in @($idxJson.entries)) {
+    foreach ($e in @($script:idxJson.entries)) {
         if (-not $e.PSObject.Properties['jira'] -or -not $e.jira) { continue }   # unattributed entry: no ticket to map to
+        # slug/phase/branch are as mandatory as jira in the mb-doc-index contract
+        # (entries[].slug|jira|phase|branch|date) — guard them the same way (via
+        # PSObject.Properties, like the jira check above and this file's own
+        # Get-Field convention) so a hand-crafted/older index produces THIS
+        # script's own controlled error, not an uncaught PropertyNotFoundException
+        # under Set-StrictMode.
+        if (-not $e.PSObject.Properties['slug'] -or -not $e.PSObject.Properties['phase'] -or -not $e.PSObject.Properties['branch']) {
+            Write-Error "Malformed doc-index entry for jira $($e.jira) (missing slug/phase/branch): $IndexFile"; exit 1
+        }
         $jira = [string]$e.jira; $phase = [string]$e.phase; $branch = [string]$e.branch
         if ($phase -eq 'active' -or $phase -eq 'next') { $proposalLive[$jira] = $true }
         if ($phase -eq 'active') { $proposalActive[$jira] = $true }
@@ -979,22 +995,50 @@ if ($Check) {
     }
     # 7. doc-index cross-branch drafts (Jira mode with -IndexFile only) —
     #    surfaces WHERE a draft counted into $proposalLive/$proposalActive
-    #    above actually lives. Always INFO/VAROVÁNÍ, never CHYBA — see the
-    #    -IndexFile loading comment above for why this must not affect
-    #    $script:ExitCode.
+    #    above actually lives. Scoped to THIS epic's tickets ($scopeKeys,
+    #    same idea as the externals finding above scoping to $externalKeys):
+    #    mb-doc-index produces a PROJECT-WIDE index, so an unscoped run would
+    #    pollute this epic's report with every other epic's drafts. Always
+    #    INFO/VAROVÁNÍ — severity is a literal here, NEVER read from the
+    #    index file, so nothing an index claims can raise $script:ExitCode.
+    $scopeSet = [System.Collections.Generic.HashSet[string]]::new([string[]] $scopeKeys)
     foreach ($e in $script:indexEntries) {
+        if (-not $scopeSet.Contains($e.Jira)) { continue }   # another epic's ticket — not this report's concern
         if ($e.Branch -and $e.Branch -ne 'local' -and $e.Branch -ne 'base') {
             $findings += @{ Severity = 'INFO'; Code = 'DRAFT NA CIZÍ VĚTVI'
                 Text = "$($e.Jira) ($($e.Slug)): návrh existuje na cizí větvi $($e.Branch)." }
         }
     }
-    foreach ($g in @($script:indexEntries | Where-Object { $_.Phase -eq 'next' } | Group-Object Slug)) {
-        $branches = @($g.Group | Select-Object -ExpandProperty Branch -Unique)
-        if (@($branches).Count -ge 2) {
-            $jiraForSlug = ($g.Group | Select-Object -First 1).Jira
-            $findings += @{ Severity = 'VAROVÁNÍ'; Code = 'DRAFT NA VÍCE VĚTVÍCH'
-                Text = "$($g.Name) ($jiraForSlug): návrh je ve frontě (next) na více větvích: $($branches -join ', ')." }
-        }
+    # DRAFT NA VÍCE VĚTVÍCH is NOT recomputed here (single source of truth):
+    # mb-doc-index already applies the correct actor model when it computes
+    # this finding — 'base' (the shared baseline) is excluded, and 'local'
+    # collapses with the actor's own remote ref into one actor — precisely
+    # because an ordinary unclaimed backlog item already in the base ref
+    # shows up as both 'base' and 'local' in every clone. A naive distinct-
+    # branch count here (as this script used to do) would warn "duplicate
+    # draft" for every such ordinary item. Instead: read the index's own
+    # findings array (tolerate its absence — older/hand-made files are just
+    # empty), recover which ticket each finding is about via the entries'
+    # slug->jira mapping (the message's own leading token is the slug — see
+    # doc-index.ps1's Add-Finding calls for 'DRAFT NA VÍCE VĚTVÍCH'), and
+    # render it only when that ticket is in THIS epic's scope. Code/severity
+    # are still literals assigned here, never taken from the index file —
+    # same immunity to a hostile/corrupt index as DRAFT NA CIZÍ VĚTVI above.
+    $slugToJira = @{}
+    foreach ($e in $script:indexEntries) {
+        if ($e.Slug -and -not $slugToJira.ContainsKey($e.Slug)) { $slugToJira[$e.Slug] = $e.Jira }
+    }
+    $idxFindings = if ($script:idxJson -and $script:idxJson.PSObject.Properties['findings'] -and $script:idxJson.findings) {
+        @($script:idxJson.findings)
+    } else { @() }
+    foreach ($f in $idxFindings) {
+        if (-not $f.PSObject.Properties['code'] -or [string]$f.code -ne 'DRAFT NA VÍCE VĚTVÍCH') { continue }
+        $msg = if ($f.PSObject.Properties['message']) { [string]$f.message } else { '' }
+        if (-not $msg) { continue }
+        $subjSlug = ($msg -split '\s+', 2)[0]
+        if (-not $subjSlug -or -not $slugToJira.ContainsKey($subjSlug)) { continue }
+        if (-not $scopeSet.Contains($slugToJira[$subjSlug])) { continue }   # another epic's ticket
+        $findings += @{ Severity = 'VAROVÁNÍ'; Code = 'DRAFT NA VÍCE VĚTVÍCH'; Text = $msg }
     }
     if (@($findings | Where-Object { $_.Severity -eq 'CHYBA' }).Count -gt 0) { $script:ExitCode = 2 }
 }

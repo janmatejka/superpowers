@@ -103,23 +103,52 @@ $snap = Join-Path $PSScriptRoot 'fixtures/jira/status.json'
 $r = Invoke-Graph @('-InputFile', $snap, '-EpicKey', 'DEMO-0', '-Check', '-IndexFile', $idx)
 Assert-Match $r.Out '▶️|⏳' 'glyf zohlední návrh existující jen na cizí větvi'
 Assert-Match $r.Out 'DRAFT NA CIZÍ VĚTVI' 'graf hlásí draft na cizí větvi jako informaci'
-Assert-Match $r.Out 'DRAFT NA VÍCE VĚTVÍCH' 'graf hlásí tentýž draft na dvou větvích'
+Assert-Match $r.Out 'DRAFT NA VÍCE VĚTVÍCH' 'graf hlásí tentýž draft na dvou větvích (převzato z findings indexu)'
 Assert-True ($r.Code -ne 1) 'nové findings nejsou skriptová chyba'
 
 $without = Invoke-Graph @('-InputFile', $snap, '-EpicKey', 'DEMO-0', '-Check')
 Assert-NotMatch $without.Out 'DRAFT NA CIZÍ VĚTVI' 'bez -IndexFile se nové findings netiskne'
 Assert-Match $without.Out '💡|❔' 'bez -IndexFile zůstává tiket bez známého návrhu'
 
-Write-Host '-IndexFile findings never turn the -Check gate CHYBA (exit 2)'
-# fixtures/jira/clean.json has zero prose/link findings of its own on -Check,
-# so this isolates the -IndexFile contribution from the pre-existing findings
-# in status.json (which already trips exit 2 for unrelated reasons above).
+Write-Host '-IndexFile findings are scoped to THIS epic (mb-doc-index is project-wide)'
+# fixtures/jira/clean.json (epic CLEAN-0, single child CLEAN-1) has zero
+# prose/link findings of its own on -Check, so it isolates the -IndexFile
+# contribution from status.json's pre-existing, unrelated CHYBA above.
 $clean = Join-Path $PSScriptRoot 'fixtures/jira/clean.json'
 $rCleanBase = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check')
 Assert-Eq $rCleanBase.Code 0 'baseline: clean snapshot has no findings of its own'
-$rCleanIdx = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check', '-IndexFile', $idx)
-Assert-Match $rCleanIdx.Out 'DRAFT NA CIZÍ VĚTVI' 'clean snapshot + -IndexFile still reports the info finding'
-Assert-Match $rCleanIdx.Out 'DRAFT NA VÍCE VĚTVÍCH' 'clean snapshot + -IndexFile still reports the warning finding'
-Assert-Eq $rCleanIdx.Code 0 '-IndexFile findings alone (INFO/VAROVÁNÍ) never raise exit code to 2'
+# $idx (above) is entirely about DEMO-6, a ticket that does not belong to
+# CLEAN-0 — regression coverage for the cross-epic leak the review caught
+# (running -EpicKey CLEAN-0 with this same $idx used to still print DEMO-6).
+$rCleanForeignIdx = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check', '-IndexFile', $idx)
+Assert-NotMatch $rCleanForeignIdx.Out 'DRAFT NA CIZÍ VĚTVI' 'index entry belonging to another epic (DEMO-6) produces no finding here'
+Assert-NotMatch $rCleanForeignIdx.Out 'DRAFT NA VÍCE VĚTVÍCH' 'index findings-array entry for another epic (demo_6) produces no finding here'
+Assert-Eq $rCleanForeignIdx.Code 0 'foreign-epic index entries do not affect the exit code either'
+
+$crossEpicIdx = Join-Path $PSScriptRoot 'fixtures/doc-index/cross-epic.json'
+$rCross = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check', '-IndexFile', $crossEpicIdx)
+Assert-Match $rCross.Out 'DRAFT NA CIZÍ VĚTVI' 'in-scope ticket (CLEAN-1) still gets its own foreign-branch finding'
+Assert-Match $rCross.Out 'clean_1 je ve frontě' 'findings-array DRAFT NA VÍCE VĚTVÍCH for an in-scope ticket (CLEAN-1) renders'
+Assert-NotMatch $rCross.Out 'demo_6 je ve frontě' 'findings-array DRAFT NA VÍCE VĚTVÍCH for a foreign ticket (DEMO-6) does not render'
+Assert-Eq $rCross.Code 0 '-IndexFile findings alone (INFO/VAROVÁNÍ, hardcoded severity) never raise exit code to 2'
+
+Write-Host '-IndexFile passes through mb-doc-index''s own actor model — no naive base+local recomputation'
+# regression lock for the ruling: mb-doc-index excludes 'base' (shared
+# baseline) and collapses 'local' with the actor's own remote ref, because an
+# ordinary unclaimed backlog item already in the base ref shows up as both
+# 'base' and 'local' in every clone. This index has exactly that base+local
+# pair and an EMPTY findings array (mb-doc-index correctly did not consider
+# it a duplicate) — a naive distinct-branch recount here must not invent one.
+$baseLocalIdx = Join-Path $PSScriptRoot 'fixtures/doc-index/baselocal.json'
+$rBaseLocal = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-Check', '-IndexFile', $baseLocalIdx)
+Assert-NotMatch $rBaseLocal.Out 'DRAFT NA VÍCE VĚTVÍCH' 'base+local pair with empty index findings produces NO duplicate warning'
+Assert-NotMatch $rBaseLocal.Out 'DRAFT NA CIZÍ VĚTVI' 'base/local are not foreign branches either'
+Assert-Eq $rBaseLocal.Code 0 'base+local pair exits 0'
+
+Write-Host '-IndexFile: a malformed entry (missing phase/branch) is a controlled failure, not a crash'
+$malformedIdx = Join-Path $PSScriptRoot 'fixtures/doc-index/malformed.json'
+$rMalformed = Invoke-Graph @('-InputFile', $clean, '-EpicKey', 'CLEAN-0', '-IndexFile', $malformedIdx)
+Assert-Eq $rMalformed.Code 1 'malformed doc-index entry (missing slug/phase/branch) exits 1'
+Assert-Match $rMalformed.Out 'Malformed doc-index entry' 'malformed entry produces the script''s own controlled error message'
 
 Complete-Tests

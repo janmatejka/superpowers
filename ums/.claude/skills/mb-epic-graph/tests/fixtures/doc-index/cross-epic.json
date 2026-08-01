@@ -1,0 +1,30 @@
+{
+  "base": "origin/develop",
+  "generated": "2026-07-30T10:00:00+02:00",
+  "entries": [
+    {
+      "slug": "clean_1", "jira": "CLEAN-1", "phase": "next",
+      "path": "memory-bank/proposals/next/design_clean_1.md",
+      "branch": "origin/feature/clean-1-alfa",
+      "commit": "3333333333333333333333333333333333333333",
+      "date": "2026-07-30T09:00:00+02:00", "author": "Test"
+    },
+    {
+      "slug": "demo_6", "jira": "DEMO-6", "phase": "next",
+      "path": "memory-bank/proposals/next/design_demo_6.md",
+      "branch": "origin/feature/demo-6-alfa",
+      "commit": "4444444444444444444444444444444444444444",
+      "date": "2026-07-30T09:00:00+02:00", "author": "Test"
+    }
+  ],
+  "findings": [
+    {
+      "code": "DRAFT NA VÍCE VĚTVÍCH", "severity": "VAROVÁNÍ",
+      "message": "clean_1 je ve frontě (next) na více větvích: origin/feature/clean-1-alfa, origin/feature/clean-1-beta"
+    },
+    {
+      "code": "DRAFT NA VÍCE VĚTVÍCH", "severity": "VAROVÁNÍ",
+      "message": "demo_6 je ve frontě (next) na více větvích: origin/feature/demo-6-alfa, origin/feature/demo-6-alfa-dup"
+    }
+  ]
+}
