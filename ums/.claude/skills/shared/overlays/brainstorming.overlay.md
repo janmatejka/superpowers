@@ -12,10 +12,10 @@ Adjustments to the checklist above:
   affected code area is identifiable, run Target-MB discovery per the
   contract's "Target-MB Discovery & Pinning" section (scan active work items,
   run the mb-doc-index skill and treat the candidate set as the union of the
-  local scan and the index over origin; a KOLIZE AKTIVNÍ PRÁCE finding is a
-  fail-closed STOP (someone already works on this ticket), foreign active
-  work on other tickets is normal; evidence tags, A/B/C disambiguation — the
-  user always decides; activate a
+  local scan and the index over origin; a KOLIZE AKTIVNÍ PRÁCE finding — the
+  same slug or the same Jira ticket already active on a foreign branch — is
+  a fail-closed STOP; foreign active work on other tickets is normal;
+  evidence tags, A/B/C disambiguation — the user always decides; activate a
   matching queued design draft from `proposals/next/` by moving its files to
   `active/` — a legacy `proposal_*` draft is renamed to `design_<slug>.md`
   during the move — and use the draft as design seed), ask for the Jira
