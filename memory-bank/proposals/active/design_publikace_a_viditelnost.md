@@ -89,31 +89,34 @@ podle názvu větve je děravé (`git push` bez argumentů, `HEAD:refs/heads/dev
 `+refspec`, `--all`). Řešením je **PreToolUse hook `guard-git-push.mjs`** vedle
 existujícího `deny-superpowers-docs.mjs`:
 
-- najde **každou** git invokaci v příkazu (tokenizace celého řetězce, ne
-  kontextový regex — jinak proklouzne push na druhém řádku víceřádkového
-  příkazu, v subshellu, za env prefixem nebo za `git -c k=v`);
-- u `push` propustí **jen** invokaci, kterou bezpečně rozparsuje jako
-  jednoduchý push nechráněné větve: uzavřený seznam neškodných přepínačů
-  (`-u`, `-q`, `-v` a jejich dlouhé tvary), remote jako prosté jméno,
-  refspec bez `+` a bez úvodní dvojtečky, cíl mimo chráněná jména; bez
-  refspecu se dopočítá aktuální větev z `cwd` a nerozluštitelná větev
-  zamítá;
-- **cokoli jiného zamítne**, včetně tvarů, kterým nerozumí;
-- u `fetch` jedno cílené pravidlo: zamítnout refspec, jehož cíl je chráněný
-  lokální ref.
+**Dvě vrstvy s poctivě rozdělenými rolemi.** Zásadní poznatek z implementace:
+**parsování shellového příkazu nemůže být bezpečnostní hranicí.** Dvě kola
+review to prokázala experimentálně proti skutečnému remote — deny-listem
+nebezpečných tvarů prošly `--force-with-lease=…` i shluk `-dq` (smazal větev),
+a když se logika obrátila na allowlist s vlastním tokenizerem, prošly
+`git status;git push origin develop` (operátor přilepený k `git`),
+`git push origin HEAD` na chráněné větvi, `bash -c "git push …"`,
+`git --git-dir <p> push …` i `$GIT push …`. Zároveň rostla cena v opačném
+směru: zamítaly se běžné příkazy s přesměrováním, uvozovkami nebo jen se
+zmínkou o pushi v commit message.
 
-**Fail-closed allowlist, ne deny-list.** Původní návrh vyjmenovával nebezpečné
-tvary; review ukázalo, že ta třída je otevřená — `--force-with-lease=…`, shluk
-`-dq` (ověřeně smaže větev na remote), víceřádkový příkaz, `$(…)`, env prefix
-i `git -c k=v` deny-listem prošly. Uzavřený seznam neškodných tvarů obrací
-selhání správným směrem: neobvyklý příkaz se zamítne a přepíše na jednoduchý,
-zatímco falešné propuštění pushe do `develop` zpět vzít nejde. Chráněná **jména
-větví** zůstávají deny-listem (známá konečná množina, na rozdíl od jmen
-tiketových větví).
+**Vrstva 1 — záruka: git `pre-push` hook.** Git sám předá hooku na stdin
+rozparsované čtveřice `<local-ref> <local-sha> <remote-ref> <remote-sha>`,
+takže je jedno, jak byl příkaz napsán. Hook zamítne: chráněný cílový ref,
+mazání (nulová lokální SHA) a non-fast-forward (force). Tady žádné hádání
+shellu neexistuje. Cena: hook žije v netrackovaném `.git/hooks/`, takže se musí
+instalovat do každého clonu (deploy skriptem vrstvy), a `--no-verify` ho obejde.
 
-Hook je zábradlí proti omylu agenta; skutečnou zárukou zůstává ochrana větví na
-serveru. Ověřit při implementaci, že `push.default` je `simple` (git default od
-2.0), aby bare `git push` nemohl poslat víc větví.
+**Vrstva 2 — zábradlí: PreToolUse hook `guard-git-push.mjs`.** Zůstává kvůli
+rychlé a srozumitelné zpětné vazbě: co bezpečně rozparsuje jako jednoduchý push
+do chráněné větve, zamítne hned a česky; příkaz se zmínkou o `push` a
+`--no-verify` zamítne taky. **Čemu nerozumí, propustí** — fail-open je na
+vrstvě, která není hranicí, správně, a odstraňuje falešná zamítnutí, která
+předchozí návrh způsoboval.
+
+Skutečným backstopem proti čemukoli záměrnému zůstává ochrana větví na serveru.
+Ověřit při implementaci, že `push.default` je `simple` (git default od 2.0), aby
+bare `git push` nemohl poslat víc větví.
 
 Hook je Claude-only lepidlo (`settings.json` se na ostatní harnessy záměrně
 nenasazuje); pro ostatní harnessy platí totéž pravidlo textem kontraktu, stejně
