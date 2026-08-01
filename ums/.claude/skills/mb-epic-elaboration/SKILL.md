@@ -112,12 +112,14 @@ vocabulary, invariants, and Jira sync mechanics, read
 - A work-item file (`design_`/`plan_`/legacy `proposal_*`) created under `proposals/active/` during elaboration.
 - Editing the risk-assessment/source doc to reflect new findings' state.
 - Ledger shows more than one window `probíhá`.
+- Writing a new draft for a ticket that mb-doc-index already reports on a foreign branch.
 
 ## Quick reference
 
 | Need | Use |
 |------|-----|
 | Epic graph + prose↔links consistency (Jira i JIRA-less) | `mb-epic-graph` skill (companion); JIRA-less: `-Source Proposals -ProposalPath <members>` |
+| Dokumenty na cizích větvích, kolize slugů | `mb-doc-index` skill (read-only) |
 | Detekce režimu | `context.md` → `Jira:` prázdné/(bez tiketu) = JIRA-less |
 | Ledger status, next-window suggestion | `pwsh scripts/ledger-status.ps1 -LedgerFile <ledger.md>` (read-only) |
 | New ledger | Copy [ledger-template.md](ledger-template.md) → `memory-bank/epics/<epic>/ledger.md`, fill items from the source doc |

@@ -17,14 +17,18 @@ dispatch prompts are English (Language Contract).
 3. Run `pwsh <this skill>/scripts/ledger-status.ps1 -LedgerFile <ledger.md>`
    for state + next-window suggestion. Fix reported ledger inconsistencies
    before proposing new work.
-4. Detect mode from `context.md` (`Jira: (bez tiketu)` — or a missing /
+4. Run the `mb-doc-index` skill (read-only, `-BaseRef` = the repo's base branch).
+   Its findings feed the window agenda: `DRAFT NA VÍCE VĚTVÍCH` and
+   `FRONTA I DOKONČENO` are dirty-set candidates; `KOLIZE AKTIVNÍ PRÁCE` is a
+   decision for the human BEFORE any drafting starts.
+5. Detect mode from `context.md` (`Jira: (bez tiketu)` — or a missing /
    unavailable Atlassian MCP — → Proposals; otherwise Jira). Mode selects the
    graph invocation in the next step.
-5. Refresh the dependency view: follow the `mb-epic-graph` skill (fetch
+6. Refresh the dependency view: follow the `mb-epic-graph` skill (fetch
    snapshot → generate + `-Check`). Its findings feed the agenda (mismatches
    are dirty-set candidates). In JIRA-less mode, run `mb-epic-graph` with
    `-Source Proposals -ProposalPath <members>` — no Jira fetch.
-6. For any sub-dispatch you make, follow the contract's Dispatch Model Policy:
+7. For any sub-dispatch you make, follow the contract's Dispatch Model Policy:
    read-only code verification and summarization run on the cheapest capable
    tier; review/critique scales per superpowers Model Selection. Always set
    the model explicitly.
@@ -90,6 +94,9 @@ Wait for confirmation or narrowing. The human always decides the agenda.
    no Jira to mirror: these header fields ARE the dependency edges
    themselves — the single source of truth the graph is generated from,
    exactly as Jira links are in Jira mode.
+   Drafts of FOLLOW-UP tickets created mid-window live in `next/` on the actor's
+   own branch and become visible to others by pushing that branch (never by
+   pushing a shared branch, never by cherry-pick).
 7. **Impact on neighbors:** enumerate every other ticket this window changed
    the premises of (moved item, changed/new dependency, corrected claim, new
    ticket) → dirty-set rows (`Zašpiněno oknem` = this window, with reason).
@@ -125,7 +132,11 @@ A window closes only when its slice is internally consistent. Order:
    `mb-git-commit`, Czech message referencing the epic and window, e.g.
    `UMS-3304: okno W05 — <téma>`). Branch-in-place if on the default branch;
    git worktrees are banned.
-6. **Refresh proposal links (post-commit):** for every ticket the window
+6. **Publish the branch** (Publication Contract, publication point 3): push the
+   actor's own branch — announced, not negotiated. The commit-pinned links
+   written in the next step MUST be reachable on `origin`, so this push precedes
+   them. Never push a shared branch.
+7. **Refresh proposal links (post-commit):** for every ticket the window
    created or whose proposal it changed — plus any window ticket still missing
    the link — set/refresh ONE line in the Jira description:
    `**Návrh (proposal):** [<proposal filename>](<commit-pinned URL>)`. The URL
@@ -133,11 +144,11 @@ A window closes only when its slice is internally consistent. Order:
    (`src/<sha>/<relative-path>`, `<sha>` = the window commit, branch fallback
    disabled). Idempotent: replace an existing such line, otherwise insert it
    near the top; touch nothing else in the description. The permalink resolves
-   once the branch is pushed (`mb-git-commit` does not push) — expected; the
-   link is "valid on next push". `mb-epic-graph -Check` reports
-   `TIKET BEZ ODKAZU NA PROPOSAL` (VAROVÁNÍ) until the line is present.
-   JIRA-less: this step does not apply — the nodes ARE the proposal files.
-7. Elaboration converges (fixpoint) when: dirty-set empty AND every item
+   immediately — the branch was published in the previous step. `mb-epic-graph
+   -Check` reports `TIKET BEZ ODKAZU NA PROPOSAL` (VAROVÁNÍ) until the line is
+   present. JIRA-less: this step does not apply — the nodes ARE the proposal
+   files.
+8. Elaboration converges (fixpoint) when: dirty-set empty AND every item
    `uzavřená` AND every ticket `hotov`. Until then, end the session by
    proposing the next window candidate — not by starting it.
 
@@ -193,3 +204,6 @@ A window closes only when its slice is internally consistent. Order:
   ledger ticket row as `mimo epic`.
 - **Human unavailable mid-window:** stop after the current question; the
   window stays `probíhá`; never substitute assumptions for pending decisions.
+- **Draft already exists on a foreign branch** (reported by `mb-doc-index`):
+  do not write a second one. Either take it over by blob copy (contract,
+  Cross-Branch Visibility) or leave it to its owner — the human decides.

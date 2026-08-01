@@ -55,6 +55,10 @@ metadata:
   slug per the pairing rule, per owning MB) and list the queued preliminary
   proposals — they activate by moving to `active/` when work on them starts
   (contract, Target-MB Discovery & Pinning).
+- **Cizí větve:** run the `mb-doc-index` skill (read-only). Report foreign
+  active work items (slug, ticket, branch, last commit date) and its findings.
+  A `KOLIZE AKTIVNÍ PRÁCE` finding is a warning here (mb-state never stops
+  work) with the recommendation to resolve it before pinning new work.
 - Execution progress: does `.superpowers/sdd/progress.md` exist? (Presence =
   plan execution in flight; content shows the last completed task.)
 - Git: current branch (`git branch --show-current`), work on main/master is a
@@ -77,6 +81,8 @@ Exekuce: [.superpowers/sdd/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
 Další aktivní proposaly: <žádné | ⚠️ výčet cizích slugů>
 Fronta (proposals/next/): <prázdná | výčet slugů s vlastnící MB>
+Cizí větve: <žádné | výčet slug@větev (datum)>
+Kolize: <žádné | ⚠️ výčet>
 
 Další krok:
 - IDLE → popiš, co chceš postavit (spustí se brainstorming); mb-scan pro analýzu
