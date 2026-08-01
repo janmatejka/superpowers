@@ -89,16 +89,31 @@ podle názvu větve je děravé (`git push` bez argumentů, `HEAD:refs/heads/dev
 `+refspec`, `--all`). Řešením je **PreToolUse hook `guard-git-push.mjs`** vedle
 existujícího `deny-superpowers-docs.mjs`:
 
-- rozparsuje příkaz a dopočítá cílový ref — u bare `git push` z
-  `git branch --show-current`, u refspecu z jeho pravé strany;
-- zamítne: chráněné refy (deny-list), `--force` / `--force-with-lease` /
-  `+refspec`, `--all` / `--mirror`, `--delete` i mazací refspec `:ref`;
-- vše ostatní propustí.
+- najde **každou** git invokaci v příkazu (tokenizace celého řetězce, ne
+  kontextový regex — jinak proklouzne push na druhém řádku víceřádkového
+  příkazu, v subshellu, za env prefixem nebo za `git -c k=v`);
+- u `push` propustí **jen** invokaci, kterou bezpečně rozparsuje jako
+  jednoduchý push nechráněné větve: uzavřený seznam neškodných přepínačů
+  (`-u`, `-q`, `-v` a jejich dlouhé tvary), remote jako prosté jméno,
+  refspec bez `+` a bez úvodní dvojtečky, cíl mimo chráněná jména; bez
+  refspecu se dopočítá aktuální větev z `cwd` a nerozluštitelná větev
+  zamítá;
+- **cokoli jiného zamítne**, včetně tvarů, kterým nerozumí;
+- u `fetch` jedno cílené pravidlo: zamítnout refspec, jehož cíl je chráněný
+  lokální ref.
 
-Deny-list chráněných jmen je bezpečnější než allow-list konvence: chráněné větve
-jsou známá konečná množina, názvy tiketových větví nikoli. Ověřit při
-implementaci, že `push.default` je `simple` (git default od 2.0), aby bare
-`git push` nemohl poslat víc větví.
+**Fail-closed allowlist, ne deny-list.** Původní návrh vyjmenovával nebezpečné
+tvary; review ukázalo, že ta třída je otevřená — `--force-with-lease=…`, shluk
+`-dq` (ověřeně smaže větev na remote), víceřádkový příkaz, `$(…)`, env prefix
+i `git -c k=v` deny-listem prošly. Uzavřený seznam neškodných tvarů obrací
+selhání správným směrem: neobvyklý příkaz se zamítne a přepíše na jednoduchý,
+zatímco falešné propuštění pushe do `develop` zpět vzít nejde. Chráněná **jména
+větví** zůstávají deny-listem (známá konečná množina, na rozdíl od jmen
+tiketových větví).
+
+Hook je zábradlí proti omylu agenta; skutečnou zárukou zůstává ochrana větví na
+serveru. Ověřit při implementaci, že `push.default` je `simple` (git default od
+2.0), aby bare `git push` nemohl poslat víc větví.
 
 Hook je Claude-only lepidlo (`settings.json` se na ostatní harnessy záměrně
 nenasazuje); pro ostatní harnessy platí totéž pravidlo textem kontraktu, stejně
