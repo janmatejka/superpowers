@@ -84,7 +84,7 @@ warning.
 | Tier | Rule |
 |---|---|
 | The actor's own ticket branch (unprotected) | The agent pushes it itself, without asking, but ALWAYS announces the branch and the outgoing commits. Force push is forbidden. |
-| Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
+| Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin develop` — the human escape added by the final review fix wave, see the design document). The agent then re-verifies reachability. |
 
 Mechanically enforced by a git `pre-push` hook installed per clone (it rejects a
 protected destination ref, a deletion and a non-fast-forward); the Claude Code
@@ -1084,7 +1084,8 @@ Před bod 1 vlož:
    branch) is reachable on `origin` (`git branch -r --contains <sha>`). If it is
    not, **STOP** without transitioning: tell the user in Czech that the code is
    local only and the tester would have nothing to test, and hand over the exact
-   command (`! git push origin <base>`). The agent never pushes a shared branch.
+   command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin <base>`). The agent never
+   pushes a shared branch and never sets that variable itself.
    Re-verify after the user's push, then continue. If the server refuses a direct
    push to the base branch, report it and offer the fallback (short branch +
    an exceptional PR).
@@ -1162,7 +1163,8 @@ Do bloku Option 1 přidej odstavec:
 
 ```markdown
 - **Option 1, after a green merge:** ask (Czech) „Publikovat `develop` na
-  origin?" and hand the user the exact command (`! git push origin develop`) with
+  origin?" and hand the user the exact command
+  (`! UMS_ALLOW_SHARED_PUSH=1 git push origin develop`) with
   the outgoing commits — the agent never pushes a shared branch. Until it is
   published, `mb-jira-update` finalization stops at its publication gate and the
   ticket does NOT move to „Test".

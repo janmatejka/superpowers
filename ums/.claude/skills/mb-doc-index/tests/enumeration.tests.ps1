@@ -30,6 +30,36 @@ $glob = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-No
 Assert-Match $glob.Out 'ums_1_alfa' '-BranchGlob propustí odpovídající větev'
 Assert-NotMatch $glob.Out 'ums_2_beta' '-BranchGlob odfiltruje ostatní větve'
 
+# ---------------------------------------------------------------------------
+# The 'local' pseudo-branch is enumerated from git (one `ls-files` call with a
+# pathspec) rather than by a recursive directory walk, because this script is
+# on the hot path of discovery/mb-state/elaboration in a very large monorepo.
+# What must stay identical: an UNTRACKED but present document is still local
+# work in flight. What deliberately changed: a gitignored document is no
+# longer indexed (nobody can pull it across branches anyway).
+# ---------------------------------------------------------------------------
+$untracked = Join-Path $fx.Work 'memory-bank/proposals/active/design_nezapsany.md'
+New-Item -ItemType Directory -Force -Path (Split-Path $untracked) | Out-Null
+Set-Content -LiteralPath $untracked -Encoding UTF8 -Value @('# Návrh: nezapsany', '', '- **Jira:** UMS-8')
+
+$ignored = Join-Path $fx.Work 'memory-bank/proposals/active/design_ignorovany.md'
+Set-Content -LiteralPath $ignored -Encoding UTF8 -Value @('# Návrh: ignorovany', '', '- **Jira:** UMS-88')
+Set-Content -LiteralPath (Join-Path $fx.Work '.gitignore') -Encoding UTF8 -Value 'design_ignorovany.md'
+
+# tracked in HEAD but deleted from the working tree — 'local' means working
+# tree, so it must not be reported as local work in flight
+Remove-Item -LiteralPath (Join-Path $fx.Work 'memory-bank/proposals/next/design_ums_6_fronta.md')
+
+$json2 = Join-Path ([IO.Path]::GetTempPath()) ("mbidx-local-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.json')
+$loc = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch', '-Json', $json2)
+Assert-Eq $loc.Code 0 'lokální sken přes git končí kódem 0'
+$idx2 = Get-Content -LiteralPath $json2 -Raw | ConvertFrom-Json
+$localOf = { param($slug) @($idx2.entries | Where-Object { $_.branch -eq 'local' -and $_.slug -eq $slug }).Count }
+Assert-True ((& $localOf 'nezapsany') -gt 0) 'necommitnutý (untracked) dokument je i nadále v indexu jako lokální práce'
+Assert-Eq (& $localOf 'ignorovany') 0 'gitignorovaný dokument se neindexuje (vědomá změna oproti adresářovému walku)'
+Assert-Eq (& $localOf 'ums_6_fronta') 0 'trackovaný, ale z working tree smazaný dokument není lokální práce'
+Remove-Item -LiteralPath $json2
+
 Remove-Item -Recurse -Force (Split-Path $fx.Work)
 
 # A genuine git-level failure in the traversal must surface as exit 1, not a

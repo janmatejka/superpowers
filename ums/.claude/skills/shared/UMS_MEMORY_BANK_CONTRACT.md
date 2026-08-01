@@ -227,8 +227,13 @@ Runs **during brainstorming**, as soon as the affected code area is
 identifiable — always before the design document is written.
 
 1. Scan `**/memory-bank/proposals/active/` for `{design_,plan_,proposal_}*.md`
-   under `<MB_ROOT>`, then run the `mb-doc-index` skill and take the candidate
-   set as the UNION of the local scan and the index over `origin`.
+   under `<MB_ROOT>`, then run the `mb-doc-index` skill **with `-Json <path>`**
+   and take the candidate set as the UNION of the local scan and the index
+   over `origin`. The `-Json` output is required, not optional: step 2 below
+   normalizes every match to its owning `memory-bank/` root, and only
+   `entries[].path` carries that path — the printed table deliberately does
+   not. Keep the JSON for the rest of the session (`mb-epic-graph -IndexFile`
+   consumes the same file).
 2. Normalize each match to its owning `memory-bank/` root; apply the
    Discovery & pairing rule (Active Work Item section): strip exactly one
    prefix, `-design` only after `proposal_`, group by `(owning MB root,
@@ -282,6 +287,21 @@ identifiable — always before the design document is written.
    commit date so the user can tell an abandoned branch from live work. Foreign
    active slugs of OTHER tickets are normal parallel operation — list them, never
    stop.
+   **Run it with the intent DECLARED** — the ticket is known by now (step 7
+   asked for it) and the slug usually is too:
+
+   ```powershell
+   pwsh <mb-doc-index>/scripts/doc-index.ps1 -Jira <ticket> [-Slug <slug>]
+   ```
+
+   This is not optional polish. At this point in brainstorming the design
+   document does not exist yet, so the local set is empty and a
+   local-versus-foreign comparison has nothing to compare: without `-Jira` /
+   `-Slug` the colleague's active work on the very same ticket is reported as
+   ordinary parallel work (INFO, exit 0) and both actors proceed. With the
+   intent declared, the run exits `2` and the STOP fires. Exit `2` here blocks
+   pinning; the decision (take over, wait, or proceed deliberately) is the
+   user's, never the agent's.
 9. Persist into `CTX_DIR/context.md` (creating the file if absent):
    `Target MB Pin`, `Jira`, `Work item` slug and `Started` (see the schema
    below).
@@ -416,8 +436,8 @@ warning.
 
 | Tier | Rule |
 |---|---|
-| The actor's own ticket branch (unprotected) | The agent pushes it itself, without asking, but ALWAYS announces the branch and the outgoing commits. Force push is forbidden. |
-| Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
+| The actor's own ticket branch (unprotected) | The agent pushes it itself — publishing its own branch is not a decision it puts to the user — but it ALWAYS announces the branch and the outgoing commits. The harness's own permission prompt still applies (`Bash(git push:*)` is deliberately in neither `allow` nor `deny`, so the tool call is confirmed like any other): "does not ask" means it does not negotiate whether to publish, not that the push is auto-approved. Force push is forbidden. |
+| Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin develop` — see the human escape below). The agent then re-verifies reachability. |
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
 scoped to `refs/heads/*` — tag pushes are out of scope and always pass
@@ -435,13 +455,35 @@ synthetic ticket-branch creation must exit 0, silently) — without that
 second half a hook that cannot execute at all also "rejects" everything and
 passes as verified. `install-git-hooks.ps1` runs both checks itself after
 installing, reports the result and exits non-zero whenever the guarantee is
-not in place. Two known, accepted bypasses — both require deliberate,
+not in place.
+
+**The human escape: `UMS_ALLOW_SHARED_PUSH=1`.** A git hook cannot tell a
+human from an agent, so the rule above — which asks the USER to publish a
+shared branch — would otherwise be blocked by the layer's own guard, with no
+way through it that is not also a way around every other hook. The escape
+closes that: with `UMS_ALLOW_SHARED_PUSH=1` in the environment the `pre-push`
+hook lets a push to a shared branch through (announcing that it did), and
+`guard-git-push.mjs` does not stand in front of a command carrying it. It
+lifts THAT ONE RULE and nothing else — branch deletion and force push stay
+forbidden with it set. The hook's own rejection message names the escape, so
+whoever hits the wall learns the way through it at that moment. **The escape
+belongs to the human. An agent MUST NEVER set it** — not in a command, not in
+its environment, not "just to unblock the merge": doing so silently converts
+the two-tier policy into a one-tier one. Like every other rule of this layer
+that no mechanism can enforce, that is a contract obligation, and it is the
+reason the escape is a named variable rather than a flag the agent could
+plausibly have typed by accident.
+
+Two known, accepted bypasses — both require deliberate,
 visible intent, unlike the CLI-spelling tricks this hook exists to close:
 `git push --no-verify` skips it entirely, and `core.hooksPath` (local or
 global — routine with tools like husky or pre-commit) points git at a
 different hooks directory altogether, so the installer detects it and
 installs there instead (a relative value is resolved per working tree, so
-each linked worktree then needs its own install). The PreToolUse hook
+each linked worktree then needs its own install). `--no-verify` is a BYPASS
+of the guarantee, never the documented way to publish `develop`: it disables
+every hook in the repository, so it is exactly as unsafe as it looks, and
+`guard-git-push.mjs` denies it on sight (escape or no escape). The PreToolUse hook
 (`.claude/hooks/guard-git-push.mjs`) is only a best-effort, fail-open early
 warning for the common accident, not a guarantee — it does not see shell
 syntax the way git itself does, so it allows anything it cannot parse with
@@ -570,6 +612,15 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 - AI-facing boilerplate inside the plan file (the "For agentic workers"
   header, `Interfaces:` labels, checkbox syntax) stays English; the task
   content around it is Czech.
+- **Developer tooling is English.** The layer's own PowerShell tooling —
+  `install-git-hooks.ps1`, `sync-with-monorepo.ps1`,
+  `revendor-superpowers.ps1` and their console output — is written and speaks
+  English, matching the code around it; only what an agent or a user meets
+  during Memory Bank WORK is Czech (the `pre-push` and `guard-git-push.mjs`
+  rejection messages, the `mb-*` skills' reports, `doc-index.ps1` /
+  `epic-graph.ps1` tables and findings). This is a named exception, not a
+  mixed-language rule surface: the boundary is the artifact, and each
+  artifact is wholly one language.
 - If language rules conflict across workflow surfaces, Czech requirements for
   user-facing/persistent text take precedence.
 

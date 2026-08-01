@@ -17,17 +17,26 @@ dispatch prompts are English (Language Contract).
 3. Run `pwsh <this skill>/scripts/ledger-status.ps1 -LedgerFile <ledger.md>`
    for state + next-window suggestion. Fix reported ledger inconsistencies
    before proposing new work.
-4. Run the `mb-doc-index` skill (read-only, `-BaseRef` = the repo's base branch).
-   Its findings feed the window agenda: `DRAFT NA VÍCE VĚTVÍCH` and
+4. Run the `mb-doc-index` skill (read-only, `-BaseRef` = the repo's base
+   branch) **with `-Json <MB_ROOT>/.superpowers/doc-index.json`** and keep
+   that path for the rest of the session as `<INDEX_JSON>` (the
+   `.superpowers/` scratch tree is git-ignored and ephemeral — contract, Scope
+   Lock). Step 6 feeds the same file to the graph; without it the graph sees
+   no foreign-branch draft and its status glyphs systematically lie in
+   parallel operation.
+   The index's findings feed the window agenda: `DRAFT NA VÍCE VĚTVÍCH` and
    `FRONTA I DOKONČENO` are dirty-set candidates; `KOLIZE AKTIVNÍ PRÁCE` is a
    decision for the human BEFORE any drafting starts.
 5. Detect mode from `context.md` (`Jira: (bez tiketu)` — or a missing /
    unavailable Atlassian MCP — → Proposals; otherwise Jira). Mode selects the
    graph invocation in the next step.
 6. Refresh the dependency view: follow the `mb-epic-graph` skill (fetch
-   snapshot → generate + `-Check`). Its findings feed the agenda (mismatches
-   are dirty-set candidates). In JIRA-less mode, run `mb-epic-graph` with
-   `-Source Proposals -ProposalPath <members>` — no Jira fetch.
+   snapshot → generate + `-Check`), passing `-IndexFile <INDEX_JSON>` from
+   step 4 so tickets whose only draft lives on a foreign branch read as
+   „návrh hotov" instead of „připraven k rozpracování". Its findings feed the
+   agenda (mismatches are dirty-set candidates). In JIRA-less mode, run
+   `mb-epic-graph` with `-Source Proposals -ProposalPath <members>` — no Jira
+   fetch and no `-IndexFile` (it is Jira-mode only).
 7. For any sub-dispatch you make, follow the contract's Dispatch Model Policy:
    read-only code verification and summarization run on the cheapest capable
    tier; review/critique scales per superpowers Model Selection. Always set
@@ -117,7 +126,10 @@ A window closes only when its slice is internally consistent. Order:
    editing proposal headers/bodies; the graph regenerates from the proposals
    themselves.
 3. **Regenerate the graph:** per `mb-epic-graph` — fresh snapshot AFTER the
-   sync, regenerate `graph.md`, paste the wave table into the epic
+   sync, and a fresh `mb-doc-index -Json <INDEX_JSON>` run too (the window may
+   have added drafts on foreign branches, and the closure push in step 6 has
+   not happened yet for this window's own), then regenerate `graph.md` with
+   `-IndexFile <INDEX_JSON>` and paste the wave table into the epic
    description (replacing the previous generated section; Mermaid only if a
    reviewer asks, via `-Mermaid`). `-Check` findings
    touching the window's items = the window is NOT closed; fix or record a

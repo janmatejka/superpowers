@@ -4,7 +4,7 @@ description: Read-only status report of the Memory Bank workflow — Target MB P
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.1"
+  version: "2.2"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
@@ -58,7 +58,11 @@ metadata:
 - **Foreign branches:** run the `mb-doc-index` skill (read-only). Report
   foreign active work items (slug, ticket, branch, last commit — invoke with
   `-Json` for the commit date, which the default table does not print) and
-  its findings. A `KOLIZE AKTIVNÍ PRÁCE` finding is a warning here (mb-state
+  its findings. When `context.md` carries active work, pass its identity as
+  declared intent (`-Jira <ticket>` / `-Slug <work item>`): the collision
+  check is otherwise computed against the local working tree only, so it
+  stays blind while the pin exists but the design document does not. A
+  `KOLIZE AKTIVNÍ PRÁCE` finding is a warning here (mb-state
   never stops work) with the recommendation to resolve it before pinning new
   work.
 - Execution progress: does `.superpowers/sdd/progress.md` exist? (Presence =

@@ -22,8 +22,12 @@ After the user chooses and BEFORE executing the choice:
   Option 1 — never run `git pull` on the base branch in this repository.**
   Merge with `--no-ff` per repo convention.
 - **Option 1, after a green merge:** ask (Czech) „Publikovat `develop` na
-  origin?" and hand the user the exact command (`! git push origin develop`)
-  with the outgoing commits — the agent never pushes a shared branch. Until
+  origin?" and hand the user the exact command
+  (`! UMS_ALLOW_SHARED_PUSH=1 git push origin develop`) with the outgoing
+  commits — the agent never pushes a shared branch, and never sets that
+  variable itself; it is the human's deliberate escape from the pre-push
+  guard (Publication Contract), which would otherwise reject the very command
+  handed over. Do NOT substitute `--no-verify`: it disables every hook. Until
   it is published, `mb-jira-update` finalization stops at its publication
   gate and the ticket does NOT move to „Test".
 - **After Option 1 completes successfully** (merge done, verification green)

@@ -30,6 +30,16 @@ When set, restricts the ORIGIN branches considered to those matching this
 -like pattern (e.g. 'origin/feature/ums-1-*'). Does not affect the local/base
 pseudo-branches.
 
+.PARAMETER Jira
+DECLARED INTENT: the ticket the caller is about to start work on. Foreign
+active work on that ticket is then a KOLIZE AKTIVNÍ PRÁCE (CHYBA, exit 2) even
+when nothing is active locally yet — which is exactly the situation during
+Target-MB discovery, where the design document does not exist so far.
+
+.PARAMETER Slug
+DECLARED INTENT, same as -Jira but matched on the work-item slug. Either or
+both may be supplied; a foreign active entry matching EITHER is a collision.
+
 .PARAMETER Json
 Optional path to also write the full index as JSON.
 
@@ -46,6 +56,8 @@ param(
     [string] $BaseRef = 'origin/develop',
     [int]    $SinceDays = 120,
     [string] $BranchGlob = '',
+    [string] $Jira = '',
+    [string] $Slug = '',
     [string] $Json = '',
     [switch] $NoFetch
 )
@@ -139,6 +151,10 @@ function Get-Slug([string] $Path) {
 
 function Get-Phase([string] $Path) { return (Split-Path (Split-Path $Path -Parent) -Leaf) }
 
+# NB: the per-document header value is held in $docJira, NOT $jira — PowerShell
+# variable names are case-insensitive, so a local `$jira = …` would silently
+# overwrite the -Jira PARAMETER and the declared-intent collision check would
+# never fire. Confirmed by running it (the -Slug path worked, -Jira did not).
 function Get-JiraHeader([string[]] $Lines) {
     foreach ($ln in $Lines) {
         if ($ln -match '^-\s*\*\*Jira:\*\*\s*(.+?)\s*$') { return $Matches[1] }
@@ -220,11 +236,11 @@ foreach ($commit in $commits) {
 
             $content = Invoke-RepoGit @('show', "${branch}:${path}")
             Stop-OnGitFailure "show ${branch}:${path}"
-            $jira = Get-JiraHeader $content
+            $docJira = Get-JiraHeader $content
 
             $entries += [pscustomobject]@{
                 slug   = Get-Slug $path
-                jira   = $jira
+                jira   = $docJira
                 phase  = Get-Phase $path
                 path   = $path
                 branch = $branch
@@ -237,41 +253,58 @@ foreach ($commit in $commits) {
 }
 
 # --- pseudo-branch 'local': working tree, phases next/active only ----------
-$mbRoots = @(Get-ChildItem -LiteralPath $RepoPath -Recurse -Directory -Filter 'memory-bank' -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' })
+# Candidate paths come from git in ONE call instead of a recursive directory
+# walk. This script sits on the hot path of Target-MB discovery, mb-state and
+# every elaboration bootstrap, and the target monorepo is extremely large: a
+# full `Get-ChildItem -Recurse` over it (excluding only .git) is slow enough
+# that agents would quietly stop running the index, and every guarantee built
+# on top of it would evaporate with it.
+# `--cached` = tracked files, `--others --exclude-standard` = untracked ones
+# that are not gitignored, so an uncommitted design document is still indexed
+# exactly as the directory walk indexed it. The ONE deliberate difference: a
+# gitignored MB document is no longer indexed — nobody could pull it across
+# branches anyway, which is what this index is for.
+$localPaths = Invoke-RepoGit @(
+    'ls-files', '--cached', '--others', '--exclude-standard', '--',
+    ':(glob)**/memory-bank/proposals/next/*.md',
+    ':(glob)**/memory-bank/proposals/active/*.md'
+)
+Stop-OnGitFailure 'ls-files (local working tree)'
 
-foreach ($mbRoot in $mbRoots) {
-    foreach ($phase in @('next', 'active')) {
-        $dir = Join-Path $mbRoot.FullName "proposals\$phase"
-        if (-not (Test-Path -LiteralPath $dir)) { continue }
-        $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.md' -File -ErrorAction SilentlyContinue)
-        foreach ($f in $files) {
-            $rel = ($f.FullName.Substring($RepoPath.Length).TrimStart('\', '/')) -replace '\\', '/'
-            if (Test-FixturePath $rel) { continue }
+$seenLocal = @{}
+foreach ($rel in $localPaths) {
+    $rel = ($rel -replace '\\', '/').Trim()
+    if (-not $rel) { continue }
+    if ($seenLocal.ContainsKey($rel)) { continue }   # --cached and --others cannot overlap, but be explicit
+    $seenLocal[$rel] = $true
+    if (Test-FixturePath $rel) { continue }
 
-            $lines = Get-Content -LiteralPath $f.FullName -ErrorAction SilentlyContinue
-            $jira = Get-JiraHeader $lines
+    # 'local' means the WORKING TREE: a tracked file deleted on disk is not
+    # local work in flight, so it must not enter the index as one.
+    $full = Join-Path $RepoPath $rel
+    if (-not (Test-Path -LiteralPath $full)) { continue }
 
-            $hist = Invoke-RepoGit @('log', '-1', '--format=%H%x09%cI%x09%an', 'HEAD', '--', $rel)
-            Stop-OnGitFailure "log -1 HEAD -- $rel"
-            if ($hist) {
-                $p = ($hist | Select-Object -First 1) -split "`t"
-                $sha = $p[0]; $date = $p[1]; $author = $p[2]
-            } else {
-                $sha = ''; $date = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz'); $author = ''
-            }
+    $lines = Get-Content -LiteralPath $full -ErrorAction SilentlyContinue
+    $docJira = Get-JiraHeader $lines
 
-            $entries += [pscustomobject]@{
-                slug   = Get-Slug $rel
-                jira   = $jira
-                phase  = Get-Phase $rel
-                path   = $rel
-                branch = 'local'
-                commit = $sha
-                date   = $date
-                author = $author
-            }
-        }
+    $hist = Invoke-RepoGit @('log', '-1', '--format=%H%x09%cI%x09%an', 'HEAD', '--', $rel)
+    Stop-OnGitFailure "log -1 HEAD -- $rel"
+    if ($hist) {
+        $p = ($hist | Select-Object -First 1) -split "`t"
+        $sha = $p[0]; $date = $p[1]; $author = $p[2]
+    } else {
+        $sha = ''; $date = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz'); $author = ''
+    }
+
+    $entries += [pscustomobject]@{
+        slug   = Get-Slug $rel
+        jira   = $docJira
+        phase  = Get-Phase $rel
+        path   = $rel
+        branch = 'local'
+        commit = $sha
+        date   = $date
+        author = $author
     }
 }
 
@@ -295,11 +328,11 @@ foreach ($path in $baseTree) {
 
     $content = Invoke-RepoGit @('show', "${BaseRef}:${path}")
     Stop-OnGitFailure "show ${BaseRef}:${path}"
-    $jira = Get-JiraHeader $content
+    $docJira = Get-JiraHeader $content
 
     $entries += [pscustomobject]@{
         slug   = Get-Slug $path
-        jira   = $jira
+        jira   = $docJira
         phase  = Get-Phase $path
         path   = $path
         branch = 'base'
@@ -311,15 +344,25 @@ foreach ($path in $baseTree) {
 
 # --- findings -----------------------------------------------------------------
 # KOLIZE AKTIVNÍ PRÁCE (CHYBA) vs. CIZÍ AKTIVNÍ PRÁCE (INFO) are two sides of
-# the same comparison: local 'active' work against foreign-branch 'active'
-# work. A foreign entry that matches a local one by slug OR by non-empty jira
-# is the SAME work item in flight on two branches (a real collision); every
-# other foreign 'active' entry is just parallel work on something else and is
-# reported for awareness only, never fails the run. The actor's OWN remote
-# ref ($script:OwnRemoteRef — their own branch's upstream, already-pushed
-# copy of their own work) is excluded from "foreign" entirely: nothing about
-# my own work, pushed or not, may ever be reported as a collision OR as
-# someone else's parallel work.
+# the same comparison: 'active' work of MINE against foreign-branch 'active'
+# work. "Mine" has two possible sources and BOTH must be honoured:
+#   (a) a document already in my working tree (the local×foreign pass), and
+#   (b) DECLARED INTENT via -Jira/-Slug (the pass after it).
+# (b) exists because the check that matters most runs when (a) is still empty:
+# Target-MB discovery happens during brainstorming item 1, BEFORE the design
+# document is written, so a purely local×foreign comparison has nothing to
+# compare and a colleague's active work on the very same ticket degrades into
+# "normal parallel work" (INFO, exit 0) and both actors proceed. With the
+# ticket declared — step 7 of the contract's discovery asks for it — the same
+# situation is the fail-closed STOP it was always meant to be.
+# A foreign entry that matches by slug OR by non-empty jira is the SAME work
+# item in flight on two branches (a real collision); every other foreign
+# 'active' entry is just parallel work on something else and is reported for
+# awareness only, never fails the run. The actor's OWN remote ref
+# ($script:OwnRemoteRef — their own branch's upstream, already-pushed copy of
+# their own work) is excluded from "foreign" entirely: nothing about my own
+# work, pushed or not, may ever be reported as a collision OR as someone
+# else's parallel work — declared intent included.
 $localActive = @($entries | Where-Object { $_.branch -eq 'local' -and $_.phase -eq 'active' })
 $foreignActive = @($entries | Where-Object {
     $_.phase -eq 'active' -and $_.branch -ne 'local' -and $_.branch -ne 'base' -and
@@ -341,6 +384,26 @@ foreach ($le in $localActive) {
         $jiraPart = if ($le.jira) { " ($($le.jira))" } else { '' }
         Add-Finding 'KOLIZE AKTIVNÍ PRÁCE' 'CHYBA' `
             "$($le.slug)$jiraPart je aktivní i na $($fe.branch) ($dateOnly, $($fe.author))"
+    }
+}
+
+# Declared intent (-Jira / -Slug): the SAME comparison against work that does
+# not exist locally yet. Runs after the local×foreign pass and skips whatever
+# that pass already reported, so a run with both a local document and a
+# declared ticket reports each foreign branch once.
+$declared = if ($Jira -and $Slug) { "$Slug ($Jira)" } elseif ($Jira) { $Jira } elseif ($Slug) { $Slug } else { '' }
+if ($declared) {
+    foreach ($fe in $foreignActive) {
+        $sameJira = ([bool]$Jira -and [bool]$fe.jira -and $fe.jira -eq $Jira)
+        $sameSlug = ([bool]$Slug -and $fe.slug -eq $Slug)
+        if (-not ($sameSlug -or $sameJira)) { continue }
+
+        $key = "$($fe.branch)|$($fe.path)"
+        if ($collided.ContainsKey($key)) { continue }
+        $collided[$key] = $true
+        $dateOnly = if ($fe.date) { $fe.date.Substring(0, [Math]::Min(10, $fe.date.Length)) } else { '' }
+        Add-Finding 'KOLIZE AKTIVNÍ PRÁCE' 'CHYBA' `
+            "zamýšlená práce $declared už běží jako $($fe.slug) na $($fe.branch) ($dateOnly, $($fe.author))"
     }
 }
 
@@ -387,6 +450,7 @@ $printable = @($entries | Where-Object { $_.phase -in @('next', 'active') } |
     Sort-Object slug, branch)
 
 Write-Output "📇 Index dokumentů (báze $BaseRef, posledních $SinceDays dní)"
+if ($declared) { Write-Output "Kontrola kolize pro zamýšlenou práci: $declared" }
 Write-Output ''
 Write-Output '| Slug | Tiket | Fáze | Větev | Poslední commit | Autor |'
 Write-Output '|---|---|---|---|---|---|'

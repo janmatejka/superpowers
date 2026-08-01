@@ -93,6 +93,27 @@ Assert-Eq (Test-Cmd 'npm run push -- --no-verify') '' '--no-verify bez zmínky o
 # ---------------------------------------------------------------------------
 Assert-Match (Test-Cmd 'git fetch https://example.com/evil.git feature:refs/heads/develop') 'permissionDecision.*deny' 'zamítnuto: fetch přepisující lokální develop'
 
+# a WILDCARD destination names no branch, so the protected-name test alone
+# never matched it — yet it overwrites every local branch, develop included
+Assert-Match (Test-Cmd 'git fetch https://example.com/evil.git +refs/heads/*:refs/heads/*') 'permissionDecision.*deny' 'zamítnuto: fetch se žolíkem do lokálních větví'
+Assert-Match (Test-Cmd 'git fetch origin refs/heads/*:*') 'permissionDecision.*deny' 'zamítnuto: žolík bez prefixu refs/ je taky lokální větev'
+# ... while the everyday refspec into remote-tracking refs must keep passing
+Assert-Eq (Test-Cmd 'git fetch origin +refs/heads/*:refs/remotes/origin/*') '' 'běžný refspec do remote-tracking refů projde'
+
+# ---------------------------------------------------------------------------
+# UMS_ALLOW_SHARED_PUSH=1 — the human escape the pre-push hook honours. This
+# early-warning layer must not stand in front of the command the layer itself
+# hands the user, otherwise the escape is unusable in-session.
+# ---------------------------------------------------------------------------
+Assert-Eq (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin develop') '' 'push sdílené větve s lidskou výjimkou projde'
+Assert-Eq (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin main') '' 'výjimka platí pro každou sdílenou větev'
+# the escape lifts ONE rule; it is not a licence to disable every hook
+Assert-Match (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push --no-verify origin develop') 'permissionDecision.*deny' 'výjimka neomlouvá --no-verify'
+# a different value is not the escape
+Assert-Match (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=0 git push origin develop') 'permissionDecision.*deny' 'jiná hodnota než 1 výjimkou není'
+# the rejection itself must teach the way out
+Assert-Match (Test-Cmd 'git push origin develop') 'UMS_ALLOW_SHARED_PUSH=1' 'zamítnutí pojmenuje únikovou cestu pro člověka'
+
 # ---------------------------------------------------------------------------
 # bare push resolves the current branch from cwd when it can
 # ---------------------------------------------------------------------------

@@ -19,6 +19,17 @@
 # (git hooks live outside version control, so this guarantee only exists
 # once that script has been run against a given working copy).
 #
+# THE HUMAN ESCAPE: UMS_ALLOW_SHARED_PUSH=1 in the environment lifts the
+# shared-branch rule (and only that rule — deletion and force push stay
+# forbidden). It exists because a git hook cannot tell a human from an agent:
+# the whole layer asks the USER to publish `develop` themselves, so without an
+# escape the hook would block the very remedy it points at, and `--no-verify`
+# — which disables every hook, not just this rule — would become the only way
+# out. The rejection message below names the escape, so whoever hits the wall
+# learns the way through it at that moment. An AGENT MUST NEVER SET IT: that
+# is contract text (Publication Contract), the same trust model as every other
+# rule of this layer, not something this hook can enforce.
+#
 # Two known, accepted bypasses — both require deliberate, visible intent,
 # unlike every CLI-spelling trick this hook exists to close:
 #   - `git push --no-verify` skips this hook entirely.
@@ -63,10 +74,21 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     case "$remote_ref_lc" in
         refs/heads/develop|refs/heads/main|refs/heads/master|refs/heads/release/*)
             b=$(branch_name "$remote_ref")
-            echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
-            echo "     Připrav příkaz a nech ho uživateli: \`! git push $remote_name $b\`." >&2
-            reject=1
-            continue
+            if [ "$UMS_ALLOW_SHARED_PUSH" = "1" ]; then
+                # Deliberate human publication — announced, not silent, so an
+                # escape left set in a shell stays visible. NOT a `continue`:
+                # the deletion and non-fast-forward rules below still apply to
+                # this ref, the escape lifts the shared-branch rule only.
+                echo "UMS: UMS_ALLOW_SHARED_PUSH=1 — push do sdílené větve '$b' povolen (vědomá výjimka člověka)." >&2
+            else
+                echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
+                echo "     Připrav příkaz a nech ho uživateli:" >&2
+                echo "     \`! UMS_ALLOW_SHARED_PUSH=1 git push $remote_name $b\`" >&2
+                echo "     UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka pro člověka; agent ji nikdy nenastavuje." >&2
+                echo "     (Výjimka platí jen na sdílené větve — mazání a force push zůstávají zakázané.)" >&2
+                reject=1
+                continue
+            fi
             ;;
     esac
 

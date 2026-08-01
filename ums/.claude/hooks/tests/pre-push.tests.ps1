@@ -425,6 +425,62 @@ $syncOut2 = & pwsh -NoProfile -File $syncScript -Agent claude -Scope Monorepo -D
 Assert-Match ($syncOut2 -replace '\s+', ' ') 'guarantee is NOT confirmed' 'sync: nenulový kód instalátoru je v syncu vidět jako varování'
 
 Remove-Item -Recurse -Force $root7
+
+# ---------------------------------------------------------------------------
+# 15. THE HUMAN PATH, end to end. The layer tells the user to publish
+# `develop` themselves, but a git hook cannot tell a human from an agent, so
+# without an explicit escape the hook rejects the very command the layer just
+# handed over — and mb-jira-update then refuses to move the ticket to "Test"
+# because the merge commit is not on origin. UMS_ALLOW_SHARED_PUSH=1 is that
+# escape: a REAL push to a protected branch must succeed with it and still
+# fail without it, and the rejection must name it so the user learns the way
+# out at the moment they hit the wall.
+# ---------------------------------------------------------------------------
+Invoke-GitOk $work @('checkout', 'develop') | Out-Null
+$developBeforeEscape = Get-Sha $origin 'refs/heads/develop'
+$r = Invoke-GitTry $work @('push', 'origin', 'develop')
+Assert-True ($r.Code -ne 0) 'bez proměnné je push na develop stále zamítnut'
+Assert-Match $r.Out 'UMS_ALLOW_SHARED_PUSH=1' 'zamítnutí samo pojmenuje únikovou cestu pro člověka'
+Assert-Match $r.Out 'agent ji nikdy nenastavuje' 'zamítnutí říká, že výjimka patří člověku, ne agentovi'
+Assert-Eq (Get-Sha $origin 'refs/heads/develop') $developBeforeEscape 'remote develop se po zamítnutí nepohnul'
+
+# Set narrowly and always restored: a leaked escape would silently disarm the
+# guarantee for every later assertion in this suite.
+function Invoke-WithEscape([scriptblock] $Body) {
+    $prev = $env:UMS_ALLOW_SHARED_PUSH
+    $env:UMS_ALLOW_SHARED_PUSH = '1'
+    try { & $Body }
+    finally {
+        if ($null -eq $prev) { Remove-Item Env:UMS_ALLOW_SHARED_PUSH -ErrorAction SilentlyContinue }
+        else { $env:UMS_ALLOW_SHARED_PUSH = $prev }
+    }
+}
+
+$r = Invoke-WithEscape { Invoke-GitTry $work @('push', 'origin', 'develop') }
+Assert-Eq $r.Code 0 's UMS_ALLOW_SHARED_PUSH=1 skutečný push na develop projde'
+# ASCII-only pattern on purpose: git's stderr reaches this suite through the
+# console code page, which mangles diacritics (the other Czech assertions
+# above match ASCII substrings for the same reason).
+Assert-Match $r.Out 'UMS: UMS_ALLOW_SHARED_PUSH=1' 'povolený push je ohlášen, ne tichý'
+Assert-Eq (Get-Sha $origin 'refs/heads/develop') (Get-Sha $work 'develop') 'remote develop po povoleném pushi odpovídá lokálnímu'
+
+# The escape lifts the shared-branch rule and NOTHING else.
+$beforeNarrow = Get-Sha $origin 'refs/heads/feature/x'
+$r = Invoke-WithEscape { Invoke-GitTry $work @('push', 'origin', '--delete', 'feature/x') }
+Assert-True ($r.Code -ne 0) 'výjimka nepovoluje mazání větve'
+Assert-Eq (Get-Sha $origin 'refs/heads/feature/x') $beforeNarrow 'vzdálená feature/x po pokusu o smazání s výjimkou zůstává'
+$r = Invoke-WithEscape { Invoke-GitTry $work @('push', '--force', 'origin', 'feature/x') }
+Assert-True ($r.Code -ne 0) 'výjimka nepovoluje force push'
+Assert-Eq (Get-Sha $origin 'refs/heads/feature/x') $beforeNarrow 'vzdálená feature/x se po force pushi s výjimkou nezměnila'
+
+# And it is gone again afterwards — the guarantee is back in place.
+Add-Content -Path (Join-Path $work 'f.txt') -Value 'after escape'
+Invoke-GitOk $work @('commit', '-am', 'develop change after escape') | Out-Null
+$developAfterEscape = Get-Sha $origin 'refs/heads/develop'
+$r = Invoke-GitTry $work @('push', 'origin', 'develop')
+Assert-True ($r.Code -ne 0) 'po odstranění proměnné je push na develop opět zamítnut'
+Assert-Eq (Get-Sha $origin 'refs/heads/develop') $developAfterEscape 'remote develop se po opětovném zamítnutí nepohnul'
+
 Remove-Item -Recurse -Force $root
 
 Complete-Tests

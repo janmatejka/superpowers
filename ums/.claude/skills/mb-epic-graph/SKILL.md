@@ -121,6 +121,11 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   skriptu literály, nikdy převzaté ze vstupního souboru — takže paralelní
   rozdělaný draft na jiné větvi (ani nepřátelský/poškozený index soubor)
   nikdy nezavře bránu `-Check`.
+  **Kdo soubor vyrábí:** v elaboraci bootstrap protokolu (§0 krok 4) —
+  `mb-doc-index -Json <MB_ROOT>/.superpowers/doc-index.json` — a graf ho pak
+  konzumuje v §0 kroku 6 i při uzávěrce okna (§3.3). Mimo elaboraci si index
+  spusť sám; bez `-IndexFile` graf o cizích větvích neví a v paralelním
+  provozu systematicky podhodnocuje stav návrhů.
 - `-NoStatus`: suppress the per-ticket status glyph (see below); by default the
   wave table leads each ticket with one merged status symbol.
 - `-ProjectKeys`: extra project prefixes for mention detection (defaults to

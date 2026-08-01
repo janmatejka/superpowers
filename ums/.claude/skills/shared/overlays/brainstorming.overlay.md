@@ -11,15 +11,23 @@ Adjustments to the checklist above:
 - **Item 1 (Explore project context)** additionally requires: as soon as the
   affected code area is identifiable, run Target-MB discovery per the
   contract's "Target-MB Discovery & Pinning" section (scan active work items,
-  run the mb-doc-index skill and treat the candidate set as the union of the
-  local scan and the index over origin; a KOLIZE AKTIVNÍ PRÁCE finding — the
-  same slug or the same Jira ticket already active on a foreign branch — is
-  a fail-closed STOP; foreign active work on other tickets is normal;
-  evidence tags, A/B/C disambiguation — the user always decides; activate a
-  matching queued design draft from `proposals/next/` by moving its files to
-  `active/` — a legacy `proposal_*` draft is renamed to `design_<slug>.md`
-  during the move — and use the draft as design seed), ask for the Jira
-  ticket (one question; "none" is a valid answer), persist `Target MB Pin`,
+  run the mb-doc-index skill with `-Json <path>` — the printed table has no
+  path column, and step 2's normalization to the owning `memory-bank/` root
+  needs `entries[].path` — and treat the candidate set as the union of the
+  local scan and the index over origin; evidence tags, A/B/C disambiguation
+  — the user always decides; activate a matching queued design draft from
+  `proposals/next/` by moving its files to `active/` — a legacy `proposal_*`
+  draft is renamed to `design_<slug>.md` during the move — and use the draft
+  as design seed), ask for the Jira
+  ticket (one question; "none" is a valid answer), **then re-run the index
+  with the intent declared** (`-Jira <ticket>` and `-Slug <slug>` when known)
+  for the cross-clone collision check: a KOLIZE AKTIVNÍ PRÁCE finding — the
+  same slug or the same Jira ticket already active on a foreign branch — is a
+  fail-closed STOP (exit 2), while foreign active work on OTHER tickets is
+  normal parallel operation and never stops anything. Declaring the intent is
+  what makes the check work here at all: the design document does not exist
+  yet, so with an empty local set an undeclared run cannot tell a collision
+  from ordinary parallel work. Then persist `Target MB Pin`,
   `Jira`, `Work item` slug and `Started` into `memory-bank/context.md`, then
   read `<PLAN_MB>/brief.md`, `product.md`, `architecture.md`, `tech.md`
   (those that exist) as design context. Create a todo for this. If the

@@ -81,7 +81,22 @@ přepíše jako odkaz na tento invariant, aby pravidlo mělo jediný zdroj.
 | Úroveň | Pravidlo |
 |---|---|
 | **Vlastní tiketová větev** (nechráněná) | Agent pushuje sám, bez dotazu, ale vždy ohlásí větev a odchozí commity. Force push zakázán. |
-| **Sdílené větve** (`develop`, `main`, `master`, `release/*`) | Agent nepushuje nikdy. Připraví přesný příkaz s výčtem odchozích commitů; uživatel ho schválí nebo provede sám (v sezení `! git push origin develop`). Agent poté znovu ověří dosažitelnost. |
+| **Sdílené větve** (`develop`, `main`, `master`, `release/*`) | Agent nepushuje nikdy. Připraví přesný příkaz s výčtem odchozích commitů; uživatel ho schválí nebo provede sám (v sezení `! UMS_ALLOW_SHARED_PUSH=1 git push origin develop`). Agent poté znovu ověří dosažitelnost. |
+
+**Lidská úniková cesta `UMS_ALLOW_SHARED_PUSH=1`.** Git hook nepozná člověka od
+agenta. Bez výslovné výjimky by tedy pravidlo výše bylo neproveditelné: vrstva
+uživateli podá příkaz k publikaci `develop` a její vlastní hook ten příkaz
+zamítne — s hláškou odkazující na příkaz, který uživatel právě spustil. Jediným
+východiskem by zůstal `--no-verify`, který vypíná *všechny* hooky (a který
+`guard-git-push.mjs` sám zamítá). Řešení: proměnná prostředí
+`UMS_ALLOW_SHARED_PUSH=1`, kterou `pre-push` respektuje a **pojmenuje ve své
+vlastní zamítací hlášce** — kdo narazí na zeď, dozví se cestu ven přesně v tu
+chvíli. Zvedá jen pravidlo o sdílených větvích; mazání větve a force push
+zůstávají zakázané i s ní. Výjimka patří **člověku; agent ji nikdy nenastavuje**
+— stejný model důvěry jako u ostatních pravidel vrstvy, které žádný mechanismus
+nevynutí. Bez tohoto kroku by mrtvé místo 20 zůstalo otevřené: `mb-jira-update`
+§10 správně odmítá posunout tiket do „Testu", dokud merge commit není na
+`origin`, a nic ve vrstvě by ho tam nedokázalo dostat.
 
 **Mechanika.** Dnešní `permissions.deny: Bash(git push:*)` je binární a deny
 vyhrává nad allow, takže allow pravidly to rozvolnit nelze; enumerovat zákazy
@@ -152,8 +167,16 @@ vzdálených větví, naivní smyčka `git diff` na větev je nepoužitelná):
 
 **Parametry:** `-BaseRef` (výchozí `origin/develop`; v tomto forku
 `origin/ums-memory-bank`), `-SinceDays` (výchozí 120), `-Json`, `-BranchGlob`
-(volitelné zúžení na konvenci názvů). Cesty pod `*/tests/fixtures/*` se
-vylučují, aby si vrstva nehlásila vlastní testovací data.
+(volitelné zúžení na konvenci názvů), `-Jira` a `-Slug` (**deklarovaný záměr**,
+viz sekce 4). Cesty pod `*/tests/fixtures/*` se vylučují, aby si vrstva
+nehlásila vlastní testovací data.
+
+Pseudo-větev `local` se enumeruje **jedním `git ls-files --cached --others
+--exclude-standard`** s path-specem, ne rekurzivním průchodem adresářů: skript
+leží na horké cestě discovery, `mb-state` i každého bootstrapu elaborace a
+cílové monorepo je velmi rozsáhlé — pomalý index by agenti přestali spouštět a
+s ním by padly všechny záruky nad ním. Necommitnuté dokumenty se indexují dál;
+gitignorované ne (přes větve je stejně nikdo nevytáhne).
 
 **Záznam indexu:** slug, tiket, fáze (`next`/`active`/`completed`), cesta, větev,
 commit SHA, datum a autor commitu.
@@ -194,6 +217,15 @@ Změny v kontraktní sekci **Target-MB Discovery & Pinning**:
   nese větev a datum posledního commitu, aby šlo rozhodnout mezi opuštěnou větví
   a živou prací. Cizí aktivní slugy **jiných** tiketů jsou normální stav — pouze
   se vypíšou;
+- kontrola se spouští s **deklarovaným záměrem** (`-Jira`, případně `-Slug`).
+  Bez něj ji lze počítat jen jako lokálně aktivní × cizí aktivní, jenže
+  discovery běží v bodu 1 brainstormingu — **než návrhový dokument vznikne**, s
+  prázdnou lokální množinou. Kolegova aktivní práce na témže tiketu se pak
+  vyhodnotí jako „cizí aktivní práce" (INFO, exit 0) a oba aktéři pokračují;
+  přesně to mrtvé místo 1 popisuje. Tiket je v tu chvíli známý (krok 7 discovery
+  se na něj ptá), takže se předá skriptu a stop nastane. Cizí aktivní práce
+  **jiných** tiketů nezastavuje nic ani s deklarovaným záměrem a vlastní už
+  pushnutá větev nekoliduje sama se sebou;
 - nové pravidlo: tiketová větev se zakládá z **aktuálního** base refu
   (fetch + fast-forward), jinak nevidí ani mergnuté plánování.
 
@@ -207,7 +239,11 @@ Změny v kontraktní sekci **Target-MB Discovery & Pinning**:
   `develop`.
 - **`mb-epic-graph`:** nový parametr `-IndexFile` (JSON z `mb-doc-index`), aby
   stavový glyf „návrh hotov" viděl i drafty na cizích větvích; bez toho graf
-  v paralelním provozu systematicky lže. Dva nové findings:
+  v paralelním provozu systematicky lže. Producenta i konzumenta určuje
+  protokol elaborace: bootstrap (§0.4) zapíše index do
+  `<MB_ROOT>/.superpowers/doc-index.json` (gitignorovaný scratch) a graf ho
+  dostane v §0.6 i při uzávěrce okna (§3.3, po čerstvém přeběhnutí indexu).
+  Parametr bez tohoto zapojení nikdo nenaplní a celá funkce je nedosažitelná. Dva nové findings:
   `DRAFT NA CIZÍ VĚTVI` (info) a `DRAFT NA VÍCE VĚTVÍCH` (varování — stejný kód
   jako v indexu, aby tentýž jev neměl dva názvy). Neznámé
   hlavičkové pole `**Převzato z:**` parser ignoruje.
@@ -223,8 +259,9 @@ Změny v kontraktní sekci **Target-MB Discovery & Pinning**:
   není, stop s pravdivým vysvětlením („kód je jen lokálně, tester nemá co
   testovat") a s příkazem k publikaci pro uživatele.
 - **Finishing overlay, Option 1** dostane krok „publikovat `develop`?" —
-  nabídka, výslovný souhlas, provedení uživatelem. Dnes v celém řetězci není
-  žádný krok, který `develop` publikuje.
+  nabídka, výslovný souhlas, provedení uživatelem příkazem s lidskou výjimkou
+  (`! UMS_ALLOW_SHARED_PUSH=1 git push origin develop`, viz sekce 2). Dnes
+  v celém řetězci není žádný krok, který `develop` publikuje.
 - Je-li `develop` na serveru chráněný proti přímému pushi, stop to řekne a
   nabídne alternativu (větev + výjimečné PR). **Ověřit v prvním tasku
   implementace** — rozhoduje o tvaru tohoto kroku.
@@ -296,7 +333,14 @@ přilepí na SDD overlay, čtvrtý overlay nezavádíme.
 - `doc-index.ps1` proti fixture repu (lokální bare „origin" + několik větví,
   deterministicky, bez sítě): cizí aktivní slug, duplicitní slug, slug ve frontě
   i dokončený, filtrování cest `tests/fixtures`, prázdný výsledek, respektování
-  `-SinceDays` a `-BaseRef`;
+  `-SinceDays` a `-BaseRef`; deklarovaný záměr s **prázdnou lokální množinou**
+  (tentýž tiket = exit 2, jiný tiket = exit 0, vlastní pushnutá větev = exit 0)
+  a lokální sken přes git (untracked ano, gitignorovaný ne, smazaný z working
+  tree ne);
+- `pre-push` end-to-end proti skutečnému bare remote: **lidská cesta**
+  (`UMS_ALLOW_SHARED_PUSH=1` → skutečný push na `develop` projde, bez ní je
+  zamítnut a zamítnutí výjimku pojmenuje) a její úzkost (mazání a force push
+  zamítnuty i s ní);
 - `guard-git-push.mjs` unit testy (JSON na stdin → rozhodnutí): `develop`,
   `main`, `release/*`, force i `+refspec`, `--all`/`--mirror`, `--delete`, bare
   `git push` na chráněné i tiketové větvi;

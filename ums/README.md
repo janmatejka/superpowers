@@ -59,10 +59,13 @@ linked worktree inert — run the installer once per worktree in that setup
 (it prints a warning naming this case). A `core.hooksPath` coming from
 **global** config makes the install per-user rather than per-repository —
 also reported in the installer's output. The installer exits non-zero
-whenever the guarantee is not in place (`1` proof failed, `2` foreign hook
-left alone, `3` no shell available to run the proof), so a script calling it
-can tell "installed" from "guarantee absent"; `sync-with-monorepo.ps1` checks
-that and warns.
+whenever the guarantee is not CONFIRMED, and the code says which of the two
+that is: `1` (proof failed) and `2` (foreign hook left alone) mean the
+guarantee is **absent**, while `3` means the hook was installed but is
+**unproven** — no shell was available to run the self-check, so its output
+prints the two commands to run by hand. A script calling it can therefore
+tell "installed and proven" from "absent" and from "unverified";
+`sync-with-monorepo.ps1` checks that and warns.
 
 The 14 vendored superpowers skill copies are **not** stored here — they are
 produced in the monorepo by `revendor-superpowers.ps1` from this repo's

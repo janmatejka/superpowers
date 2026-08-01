@@ -25,7 +25,16 @@ const isProtected = (ref) => PROTECTED.some((re) => re.test(stripRef(ref)));
 
 const sharedBranchMessage = (branch) =>
   `UMS: '${branch}' je sdílená větev — agent do ní nepushuje. Připrav příkaz a nech ho uživateli: ` +
-  `\`! git push origin ${branch}\` (Publication Contract, dvouúrovňová push policy).`;
+  `\`! UMS_ALLOW_SHARED_PUSH=1 git push origin ${branch}\` — UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka ` +
+  'pro člověka, agent ji nikdy nenastavuje (Publication Contract, dvouúrovňová push policy).';
+
+// The human escape honoured by the pre-push hook (the real boundary). A
+// command carrying it is a deliberate human publication, so this early
+// warning must not stand in front of it — otherwise the layer would hand the
+// user a command its own guard then refuses, which is the deadlock this
+// escape exists to break. Checked AFTER the --no-verify rule below: the
+// escape lifts one rule, it is not a licence to disable every hook.
+const HUMAN_ESCAPE_RE = /(^|\s)UMS_ALLOW_SHARED_PUSH=1(\s|$)/;
 
 const currentBranch = (cwd) => {
   try {
@@ -96,6 +105,17 @@ function evaluatePush(args, cwd) {
   return { deny: false };
 }
 
+// A WILDCARD destination names no single branch, so isProtected() never
+// matches it — yet `+refs/heads/*:refs/heads/*` overwrites every local
+// branch, protected ones included. Only LOCAL-BRANCH destinations count
+// here: the everyday `+refs/heads/*:refs/remotes/origin/*` refspec writes
+// remote-tracking refs and must keep passing.
+const isWildcardLocalBranch = (ref) => {
+  const s = String(ref);
+  if (!s.includes('*')) return false;
+  return s.startsWith('refs/heads/') || !s.startsWith('refs/');
+};
+
 // Fetch stays best-effort on the same footing as before: only denies an
 // explicit refspec whose destination is a protected local ref; everything
 // else passes (fetch is frequent and normally harmless).
@@ -103,7 +123,15 @@ function evaluateFetch(args) {
   for (const t of args) {
     if (t.startsWith('-') || !t.includes(':')) continue;
     const dst = t.split(':').pop();
-    if (dst && isProtected(dst)) {
+    if (!dst) continue;
+    if (isWildcardLocalBranch(dst)) {
+      return {
+        deny: true,
+        reason: `UMS: refspec '${t}' míří žolíkem na lokální větve — přepsal by i sdílené (develop, main, ` +
+          'master, release/*), agent to nesmí udělat (Publication Contract, dvouúrovňová push policy).',
+      };
+    }
+    if (isProtected(dst)) {
       return {
         deny: true,
         reason: `UMS: '${stripRef(dst)}' je sdílená větev — tenhle fetch by přepsal její lokální ref, agent to ` +
@@ -134,6 +162,12 @@ process.stdin.on('end', () => {
         'ne jen tuhle předběžnou kontrolu) — nepoužívej ho bez výslovného souhlasu uživatele.',
     );
   }
+
+  // Deliberate human publication of a shared branch (see HUMAN_ESCAPE_RE):
+  // allow the whole command. The pre-push hook — the actual boundary —
+  // honours the same variable and still enforces everything the escape does
+  // not lift (deletion, force push).
+  if (HUMAN_ESCAPE_RE.test(command)) process.exit(0);
 
   const tokens = command.split(/\s+/).filter(Boolean);
   let i = 0;
