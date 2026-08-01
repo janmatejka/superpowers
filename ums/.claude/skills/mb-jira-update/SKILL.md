@@ -4,7 +4,7 @@ description: Extract implementation status and deployment instructions from acti
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.1"
+  version: "2.2"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the proposal pair model, and fail-closed rules.

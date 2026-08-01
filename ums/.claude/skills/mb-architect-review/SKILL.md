@@ -4,7 +4,7 @@ description: Design review by a human architect via a Jira ticket — hand off a
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.0"
+  version: "1.1"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —

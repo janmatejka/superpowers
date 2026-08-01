@@ -4,7 +4,7 @@ description: Use when iteratively elaborating a Jira epic — breaking it into t
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.1"
+  version: "1.2"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —

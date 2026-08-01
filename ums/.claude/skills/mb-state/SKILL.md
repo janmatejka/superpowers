@@ -4,7 +4,7 @@ description: Read-only status report of the Memory Bank workflow — Target MB P
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.0"
+  version: "2.1"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
