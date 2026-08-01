@@ -1,0 +1,62 @@
+#!/bin/sh
+# UMS pre-push guard (Publication Contract)
+#
+# This is the actual enforcement boundary for the Publication Contract's
+# two-tier push policy (see UMS_MEMORY_BANK_CONTRACT.md, "Publication
+# Contract"). Unlike a PreToolUse hook working from a shell command string,
+# git invokes this hook with fully-resolved refs on stdin — every CLI
+# spelling trick (HEAD, --git-dir, bash -c, env prefixes, operator
+# adjacency, config overrides) collapses to the same four fields below, so
+# there is no shell syntax left to bypass.
+#
+# Installed per clone by ums/.claude/hooks/install-git-hooks.ps1 (git hooks
+# live in untracked .git/hooks/, so this guarantee only exists once that
+# script has been run against a given working copy).
+#
+# `git push --no-verify` skips this hook entirely — a known, accepted
+# escape hatch (see the contract for why: it requires deliberate, visible
+# intent, unlike every bypass this hook exists to close).
+#
+# Invocation: $1 = remote name, $2 = remote URL. Stdin lines:
+#   <local ref> SP <local sha1> SP <remote ref> SP <remote sha1> LF
+
+remote_name="$1"
+zero='0000000000000000000000000000000000000000'
+reject=0
+
+branch_name() {
+    printf '%s' "$1" | sed 's#^refs/heads/##'
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -z "$local_ref" ] && continue
+
+    case "$remote_ref" in
+        refs/heads/develop|refs/heads/main|refs/heads/master|refs/heads/release/*)
+            b=$(branch_name "$remote_ref")
+            echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
+            echo "     Připrav příkaz a nech ho uživateli: \`! git push $remote_name $b\`." >&2
+            reject=1
+            continue
+            ;;
+    esac
+
+    if [ "$local_sha" = "$zero" ]; then
+        b=$(branch_name "$remote_ref")
+        echo "UMS: mazání větve '$b' přes push není povolené (Publication Contract)." >&2
+        reject=1
+        continue
+    fi
+
+    if [ "$remote_sha" != "$zero" ]; then
+        if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+            b=$(branch_name "$remote_ref")
+            echo "UMS: push do '$b' není fast-forward (vynucený/force push) — zakázáno" >&2
+            echo "     (Publication Contract). Historii nikdy nepřepisuj tiše, řeš to s uživatelem." >&2
+            reject=1
+            continue
+        fi
+    fi
+done
+
+exit $reject

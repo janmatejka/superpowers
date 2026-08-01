@@ -419,13 +419,18 @@ warning.
 | The actor's own ticket branch (unprotected) | The agent pushes it itself, without asking, but ALWAYS announces the branch and the outgoing commits. Force push is forbidden. |
 | Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
 
-Mechanically enforced for Claude Code by the PreToolUse hook
-`.claude/hooks/guard-git-push.mjs` (deny-by-default: it allows a push only when
-parsed with confidence as a simple push to a branch outside the protected-name
-deny-list, and denies every other shape, including ones it cannot parse). Other
-harnesses follow this rule by contract text only, as with every other rule of
-this layer. `mb-git-commit` never pushes — publication is a workflow step at
-the points listed above, not a commit tool.
+The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
+installed per clone by `install-git-hooks.ps1` — verify with
+`git push origin develop`, which must fail with a `UMS:` explanation; `git push
+--no-verify` bypasses it by design). The PreToolUse hook
+(`.claude/hooks/guard-git-push.mjs`) is only a best-effort, fail-open early
+warning for the common accident, not a guarantee — it does not see shell
+syntax the way git itself does, so it allows anything it cannot parse with
+confidence. Neither hook stops a determined adversary; server-side branch
+permissions on `origin` remain the real backstop for that. Other harnesses
+follow this rule by contract text only, as with every other rule of this
+layer. `mb-git-commit` never pushes — publication is a workflow step at the
+points listed above, not a commit tool.
 
 ## Cross-Branch Visibility
 

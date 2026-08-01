@@ -200,6 +200,24 @@ function Set-MarkedBlock([string]$File, [string]$Content) {
 $forkClaude = Join-Path $ForkUmsDir '.claude'
 $target = $AgentTargets[$Agent][$Scope]
 
+# Install/refresh this layer's git hooks (currently: pre-push, the
+# Publication Contract enforcement boundary - see
+# .claude/hooks/install-git-hooks.ps1) into the target repository. Git hooks
+# are per-repository, not per-agent, so this runs once whenever Scope is
+# Monorepo regardless of which -Agent was chosen (the monorepo is the same
+# repo no matter which harness's glue is being synced). UserProfile scope has
+# no single associated repository, so hook installation does not apply there
+# - install manually per clone with install-git-hooks.ps1 -RepoRoot.
+if ($Scope -eq 'Monorepo') {
+    $installScript = Join-Path $forkClaude 'hooks\install-git-hooks.ps1'
+    if (Test-Path $installScript) {
+        & $installScript -RepoRoot $MonorepoRoot -SourceDir (Join-Path $forkClaude 'hooks')
+    }
+    else {
+        Write-Host "note: install-git-hooks.ps1 not found - pre-push guarantee not installed into $MonorepoRoot." -ForegroundColor Yellow
+    }
+}
+
 # --------------------------------------------- claude + monorepo: two-way sync
 if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $monoClaude = Join-Path $MonorepoRoot '.claude'

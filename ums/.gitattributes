@@ -1,0 +1,7 @@
+# This layer ships shell scripts without a file extension (git hooks are
+# invoked by exact name, so `pre-push` cannot carry a `.sh` suffix). Windows
+# checkouts (core.autocrlf=true) would otherwise convert the LF line endings
+# to CRLF, which breaks the shebang and the script under Git Bash/dash — the
+# CRLF trap recorded in this repo's own memory-bank/tech.md. Force LF
+# regardless of checkout platform.
+.claude/hooks/pre-push text eol=lf

@@ -1,12 +1,21 @@
 // PreToolUse guard for `git push` / `git fetch` (contract v2.2, "Publication
-// Contract"): the actor's own ticket branch is pushed freely, shared branches
-// never by the agent. Design: DENY BY DEFAULT. A push is allowed only if the
-// whole command can be parsed with confidence into a simple, non-destructive
-// push to an unprotected branch; anything the parser cannot fully account
-// for — an unrecognized flag, a non-plain remote, an unparseable refspec, an
-// unrecognized shell shape around the invocation — denies. A fetch is
-// allowed unless it names an explicit refspec whose local destination is a
-// protected branch (fetch is otherwise frequent and harmless).
+// Contract"). NOT the enforcement boundary — fix round 2 demoted this hook
+// after two rounds of adversarial review defeated increasingly hardened
+// detection: a whitespace tokenizer cannot reason about shell syntax it does
+// not parse (bash -c, --git-dir, HEAD, operator adjacency, config overrides
+// all resolve to the same thing only once git itself has parsed them). The
+// actual guarantee is the git `pre-push` hook (ums/.claude/hooks/pre-push,
+// installed per clone by install-git-hooks.ps1), which git feeds
+// fully-resolved refs — no shell spelling left to bypass.
+//
+// This layer's only remaining job: a cheap, best-effort, FAIL-OPEN early
+// warning for the common accident — a plainly-typed `git push` whose target
+// is confidently recognized as a protected branch — plus one context-free
+// substring check for `--no-verify` (which would skip the real guarantee).
+// Everything this layer cannot parse with confidence now ALLOWS (quoted
+// branch names, redirections, trailing comments, a commit message that
+// happens to mention "push" must all pass); the pre-push hook remains the
+// backstop for anything this early check misses or gets wrong.
 import { execFileSync } from 'node:child_process';
 
 const PROTECTED = [/^develop$/i, /^main$/i, /^master$/i, /^release\//i];
@@ -14,8 +23,6 @@ const PROTECTED = [/^develop$/i, /^main$/i, /^master$/i, /^release\//i];
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//, '');
 const isProtected = (ref) => PROTECTED.some((re) => re.test(stripRef(ref)));
 
-// One shared message for every "this would touch a shared branch" deny, so
-// the wording only lives in one place.
 const sharedBranchMessage = (branch) =>
   `UMS: '${branch}' je sdílená větev — agent do ní nepushuje. Připrav příkaz a nech ho uživateli: ` +
   `\`! git push origin ${branch}\` (Publication Contract, dvouúrovňová push policy).`;
@@ -38,14 +45,11 @@ const deny = (reason) => {
   process.exit(0);
 };
 
-// Shell control-flow tokens that end the current invocation's argument list
-// (so a chained command after `&&`/`;`/`|`/`&` is scanned independently).
+// Shell control-flow tokens that end the current invocation's argument list.
 const CONTROL = new Set(['&&', '||', ';', '|', '&']);
 
-// Only these flags are recognized for `push`. Anything else — long or
-// short, valued or not, clustered or not — denies. This single rule covers
-// `--force-with-lease=…`, `-dq`, `--no-verify`, `--tags`, `--mirror`,
-// `--all` and every future flag nobody enumerated.
+// Flags considered "boring" enough that we still trust our own read of the
+// remote/refspec around them. Any other flag means "not simple" -> allow.
 const PUSH_ALLOWED_FLAGS = new Set([
   '-u', '--set-upstream', '-q', '--quiet', '-v', '--verbose',
   '--progress', '--no-progress',
@@ -54,78 +58,47 @@ const REMOTE_RE = /^[A-Za-z0-9._-]+$/;
 const REFSPEC_RE = /^[A-Za-z0-9._/-]+(:[A-Za-z0-9._/-]+)?$/;
 
 // A token is a git invocation start if, after stripping a leading subshell
-// or backtick marker, it is exactly `git`/`git.exe` or ends in `/git` — no
-// matter what precedes it (leading spaces, newlines, env assignments,
-// subshells, pipes are all irrelevant; we no longer rely on a
-// preceding-context pattern).
+// or backtick marker, it is exactly `git`/`git.exe` or ends in `/git`.
 const isGitToken = (tok) => {
   const t = tok.replace(/^(\$\(|\(|`)/, '');
   return t === 'git' || t === 'git.exe' || /\/git$/.test(t);
 };
 
+// Best-effort, FAIL-OPEN: only denies when the target is confidently
+// resolved to a protected branch. Anything not cleanly parseable (unknown
+// flag, non-plain remote, multiple/malformed refspecs, unresolvable current
+// branch) now ALLOWS — the pre-push hook is the real check, and it resolves
+// the current branch itself from the actual push, not from a guessed cwd.
 function evaluatePush(args, cwd) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
-  for (const f of flags) {
-    if (!PUSH_ALLOWED_FLAGS.has(f)) {
-      return {
-        deny: true,
-        reason: `UMS: tenhle tvar \`git push\` neumím bezpečně rozpoznat (neznámý přepínač \`${f}\`) — ` +
-          'napiš jednoduchý explicitní push (`git push origin <větev>`) a nech mě ho posoudit (Publication Contract).',
-      };
-    }
-  }
+  if (flags.some((f) => !PUSH_ALLOWED_FLAGS.has(f))) return { deny: false };
 
+  let target = null;
   if (positionals.length === 0) {
-    const cur = currentBranch(cwd);
-    if (!cur) {
-      return {
-        deny: true,
-        reason: 'UMS: nelze zjistit aktuální větev, takže push nelze posoudit — spusť ho s explicitní větví ' +
-          '(`git push origin <vetev>`).',
-      };
+    target = currentBranch(cwd) || null;
+  } else {
+    const [remote, ...refspecs] = positionals;
+    if (!REMOTE_RE.test(remote)) return { deny: false };
+    if (refspecs.length === 0) {
+      target = currentBranch(cwd) || null;
+    } else if (refspecs.length === 1 && REFSPEC_RE.test(refspecs[0])) {
+      target = refspecs[0].includes(':') ? refspecs[0].split(':').pop() : refspecs[0];
+    } else {
+      return { deny: false }; // multiple / malformed refspecs -> not simple
     }
-    return isProtected(cur) ? { deny: true, reason: sharedBranchMessage(cur) } : { deny: false };
   }
 
-  const [remote, ...refspecs] = positionals;
-  if (!REMOTE_RE.test(remote)) {
-    return {
-      deny: true,
-      reason: 'UMS: vzdálený repozitář musí být prostý název (ne URL) — použij `git push origin <větev>` ' +
-        '(Publication Contract).',
-    };
-  }
-
-  if (refspecs.length === 0) {
-    const cur = currentBranch(cwd);
-    if (!cur) {
-      return {
-        deny: true,
-        reason: 'UMS: nelze zjistit aktuální větev, takže push nelze posoudit — spusť ho s explicitní větví ' +
-          '(`git push origin <vetev>`).',
-      };
-    }
-    return isProtected(cur) ? { deny: true, reason: sharedBranchMessage(cur) } : { deny: false };
-  }
-
-  for (const spec of refspecs) {
-    if (!REFSPEC_RE.test(spec)) {
-      return {
-        deny: true,
-        reason: 'UMS: tenhle refspec neumím bezpečně rozparsovat — napiš jednoduchý explicitní push ' +
-          '(`git push origin <větev>`) (Publication Contract).',
-      };
-    }
-    const dst = spec.includes(':') ? spec.split(':').pop() : spec;
-    if (isProtected(dst)) {
-      return { deny: true, reason: sharedBranchMessage(stripRef(dst)) };
-    }
+  if (target && isProtected(target)) {
+    return { deny: true, reason: sharedBranchMessage(stripRef(target)) };
   }
   return { deny: false };
 }
 
+// Fetch stays best-effort on the same footing as before: only denies an
+// explicit refspec whose destination is a protected local ref; everything
+// else passes (fetch is frequent and normally harmless).
 function evaluateFetch(args) {
   for (const t of args) {
     if (t.startsWith('-') || !t.includes(':')) continue;
@@ -148,16 +121,26 @@ process.stdin.on('end', () => {
   try { input = JSON.parse(raw); } catch { process.exit(0); }
   const command = String(input?.tool_input?.command ?? '');
   const cwd = input?.cwd;
-  const tokens = command.split(/\s+/).filter(Boolean);
 
+  // Context-free substring check: `--no-verify` next to `push` would skip
+  // the real guarantee (the pre-push hook). A false positive here costs
+  // nothing, so it deliberately is not tied to a specific parsed invocation.
+  if (/--no-verify\b/.test(command) && /\bpush\b/.test(command)) {
+    deny(
+      'UMS: `--no-verify` by u pushe přeskočil pre-push hook (skutečnou pojistku Publication Contract, ' +
+        'ne jen tuhle předběžnou kontrolu) — nepoužívej ho bez výslovného souhlasu uživatele.',
+    );
+  }
+
+  const tokens = command.split(/\s+/).filter(Boolean);
   let i = 0;
   while (i < tokens.length) {
     if (!isGitToken(tokens[i])) { i++; continue; }
     i++; // past the `git` token itself
 
     // Consume pre-subcommand options: `-C <path>` / `-c <k=v>` (two-token
-    // form) skip both tokens; any attached form (`-C/repo`, `-cfoo=bar`) or
-    // other global flag skips just the one token it occupies.
+    // form) skip both tokens; any attached form or other global flag skips
+    // just the one token it occupies.
     while (i < tokens.length && tokens[i].startsWith('-')) {
       i += (tokens[i] === '-C' || tokens[i] === '-c') ? 2 : 1;
     }
@@ -166,9 +149,7 @@ process.stdin.on('end', () => {
     i++;
 
     // Collect this invocation's own argument tokens: stop at a shell
-    // control operator, or at the start of another git invocation (handles
-    // two `git` commands on separate lines of a multi-line command, with no
-    // operator between them).
+    // control operator, or at the start of another git invocation.
     const args = [];
     while (i < tokens.length && !CONTROL.has(tokens[i]) && !isGitToken(tokens[i])) {
       args.push(tokens[i]);
