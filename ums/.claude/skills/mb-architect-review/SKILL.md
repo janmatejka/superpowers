@@ -43,12 +43,13 @@ Ticket key: from the user prompt (preferred for respond/resume — enables
 branch sync); without it, read `context.md` on the current branch (typical
 for request in the same session).
 
-## Push Policy (MANDATORY)
+## Push Policy
 
-Never push silently. Before any push, present the branch name and the
-outgoing commits and wait for explicit user approval. Refusal = STOP the
-handoff with a Czech explanation (handoff needs the push). One handoff =
-one push = one approval.
+Per the contract's **Publication Contract**: the ticket branch is the actor's
+own branch, so the handoff push is announced (branch + outgoing commits), not
+negotiated; shared branches are never pushed by the agent. One handoff = one
+push. A refusal to publish stops the handoff — without the push the other side
+sees neither the design nor `context.md`.
 
 ## Branch Sync (first step of respond and resume)
 
@@ -75,9 +76,10 @@ one push = one approval.
 3. Write the `- **Review:** design-review requested YYYY-MM-DD` line into
    `## Active Work` of `context.md` and commit it (Czech commit message,
    `mb-git-commit` conventions).
-4. **Push the ticket branch** (fail-closed, explicit approval per Push
-   Policy). The single push covers the design and the `context.md` commit.
-   The pinned design commit must be reachable on origin afterwards.
+4. **Publish the ticket branch** (announced push per the Publication
+   Contract; the pinned design commit MUST be reachable on origin before step
+   5 writes the link). The single push covers the design and the
+   `context.md` commit.
 5. Publish a Czech comment to the ticket: a 10–15 line summary of the design
    (Cíl / Scope / klíčová rozhodnutí / rizika), the commit-pinned Bitbucket
    link to the design file (mb-jira-update §7), the **ticket branch name**,
@@ -114,8 +116,8 @@ one push = one approval.
 5. Publish the notes as a Czech comment, set the assignee back to the
    original resolver, and **set the flag** (Flagged/Impediment — team
    convention: "returned, attend to it"). Status stays "Design Review".
-   If commits were made on the ticket branch, push them — explicit approval
-   per Push Policy.
+   If commits were made on the ticket branch, push them (announced push per
+   Push Policy — the ticket branch is unprotected, so no approval is needed).
 
 ## Mode: resume (resolver takes back)
 

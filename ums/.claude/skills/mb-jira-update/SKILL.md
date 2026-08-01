@@ -174,6 +174,13 @@ Scope lock remains active until command completion.
 - Determine whether referenced files are committed in HEAD:
   - `git diff --name-only HEAD -- <referenced-files>`
   - Empty result => all referenced files are committed.
+- **Reachability gate (Publication Contract, MANDATORY):** after the SHA is
+  stabilized, verify it is on `origin`:
+  `git fetch origin` then `git branch -r --contains <sha>`. Empty result =
+  **STOP** before publishing anything; report the branch to publish and let the
+  actor push it (own ticket branch) or hand the command to the user (shared
+  branch). Re-verify after the push. A published link to an unreachable commit
+  is the failure this gate exists to prevent.
 
 ### 6. Stabilize SHA for Referenced Files Only
 - If all referenced files are already committed:
@@ -204,8 +211,8 @@ Scope lock remains active until command completion.
   stale plan/legacy filename to the design document); otherwise insert it
   near the top of the description. Change nothing else in the description.
   Use `editJiraIssue` (contentFormat markdown).
-- The permalink resolves once the pinned commit is on Bitbucket; if the branch
-  is not yet pushed, the link goes live on the next push (expected).
+- The permalink resolves immediately: §5's reachability gate guarantees the
+  pinned commit is on `origin` before the link is published.
 - `mb-epic-graph -Check` reports `TIKET BEZ ODKAZU NA PROPOSAL` until the line
   is present, and `ODKAZ NA NEEXISTUJÍCÍ PROPOSAL` if it points at a stale
   filename — both VAROVÁNÍ.
@@ -235,6 +242,14 @@ never in standalone invocations (standalone runs NEVER change ticket status).
 
 After the comment publishes successfully:
 
+0. **Publication gate:** verify the merge commit of the work (HEAD of the base
+   branch) is reachable on `origin` (`git branch -r --contains <sha>`). If it is
+   not, **STOP** without transitioning: tell the user in Czech that the code is
+   local only and the tester would have nothing to test, and hand over the exact
+   command (`! git push origin <base>`). The agent never pushes a shared branch.
+   Re-verify after the user's push, then continue. If the server refuses a direct
+   push to the base branch, report it and offer the fallback (short branch +
+   an exceptional PR).
 1. Transition the ticket directly to **"Test"** (the "Review" status is
    skipped by team convention). Use `getTransitionsForJiraIssue` +
    `transitionJiraIssue`; a missing "Test" transition is a WARNING to the
