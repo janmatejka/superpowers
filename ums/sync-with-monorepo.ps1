@@ -220,6 +220,13 @@ function Install-PublicationHooks([string] $RepoRoot) {
     }
     try {
         & $installScript -RepoRoot $RepoRoot -SourceDir (Join-Path $forkClaude 'hooks')
+        # The installer exits non-zero whenever the guarantee is NOT in place
+        # (foreign hook left alone, or the installed copy failed its own
+        # proof). A sync run that ends in a wall of "synced ..." lines must
+        # not let that scroll past unremarked.
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "warning: install-git-hooks.ps1 exited with $LASTEXITCODE - the pre-push guarantee is NOT confirmed for $RepoRoot (see its output just above)." -ForegroundColor Yellow
+        }
     }
     catch {
         Write-Host "warning: could not install git hooks into $RepoRoot ($($_.Exception.Message)) - continuing sync without them." -ForegroundColor Yellow
@@ -230,8 +237,6 @@ function Install-PublicationHooks([string] $RepoRoot) {
 if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $monoClaude = Join-Path $MonorepoRoot '.claude'
     if (-not (Test-Path $monoClaude)) { throw "Monorepo .claude not found at $monoClaude" }
-
-    Install-PublicationHooks $MonorepoRoot
 
     # UMS-owned items relative to the .claude/ root. skills/mb-* AND hooks/* are
     # discovered dynamically on the source side so new mb-* skills or hooks are
@@ -264,6 +269,13 @@ if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $forkSample   = Join-Path $ForkUmsDir 'CLAUDE.md.sample'
     if ($Direction -eq 'FromMonorepo') { Copy-Item -Force $monoClaudeMd $forkSample; Write-Host 'synced CLAUDE.md -> CLAUDE.md.sample' }
     else                               { Copy-Item -Force $forkSample $monoClaudeMd; Write-Host 'synced CLAUDE.md.sample -> CLAUDE.md' }
+
+    # Git hook install runs AFTER the sync above, never before: with the
+    # default -Direction FromMonorepo the hook source under $forkClaude is
+    # rewritten by this very run, and installing first would deploy the
+    # fork's pre-sync copy instead of the one this run just made
+    # authoritative.
+    Install-PublicationHooks $MonorepoRoot
 
     Write-Host "Done (claude, Monorepo, $Direction)." -ForegroundColor Cyan
 }

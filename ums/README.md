@@ -51,6 +51,19 @@ used, for any `-Agent`, since a git hook is a property of the repository,
 not of the harness. See `UMS_MEMORY_BANK_CONTRACT.md`, "Publication
 Contract", for the full enforcement/bypass model.
 
+**One run does not always cover every worktree.** Without `core.hooksPath`,
+hooks live in the repository's common dir and one install covers all its
+linked worktrees. But a **relative** `core.hooksPath` (e.g. `customhooks`) is
+resolved per working tree, so installing against the main clone leaves every
+linked worktree inert — run the installer once per worktree in that setup
+(it prints a warning naming this case). A `core.hooksPath` coming from
+**global** config makes the install per-user rather than per-repository —
+also reported in the installer's output. The installer exits non-zero
+whenever the guarantee is not in place (`1` proof failed, `2` foreign hook
+left alone, `3` no shell available to run the proof), so a script calling it
+can tell "installed" from "guarantee absent"; `sync-with-monorepo.ps1` checks
+that and warns.
+
 The 14 vendored superpowers skill copies are **not** stored here — they are
 produced in the monorepo by `revendor-superpowers.ps1` from this repo's
 `skills/` tree, then patched with the `shared/overlays/*.overlay.md` fragments

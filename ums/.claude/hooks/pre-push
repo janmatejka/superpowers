@@ -33,7 +33,9 @@ zero='0000000000000000000000000000000000000000'
 reject=0
 
 branch_name() {
-    printf '%s' "$1" | sed 's#^refs/heads/##'
+    # Prefix stripped case-insensitively, so the name printed in the message
+    # is right for any spelling the scope gate below let through.
+    printf '%s' "$1" | sed 's#^[Rr][Ee][Ff][Ss]/[Hh][Ee][Aa][Dd][Ss]/##'
 }
 
 to_lower() {
@@ -43,17 +45,21 @@ to_lower() {
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ -z "$local_ref" ] && continue
 
+    # Everything below matches against the LOWER-CASED ref. The scope gate
+    # and the protected-name check are two halves of one rule, so they must
+    # agree about case: a case-sensitive gate let `refs/HEADS/develop` skip
+    # the guard entirely, even though the check below would have caught it.
+    # (guard-git-push.mjs is case-insensitive here too - the layers must not
+    # disagree either.)
+    remote_ref_lc=$(to_lower "$remote_ref")
+
     # Out of scope: only refs/heads/* (branches) are policed here. Tags and
     # anything else pass through untouched.
-    case "$remote_ref" in
+    case "$remote_ref_lc" in
         refs/heads/*) ;;
         *) continue ;;
     esac
 
-    # Protected-branch names, matched case-insensitively (the PreToolUse
-    # guard in guard-git-push.mjs is already case-insensitive here - the two
-    # layers must not disagree).
-    remote_ref_lc=$(to_lower "$remote_ref")
     case "$remote_ref_lc" in
         refs/heads/develop|refs/heads/main|refs/heads/master|refs/heads/release/*)
             b=$(branch_name "$remote_ref")

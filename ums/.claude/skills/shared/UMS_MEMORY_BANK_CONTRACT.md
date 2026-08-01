@@ -430,13 +430,18 @@ resolve the installed path with `git rev-parse --git-path hooks/pre-push`,
 confirm it exists and carries the `UMS pre-push guard` marker near the top,
 then pipe a synthetic line straight into it (`printf 'refs/heads/develop
 <sha> refs/heads/develop <sha>\n' | <hook path> origin verify`), expecting a
-non-zero exit and the `UMS:` message; `install-git-hooks.ps1` runs this
-check itself after installing and reports the result. Two known, accepted
-bypasses — both require deliberate, visible intent, unlike the CLI-spelling
-tricks this hook exists to close: `git push --no-verify` skips it entirely,
-and `core.hooksPath` (local or global — routine with tools like husky or
-pre-commit) points git at a different hooks directory altogether, so the
-installer detects it and installs there instead. The PreToolUse hook
+non-zero exit and the `UMS:` message, AND the mirror-image accept case (a
+synthetic ticket-branch creation must exit 0, silently) — without that
+second half a hook that cannot execute at all also "rejects" everything and
+passes as verified. `install-git-hooks.ps1` runs both checks itself after
+installing, reports the result and exits non-zero whenever the guarantee is
+not in place. Two known, accepted bypasses — both require deliberate,
+visible intent, unlike the CLI-spelling tricks this hook exists to close:
+`git push --no-verify` skips it entirely, and `core.hooksPath` (local or
+global — routine with tools like husky or pre-commit) points git at a
+different hooks directory altogether, so the installer detects it and
+installs there instead (a relative value is resolved per working tree, so
+each linked worktree then needs its own install). The PreToolUse hook
 (`.claude/hooks/guard-git-push.mjs`) is only a best-effort, fail-open early
 warning for the common accident, not a guarantee — it does not see shell
 syntax the way git itself does, so it allows anything it cannot parse with
