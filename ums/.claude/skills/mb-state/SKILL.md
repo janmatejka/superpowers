@@ -55,10 +55,12 @@ metadata:
   slug per the pairing rule, per owning MB) and list the queued preliminary
   proposals — they activate by moving to `active/` when work on them starts
   (contract, Target-MB Discovery & Pinning).
-- **Cizí větve:** run the `mb-doc-index` skill (read-only). Report foreign
-  active work items (slug, ticket, branch, last commit date) and its findings.
-  A `KOLIZE AKTIVNÍ PRÁCE` finding is a warning here (mb-state never stops
-  work) with the recommendation to resolve it before pinning new work.
+- **Foreign branches:** run the `mb-doc-index` skill (read-only). Report
+  foreign active work items (slug, ticket, branch, last commit — invoke with
+  `-Json` for the commit date, which the default table does not print) and
+  its findings. A `KOLIZE AKTIVNÍ PRÁCE` finding is a warning here (mb-state
+  never stops work) with the recommendation to resolve it before pinning new
+  work.
 - Execution progress: does `.superpowers/sdd/progress.md` exist? (Presence =
   plan execution in flight; content shows the last completed task.)
 - Git: current branch (`git branch --show-current`), work on main/master is a
