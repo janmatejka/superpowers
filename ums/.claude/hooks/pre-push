@@ -9,13 +9,21 @@
 # adjacency, config overrides) collapses to the same four fields below, so
 # there is no shell syntax left to bypass.
 #
-# Installed per clone by ums/.claude/hooks/install-git-hooks.ps1 (git hooks
-# live in untracked .git/hooks/, so this guarantee only exists once that
-# script has been run against a given working copy).
+# Scope: refs/heads/* (branches) only. The two-tier policy is branch-scoped;
+# tag pushes and anything else are out of scope and always pass through
+# untouched (a tag delete or a tag force-move is not a "branch push").
 #
-# `git push --no-verify` skips this hook entirely — a known, accepted
-# escape hatch (see the contract for why: it requires deliberate, visible
-# intent, unlike every bypass this hook exists to close).
+# Installed per clone by ums/.claude/hooks/install-git-hooks.ps1, resolved
+# via `git rev-parse --git-path hooks/pre-push` so this lands where git
+# ACTUALLY looks even for a linked worktree or a core.hooksPath override
+# (git hooks live outside version control, so this guarantee only exists
+# once that script has been run against a given working copy).
+#
+# Two known, accepted bypasses — both require deliberate, visible intent,
+# unlike every CLI-spelling trick this hook exists to close:
+#   - `git push --no-verify` skips this hook entirely.
+#   - `git -c core.hooksPath=<other>` (or a persistent core.hooksPath
+#     override) points git at a different hooks directory altogether.
 #
 # Invocation: $1 = remote name, $2 = remote URL. Stdin lines:
 #   <local ref> SP <local sha1> SP <remote ref> SP <remote sha1> LF
@@ -28,10 +36,25 @@ branch_name() {
     printf '%s' "$1" | sed 's#^refs/heads/##'
 }
 
+to_lower() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ -z "$local_ref" ] && continue
 
+    # Out of scope: only refs/heads/* (branches) are policed here. Tags and
+    # anything else pass through untouched.
     case "$remote_ref" in
+        refs/heads/*) ;;
+        *) continue ;;
+    esac
+
+    # Protected-branch names, matched case-insensitively (the PreToolUse
+    # guard in guard-git-push.mjs is already case-insensitive here - the two
+    # layers must not disagree).
+    remote_ref_lc=$(to_lower "$remote_ref")
+    case "$remote_ref_lc" in
         refs/heads/develop|refs/heads/main|refs/heads/master|refs/heads/release/*)
             b=$(branch_name "$remote_ref")
             echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2

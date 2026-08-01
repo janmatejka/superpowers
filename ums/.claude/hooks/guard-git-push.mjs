@@ -122,10 +122,13 @@ process.stdin.on('end', () => {
   const command = String(input?.tool_input?.command ?? '');
   const cwd = input?.cwd;
 
-  // Context-free substring check: `--no-verify` next to `push` would skip
-  // the real guarantee (the pre-push hook). A false positive here costs
-  // nothing, so it deliberately is not tied to a specific parsed invocation.
-  if (/--no-verify\b/.test(command) && /\bpush\b/.test(command)) {
+  // Context-free substring check: `--no-verify` next to `push` (in a command
+  // that also mentions `git`, so e.g. `npm run push -- --no-verify` does not
+  // trigger this) would skip the real guarantee (the pre-push hook). A false
+  // positive here costs nothing, so it deliberately is not tied to a
+  // specific parsed invocation. The remaining edge — a commit message that
+  // happens to contain both words — is accepted as out of scope.
+  if (/\bgit\b/.test(command) && /\bpush\b/.test(command) && /--no-verify\b/.test(command)) {
     deny(
       'UMS: `--no-verify` by u pushe přeskočil pre-push hook (skutečnou pojistku Publication Contract, ' +
         'ne jen tuhle předběžnou kontrolu) — nepoužívej ho bez výslovného souhlasu uživatele.',

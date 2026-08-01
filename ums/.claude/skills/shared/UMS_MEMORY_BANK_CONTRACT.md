@@ -420,9 +420,23 @@ warning.
 | Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
-installed per clone by `install-git-hooks.ps1` — verify with
-`git push origin develop`, which must fail with a `UMS:` explanation; `git push
---no-verify` bypasses it by design). The PreToolUse hook
+scoped to `refs/heads/*` — tag pushes are out of scope and always pass
+through), installed per clone by `install-git-hooks.ps1`. Verify it
+non-destructively — never with a real `git push origin develop`, which
+either publishes real commits if the hook turns out to be inert (this is
+exactly how a linked-worktree installation gap was first confirmed) or
+prints a misleading "Everything up-to-date" when there is nothing to push:
+resolve the installed path with `git rev-parse --git-path hooks/pre-push`,
+confirm it exists and carries the `UMS pre-push guard` marker near the top,
+then pipe a synthetic line straight into it (`printf 'refs/heads/develop
+<sha> refs/heads/develop <sha>\n' | <hook path> origin verify`), expecting a
+non-zero exit and the `UMS:` message; `install-git-hooks.ps1` runs this
+check itself after installing and reports the result. Two known, accepted
+bypasses — both require deliberate, visible intent, unlike the CLI-spelling
+tricks this hook exists to close: `git push --no-verify` skips it entirely,
+and `core.hooksPath` (local or global — routine with tools like husky or
+pre-commit) points git at a different hooks directory altogether, so the
+installer detects it and installs there instead. The PreToolUse hook
 (`.claude/hooks/guard-git-push.mjs`) is only a best-effort, fail-open early
 warning for the common accident, not a guarantee — it does not see shell
 syntax the way git itself does, so it allows anything it cannot parse with

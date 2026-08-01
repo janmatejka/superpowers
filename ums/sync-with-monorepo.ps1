@@ -202,19 +202,27 @@ $target = $AgentTargets[$Agent][$Scope]
 
 # Install/refresh this layer's git hooks (currently: pre-push, the
 # Publication Contract enforcement boundary - see
-# .claude/hooks/install-git-hooks.ps1) into the target repository. Git hooks
-# are per-repository, not per-agent, so this runs once whenever Scope is
-# Monorepo regardless of which -Agent was chosen (the monorepo is the same
-# repo no matter which harness's glue is being synced). UserProfile scope has
-# no single associated repository, so hook installation does not apply there
-# - install manually per clone with install-git-hooks.ps1 -RepoRoot.
-if ($Scope -eq 'Monorepo') {
+# .claude/hooks/install-git-hooks.ps1) into a target repository. Git hooks
+# are per-repository, not per-agent, so this only applies for Scope
+# Monorepo (the same repo regardless of which -Agent's glue is being
+# synced); UserProfile scope has no single associated repository, so hook
+# installation does not apply there - install manually per clone with
+# install-git-hooks.ps1 -RepoRoot. Called AFTER each branch's own target
+# checks/deployment below (never before), and never lets a hook-install
+# failure abort the rest of the sync - an unrelated problem with the
+# repository (not a git repo yet, permissions, ...) must not silently skip
+# every other deployed item the way an unguarded throw here once did.
+function Install-PublicationHooks([string] $RepoRoot) {
     $installScript = Join-Path $forkClaude 'hooks\install-git-hooks.ps1'
-    if (Test-Path $installScript) {
-        & $installScript -RepoRoot $MonorepoRoot -SourceDir (Join-Path $forkClaude 'hooks')
+    if (-not (Test-Path $installScript)) {
+        Write-Host "note: install-git-hooks.ps1 not found - pre-push guarantee not installed into $RepoRoot." -ForegroundColor Yellow
+        return
     }
-    else {
-        Write-Host "note: install-git-hooks.ps1 not found - pre-push guarantee not installed into $MonorepoRoot." -ForegroundColor Yellow
+    try {
+        & $installScript -RepoRoot $RepoRoot -SourceDir (Join-Path $forkClaude 'hooks')
+    }
+    catch {
+        Write-Host "warning: could not install git hooks into $RepoRoot ($($_.Exception.Message)) - continuing sync without them." -ForegroundColor Yellow
     }
 }
 
@@ -222,6 +230,8 @@ if ($Scope -eq 'Monorepo') {
 if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
     $monoClaude = Join-Path $MonorepoRoot '.claude'
     if (-not (Test-Path $monoClaude)) { throw "Monorepo .claude not found at $monoClaude" }
+
+    Install-PublicationHooks $MonorepoRoot
 
     # UMS-owned items relative to the .claude/ root. skills/mb-* AND hooks/* are
     # discovered dynamically on the source side so new mb-* skills or hooks are
@@ -317,6 +327,14 @@ else {
     $instrFile = Join-Path $baseRoot $target.Instructions
     Set-MarkedBlock $instrFile $content
     Write-Host "deployed preference block -> $($target.Instructions)"
+
+    # 4. Git hook install (Monorepo only - see Install-PublicationHooks above).
+    if ($Scope -eq 'Monorepo') {
+        Install-PublicationHooks $MonorepoRoot
+    }
+    else {
+        Write-Host 'note: git hook enforcement (pre-push, the Publication Contract boundary) is per-repository and is NOT installed by a UserProfile-scope deploy - run install-git-hooks.ps1 -RepoRoot <repo> manually for each repository you use.' -ForegroundColor Yellow
+    }
 
     $scopeNote = if ($Scope -eq 'UserProfile') { "user profile $baseRoot" } else { 'monorepo (this file set may be gitignored there - local per-developer deploy)' }
     Write-Host "Done ($Agent, $Scope deploy -> $scopeNote)." -ForegroundColor Cyan

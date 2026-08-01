@@ -21,16 +21,35 @@ writing-plans does not start. The normative rules are in
 ums/
 ├── README.md                 ← this file
 ├── CLAUDE.md.sample          ← monorepo root CLAUDE.md (user-preference lever)
+├── .gitattributes             ← forces LF on the extensionless pre-push hook (Windows CRLF trap)
 ├── sync-with-monorepo.ps1    ← fork ⇄ monorepo sync (claude) + deploy for other agents (-Agent)
 └── .claude/
     ├── settings.json         ← Claude Code glue (hooks, permission denies, skillOverrides)
-    ├── hooks/deny-superpowers-docs.mjs   ← PreToolUse write-guard (Claude Code)
+    ├── hooks/
+    │   ├── deny-superpowers-docs.mjs  ← PreToolUse write-guard (Claude Code)
+    │   ├── guard-git-push.mjs         ← PreToolUse best-effort push warning (Claude Code; NOT the guarantee)
+    │   ├── pre-push                   ← git pre-push hook — the actual Publication Contract enforcement
+    │   │                                 boundary (harness-agnostic: plain git, works regardless of agent)
+    │   ├── install-git-hooks.ps1      ← installs pre-push per clone (git hooks are untracked; required — see below)
+    │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
         ├── shared/           ← contract v2, manifest, VENDORED_FROM.md, overlays/*.overlay.md
         ├── mb-harvest/ …     ← active mb-* utility skills
         └── mb-plan/ …        ← deprecated v1 stubs (transitional)
 ```
+
+**The push-policy guarantee requires a per-clone install step.** Vendoring
+`hooks/pre-push` under `.claude/` is not enough by itself — git only runs
+hooks from its own hooks directory (`.git/hooks/`, a linked worktree's common
+dir, or a `core.hooksPath` override), which is untracked and never populated
+by cloning or by the sync script's normal file deploy. Run
+`pwsh ums/.claude/hooks/install-git-hooks.ps1 -RepoRoot <repo>` once per
+clone (idempotent; never overwrites a foreign `pre-push`); `sync-with-
+monorepo.ps1` already calls it automatically whenever `-Scope Monorepo` is
+used, for any `-Agent`, since a git hook is a property of the repository,
+not of the harness. See `UMS_MEMORY_BANK_CONTRACT.md`, "Publication
+Contract", for the full enforcement/bypass model.
 
 The 14 vendored superpowers skill copies are **not** stored here — they are
 produced in the monorepo by `revendor-superpowers.ps1` from this repo's
@@ -87,6 +106,7 @@ connection configured per harness.
 |---|---|---|
 | Contract/context injection at session start | SessionStart + PostCompact hooks (`additionalContext`) | Cursor: `hooks-cursor.json` `sessionStart` (schema differs); Codex: no session-start injection — put the "load the contract" rule into the instructions file (`AGENTS.md`); Kimi: manifest `sessionStart`; OpenCode/pi: in-process injection |
 | Write-guard for `docs/superpowers/**`, `docs/plans/**` | PreToolUse hook with `permissionDecision: deny` (`deny-superpowers-docs.mjs`) | No shown equivalent — degrade to the contract's Document Placement rule + CLAUDE.md/AGENTS.md preference text (upstream skills honor declared location preferences) |
+| Push-policy early warning (best-effort, NOT the guarantee) | PreToolUse hook (`guard-git-push.mjs`) — fail-open, only catches a plainly-typed push to a protected branch | No shown equivalent for the early warning; the actual guarantee (`hooks/pre-push`, a plain git hook) is harness-agnostic and applies the same way regardless — see the per-clone install note above |
 | Worktree ban | `permissions.deny: EnterWorktree/ExitWorktree` + `skillOverrides: using-git-worktrees: off` | No shown equivalent — degrade to the ban text in the instructions file; `using-git-worktrees` itself honors a declared preference ("work in place") |
 | Model selection for subagents | Owned by superpowers (SDD Model Selection); UMS only adds the cheapest-tier guard for summarization/read-only dispatches (contract, Dispatch Model Policy) | Portable text; the cheapest-tier guard is effective only where the harness exposes a model parameter on subagent dispatch |
 

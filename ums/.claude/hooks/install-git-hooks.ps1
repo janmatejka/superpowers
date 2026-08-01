@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Installs this layer's git hooks (currently: pre-push, the Publication
-    Contract enforcement boundary) into a repository's .git/hooks/.
+    Contract enforcement boundary) into a repository, and self-verifies that
+    the installed copy is actually the one git will run.
 
 .DESCRIPTION
     Git hooks live in untracked .git/hooks/, so the guarantee described in
@@ -9,11 +10,33 @@
     this script has been run against a given clone — vendoring the source
     file under ums/.claude/hooks/ is not enough by itself.
 
-    Safe to re-run: re-installs over its own previously-installed copy
-    (identified by the "UMS pre-push guard" marker comment at the top of the
-    hook). Never overwrites a pre-existing pre-push hook that is NOT ours —
-    it reports the conflict and leaves the file untouched, since silently
-    replacing someone's own hook would be worse than not installing at all.
+    The destination is resolved with `git -C <RepoRoot> rev-parse --git-path
+    hooks/<name>` — the one resolution that is correct for a plain repo, a
+    LINKED WORKTREE (whose hooks are NOT under its own
+    .git/worktrees/<name>/hooks/ — that would be the wrong, inert location;
+    hooks live in $GIT_COMMON_DIR, which only --git-path resolves correctly),
+    and a repository with `core.hooksPath` set (local or global — common with
+    husky/pre-commit), which makes git ignore .git/hooks/ entirely. Hand-
+    resolving the `.git` file/directory (an earlier version of this script
+    did that) gets the worktree case wrong silently: it reports success while
+    the hook it wrote is never consulted.
+
+    After installing, this script pipes a synthetic, harmless line into the
+    installed hook (a fabricated push to `refs/heads/develop`) and confirms
+    it rejects with the expected message — this never touches the real repo
+    or remote, unlike verifying with an actual `git push origin develop`
+    (which either publishes real commits if the hook is inert, exactly how
+    the worktree bypass was first confirmed, or prints a misleading
+    "Everything up-to-date" if there is nothing new to push). If Git Bash is
+    not available to run that check, the command is printed instead so a
+    human can run it.
+
+    Safe to re-run: re-installs over its own previously-installed copy,
+    identified by a marker comment on one of the file's first few lines
+    (matched only near the top, not anywhere in the file, so a foreign hook
+    that merely mentions similar wording deeper in its body is never treated
+    as ours). Never overwrites a pre-existing hook that is NOT ours — it
+    reports the conflict and leaves the file untouched.
 
     This script is deliberately generic (parameterized by -RepoRoot and
     -SourceDir) so it works unmodified against any clone that carries this
@@ -21,8 +44,8 @@
     UMS Memory Bank — not just the sync pipeline's own targets.
 
 .PARAMETER RepoRoot
-    Working-tree root of the repository to install into (NOT .git/hooks
-    itself). Defaults to the current directory.
+    Working-tree root of the repository (or linked worktree) to install
+    into. Defaults to the current directory.
 
 .PARAMETER SourceDir
     Directory containing the hook source files. Defaults to this script's
@@ -32,10 +55,12 @@
     pwsh ums/.claude/hooks/install-git-hooks.ps1 -RepoRoot C:\path\to\repo
 
 .EXAMPLE
-    # Verify it actually works after installing:
-    git -C C:\path\to\repo push origin develop
-    # -> should print the UMS rejection message and refuse (non-zero exit).
-    # `git push --no-verify` bypasses this hook by design; that is expected.
+    # Non-destructive manual verification (does not push or move any ref) -
+    # same check this script runs automatically when Git Bash is available:
+    printf 'refs/heads/develop 0123456789abcdef0123456789abcdef01234567 refs/heads/develop 0123456789abcdef0123456789abcdef01234567\n' | "<resolved hook path>" origin verify
+    # -> should print the UMS rejection message and exit non-zero.
+    # `git push --no-verify` and `git -c core.hooksPath=<other>` both bypass
+    # this hook by design; that is expected, not a bug.
 #>
 #Requires -Version 7
 [CmdletBinding()]
@@ -47,27 +72,48 @@ $ErrorActionPreference = 'Stop'
 
 $HOOK_NAMES = @('pre-push')
 $OURS_MARKER = 'UMS pre-push guard (Publication Contract)'
+$MARKER_LINES_CHECKED = 5
 
-$gitDir = Join-Path $RepoRoot '.git'
-if (-not (Test-Path $gitDir)) {
-    throw "Not a git repository (no .git found under RepoRoot): $RepoRoot"
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git not found on PATH.' }
+
+& git -C $RepoRoot rev-parse --is-inside-work-tree *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw "Not a git working tree (git rev-parse --is-inside-work-tree failed): $RepoRoot"
 }
-# .git can itself be a file (worktrees, submodules) pointing elsewhere via
-# "gitdir: <path>" - resolve it so hooks land in the real hooks directory.
-if (Test-Path -PathType Leaf $gitDir) {
-    $pointer = (Get-Content -LiteralPath $gitDir -Raw) -replace '^gitdir:\s*', ''
-    $gitDir = $pointer.Trim()
-    if (-not [IO.Path]::IsPathRooted($gitDir)) { $gitDir = Join-Path $RepoRoot $gitDir }
+
+# The one resolution that is correct for a plain repo, a linked worktree
+# (common dir, not the per-worktree private dir), and a core.hooksPath
+# override (local or global, relative or absolute).
+function Resolve-HookDestination([string] $Root, [string] $Name) {
+    $out = & git -C $Root rev-parse --git-path "hooks/$Name" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "git rev-parse --git-path failed for '$Root': $out" }
+    $rel = (($out | Select-Object -First 1).ToString()).Trim()
+    if ([IO.Path]::IsPathRooted($rel)) { return $rel }
+    return (Join-Path $Root $rel)
 }
-$hooksDir = Join-Path $gitDir 'hooks'
-New-Item -ItemType Directory -Force -Path $hooksDir | Out-Null
+
+function Get-CustomHooksPath([string] $Root) {
+    $out = & git -C $Root config --get core.hooksPath 2>$null
+    if ($LASTEXITCODE -eq 0 -and $out) { return $out.Trim() }
+    return $null
+}
+
+# Marker matched only on the file's first few lines, not anywhere in the
+# file - a foreign hook whose body happens to mention similar wording deeper
+# down must NOT be mistaken for ours.
+function Test-IsOurHook([string] $Path) {
+    if (-not (Test-Path $Path)) { return $false }
+    $head = Get-Content -LiteralPath $Path -TotalCount $MARKER_LINES_CHECKED -ErrorAction SilentlyContinue
+    if (-not $head) { return $false }
+    return (($head -join "`n") -match [regex]::Escape($OURS_MARKER))
+}
 
 # Resolve Git Bash's own bash.exe (NOT whatever "bash" happens to be first on
 # PATH - on a machine with WSL installed, that is frequently the WSL launcher
-# stub, which does not run this repo's scripts against the intended
-# filesystem). Best-effort only: used solely to set the executable bit,
-# which Git for Windows' own hook runner does not require (it dispatches on
-# the shebang line), so a failure here is not fatal.
+# stub, which silently drops positional args and does not run this repo's
+# scripts against the intended filesystem). Used both to set the executable
+# bit (best-effort only - Git for Windows' own hook runner dispatches on the
+# shebang line regardless) and to self-verify the installed hook fires.
 function Find-GitBash {
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if (-not $gitCmd) { return $null }
@@ -87,20 +133,23 @@ function Find-GitBash {
     return $null
 }
 $gitBash = Find-GitBash
-$installedAny = $false
 
+$customHooksPath = Get-CustomHooksPath $RepoRoot
+if ($customHooksPath) {
+    Write-Host "note: core.hooksPath is set to '$customHooksPath' - installing there, since that is where git actually looks (it ignores .git/hooks/ while this is set)." -ForegroundColor DarkGray
+}
+
+$installedAny = $false
 foreach ($name in $HOOK_NAMES) {
     $src = Join-Path $SourceDir $name
     if (-not (Test-Path $src)) { throw "Hook source not found: $src" }
-    $dst = Join-Path $hooksDir $name
+    $dst = Resolve-HookDestination $RepoRoot $name
+    New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
 
-    if (Test-Path $dst) {
-        $existing = Get-Content -LiteralPath $dst -Raw
-        if ($existing -notmatch [regex]::Escape($OURS_MARKER)) {
-            Write-Host "SKIP: $dst already exists and is not the UMS hook - leaving it alone." -ForegroundColor Yellow
-            Write-Host "      Merge the UMS pre-push logic into it by hand if you want both enforced." -ForegroundColor Yellow
-            continue
-        }
+    if ((Test-Path $dst) -and -not (Test-IsOurHook $dst)) {
+        Write-Host "SKIP: $dst already exists and is not the UMS hook - leaving it alone." -ForegroundColor Yellow
+        Write-Host '      Merge the UMS pre-push logic into it by hand if you want both enforced.' -ForegroundColor Yellow
+        continue
     }
 
     Copy-Item -Force -LiteralPath $src -Destination $dst
@@ -116,8 +165,36 @@ foreach ($name in $HOOK_NAMES) {
 }
 
 if ($installedAny) {
+    $hookPath = Resolve-HookDestination $RepoRoot 'pre-push'
     Write-Host ''
-    Write-Host "Verify: git -C `"$RepoRoot`" push origin develop" -ForegroundColor DarkGray
-    Write-Host '  -> should print the UMS rejection message and fail (non-zero exit).' -ForegroundColor DarkGray
-    Write-Host '     `--no-verify` bypasses this hook by design - that is expected, not a bug.' -ForegroundColor DarkGray
+    if ($gitBash) {
+        # Self-verify: pipe a synthetic, harmless line straight into the
+        # installed hook - a fabricated push to refs/heads/develop, both
+        # shas fake. This never touches the real repo/remote (unlike
+        # verifying with an actual `git push origin develop`, which either
+        # publishes real commits if the hook is inert - exactly how the
+        # worktree bypass was confirmed for real - or prints a misleading
+        # "Everything up-to-date" if there is nothing new to push).
+        $sha = '0123456789abcdef0123456789abcdef01234567'
+        $unixHook = $hookPath -replace '\\', '/'
+        $bashScript = 'printf "refs/heads/develop %s refs/heads/develop %s\n" "$1" "$1" | "$2" origin verify'
+        $verifyOut = & $gitBash -c $bashScript _ $sha $unixHook 2>&1 | Out-String
+        $verifyCode = $LASTEXITCODE
+        if ($verifyCode -ne 0 -and $verifyOut -match 'UMS') {
+            Write-Host "verified: pre-push correctly rejects a synthetic push to 'develop' (exit $verifyCode)." -ForegroundColor Green
+        }
+        else {
+            Write-Host 'WARNING: the installed pre-push hook did NOT reject the synthetic protected-branch push!' -ForegroundColor Red
+            Write-Host "  exit code: $verifyCode" -ForegroundColor Red
+            Write-Host "  output: $($verifyOut.Trim())" -ForegroundColor Red
+            Write-Host '  The guarantee may be inert here (wrong location, another core.hooksPath override taking' -ForegroundColor Red
+            Write-Host '  precedence, a non-executable copy, ...) - investigate before relying on it.' -ForegroundColor Red
+        }
+    }
+    else {
+        Write-Host 'Git Bash was not found to self-verify. Verify manually (non-destructive):' -ForegroundColor DarkGray
+        Write-Host "  printf 'refs/heads/develop 0123456789abcdef0123456789abcdef01234567 refs/heads/develop 0123456789abcdef0123456789abcdef01234567`n' | ""$hookPath"" origin verify" -ForegroundColor DarkGray
+        Write-Host '  -> should print the UMS rejection message and exit non-zero.' -ForegroundColor DarkGray
+    }
+    Write-Host '`git push --no-verify` and `git -c core.hooksPath=<other>` both bypass this hook by design.' -ForegroundColor DarkGray
 }

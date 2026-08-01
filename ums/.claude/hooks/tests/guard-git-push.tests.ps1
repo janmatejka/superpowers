@@ -85,6 +85,7 @@ foreach ($c in @(
 Assert-Match (Test-Cmd 'git push --no-verify origin feature/ums-1-alfa') 'permissionDecision.*deny' 'zamítnuto: --no-verify u pushe'
 Assert-Match (Test-Cmd 'git push origin feature/ums-1-alfa --no-verify') 'permissionDecision.*deny' 'zamítnuto: --no-verify u pushe (na konci)'
 Assert-Eq (Test-Cmd 'git commit --no-verify -m msg') '' '--no-verify bez zmínky o push neřeší (commit, ne push)'
+Assert-Eq (Test-Cmd 'npm run push -- --no-verify') '' '--no-verify bez zmínky o gitu neřeší (žádný git v příkazu)'
 
 # ---------------------------------------------------------------------------
 # denied: fetch that would overwrite a protected local ref (unchanged from
