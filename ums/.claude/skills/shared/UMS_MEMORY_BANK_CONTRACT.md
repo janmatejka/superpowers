@@ -420,10 +420,12 @@ warning.
 | Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! git push origin develop`). The agent then re-verifies reachability. |
 
 Mechanically enforced for Claude Code by the PreToolUse hook
-`.claude/hooks/guard-git-push.mjs` (protected-ref deny-list, force/mirror/all/delete
-denied). Other harnesses follow this rule by contract text only, as with every
-other rule of this layer. `mb-git-commit` never pushes — publication is a
-workflow step at the points listed above, not a commit tool.
+`.claude/hooks/guard-git-push.mjs` (deny-by-default: it allows a push only when
+parsed with confidence as a simple push to a branch outside the protected-name
+deny-list, and denies every other shape, including ones it cannot parse). Other
+harnesses follow this rule by contract text only, as with every other rule of
+this layer. `mb-git-commit` never pushes — publication is a workflow step at
+the points listed above, not a commit tool.
 
 ## Cross-Branch Visibility
 
