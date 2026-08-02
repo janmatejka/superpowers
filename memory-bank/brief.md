@@ -100,8 +100,8 @@ skilly. Nepřenositelné je jen **lepidlo**: injektáž kontraktu na začátku s
 mechanické blokování zápisu do zakázaných cest a zákaz worktrees. Ty jsou
 plnohodnotné jen v Claude Code; jinde degradují na textové pravidlo
 v instrukčním souboru. Detailní matici má
-[`ums/README.md`](../ums/README.md#harness-compatibility), technický rozpad
-[tech.md](tech.md).
+[`ums/README.md`](../ums/README.md), sekce „Harness compatibility“, technický
+rozpad [tech.md](tech.md).
 
 Nasazení k uživateli dělá [`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1)
 — do monorepa nebo do profilu uživatele, pro agenty `claude`, `codex`, `gemini`
