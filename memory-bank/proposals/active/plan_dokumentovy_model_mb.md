@@ -600,7 +600,7 @@ $script:ExitCode = 0
 ```
 
 Posun nadpisů se sledováním fenced bloků — bez toho by se komentáře uvnitř
-```` ``` ```` bloků považovaly za nadpisy:
+ohrazených bloků (řádky se třemi zpětnými apostrofy) považovaly za nadpisy:
 
 ```powershell
 function Get-ProductBody([string[]] $Lines) {
