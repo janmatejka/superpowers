@@ -60,8 +60,8 @@ v kontraktu ještě uvádí starší host `jira.datasys.cz`.
 ## Konfigurace pro Claude Code
 
 [`ums/.claude/settings.json`](../ums/.claude/settings.json) je registrační
-lepidlo (deployuje se jen na cíl `claude`, nikdy na jiné harnessy — přepsalo by
-jim vlastní `settings.json`):
+lepidlo Claude Code (na ostatní harnessy se nenasazuje, viz
+[playbook.md](playbook.md)):
 
 | Klíč | Obsah |
 |---|---|
@@ -83,25 +83,21 @@ hook [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (POSIX
 shellový text, takže žádné parsování k obejití neexistuje. Zamítá push do
 chráněné větve (`develop`, `main`, `master`, `release/*`) bez
 `UMS_ALLOW_SHARED_PUSH=1`, mazání větve a force push vždy. Git hooky jsou
-netrackované (`.git/hooks/` nebo cíl `core.hooksPath`), takže se instalují
-per-clone skriptem
-[`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1)
-(idempotentní, nikdy nepřepíše cizí hook; cíl řeší `git rev-parse --git-path
-hooks/pre-push`, správně i pro linked worktree); volá ho i
-`sync-with-monorepo.ps1` pro `-Scope Monorepo`. Skript končí nenulovým kódem,
-pokud záruka není potvrzená: `1` (self-test selhal) a `2` (cizí hook ponechán
-beze změny) znamenají, že záruka chybí; `3` znamená nainstalováno, ale
-neověřeno (chybí shell pro self-test). `.gitattributes`
-([`ums/.gitattributes`](../ums/.gitattributes)) vynucuje `text eol=lf` na
-`pre-push`, protože jde o bezpříponový skript spouštěný gitem přímo — CRLF
-z Windows checkoutu by rozbil shebang (stejná past jako u revendoru, viz
-Pasti prostředí).
+netrackované (`.git/hooks/` nebo cíl `core.hooksPath`), takže je do každého
+klonu instaluje samostatný skript
+[`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) —
+idempotentní, cizí hook nikdy nepřepíše, cíl řeší `git rev-parse --git-path
+hooks/pre-push` (správně i pro linked worktree). Kdy se spouští a co znamenají
+jeho návratové kódy, je v [playbook.md](playbook.md). Konce řádků hooku hlídá
+[`ums/.gitattributes`](../ums/.gitattributes) pravidlem `text eol=lf`.
 
 ## Testy
 
+Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
+v [playbook.md](playbook.md).
+
 **UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 10 sad, dohromady
-313 asercí (`pwsh -NoProfile -File <suite>.tests.ps1`, žádný Pester, nenulový
-exit kód při selhání):
+313 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1`, `graph-generation.tests.ps1`, `oracle-prose.tests.ps1`,
@@ -114,16 +110,12 @@ exit kód při selhání):
   `enumeration.tests.ps1` (traversal, lokální sken, `-SinceDays`/`-BaseRef`,
   filtrování `tests/fixtures`), `findings.tests.ps1` (kolize, self-kolize
   vlastní pushnuté větve, fronta na více větvích, obživlá fronta) proti
-  fixture repu generovanému `new-fixture-repo.ps1` (lokální bare „origin",
-  bez sítě).
+  fixture repu generovanému `new-fixture-repo.ps1`.
 - [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1`
   (end-to-end proti skutečnému lokálnímu bare remote: lidská výjimka,
   mazání/force i s ní zamítnuté, `core.hooksPath` lokální/globální/relativní
   per worktree) a `guard-git-push.tests.ps1` (JSON na stdin → rozhodnutí:
   chráněné větve, force, `--no-verify`, lidská výjimka).
-- Sdílený helper `_assert.ps1` (`Assert-True`, `Assert-Match`,
-  `Assert-NotMatch`, `Assert-Eq`, `Complete-Tests`) — žádný Pester, nenulový
-  exit kód při selhání.
 
 **Upstream** — [`tests/`](../tests/) obsahuje shellové a Node.js testy
 infrastruktury pluginu po harnessech (`claude-code`, `codex`, `kimi`,
@@ -138,17 +130,6 @@ jeho Python (ruff, ty).
   s `.superpowers/`, `.worktrees/`, `evals/`). Vrstva to aditivně neguje
   souborem [`ums/.gitignore`](../ums/.gitignore) s řádkem `!.claude/`. Při
   přesunech souborů na to pozor — mimo `ums/` zůstává `.claude/` netrackovaný.
-- **CRLF a `git archive`.** Vendoring přes `git archive` při
-  `core.autocrlf=true` rozbije bashové skripty bez přípony. Revendor skript
-  proto normalizuje na LF a v monorepu platí `.gitattributes` s
-  `.claude/skills/** text eol=lf`. Verifikační pass revendoru CRLF kontroluje
-  a navíc funkčně testuje SDD skripty v Git Bash. Stejná past platí pro git
-  hook `pre-push` (bezpříponový, `#!/bin/sh`) — proto vlastní
-  [`ums/.gitattributes`](../ums/.gitattributes) s `text eol=lf`.
-- **Anchor miss při aplikaci overlaye je detektor driftu upstreamu**, ne chyba
-  k obejití — `ANCHOR-BEFORE` musí matchovat právě jeden řádek cílového souboru.
-- Verifikace revendoru padá i na viselých relativních odkazech, zbytcích v5
-  souborů, chybějících v6 souborech a nevyvážených overlay markerech.
 - **`bash` na tomto stroji může být tichý past.** Prosté `bash` v PATH může
   resolvnout na WSL launcher stub místo Git Bash — ten potichu zahodí
   poziční argumenty a běží nad jiným filesystémem. `install-git-hooks.ps1`
