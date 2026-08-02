@@ -68,6 +68,8 @@ uzavřený seznam.
   staré podoby, doplnění reading rule, sběrný soubor kandidátů.
 - Zapojení playbooku do tří míst: reading rule, SDD dispatch a baseline,
   harvest.
+- Pravidlo vlastnictví faktu (jeden fakt, jeden domov), přesun mezi dokumenty
+  jako legální operace a rozšíření staleness sweepu na detekci duplicit.
 - Sběr kandidátů za běhu a interaktivní gate při harvestu.
 - Nový skill `mb-migrate-docs` se skriptem, verifikátorem a testy.
 - Převod `memory-bank/` tohoto repozitáře (dogfood).
@@ -142,7 +144,59 @@ závislostí našel konkrétní příkazy; do playbooku jdou příkazy, do `tech
 verze a stack. Prázdné stuby se nezakládají — přesně tak `tasks.md` skončil na
 12,5 %.
 
-### 3. Tři dráty
+### 3. Vlastnictví faktu a přesuny mezi dokumenty
+
+Harvest Contract §3 dnes zakazuje duplikovat fakt, který už je popsaný, ale
+nedává kritérium, podle kterého se pozná, kam fakt patří. Bez kritéria může
+každý harvest v dobré víře usoudit, že jeho dokument je ten správný domov — a
+duplicita vznikne přesně tím způsobem, kterému má pravidlo bránit. Chybí i
+sankce přesunu: pravidlo „popisuj nový stav, nevyprávěj o odstranění" se dá
+číst tak, že fakt ze špatného dokumentu nesmíš vyndat.
+
+**Tabulka vlastnictví — jeden fakt, jeden domov:**
+
+| Na jakou otázku fakt odpovídá | Domov |
+|---|---|
+| K čemu to je, pro koho, jaká je hodnota, v jakém je to stavu | `brief.md` |
+| Z jakých částí se to skládá, kdo s kým mluví a jak, jaký vzor to sleduje | `architecture.md` |
+| Z čeho a čím to běží — stack, verze, závislosti, konfigurace, build, nasazení | `tech.md` |
+| Jak mám udělat X — příkazy, postupy, konvence, pasti | `playbook.md` |
+
+**Rozhodovací test pro spornou dvojici `tech` × `architecture`** — záměrně test,
+ne taxonomie, protože taxonomie se dá ohnout:
+
+- Změní se ten fakt, když **vyměním knihovnu nebo verzi a kód nechám**?
+  → `tech.md`
+- Změní se, když **přepíšu kód a závislosti nechám**? → `architecture.md`
+- Změní se v **obou** případech (typicky „workflow engine stojí na Orleans")?
+  → patří tam, kde ho čtenář hledá první, a druhý dokument na něj **odkáže**
+  relativním odkazem; nikdy ho nezopakuje.
+
+Třetí případ je jádro věci. Duplicita nevzniká u faktů, které jednoznačně patří
+někam — vzniká u těch, které patří do obou. Pravidlo „jeden domov, odjinud
+odkaz" je jediné, co ten případ řeší systematicky.
+
+**Přesun jako legální operace:** `mb-harvest` a `mb-sync` smí fakt přesunout
+mezi dokumenty téže MB. Pořadí je závazné — **nejdřív zapsat do cíle, teprve
+pak smazat ze zdroje**. Každý přesun se ohlásí ve výstupu, takže je vidět
+v reportu i v diffu commitu. Je to záměrně jen viditelnost, ne mechanická
+kontrola: přesun je lokální úprava, kterou u commitu někdo přečte, na rozdíl od
+hromadné migrace osmdesáti MB, kde verifikátor smysl má.
+
+**Sweep se třemi výústěními:** povinný staleness sweep (Harvest Contract §3)
+dnes hledá symboly z diffu větve napříč dokumenty MB a má jediný závěr. Nově
+má tři:
+
+1. zásah popisuje **překonaný** stav → srovnej na současnost;
+2. zásah je **existující domov** téhož faktu → nepiš druhou kopii, uprav ji na
+   místě;
+3. zásah je ve **špatném domově** → přesuň podle tabulky.
+
+Jedním průchodem tak vzniká detekce zastarání i detekce duplicity, bez nového
+kroku. `mb-sync` dostane totéž pravidlo — tím se stane cestou, kterou se
+stávající duplicity v existujících MB postupně uklidí.
+
+### 4. Tři dráty
 
 1. **MB Context Reading Rule** (kontrakt) — `playbook.md` přibude k dokumentům
    čteným před navrhováním a před psaním plánu; `product.md` z výčtu mizí.
@@ -153,7 +207,7 @@ verze a stack. Prázdné stuby se nezakládají — přesně tak `tasks.md` skon
 3. **Harvest** — po implementaci se ptá, jestli větev vyrobila opakovatelný
    postup, který z kódu nevyčteš (viz gate níže).
 
-### 4. Sběr zkušeností za běhu
+### 5. Sběr zkušeností za běhu
 
 **Sběrné místo:** `<MB_ROOT>/.superpowers/playbook-candidates.md`. Gitignorovaný
 scratch (spadá pod výjimku scope locku pro `.superpowers/`). První řádek nese
@@ -195,7 +249,7 @@ přes `--filter`" a „spustil jsem plnou sadu, po 40 minutách timeout, s
 Contract). `playbook.md` je trvalý artefakt, tedy česky — harvest při
 persistenci překládá.
 
-### 5. Harvest gate
+### 6. Harvest gate
 
 Je-li sběrný soubor neprázdný a jeho slug odpovídá aktuální položce, harvest
 **jednou** předloží uživateli seznam kandidátů s jejich evidencí a nechá
@@ -212,7 +266,7 @@ Toto je **jediné místo, kde `mb-harvest` přestává být autonomní**; ve zby
 zůstává beze změny. Prázdný nebo cizí sběrný soubor gate přeskočí bez dotazu —
 nenaléhá se.
 
-### 6. Tolerance staré podoby
+### 7. Tolerance staré podoby
 
 Trvalá, stejně jako grandfather klauzule u `proposal_` názvů:
 
@@ -222,7 +276,7 @@ Trvalá, stejně jako grandfather klauzule u `proposal_` názvů:
   pokud existuje; jinak se `playbook.md` založí.
 - Žádná MB není nucena migrovat, aby zůstala platná.
 
-### 7. Skill `mb-migrate-docs`
+### 8. Skill `mb-migrate-docs`
 
 Spustitelný v libovolném repozitáři, opakovaně, idempotentně. Dvě fáze.
 
@@ -274,7 +328,7 @@ přejmenování bez `brief.md`, přepis odkazů, konflikt `playbook.md`,
 idempotenci a především verifikátor: vstup s podvrženým novým řádkem musí být
 odmítnut.
 
-### 8. Dogfood — `memory-bank/` tohoto repozitáře
+### 9. Dogfood — `memory-bank/` tohoto repozitáře
 
 Převod proběhne ručně a pořádně, jako zkouška toho, jestli hranice v praxi drží:
 
@@ -290,17 +344,19 @@ Převod proběhne ručně a pořádně, jako zkouška toho, jestli hranice v pra
 
 **Kontrakt** `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md` → v2.3:
 Three-Tier Directory Model (výčet dokumentů), MB Context Reading Rule, Harvest
-Contract §3 (výjimka pro playbook) a §5, nová sekce o sadě dokumentů a
-toleranci, sběrný soubor ve výčtu legálních cest pod `.superpowers/`.
+Contract §3 (playbook mimo current-state průchod, přesun jako legální operace,
+sweep se třemi výústěními) a §5, nová sekce o sadě dokumentů a toleranci, nová
+sekce o vlastnictví faktu s rozhodovacím testem, sběrný soubor ve výčtu
+legálních cest pod `.superpowers/`.
 
 **Overlay fragmenty** `ums/.claude/skills/shared/overlays/`:
 `subagent-driven-development.overlay.md` (playbook v dispatchi, baseline, sekce
 reportu), `finishing-a-development-branch.overlay.md` (gate s kandidáty).
 
-**Skilly:** `mb-harvest` (gate, konzultace před zápisem, sada dokumentů),
-`mb-init` (brief
-pohlcuje produktový pohled, playbook jen při nalezených příkazech), `mb-sync`
-(sada, current-state výčet), a úklid výčtu `tasks.md`/`product.md`
+**Skilly:** `mb-harvest` (gate, konzultace před zápisem, sada dokumentů, sweep
+se třemi výústěními, přesuny v hlášení), `mb-init` (brief pohlcuje produktový
+pohled, playbook jen při nalezených příkazech), `mb-sync` (sada, current-state
+výčet, pravidlo vlastnictví a přesuny), a úklid výčtu `tasks.md`/`product.md`
 v jazykovém boilerplate u `mb-scan`, `mb-git-commit`, `mb-git-message`,
 `mb-jira-update`.
 
@@ -320,6 +376,10 @@ staré verze.
 - **Hranice playbook / tech se rozmaže.** Mitigace: hranice je definovaná
   režimem zápisu — co harvest mění sám a co jen se souhlasem — ne tématem. To
   je testovatelné kritérium, na rozdíl od „patří to spíš sem".
+- **Třetí případ rozhodovacího testu zůstává úsudkem.** „Kde to čtenář hledá
+  první" nejde ověřit strojově. Mitigace: ať dopadne jakkoli, výsledek je jeden
+  domov a odkaz — tedy žádná duplicita. Špatně zvolený domov je levná chyba,
+  kterou opraví přesun; duplicita je drahá, protože se obě kopie rozejdou.
 - **Playbook zestárne a nikdo ho neopraví.** Mitigace: agent smí opravu i
   smazání navrhnout a gate ji předloží vedle dotčeného záznamu; sběr kandidátů
   za běhu znamená, že rozpor mezi playbookem a realitou se zachytí právě ve
@@ -355,6 +415,13 @@ staré verze.
 - **Jen tolerance, migrace lenivě při doteku MB.** Většiny MB se nikdo
   nedotkne, takže by stará podoba zůstala natrvalo a čtečka by musela umět
   obojí navždy.
+- **Strojový detektor duplicit** (skript hlásící identifikátory sdílené dvěma
+  dokumenty). Duplicita v próze není spolehlivě strojově detekovatelná — lidé
+  i agenti parafrázují, takže přesná shoda skoro nenastává a fuzzy shoda šumí.
+  Řada symbolů je navíc ve dvou dokumentech legitimně. Hlučný detektor naučí
+  všechny ho ignorovat. Sweep hodnotí agent, který parafrázi pozná; cílená
+  kontrola se dá postavit později, až budou reálné příklady duplicit z prvních
+  harvestů.
 
 ## Navazující položky
 
