@@ -67,7 +67,7 @@ If the protocol is exhausted and no trusted candidate remains, STOP and ask the 
 ### Language Contract
 
 - Communication with the user in Memory Bank workflows MUST be in Czech.
-- Proposals and persistent Memory Bank documents (brief.md, product.md, architecture.md, tech.md, tasks.md, context.md) MUST be in Czech.
+- Proposals and persistent Memory Bank documents (brief.md, architecture.md, tech.md, playbook.md, context.md) MUST be in Czech.
 - Mixed language policy in the same rule surface is invalid and must fail closed.
 
 ### 1. Load Context & Detect Phase (MANDATORY)
@@ -172,16 +172,26 @@ Scope lock remains active until command completion.
 **Compare:**
 - Code vs `<affected_mb>/architecture.md`
 - Dependencies vs `<affected_mb>/tech.md`
-- Features vs `<affected_mb>/brief.md`
-- UX vs `<affected_mb>/product.md`
+- Features, purpose and value vs `<affected_mb>/brief.md`
 
 ### 3. Update Documentation
 
-**⚠️ CURRENT-STATE STYLE (MANDATORY):** Persistent MB docs (`architecture.md`, `tech.md`, `brief.md`, `product.md`, `tasks.md`) describe the CURRENT STATE in present tense, as reference documentation. They are NOT a changelog.
-- FOLD facts into the relevant current-state section (present tense). If a fact is already described, do not duplicate it.
-- DO NOT create or append dated changelog sections such as "Nedávné změny", "Recent Changes", "Nedávné technické změny", "Changelog", "Historie změn", or "Last performed / Naposledy provedeno" logbook entries.
-- History (what changed, when, by which ticket/commit) lives in `proposals/completed/` and git — never in the state docs.
-- When a change removes/deprecates something, update the docs to describe the new state; do not narrate the removal ("Odstraněné relikty (YYYY-MM)").
+**⚠️ CURRENT-STATE STYLE (MANDATORY):** the current-state MB docs
+(`architecture.md`, `tech.md`, `brief.md`) describe the CURRENT STATE in
+present tense, as reference documentation. They are NOT a changelog.
+`playbook.md` is NOT one of them — see the playbook rule below.
+- Place every fact in its owning document (contract, Document Ownership); FOLD
+  it into the relevant current-state section (present tense). If a fact is
+  already described there, do not duplicate it.
+- When a fact sits in the wrong document, MOVE it: write into the target first,
+  then delete from the source, and name the move in the report.
+- DO NOT create or append dated changelog sections such as "Nedávné změny",
+  "Recent Changes", "Nedávné technické změny", "Changelog", "Historie změn", or
+  "Last performed / Naposledy provedeno" logbook entries.
+- History (what changed, when, by which ticket/commit) lives in
+  `proposals/completed/` and git — never in the state docs.
+- When a change removes/deprecates something, update the docs to describe the
+  new state; do not narrate the removal ("Odstraněné relikty (YYYY-MM)").
 
 #### `<affected_mb>/architecture.md`
 - Add/remove components
@@ -194,8 +204,14 @@ Scope lock remains active until command completion.
 - Update versions
 - Update build/test commands
 
-#### `<affected_mb>/brief.md` / `<affected_mb>/product.md`
-- Only if core purpose or features changed
+#### `<affected_mb>/brief.md`
+- Only if core purpose, value or features changed
+
+#### `<affected_mb>/playbook.md`
+- **Never change it without the user's approval** (contract, Playbook
+  Contract). When the sync finds a procedure that no longer matches reality,
+  PROPOSE the correction — with the evidence — and write only what the user
+  approves.
 
 ### 4. Constraints
 

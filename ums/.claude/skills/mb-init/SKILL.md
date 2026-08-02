@@ -149,7 +149,7 @@ Use the following phased exploration protocol. Execute phases in order. Each pha
 
 Before moving to step 2, verify:
 - [ ] `tech.md` has ecosystem, technology stack, and dependencies (or `[K DOPLNĚNÍ]`)
-- [ ] `brief.md` has project purpose and key directories (or `[K DOPLNĚNÍ]`)
+- [ ] `brief.md` has project purpose, key directories, who it serves and what value it gives (or `[K DOPLNĚNÍ]`)
 - [ ] `architecture.md` has entry point, architectural pattern, Mermaid diagram (or `[K DOPLNĚNÍ]`)
 - [ ] Cross-project links in `architecture.md` use valid relative paths per Linking Rules
 - [ ] Unknown/missing sections contain `[K DOPLNĚNÍ]` markers (fail-closed), not guesses
@@ -159,9 +159,12 @@ Before moving to step 2, verify:
 Create the target `memory-bank/` (`<CTX_DIR>/` in orchestration-root mode, `<PLAN_MB>/` in project-MB mode) with:
 
 - `brief.md`
-- `product.md`
 - `architecture.md`
 - `tech.md`
+- `playbook.md` — **only when Phase 2/3 discovered concrete build or test
+  commands.** Put the commands here and the versions and stack into `tech.md`
+  (contract, Document Ownership). Never create it empty: an empty stub is
+  exactly how the former `tasks.md` ended up used in one MB out of eight.
 - `proposals/next/`
 - `proposals/active/`
 - `proposals/completed/`
@@ -179,7 +182,7 @@ Always include:
 
 - `Cílová MB: <PLAN_MB>/` (v režimu orchestračního kořene: `<CTX_DIR>/`)
 - `Reason: git-root discovery`
-- `Updated files: brief.md, product.md, architecture.md, tech.md, proposals/next/, proposals/active/, proposals/completed/, proposals/abandoned/`
+- `Updated files: brief.md, architecture.md, tech.md, proposals/next/, proposals/active/, proposals/completed/, proposals/abandoned/` (plus `playbook.md` when concrete commands were found)
 
 ### 5. Next step
 

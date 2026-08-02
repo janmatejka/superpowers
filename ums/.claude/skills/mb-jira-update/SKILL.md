@@ -56,7 +56,7 @@ If the protocol is exhausted and no trusted candidate remains, STOP and ask the 
 ### Language Contract
 
 - Communication with the user in Memory Bank workflows MUST be in Czech.
-- Proposals and persistent Memory Bank documents (brief.md, product.md, architecture.md, tech.md, tasks.md, context.md) MUST be in Czech.
+- Proposals and persistent Memory Bank documents (brief.md, architecture.md, tech.md, playbook.md, context.md) MUST be in Czech.
 - Mixed language policy in the same rule surface is invalid and must fail closed.
 
 ### 1. Load Context & Detect Phase (MANDATORY)
@@ -161,7 +161,7 @@ Scope lock remains active until command completion.
 ### 4. Build Referenced File Set (Priority Order)
 - Build list of link targets in this order:
   1. Changed deployment-relevant configuration files (typically `scripts/config.json` and other changed config files).
-  2. Changed stable Memory Bank docs (`architecture.md`, `tech.md`, `brief.md`/`product.md`, the design document `design_<slug>.md` (or legacy `proposal_<slug>-design.md`) — the durable artifact kept after completion; the implementation plan `plan_<slug>.md` (or legacy `proposal_<slug>.md`) exists only while work is active and is deleted at harvest).
+  2. Changed stable Memory Bank docs (`architecture.md`, `tech.md`, `brief.md`, the design document `design_<slug>.md` (or legacy `proposal_<slug>-design.md`) — the durable artifact kept after completion; the implementation plan `plan_<slug>.md` (or legacy `proposal_<slug>.md`) exists only while work is active and is deleted at harvest).
   3. `context.md` only as a supplementary source, because it is unstable.
 - Keep only paths that exist and are inside the same git repository as `MB_ROOT`.
 - If the resulting file set is large, noisy, or spans many files from the same area, replace the file list with a single module-level link (the smallest meaningful directory that contains the touched files) instead of enumerating every file.

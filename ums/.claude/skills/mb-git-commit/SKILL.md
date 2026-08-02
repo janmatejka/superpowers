@@ -56,7 +56,7 @@ If the protocol is exhausted and no trusted candidate remains, STOP and ask the 
 ### Language Contract
 
 - Communication with the user in Memory Bank workflows MUST be in Czech.
-- Proposals and persistent Memory Bank documents (brief.md, product.md, architecture.md, tech.md, tasks.md, context.md) MUST be in Czech.
+- Proposals and persistent Memory Bank documents (brief.md, architecture.md, tech.md, playbook.md, context.md) MUST be in Czech.
 - Mixed language policy in the same rule surface is invalid and must fail closed.
 
 ### 1. Load Context & Detect Phase (MANDATORY)
