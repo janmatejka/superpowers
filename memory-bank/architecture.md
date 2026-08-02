@@ -357,24 +357,15 @@ flowchart TD
     BR -->|sync -Scope UserProfile| PROF["profil uzivatele"]
 ```
 
-**Dvoucommitový vzor upgradu upstreamu** (běží v monorepu):
+Pipeline má dvě fáze. **Vendoring** vyrábí kopie upstream skillů s overlay
+bloky, a to až v cíli nasazení (klíčová hranice, sekce 1); jeho výstup propouští
+až verifikační pass. **Sync vrstvy** (`sync-with-monorepo.ps1`) rozváží vrstvu
+samotnou; cíle popisuje tabulka `$AgentTargets` — skills dir / config dir /
+instrukční soubor pro `claude`, `codex`, `gemini`, `kilocode` × `Monorepo`,
+`UserProfile`.
 
-1. `revendor-superpowers.ps1 -Tag <nový> -NoOverlays` → commit „vanilla sync",
-2. `revendor-superpowers.ps1 -OverlaysOnly` → commit „overlay".
-
-Vendorované soubory se **nikdy** needitují ručně mimo bloky
-`<!-- UMS-OVERLAY BEGIN/END -->`; mění se fragment a aplikuje se znovu. Miss
-kotvy `ANCHOR-BEFORE` je detektor driftu upstreamu — vypíše přesně fragmenty,
-které potřebují lidský zásah.
-
-**Sync vrstvy** (`sync-with-monorepo.ps1`): pro `claude` + `Monorepo`
-dvousměrně (`-Direction FromMonorepo|ToMonorepo`), jinak jednosměrný deploy.
-Cíle jsou tabulka `$AgentTargets` (skills dir / config dir / instrukční soubor
-pro `claude`, `codex`, `gemini`, `kilocode` × `Monorepo`, `UserProfile`).
-`settings.json` se na ne-Claude cíle záměrně nenasazuje; glue soubory se
-merguji bez mazání cizího obsahu; blok preferencí se do instrukčního souboru
-vkládá mezi markery `UMS-MEMORY-BANK BEGIN/END`, takže re-run blok nahradí na
-místě.
+Příkazy obou fází, jejich pořadí i pravidla o tom, co se kam nenasazuje, jsou
+v [playbook.md](playbook.md).
 
 ## 7. Invarianty, na kterých vrstva stojí
 

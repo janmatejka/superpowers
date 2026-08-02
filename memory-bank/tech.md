@@ -60,7 +60,7 @@ v kontraktu ještě uvádí starší host `jira.datasys.cz`.
 ## Konfigurace pro Claude Code
 
 [`ums/.claude/settings.json`](../ums/.claude/settings.json) je registrační
-lepidlo Claude Code (na ostatní harnessy se nenasazuje, viz
+lepidlo Claude Code (pravidla jeho nasazení jsou v
 [playbook.md](playbook.md)):
 
 | Klíč | Obsah |

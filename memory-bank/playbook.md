@@ -65,8 +65,9 @@ Ve sloučeném commitu už nejde poznat, co přinesl upstream a co vrstva.
   ruční úprava mimo bloky se tím tiše ztratí.
 - **Miss kotvy `ANCHOR-BEFORE` je detektor driftu upstreamu, ne chyba
   k obejití.** Kotva musí matchovat právě jeden řádek cílového souboru; když
-  nematchuje, upstream ten řádek změnil. Oprav fragment, synchronizuj ho zpět
-  do forku a spusť revendor znovu — nikdy kotvu neuvolňuj, aby „prošla".
+  nematchuje, upstream ten řádek změnil. Skript přitom vypíše přesně ty
+  fragmenty, které potřebují lidský zásah — oprav je, synchronizuj zpět do
+  forku a spusť revendor znovu; nikdy kotvu neuvolňuj, aby „prošla".
 - Verifikační pass běží vždy jako poslední a shodí skript na viselých
   relativních odkazech, zbytcích v5 souborů, chybějících v6 souborech,
   nevyvážených overlay markerech, CRLF v bashových skriptech a na funkčním
@@ -134,7 +135,7 @@ Proč vůbec: git hooky jsou netrackované, takže se s klonem nepřenesou —
 `pre-push` záruka publikačního kontraktu v novém klonu chybí, dokud ji tam
 někdo nenainstaluje.
 
-- Pro `-Scope Monorepo` volá instalátor rovnou `sync-with-monorepo.ps1`; při
+- Při `-Scope Monorepo` ho volá `sync-with-monorepo.ps1` sám; při
   `-Scope UserProfile` ne (profil nemá jeden přiřazený repozitář), tam ho spusť
   ručně.
 - **Nenulový exit instalátoru neignoruj** — znamená, že záruka není potvrzená:

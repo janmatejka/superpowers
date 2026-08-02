@@ -70,7 +70,8 @@ UMS** s kódovacím agentem. Vrstva jim dává:
 Hlavní tah práce vypadá takto: uživatel řekne, co chce postavit; `brainstorming`
 připne cílovou Memory Bank, zeptá se na Jira tiket a přečte její dokumenty jako
 kontext návrhu; návrh se uloží jako `design_<slug>.md` do `proposals/active/`
-a u netriviálních návrhů s tiketem se nabídne design review živým architektem;
+s navázaným tiketem se vždy nabídne design review živým architektem
+(netrivialita ovlivňuje jen doporučení agenta, ne to, zda se review nabídne);
 po schválení vznikne `plan_<slug>.md` a plán se vykoná
 (`subagent-driven-development`, případně `executing-plans`); při dokončení větve
 se znalost harvestem složí zpět do MB dokumentů a návrh se archivuje. Mechaniku
