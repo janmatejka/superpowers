@@ -122,16 +122,17 @@ v režimu zápisu:
 |---|---|---|
 | Povaha | popisuje stav | přikazuje postup |
 | Zdroj | kód, konfigurace, build soubory | zkušenost, konvence, rozhodnutí týmu |
-| Harvest | přepisuje podle skutečnosti | **jen připisuje, nikdy nepřepisuje** |
+| Harvest | přepisuje podle skutečnosti | **mění jen se souhlasem uživatele** |
 | Příklad | „staví se MSBuild v143, testy xunit" | „testy pouštěj cíleně přes `--filter`; plná sada trvá 40 minut" |
 
-**Režim zápisu (append-only) s jedinou výjimkou:** kandidát označený jako
-oprava — playbook tvrdí X, realita je Y — smí existující záznam přepsat, ale
-jen když to uživatel u toho konkrétního záznamu schválí. Bez schválení se
-připíše jako nový záznam a rozpor zůstane viditelný; to je pořád lepší než
-tichý přepis. Harvest tedy `playbook.md` **nikdy nezpracovává
-current-state stylem** — je to jediný trvalý MB dokument vyjmutý z pravidla
-„popisuj aktuální stav" v Harvest Contract §3.
+**Režim zápisu — konzultace před zápisem:** `playbook.md` se nikdy nemění bez
+souhlasu uživatele. Agent smí navrhnout cokoli — přidat záznam, opravit
+překonaný postup, přeformulovat ho nebo smazat ten, který přestal platit — ale
+každou změnu předloží ke schválení dřív, než ji zapíše. Pravidlo váže všechny
+zapisovatele, tedy i `mb-sync`. Automatický current-state průchod, kterému
+podléhají `brief.md`, `architecture.md` a `tech.md` podle Harvest Contract §3,
+se na playbook nevztahuje: jeho obsah nevzniká z kódu, takže se z kódu nedá ani
+ověřit — soudit o něm umí jen člověk.
 
 Formát záznamu je volný (nadpis + kroky). Když kandidát nesl evidenci, přenáší
 se s ním jednořádkové **Proč:** — důvod je součástí postupu, ne šum.
@@ -182,7 +183,7 @@ přežije kompaktaci i pád sezení, což je celý jeho smysl.
 - **Happened:** <what actually happened — the evidence>
 - **Procedure:** <the rule that follows from it>
 - **Target MB:** <path>/memory-bank/        (only when harvest spans several MBs)
-- **Corrects:** <existing playbook entry>   (only for a correction)
+- **Corrects:** <existing playbook entry>   (when it contradicts an entry already there)
 ```
 
 Zákaz vymýšlení je zde vynucen **formátem**, ne prosbou: kandidát bez pole
@@ -198,9 +199,14 @@ persistenci překládá.
 
 Je-li sběrný soubor neprázdný a jeho slug odpovídá aktuální položce, harvest
 **jednou** předloží uživateli seznam kandidátů s jejich evidencí a nechá
-vybrat. Vybrané se přeloží a připíší do `playbook.md` cílové MB — nebo té MB,
-kterou určuje pole `Target MB`. Nevybrané zmizí se scratchem; harvest ohlásí
+vybrat. Schválené se přeloží a zapíší do `playbook.md` cílové MB — nebo té MB,
+kterou určuje pole `Target MB`. Neschválené zmizí se scratchem; harvest ohlásí
 jejich počet.
+
+Kandidát s polem `Corrects` se předkládá **vedle existujícího záznamu**, kterému
+odporuje, a uživatel rozhodne, jestli ho nahradit, nechat oba, nebo kandidáta
+zahodit. Tady se projevuje uvolněný režim zápisu: agent smí navrhnout i přepis
+nebo smazání, ne jen přírůstek — jen to nesmí udělat sám.
 
 Toto je **jediné místo, kde `mb-harvest` přestává být autonomní**; ve zbytku
 zůstává beze změny. Prázdný nebo cizí sběrný soubor gate přeskočí bez dotazu —
@@ -291,7 +297,8 @@ toleranci, sběrný soubor ve výčtu legálních cest pod `.superpowers/`.
 `subagent-driven-development.overlay.md` (playbook v dispatchi, baseline, sekce
 reportu), `finishing-a-development-branch.overlay.md` (gate s kandidáty).
 
-**Skilly:** `mb-harvest` (gate, append-only, sada dokumentů), `mb-init` (brief
+**Skilly:** `mb-harvest` (gate, konzultace před zápisem, sada dokumentů),
+`mb-init` (brief
 pohlcuje produktový pohled, playbook jen při nalezených příkazech), `mb-sync`
 (sada, current-state výčet), a úklid výčtu `tasks.md`/`product.md`
 v jazykovém boilerplate u `mb-scan`, `mb-git-commit`, `mb-git-message`,
@@ -311,8 +318,12 @@ staré verze.
 - **`brief.md` se stane skladištěm.** Mitigace: pevné pořadí sekcí v kontraktu
   a pravidlo, že prázdné sekce se nezakládají.
 - **Hranice playbook / tech se rozmaže.** Mitigace: hranice je definovaná
-  režimem zápisu (co harvest smí přepsat), ne tématem — to je testovatelné
-  kritérium, na rozdíl od „patří to spíš sem".
+  režimem zápisu — co harvest mění sám a co jen se souhlasem — ne tématem. To
+  je testovatelné kritérium, na rozdíl od „patří to spíš sem".
+- **Playbook zestárne a nikdo ho neopraví.** Mitigace: agent smí opravu i
+  smazání navrhnout a gate ji předloží vedle dotčeného záznamu; sběr kandidátů
+  za běhu znamená, že rozpor mezi playbookem a realitou se zachytí právě ve
+  chvíli, kdy o něj někdo zakopl.
 - **Mazací agent nechá kostrbatou prózu.** Přijato vědomě; srovná ji nejbližší
   harvest.
 - **Interaktivní gate zdrží harvest.** Mitigace: jedna dávková otázka, a jen
@@ -332,8 +343,9 @@ staré verze.
   trigger všem ostatním. Dokument se načte cestou, protože `Target MB Pin` cíl
   určuje deterministicky.
 - **Postupy jako povinná sekce `tech.md`.** Držel by se počet druhů souborů, ale
-  jeden soubor by měl dva režimy zápisu — harvest by musel jednu sekci vyjímat
-  z current-state pravidla. Křehké.
+  jeden soubor by měl dva režimy zápisu — jednu část by harvest měnil sám podle
+  kódu, druhou jen se souhlasem uživatele. Rozhraní vedené uvnitř souboru je
+  křehké; vedené hranicí souborů je vynutitelné.
 - **Otevřené úkoly do `CLAUDE.md` / `AGENTS.md`.** V monorepu je instrukční
   soubor přepisován deploy skriptem z master kopie vrstvy a je jeden na celé
   repo, zatímco úkoly jsou per-projekt (80 MB).
