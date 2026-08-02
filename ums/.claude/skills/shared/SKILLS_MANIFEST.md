@@ -37,6 +37,7 @@ UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-developmen
 | mb-doc-index | [mb-doc-index/SKILL.md](../mb-doc-index/SKILL.md) | Read-only index dokumentů napříč větvemi origin (model tahu) + kolizní findings pro discovery |
 | mb-architect-review | [mb-architect-review/SKILL.md](../mb-architect-review/SKILL.md) | Design review živým architektem přes Jira tiket (request/respond/resume, branch sync dle tiketu, publikace větve dle Publication Contract) |
 | mb-migrate-docs | [mb-migrate-docs/SKILL.md](../mb-migrate-docs/SKILL.md) | Migrace MB dokumentů na aktuální sadu (product.md → brief.md, tasks.md → playbook.md; mechanická fáze + mazací agent pod verifikátorem) |
+| mb-link-audit | [mb-link-audit/SKILL.md](../mb-link-audit/SKILL.md) | Kontrola a konsolidace odkazů v MB dle Link Conventions (kotvy → textové určení sekce, špatná hloubka `../`, zastaralý text odkazu, absolutní cesty; neurčitelné cíle se značkují) |
 
 ## Odstraněné v1 skilly (MB v1 → v2)
 

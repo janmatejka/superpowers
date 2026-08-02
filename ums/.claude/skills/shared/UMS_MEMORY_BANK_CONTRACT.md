@@ -1,7 +1,11 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.3
-- Supersedes v2.2 (narrows the mandatory document set to
+- **Contract-Version:** 2.4
+- Supersedes v2.3 (adds Link Conventions under Scope Lock: links relative to the
+  containing file, no `#fragment` anchors — section named in words instead —
+  and the marking rule for undeterminable targets; enforced by
+  `mb-link-audit`).
+- v2.3 superseded v2.2 (narrows the mandatory document set to
   `brief.md`/`architecture.md`/`tech.md`, introduces `playbook.md` with the
   consult-before-write regime, adds Document Ownership and the playbook
   candidate collection). v2.2 added the Publication Contract and Cross-Branch
@@ -218,9 +222,40 @@ Explicitly **legal and outside this lock**:
 
 Other rules:
 
-- Relative links from Memory Bank docs must stay relative to the file that
-  contains them.
 - Do not hardcode machine-specific or repository-root absolute paths.
+
+### Link Conventions
+
+- **Relative to the containing file, always.** A link in a Memory Bank document
+  is resolved from the directory of the file it stands in — never from the
+  Memory Bank root, the project root or the repository root. This is the single
+  most common defect in practice: a link written against the MB root inside a
+  document that lives two levels below it, in `proposals/<state>/`.
+- **No `#fragment` anchors.** Name the section in words instead:
+
+  | Instead of | Write |
+  |---|---|
+  | `[X](architecture.md#kritické-detaily)` | `[architecture.md](architecture.md), sekce „Kritické detaily“` |
+  | `[X](#mimo-rozsah)` (same file) | `sekce „Mimo rozsah“` |
+  | `[X](KicSetup.iss#L253-L254)` | `[KicSetup.iss](KicSetup.iss), řádky 253–254` |
+
+  The reason is not style: heading slugs are **renderer-specific**. Bitbucket
+  Cloud, GitHub and IDE preview each derive a different slug from the same
+  heading, so an anchor that resolves in one viewer silently dead-ends in the
+  others, and no single spelling can be correct everywhere. A section title is
+  stable across all of them, survives a renderer change, and stays meaningful in
+  a plain-text read. It follows that headings must never be reworded merely to
+  make a slug come out a particular way.
+- **A link whose target cannot be determined is not left dangling.** Drop the
+  link syntax, keep the text, and mark it with the dead path inside the marker:
+  `` `TestBase.cs` [ODKAZ K OVĚŘENÍ: ../TestBase.cs] ``. The marker is greppable
+  and carries enough to act on later; a bare dead link carries neither.
+- **Never repoint a link across projects to make it resolve.** If a path pointed
+  inside the document's own project and the file is not there, it was dropped
+  from that project — aiming the sentence at a same-named file elsewhere changes
+  what the sentence claims. Mark it and let a human decide.
+- Enforced and consolidated by the `mb-link-audit` skill (read-only audit,
+  `-Apply` for the mechanically determinable classes).
 
 ## Active Work Item (Design + Plan Pair)
 
@@ -475,6 +510,10 @@ is cross-cutting. `playbook.md` is prescriptive — its procedures BIND the work
 they are not background reading. The rest is current-state reference: treat it
 as authoritative context, and note in the design when it is stale (the fix for
 staleness is `mb-sync` or the harvest at finish, not ad-hoc edits).
+
+Every link WRITTEN into a Memory Bank document — by any skill, harvest or
+ad-hoc edit — follows Link Conventions (Scope Lock): relative to the containing
+file, no `#fragment` anchors.
 
 ## Document Ownership
 
