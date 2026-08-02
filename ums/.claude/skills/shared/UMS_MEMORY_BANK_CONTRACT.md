@@ -81,7 +81,8 @@ Before reading or writing any Memory Bank file, verify that
 `mb-init` creates the standard `memory-bank/` structure in two modes:
 
 - **Orchestration root (`CTX_DIR`)** — creates `<MB_ROOT>/memory-bank/` with
-  proposal folders and core docs; leaves `context.md` absent. After `mb-init`,
+  proposal folders; leaves `context.md` absent. The orchestration root is not
+  bound by the mandatory core (see Memory Bank Document Set). After `mb-init`,
   the next step is the superpowers workflow — Target-MB Discovery & Pinning
   (below) creates `context.md` during brainstorming.
 - **Project MB (`PLAN_MB`)** — creates `<MB_ROOT>/<path>/memory-bank/` with
@@ -153,8 +154,10 @@ the work happens, into `<MB_ROOT>/.superpowers/playbook-candidates.md`
 work: leave that file alone and start a new one.
 
 Writers: implementer subagents report candidates in their report section
-`## Playbook candidates`; the orchestrator COPIES confirmed ones into the
-collection file without rephrasing; sessions outside SDD write directly.
+`## Playbook candidates`; the driving session — the same actor named in
+"`context.md` Schema & Writers", i.e. the session dispatching the subagents —
+COPIES confirmed ones into the collection file without rephrasing; sessions
+outside SDD write directly.
 
 Candidate format — the first three fields are mandatory, an entry missing any
 of them is not written:
@@ -472,6 +475,13 @@ deliberately a test, not a taxonomy, because a taxonomy can be bent:
 - Does it change in **both** cases (typically "the workflow engine runs on
   Orleans")? → it belongs where the reader looks first, and the other document
   **links** to it with a relative link. It never restates it.
+
+**A fact that already has a home keeps it.** The "reader looks first" question
+decides where a NEW fact goes; it is not re-litigated afterwards. The sweep's
+"wrong home" verdict (Harvest Contract §3) therefore fires only when branch 1
+or branch 2 of the test clearly names a different document — never for a
+"both" fact that is already placed. Without this rule two successive harvests
+can move the same fact back and forth.
 
 The third case carries the rule. Duplication does not arise for facts that
 clearly belong somewhere — it arises for the ones that belong in both.
