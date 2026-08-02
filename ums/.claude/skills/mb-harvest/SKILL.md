@@ -120,7 +120,10 @@ documents).
 - Otherwise present ALL candidates to the user in ONE Czech list: for each, the
   proposed procedure and its evidence (`Tried` / `Happened`). A candidate with
   `Corrects` is shown NEXT TO the existing `playbook.md` entry it contradicts,
-  with three choices: replace / keep both / drop.
+  with three choices: replace / keep both / drop. When the named entry no
+  longer exists in `playbook.md` (e.g. an earlier candidate in this same gate
+  already replaced it), present the candidate as a NEW entry instead — tell
+  the user the entry it meant to correct is gone.
 - Write only what the user approved, translated into Czech, into
   `playbook.md` of the target MB — or of the MB named by the candidate's
   `Target MB` field. Create `playbook.md` when it does not exist; write into

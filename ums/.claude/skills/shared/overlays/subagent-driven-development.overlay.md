@@ -28,8 +28,12 @@
 - **Playbook candidates:** every implementer dispatch requires the report to
   end with a `## Playbook candidates` section — procedural knowledge learned
   while doing the task that was not already in the brief or the playbook, each
-  entry carrying `Tried` / `Happened` / `Procedure`. An empty section is
-  legitimate and common; an entry without `Happened` is not written. As
+  entry carrying the three mandatory fields `Tried` / `Happened` / `Procedure`,
+  plus two optional fields, added only when they apply: `Target MB` (state its
+  path when the harvest spans several Memory Banks and this procedure belongs
+  to one other than `PLAN_MB`) and `Corrects` (name the existing `playbook.md`
+  entry when this procedure contradicts one already there). An empty section
+  is legitimate and common; an entry without `Happened` is not written. As
   controller, COPY confirmed entries verbatim into
   `<MB_ROOT>/.superpowers/playbook-candidates.md` (first line
   `# Playbook candidates — work item: <slug>`; a foreign slug means the file

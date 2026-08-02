@@ -126,6 +126,10 @@ in order to stay valid.
   is absent and `tasks.md` exists, read `tasks.md` in its place.
 - **Writing procedures:** into `playbook.md` when it exists; otherwise into
   `tasks.md` when it exists; otherwise create `playbook.md`.
+- When `tasks.md` serves as the Memory Bank's procedure document in this way
+  (no `playbook.md` present), the Playbook Contract's consult-before-write
+  regime binds it in that role — the protection follows the content, not the
+  filename.
 - Migration to the current shape is performed by the `mb-migrate-docs` skill,
   never as a side effect of unrelated work.
 

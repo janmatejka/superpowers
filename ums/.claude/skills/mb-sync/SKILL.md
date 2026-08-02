@@ -14,7 +14,9 @@ metadata:
 **Action:** Synchronize Memory Bank with code reality.
 **Trigger:** Code drifted from documentation.
 **Phase:** Works in any phase
-**Execution:** Autonomous
+**Execution:** Autonomous except where it must ask: any `playbook.md` change
+(step 3's `playbook.md` rule — propose the correction with its evidence, write
+only what the user approves).
 
 ---
 
