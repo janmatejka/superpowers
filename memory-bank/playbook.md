@@ -41,6 +41,43 @@ Konvence, které nová sada musí dodržet:
 - Testovací Memory Bank dokumenty ukládej pod `tests/fixtures/`.
   Proč: indexace MB dokumentů tuto cestu vylučuje, takže fixtury nespadnou do
   indexu ani do kolizních nálezů.
+- **Když test tvrdí, že git rozpozná přejmenování, přidej `--find-renames`
+  explicitně.** `git diff --cached --name-status` bez toho flagu závisí na
+  configu `diff.renames`, který se napříč verzemi gitu liší; s flagem vrací
+  `R100` se starou i novou cestou deterministicky.
+- **Read-only nálezy ověřuj spuštěním proti skutečnému repozitáři, ne jen
+  proti fixtuře.** Náhledový režim (bez `-Apply`) nic nemění, takže je to
+  bezpečné.
+  Proč: fixtura dokazuje, že kód dělá, co jste do fixtury napsali; skutečné
+  repo dokazuje, že bug byl reálný a ne artefakt konstrukce fixtury. Tímhle se
+  potvrdilo, že migrační skript kořenovou `memory-bank/` vůbec nenašel.
+
+## PowerShell v této vrstvě
+
+- **Nikdy nedávej kudrnaté uvozovky dovnitř řetězce uvozeného odpovídajícím
+  ASCII znakem.** U+201C/U+201D/U+201E/U+201F i U+2018/U+2019/U+201A/U+201B
+  bere parser jako zaměnitelné ukončovací znaky. České uvozovky patří výhradně
+  do jednoduše uvozeného literálu (`'…'`), kde na ně parser nereaguje.
+  Proč: řetězec `"…zůstal „Product", zbytek."` se ukončí už na `„` a zbytek se
+  tiše stane bezejmenným argumentem — hláška se usekne uprostřed věty, bez
+  chyby a bez varování. Všechny výstupy této vrstvy jsou česky, takže je to
+  past, na kterou se tu naráží opakovaně. Kontroluj ji greppem přes celý
+  skript, ne jen tam, kde chybu čekáš.
+- **Obal `Get-Content` do `@()`, když budeš volat `.Count` nebo indexovat.**
+  Jednořádkový soubor vrací skalární `String` a `.Count` pod
+  `Set-StrictMode -Version Latest` spadne na `PropertyNotFoundException`.
+  Proč: obvyklý `if ($null -eq $x) { $x = @() }` kryje jen prázdný vstup, ne
+  jednoprvkový. `@(Get-Content <prázdný soubor>)` přitom dá pole s `Count = 0`,
+  ne pole s jedním `$null` — jeden obal řeší oba okraje.
+- **`Set-Content -Encoding UTF8` v PowerShellu 7 BOM nepřidává.** Ověřeno
+  bajtově. Chování se liší od Windows PowerShellu 5.1, kde stejný parametr BOM
+  přidával, takže tam, kde je vyžadováno „UTF-8 bez BOM", není potřeba žádná
+  obezlička.
+- **Český výstup skriptů ověřuj přes PowerShell tool nebo bajtově, ne očima
+  v bashové konzoli.** Ta zde nemá kompatibilní code page a zobrazí `hl?s?`
+  i tam, kde soubor na disku obsahuje správné UTF-8 (`c4 8d` = `č`, bez BOM).
+  Proč: zdánlivě poškozený výstup svede k „opravě" kódování, které je
+  v pořádku. Při podezření sáhni po `xxd`, ne po zobrazeném textu.
 
 ## Upgrade upstreamu (revendor)
 
@@ -162,3 +199,23 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   nevyrobí — po změně overlay fragmentu je musí vygenerovat revendor.
 - `sync-with-monorepo.ps1` na tohle není: cílí na monorepo nebo na profil
   uživatele, ne na kořen tohoto forku.
+
+## Psaní plánů, návrhů a commitů
+
+- **V plánu ani návrhu nikdy nezačínej řádek zpětnými apostrofy**, pokud to
+  není skutečný ohraničovač bloku. Chceš-li v próze ukázat apostrofy, popiš je
+  slovy. Vnořený stejně dlouhý ohraničovač je tatáž třída chyby.
+  Proč: `scripts/task-brief` přepíná sledování ohrazených bloků na každém
+  řádku odpovídajícím `^` + tři apostrofy, takže osamocený takový řádek ho
+  nechá natrvalo „uvnitř bloku" a přestane rozpoznávat nadpisy dalších úloh.
+  Projevilo se to briefem o 1164 řádcích místo 346 — obsahoval celý zbytek
+  plánu. Po napsání plánu proto spusť `task-brief` pro **každé** číslo úlohy
+  a zkontroluj, že rozsahy odpovídají; brief výrazně větší než jeho sekce je
+  ten příznak.
+- **Českou diakritiku v commit message piš přímo**, i když ji skládáš přes
+  bash heredoc — UTF-8 tudy projde správně. Nenahrazuj ji ASCII transliterací
+  „pro jistotu".
+  Proč: tiše vznikne zpráva, která nevyhovuje konvenci repa, a přijde se na to
+  až při kontrole. V tomhle běhu se to stalo dvakrát. Kontrola je jeden
+  příkaz: `git log -1 --format=%B | od -c` a podívat se, jestli tam jsou
+  vícebajtové sekvence.

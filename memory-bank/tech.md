@@ -10,7 +10,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.2.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.2.0`, commit `3dcbd5c4b48e02263fbf4a3c01e3fe4f81d584d9`, vendorováno 2026-07-24 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.2 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.3 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 3 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
@@ -96,25 +96,34 @@ jeho návratové kódy, je v [playbook.md](playbook.md). Konce řádků hooku hl
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 10 sad, dohromady
-313 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 12 sad, dohromady
+388 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
-  `e2e.tests.ps1`, `graph-generation.tests.ps1`, `oracle-prose.tests.ps1`,
-  `oracle-structural.tests.ps1`, `status-glyph.tests.ps1` (včetně `-IndexFile`
-  glyfů a findings) + fixtures (proposal dokumenty ve starém i novém
-  pojmenování, Jira JSON snapshoty, `fixtures/doc-index/*.json`).
+  `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
+  `oracle-prose.tests.ps1` (5), `oracle-structural.tests.ps1` (10),
+  `status-glyph.tests.ps1` (78, včetně `-IndexFile` glyfů a findings)
+  + fixtures (proposal dokumenty ve starém i novém pojmenování, Jira JSON
+  snapshoty, `fixtures/doc-index/*.json`).
 - [`mb-epic-elaboration/tests/`](../ums/.claude/skills/mb-epic-elaboration/tests/) —
-  `ledger-status.tests.ps1` + fixtures.
+  `ledger-status.tests.ps1` (9) + fixtures.
 - [`mb-doc-index/tests/`](../ums/.claude/skills/mb-doc-index/tests/) —
-  `enumeration.tests.ps1` (traversal, lokální sken, `-SinceDays`/`-BaseRef`,
-  filtrování `tests/fixtures`), `findings.tests.ps1` (kolize, self-kolize
+  `enumeration.tests.ps1` (20; traversal, lokální sken, `-SinceDays`/`-BaseRef`,
+  filtrování `tests/fixtures`), `findings.tests.ps1` (28; kolize, self-kolize
   vlastní pushnuté větve, fronta na více větvích, obživlá fronta) proti
   fixture repu generovanému `new-fixture-repo.ps1`.
-- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1`
-  (end-to-end proti skutečnému lokálnímu bare remote: lidská výjimka,
+- [`mb-migrate-docs/tests/`](../ums/.claude/skills/mb-migrate-docs/tests/) —
+  `migrate.tests.ps1` (37; plán i `-Apply` mechanické migrace — sloučení
+  `product.md` do `brief.md`, přejmenování `tasks.md` na `playbook.md`,
+  přepis relativních odkazů v migrovaném stromu, přeskočení MB s
+  `KONFLIKT PLAYBOOKU`), `verify.tests.ps1` (38; mazací režim
+  `verify-deletion-only.ps1` — multiset-containment kontrola nad řádky,
+  `VAROVÁNÍ` při ubrání přes 50 % neprázdných řádků) proti fixture repu
+  generovanému `new-fixture-repo.ps1`.
+- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (74;
+  end-to-end proti skutečnému lokálnímu bare remote: lidská výjimka,
   mazání/force i s ní zamítnuté, `core.hooksPath` lokální/globální/relativní
-  per worktree) a `guard-git-push.tests.ps1` (JSON na stdin → rozhodnutí:
+  per worktree) a `guard-git-push.tests.ps1` (50; JSON na stdin → rozhodnutí:
   chráněné větve, force, `--no-verify`, lidská výjimka).
 
 **Upstream** — [`tests/`](../tests/) obsahuje shellové a Node.js testy

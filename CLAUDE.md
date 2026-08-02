@@ -141,7 +141,7 @@ Superpowers řídí workflow (brainstorming → writing-plans → subagent-drive
 
 ### Memory Bank tohoto repa
 
-`memory-bank/` je Memory Bank vývoje UMS vrstvy — plní současně roli `CTX_DIR` i `PLAN_MB` (práce je repo-wide, `Target MB Pin` míří na `memory-bank/`). [`architecture.md`](memory-bank/architecture.md) mapuje workflow superpowers, tři overlay body zásahu UMS, dokumentovou vrstvu a vendoring/deploy pipeline; [`brief.md`](memory-bank/brief.md) role větví a adresářů, [`tech.md`](memory-bank/tech.md) verze, hooky, testy a pasti prostředí. Memory Bank produktu UMS (`d:\_datasys\ums\memory-bank\`) je jiná MB — nemíchat.
+`memory-bank/` je Memory Bank vývoje UMS vrstvy — plní současně roli `CTX_DIR` i `PLAN_MB` (práce je repo-wide, `Target MB Pin` míří na `memory-bank/`). [`architecture.md`](memory-bank/architecture.md) mapuje workflow superpowers, tři overlay body zásahu UMS, dokumentovou vrstvu (sadu dokumentů, vlastnictví faktu, playbookový konzultační režim) a vendoring/deploy pipeline; [`brief.md`](memory-bank/brief.md) role větví a adresářů; [`tech.md`](memory-bank/tech.md) verze, piny, konfiguraci, inventář hooků a testů a pasti prostředí; [`playbook.md`](memory-bank/playbook.md) postupy — jak testy spustit, jak revendorovat a nasadit vrstvu, instalaci git hooků a konvence pro psaní plánů a commitů. Memory Bank produktu UMS (`d:\_datasys\ums\memory-bank\`) je jiná MB — nemíchat.
 
 
 ## Memory Bank contract

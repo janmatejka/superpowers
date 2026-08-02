@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.2, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.3, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -107,7 +107,7 @@ ukotvený na konec souboru. Mění tři body upstream checklistu:
 ### Overlay 2 — `subagent-driven-development`
 
 Fragment [`subagent-driven-development.overlay.md`](../ums/.claude/skills/shared/overlays/subagent-driven-development.overlay.md),
-na konec souboru. Nemění smyčku tasků, jen tři pravidla:
+na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
 
 - **model** — platí upstream Model Selection; UMS jen požaduje explicitní model
   u každého dispatche a nejlevnější tier pro čistě summarizační práci,
@@ -115,6 +115,15 @@ na konec souboru. Nemění smyčku tasků, jen tři pravidla:
   messages implementátorů a výstupy pro uživatele česky,
 - **izolace** — worktrees zakázané, krok `using-git-worktrees` se řeší jako
   větev na místě,
+- **playbook** — před baseline kontrolou a u KAŽDÉHO dispatche implementátora
+  se dořeší procedurální dokument cílové MB (`playbook.md`, jinak legacy
+  `tasks.md`, jinak žádný) a předá se jako závazné postupy vedle task briefu;
+  z něj se čerpají i příkazy pro baseline build/test kontrolu,
+- **kandidáti playbooku** — report každého implementátora končí sekcí
+  `## Playbook candidates` (povinná trojice polí `Tried`/`Happened`/`Procedure`,
+  volitelně `Target MB`/`Corrects`); řídicí sezení potvrzené položky beze
+  změny kopíruje do `<MB_ROOT>/.superpowers/playbook-candidates.md`, odkud je
+  na konci větve čte harvestová brána (Overlay 3),
 - **publikace** — před dispatchem prvního tasku se publikuje vlastní větev
   s commitnutým plánem (publikační bod 2, sekce 3), vedle baseline
   build/test kontroly.
@@ -153,7 +162,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.2, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.3, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -243,7 +252,7 @@ na tento invariant místo vlastního pravidla.
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.2](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.3](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -253,6 +262,48 @@ Normativní zdroj: [kontrakt v2.2](../ums/.claude/skills/shared/UMS_MEMORY_BANK_
 | `CTX_DIR` | `<MB_ROOT>/memory-bank/` — orchestrační kořen, drží `context.md` | [`memory-bank/`](.) |
 | `PLAN_MB` | `<MB_ROOT>/<Target MB Pin>` — MB, kterou práce cílí | `memory-bank/` (práce je repo-wide) |
 | `AFFECTED_MBS` | MB dotčené harvestem, derivované z diffu větve | v tomto repu vždy `memory-bank/` |
+
+**Sada dokumentů projektové MB.** Povinné jádro je `brief.md`, `architecture.md`,
+`tech.md`. Prvotřídní volitelný dokument je `playbook.md` — preskriptivní
+postupy (jak se projekt staví, testuje a nasazuje), autorsky lidský a ze
+zkušenosti, ne odvozený z kódu. Volné rozšíření je libovolný další dokument
+(`data-flows.md`, `tasks.md`, …) bez normativního statusu. Jeden fakt má jeden
+domov:
+
+| Otázka, na kterou fakt odpovídá | Domov |
+|---|---|
+| K čemu to je, pro koho, jaká je hodnota, v jakém je stavu | `brief.md` |
+| Z čeho se skládá, kdo s kým mluví jak, jaký vzor sleduje | `architecture.md` |
+| Na čem to běží — stack, verze, závislosti, konfigurace, build | `tech.md` |
+| Jak udělám X — příkazy, postupy, konvence, pasti | `playbook.md` |
+
+Rozhodovací test pro spornou dvojici `tech` × `architecture`: mění se fakt při
+výměně knihovny nebo verze beze změny kódu → `tech.md`; mění se při přepsání
+kódu beze změny závislostí → `architecture.md`; mění se v obou případech →
+patří tam, kde ho čtenář hledá první, druhý dokument na něj jen odkazuje a
+neopakuje ho.
+
+**Playbook má chráněný konzultační režim.** `playbook.md` se NIKDY nemění bez
+schválení uživatele — na rozdíl od `brief.md`/`architecture.md`/`tech.md` ho
+harvest neprochází automatickým current-state průchodem, protože jeho obsah
+nejde ověřit proti kódu. `mb-sync` navrhuje opravu hned v okamžiku nálezu
+driftu; `mb-harvest` sbírá kandidáty do jedné brány na konci větve — obě cesty
+jsou legitimní, žádná není drift k narovnání vůči druhé. Obě čerpají z
+`<MB_ROOT>/.superpowers/playbook-candidates.md` (git-ignored scratch,
+anglicky), do kterého implementátorské subagenty SDD hlásí zkušenosti v sekci
+reportu `## Playbook candidates` (povinná pole `Tried`/`Happened`/`Procedure`,
+volitelně `Target MB`/`Corrects`) a řídicí sezení je beze změny kopíruje.
+Výjimku má jen první `playbook.md`, který `mb-init` napíše z detekovaných
+build/test příkazů — ten schválení nepotřebuje, další zápisy ano.
+
+**Legacy tvar zůstává trvale platný.** Starší `product.md` vedle `brief.md`,
+nebo `tasks.md` místo `playbook.md`, nikdo nemusí migrovat. Skill
+[`mb-migrate-docs`](../ums/.claude/skills/mb-migrate-docs/) na požádání sloučí
+`product.md` do `brief.md` a přejmenuje `tasks.md` na `playbook.md` napříč
+zadaným rozsahem, včetně přepisu relativních odkazů; MB, které legitimně drží
+`tasks.md` (otevřené položky) i `playbook.md` (postupy) současně — jako tato —
+hlásí `KONFLIKT PLAYBOOKU` a migraci pro ně přeskočí, rozhodnutí nechává na
+uživateli.
 
 **Pracovní položka** = pár `design_<slug>.md` (návrh, píše brainstorming) +
 `plan_<slug>.md` (plán, píše writing-plans) v `proposals/active/`. Jedna aktivní
@@ -312,33 +363,41 @@ flowchart LR
     NEXT -->|aktivace, i z cizi vetve| BS
     ST["mb-state"] -.->|read-only report| IDLE
     ST -.->|cizi vetve, kolize| DI
+    MIG["mb-migrate-docs"] -->|slouceni product do brief, tasks na playbook| DOCS["brief.md / playbook.md cilove MB"]
+    MIG -->|nabidne| GC
 ```
 
 | Skill | Role | Volán odkud |
 |---|---|---|
 | `mb-init` | Vytvoří strukturu `memory-bank/` — režim orchestračního kořene nebo projektové MB. Nikdy netvoří `context.md`. | ručně |
 | `mb-state` | Read-only stav: pin, slug, úplnost páru, SDD ledger, větev, staleness. | ručně |
-| `mb-harvest` | Složí znalost do dotčených MB, archivuje návrh, smaže plán, resetuje na IDLE. Zákaz git operací — commit vlastní volající. | Harvest Gate ve finishing, nebo ručně |
+| `mb-harvest` | Složí znalost do dotčených MB (current-state faktů i playbookové brány), archivuje návrh, smaže plán, resetuje na IDLE. Zákaz git operací — commit vlastní volající. | Harvest Gate ve finishing, nebo ručně |
 | `mb-abort` | Opuštění práce: pár do `abandoned/`, reset na IDLE. Kód nevrací. | ručně |
 | `mb-architect-review` | Design review živým architektem přes tiket: request / respond / resume, branch sync dle tiketu, publikace vlastní větve dle Publication Contract (ohlášená, ne na souhlas). | Architect Review Gate, nebo ručně |
 | `mb-jira-update` | České shrnutí implementace do Jira; brána dosažitelnosti (§6b) před zápisem odkazu; finalizační režim posune tiket do „Test" jen po publikaci merge commitu. | z `mb-harvest`, z finishing, nebo ručně |
-| `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest` |
-| `mb-sync` | Dosynchronizuje MB dokumenty s realitou kódu mimo workflow. | ručně |
+| `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest`, z `mb-migrate-docs` |
+| `mb-sync` | Dosynchronizuje MB dokumenty s realitou kódu mimo workflow; drift `playbook.md` jen navrhuje ke schválení, nezapisuje ho sám. | ručně |
 | `mb-scan` | Read-only hloubková analýza projektu. | ručně |
 | `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. | ručně |
 | `mb-epic-graph` | Graf závislostí epiku z Jira linků nebo z hlaviček návrhů, plus orákulum konzistence text ↔ linky a `-IndexFile` findings o cizích větvích. Read-only skript. | z `mb-epic-elaboration`, nebo ručně |
 | `mb-doc-index` | Read-only index MB dokumentů napříč větvemi `origin` (model tahu); kolizní findings pro discovery, elaboraci i `mb-state`. | z brainstormingu (discovery), z `mb-epic-elaboration`, z `mb-state`, nebo ručně |
+| `mb-migrate-docs` | Migruje Memory Banky v zadaném rozsahu na aktuální sadu dokumentů — sloučí `product.md` do `brief.md`, přejmenuje `tasks.md` na `playbook.md`, přepíše relativní odkazy; MB s `KONFLIKT PLAYBOOKU` (`tasks.md` i `playbook.md` současně) přeskočí a nahlásí. | ručně, pro repozitáře ve starém tvaru |
 | `mb-plan`, `mb-act` | Deprecated stuby v1 — jen přesměrují na Superpowers workflow. | zpětná kompatibilita |
 
 Nástroje s vlastním kódem a testy: `mb-epic-graph`
 ([`epic-graph.ps1`](../ums/.claude/skills/mb-epic-graph/scripts/epic-graph.ps1) —
 generování grafu, vlny, rozhodovací stavové ikony, strukturální i prose
 orákulum), `mb-epic-elaboration`
-([`ledger-status.ps1`](../ums/.claude/skills/mb-epic-elaboration/scripts/ledger-status.ps1))
-a `mb-doc-index`
+([`ledger-status.ps1`](../ums/.claude/skills/mb-epic-elaboration/scripts/ledger-status.ps1)),
+`mb-doc-index`
 ([`doc-index.ps1`](../ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1) —
-traversal historie vzdálených větví, enumerace, findings). Ostatní `mb-*`
-skilly jsou čistě instrukční Markdown.
+traversal historie vzdálených větví, enumerace, findings) a `mb-migrate-docs`
+([`migrate-mb-docs.ps1`](../ums/.claude/skills/mb-migrate-docs/scripts/migrate-mb-docs.ps1)
+— plán i `-Apply` mechanické migrace, a
+[`verify-deletion-only.ps1`](../ums/.claude/skills/mb-migrate-docs/scripts/verify-deletion-only.ps1)
+— ověřuje, že agentický úklid duplicity v mergnutém `brief.md` jen mazal a
+přeskupoval řádky, nikdy nepsal nové). Ostatní `mb-*` skilly jsou čistě
+instrukční Markdown.
 
 ## 6. Vendoring a nasazení
 
