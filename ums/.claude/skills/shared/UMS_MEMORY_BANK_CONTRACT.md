@@ -1,7 +1,11 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.4
-- Supersedes v2.3 (adds Link Conventions under Scope Lock: links relative to the
+- **Contract-Version:** 2.5
+- Supersedes v2.4 (the plan half is never linked from a document: the
+  `**Plán:**` field is dropped from the design header and cross-references
+  between the halves run plan → design only, because the plan is deleted at
+  harvest and every link to it dies in the archive).
+- v2.4 added Link Conventions under Scope Lock (links relative to the
   containing file, no `#fragment` anchors — section named in words instead —
   and the marking rule for undeterminable targets; enforced by
   `mb-link-audit`).
@@ -254,6 +258,15 @@ Other rules:
   inside the document's own project and the file is not there, it was dropped
   from that project — aiming the sentence at a same-named file elsewhere changes
   what the sentence claims. Mark it and let a human decide.
+- **Never link the plan half.** No document links `plan_<slug>.md` — not the
+  design header, not a Memory Bank document, not another proposal. The plan is
+  **deleted at harvest** (Archival asymmetry), so any link to it is a dead link
+  the moment the work completes, and it dies inside `proposals/completed/`,
+  which is an immutable archive nobody may repair. Cross-references between the
+  halves therefore run one way only: the plan links the design
+  (`**Návrh:** [design_<slug>.md](design_<slug>.md)`), never the reverse. Where
+  a document must mention the plan, name it as plain text — the pair is found
+  by slug, not by link.
 - Enforced and consolidated by the `mb-link-audit` skill (read-only audit,
   `-Apply` for the mechanically determinable classes).
 
@@ -278,7 +291,8 @@ Rules:
   design half is retained; the plan half is **deleted** — after implementation
   its task steps are spent; code, git history and the harvested current-state
   MB docs carry the outcome. If there is no design half (grandfathered single
-  plan), archive that plan to `completed/` instead of deleting it. On
+  plan), archive that plan to `completed/` instead of deleting it. Because the
+  plan does not survive, no document may link it (Link Conventions). On
   **abandon** (`mb-abort` / Discard → `abandoned/`) both halves move together,
   unchanged, nothing deleted. If a half is missing at archive time, warn and
   handle what exists.
@@ -356,9 +370,11 @@ Document headers:
 
   - **Jira:** UMS-XXXX | (žádný tiket)
   - **Target MB:** <relative path>/memory-bank/
-  - **Plán:** [plan_<slug>.md](plan_<slug>.md)
   - **Vytvořeno:** YYYY-MM-DD
   ```
+  The header carries **no reference to the plan half** — the plan is named
+  `plan_<slug>.md` by the naming rule, so the field added nothing and became a
+  dead link the moment harvest deleted the plan (Link Conventions).
   Body sections follow the established proposal corpus: `## Cíl`, `## Scope`,
   `## Technický návrh`, `## Dopady`, `## Rizika` (scaled to complexity).
 - `plan_<slug>.md` keeps the upstream plan header verbatim (the
