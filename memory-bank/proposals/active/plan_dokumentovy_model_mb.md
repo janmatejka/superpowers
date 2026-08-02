@@ -127,7 +127,7 @@ tech.md, tasks.md)` textem:
 Vložit celou novou sekci BEZPROSTŘEDNĚ PŘED existující řádek
 `## Scope Lock (Memory Bank documents only)`:
 
-```markdown
+````markdown
 ## Memory Bank Document Set
 
 **Mandatory core of a project MB:** `brief.md`, `architecture.md`, `tech.md`.
@@ -210,7 +210,7 @@ of them is not written:
 
 The ban on invention is enforced by the FORMAT, not by a request in a prompt:
 without `Happened` there is no entry.
-```
+````
 
 - [ ] **Step 4: Vložit sekci `## Document Ownership`**
 
@@ -954,10 +954,17 @@ Tělo skillu (anglicky) musí obsahovat:
      řádků, stav úklidu), seznam přeskočených konfliktů a neuklizených MB, pak
      nabídnout `mb-git-commit`.
 
-- **Notes** sekci s: idempotencí (opakované spuštění v témže i jiném repu),
-  poznámkou, že prózu srovná nejbližší harvest, a poznámkou, že
-  `playbook.md` vzniklý přejmenováním se dál řídí Playbook Contract
-  (konzultace před zápisem).
+- **Notes** sekci se čtyřmi poznámkami:
+  - idempotence — opakované spuštění v témže i v jiném repozitáři;
+  - prózu po mazacím agentovi srovná nejbližší harvest, kterému je `brief.md`
+    jako current-state dokument otevřený;
+  - `playbook.md` vzniklý přejmenováním se dál řídí Playbook Contract
+    (konzultace před zápisem);
+  - **the rename assumes `tasks.md` holds procedures.** In the target monorepo
+    that holds for all ten occurrences, but an MB whose `tasks.md` really is a
+    list of open items must be excluded with `-Path` — no script can tell the
+    two apart, which is why the plan mode exists and why the human reads it
+    before `-Apply`.
 
 - [ ] **Step 2: Zapsat skill do manifestu**
 
@@ -1342,7 +1349,33 @@ git commit -m "UMS: mb-init a mb-sync na novou sadu dokumentů, úklid výčtů"
 Tuto úlohu dělej **ručně a prozaicky**, ne skriptem — je to zkouška, jestli
 hranice v praxi drží, a zároveň jediná MB v tomto repu.
 
-- [ ] **Step 1: Sloučit product.md do brief.md**
+- [ ] **Step 1: Ověřit detekci nástrojem na skutečné MB**
+
+Než začneš ručně, spusť nad tímto repem náhledový režim migračního skriptu.
+Je to jediná příležitost prověřit detekční cestu proti skutečné Memory Bank
+místo proti fixtuře — vlastní převod se pak dělá ručně, protože mazací agent
+neumí přeskládat sekce do kanonického pořadí.
+
+Run:
+```bash
+pwsh -NoProfile -File ums/.claude/skills/mb-migrate-docs/scripts/migrate-mb-docs.ps1 -RepoPath .
+```
+Expected: exit 0; v tabulce právě jeden řádek `memory-bank` s akcí
+`sloučit product.md + přejmenovat tasks.md`; žádný nález `KONFLIKT PLAYBOOKU`.
+Skript nesmí nic zapsat — po běhu ověř `git status --porcelain`, výstup musí
+být prázdný.
+
+**Navrhované přejmenování `tasks.md` se v tomto repu NESMÍ provést** a není to
+chyba nástroje. Mechanické pravidlo předpokládá, že `tasks.md` drží postupy —
+v monorepu to platí u všech deseti výskytů. Tady je `tasks.md` skutečně seznam
+úkolů (zaparkované nálezy z review, otevřená otázka na člověka, navazující
+položky), což žádný skript rozpoznat neumí. Rozdíl vidí jen člověk, a proto má
+migrace náhledový režim. Zůstává tedy vedle nově psaného `playbook.md`.
+
+Pokud detekce sedí, pokračuj ručně. Pokud ne, je to nález proti úloze 2 —
+nahlas ho a nepokračuj.
+
+- [ ] **Step 2: Sloučit product.md do brief.md**
 
 Přečti `memory-bank/brief.md` (62 ř.) a `memory-bank/product.md` (85 ř.).
 Přepiš `brief.md` do kanonického pořadí sekcí z kontraktu:
@@ -1361,7 +1394,7 @@ dokumentů na `product.md` přesměruj na `brief.md`.
 
 Pak: `git rm memory-bank/product.md`
 
-- [ ] **Step 2: Vytáhnout postupy z tech.md do playbook.md**
+- [ ] **Step 3: Vytáhnout postupy z tech.md do playbook.md**
 
 Přečti `memory-bank/tech.md` (192 ř.) a rozděl jeho obsah podle rozhodovacího
 testu z kontraktu. Do nového `memory-bank/playbook.md` patří to preskriptivní:
@@ -1382,7 +1415,7 @@ konstatování stavu.
 U každého postupu, který má důvod (například proč se `_assert.ps1` kopíruje
 místo sdílení), přidej jednořádkové `Proč:`.
 
-- [ ] **Step 3: Ověřit, že se nic neztratilo ani nezdvojilo**
+- [ ] **Step 4: Ověřit, že se nic neztratilo ani nezdvojilo**
 
 Run:
 ```bash
@@ -1396,7 +1429,7 @@ Ručně zkontroluj: každý fakt z původního `product.md` je v `brief.md` prá
 jednou, a každý postup z původního `tech.md` je buď v `playbook.md`, nebo
 v `tech.md` — nikdy v obou.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add memory-bank/brief.md memory-bank/tech.md memory-bank/playbook.md memory-bank/product.md
