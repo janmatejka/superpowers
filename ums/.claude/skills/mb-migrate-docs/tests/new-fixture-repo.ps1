@@ -27,7 +27,10 @@ function New-FixtureRepo {
     Invoke-Git $work @('remote', 'add', 'origin', $origin) | Out-Null
 
     # A: legacy shape, the full case — brief + product + tasks, with a link
-    #    from architecture.md into both files that must be rewritten.
+    #    from architecture.md into both files that must be rewritten, PLUS an
+    #    anchored link (#fragment) that must be rewritten too (regression for
+    #    the "anchored links are never rewritten" bug), PLUS a link into the
+    #    skipped MB C that must survive untouched (cross-MB link safety).
     Add-File $work 'A/memory-bank/brief.md' @(
         '# Brief - A', '', '## Cíl projektu', 'Komponenta A dělá věci.',
         'Sdílená věta o třech variantách DLL.')
@@ -38,7 +41,10 @@ function New-FixtureRepo {
     Add-File $work 'A/memory-bank/tasks.md' @(
         '# Tasks - A', '', '## Postup: build', 'Spusť msbuild.')
     Add-File $work 'A/memory-bank/architecture.md' @(
-        '# Architektura - A', '', 'Viz [product](product.md) a [tasks](tasks.md).')
+        '# Architektura - A', '', 'Viz [product](product.md) a [tasks](tasks.md).',
+        'Podrobnosti viz [detail produktu](product.md#pro-koho).')
+    Add-File $work 'A/memory-bank/cross-link.md' @(
+        '# Cross link - A', '', 'Viz i [jinde](../../C/memory-bank/tasks.md).')
 
     # B: already migrated — nothing to do, proves idempotence.
     Add-File $work 'B/memory-bank/brief.md' @('# Brief - B', '', 'Hotovo.')
@@ -46,10 +52,17 @@ function New-FixtureRepo {
     Add-File $work 'B/memory-bank/tech.md' @('# Tech - B')
     Add-File $work 'B/memory-bank/playbook.md' @('# Playbook - B')
 
-    # C: conflict — both tasks.md and playbook.md exist.
+    # C: conflict — both tasks.md and playbook.md exist. Also carries a
+    #    document linking to its OWN tasks.md (which exists) and to a
+    #    "product.md" that never existed in C (C already has its own
+    #    brief.md) — both links must survive untouched because the whole MB
+    #    is skipped, not merely because the generic old/new existence guard
+    #    happens to catch this one case.
     Add-File $work 'C/memory-bank/brief.md' @('# Brief - C')
     Add-File $work 'C/memory-bank/tasks.md' @('# Tasks - C')
     Add-File $work 'C/memory-bank/playbook.md' @('# Playbook - C')
+    Add-File $work 'C/memory-bank/links.md' @(
+        '# Odkazy - C', '', 'Viz [úkoly](tasks.md) a [produkt](product.md).')
 
     # D: product.md without brief.md — rename path.
     Add-File $work 'D/memory-bank/product.md' @('# Product - D', '', 'Jen produkt.')
