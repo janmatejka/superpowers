@@ -2,7 +2,7 @@
 
 ## Přehled
 
-Skill pack MB v2: Superpowers (vendorované, v6.1.1) řídí workflow, Memory Bank
+Skill pack MB v2: Superpowers (vendorované, v6.2.0) řídí workflow, Memory Bank
 je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMORY_BANK_CONTRACT.md).
 
 ## Sdílené prostředky

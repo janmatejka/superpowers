@@ -5,7 +5,7 @@ UMS monorepo (`d:\_datasys\ums`, Bitbucket `datasyscz/ums`). It lives only on
 the `ums-memory-bank` branch of this fork; `main` stays a clean mirror of
 upstream `obra/superpowers`.
 
-**Model:** vendored superpowers skills (v6.1.1) drive the workflow
+**Model:** vendored superpowers skills (v6.2.0) drive the workflow
 (`brainstorming → writing-plans → subagent-driven-development →
 finishing-a-development-branch`); the Memory Bank is the document/knowledge
 layer injected into it. Between brainstorming and writing-plans sits an
@@ -34,7 +34,7 @@ ums/
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
-        ├── shared/           ← contract v2, manifest, VENDORED_FROM.md, overlays/*.overlay.md
+        ├── shared/           ← contract v2.3, manifest, VENDORED_FROM.md, overlays/*.overlay.md
         ├── mb-harvest/ …     ← active mb-* utility skills
         └── mb-plan/ …        ← deprecated v1 stubs (transitional)
 ```
