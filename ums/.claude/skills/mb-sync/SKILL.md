@@ -140,16 +140,6 @@ This policy keeps context fresh while preventing redundant full reads between ta
 ### Write Safety Gate (MANDATORY)
 
 Before any Memory Bank write operation:
-
-1. List target files.
-2. Verify all target files are under `<CTX_DIR>/, <PLAN_MB>/, or <AFFECTED_MBS>/`.
-3. If any target is outside `<CTX_DIR>/, <PLAN_MB>/, or <AFFECTED_MBS>/` and the user did not explicitly request cross-project sync, stop and ask.
-
-Scope lock remains active until command completion.
-
-### Write Safety Gate (MANDATORY)
-
-Before any Memory Bank write operation:
 1. List target files.
 2. Verify all target files are under `<CTX_DIR>/, <PLAN_MB>/, or <AFFECTED_MBS>/`.
 3. If any target is outside `<CTX_DIR>/, <PLAN_MB>/, or <AFFECTED_MBS>/` and user did not explicitly request cross-project sync, STOP and ask user.

@@ -143,6 +143,18 @@ every writer, `mb-sync` included. The automatic current-state pass that
 NOT apply here: the content does not come from code, so it cannot be verified
 against code either.
 
+**Exception — `mb-init`'s initial creation.** The first `playbook.md` that
+`mb-init` writes, from the build and test commands it detected, needs no
+approval: there is nothing yet to overwrite, and detected build commands are
+verifiable against the build files themselves — unlike the experience the
+consult rule exists to protect. Every LATER change to `playbook.md` follows
+the consult rule above.
+
+**Two consult styles, both legal.** `mb-sync` proposes a correction
+immediately, at the point where it notices drift; `mb-harvest` batches
+candidates into one end-of-branch gate. Both satisfy consult-before-writing —
+neither is drift to reconcile with the other.
+
 **Entry format** is free (heading + steps). When a persisted candidate carried
 evidence, a one-line `Proč:` travels with it — the reason is part of the
 procedure, not noise.
@@ -150,8 +162,10 @@ procedure, not noise.
 **Candidate collection during work.** Procedural knowledge is gathered while
 the work happens, into `<MB_ROOT>/.superpowers/playbook-candidates.md`
 (git-ignored scratch, English, first line
-`# Playbook candidates — work item: <slug>`). A foreign slug means foreign
-work: leave that file alone and start a new one.
+`# Playbook candidates — work item: <slug>`). A collection file whose first
+line carries a FOREIGN work-item slug is OVERWRITTEN: it is git-ignored
+scratch belonging to work that already finished or was abandoned, and its
+path is fixed, so there is no separate "new file" to start.
 
 Writers: implementer subagents report candidates in their report section
 `## Playbook candidates`; the driving session — the same actor named in
@@ -170,6 +184,11 @@ of them is not written:
 - **Target MB:** <path>/memory-bank/        (only when harvest spans several MBs)
 - **Corrects:** <existing playbook entry>   (when it contradicts an entry already there)
 ```
+
+A candidate without a `Target MB` field, in a harvest spanning several Memory
+Banks, defaults to `PLAN_MB`. A candidate whose `Corrects` names a
+`playbook.md` entry that no longer exists is presented as a NEW entry instead
+— tell the user the entry it meant to correct is gone.
 
 The ban on invention is enforced by the FORMAT, not by a request in a prompt:
 without `Happened` there is no entry.
@@ -532,7 +551,7 @@ code.
    One pass therefore detects staleness and duplication alike. Report every
    move.
 
-   **Playbook gate (the only non-autonomous step of the harvest):** when
+   **Playbook gate (a non-autonomous step of the harvest):** when
    `<MB_ROOT>/.superpowers/playbook-candidates.md` is non-empty AND its slug
    matches the current work item, present the candidates with their evidence
    to the user ONCE and let them choose. Approved ones are translated into

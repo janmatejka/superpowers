@@ -29,8 +29,10 @@ Adjustments to the checklist above:
   yet, so with an empty local set an undeclared run cannot tell a collision
   from ordinary parallel work. Then persist `Target MB Pin`,
   `Jira`, `Work item` slug and `Started` into `memory-bank/context.md`, then
-  read `<PLAN_MB>/brief.md`, `product.md`, `architecture.md`, `tech.md`
-  (those that exist) as design context. Create a todo for this. If the
+  read `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and `playbook.md`
+  (those that exist; legacy shape per Memory Bank Document Set) as design
+  context — `playbook.md` is prescriptive and BINDS the work, the rest is
+  current-state reference. Create a todo for this. If the
   affected area only becomes clear later in the dialog, this step MUST
   complete before item 6.
 - **Item 6 (Write design doc)**: save to

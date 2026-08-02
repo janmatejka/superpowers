@@ -68,7 +68,7 @@ Wait for confirmation or narrowing. The human always decides the agenda.
 
 1. **Input context:** read the ticket(s) in scope + ALL their Jira links
    (both directions) + the item-source entries + memory-bank docs
-   (`brief.md`, `product.md`, `architecture.md`, `tech.md`) of affected
+   (`brief.md`, `architecture.md`, `tech.md`, `playbook.md`) of affected
    component MBs (MB Context Reading Rule). In JIRA-less mode: read the
    proposal(s) in scope + their header dependency fields (`Blokováno:`/
    `Blokuje:`/`Souvisí:`/`Vyčleněno z:`/`Vyčleněno do:`) and the linked
