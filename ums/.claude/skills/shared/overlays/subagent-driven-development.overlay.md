@@ -17,13 +17,14 @@
   The using-git-worktrees step resolves to branch-in-place: ensure you are on
   a feature branch (never main/master without explicit consent) and continue
   in the existing working directory.
-- **Playbook:** attach the path `<PLAN_MB>/playbook.md` to EVERY implementer
-  dispatch alongside the task brief, introduced as "procedures that bind this
-  project — follow them"; when the file does not exist, say so instead of
-  omitting the line. Take the build and test procedures for the baseline check
-  before the first task from the same file. Legacy shape: when `playbook.md` is
-  absent and `tasks.md` exists, use `tasks.md` (contract, Memory Bank Document
-  Set).
+- **Playbook:** resolve the target Memory Bank's procedure document FIRST —
+  `<PLAN_MB>/playbook.md` when it exists, otherwise `<PLAN_MB>/tasks.md` when
+  THAT exists (legacy shape, contract, Memory Bank Document Set), otherwise
+  neither. Attach the resolved path to EVERY implementer dispatch alongside the
+  task brief, introduced as "procedures that bind this project — follow them".
+  When neither file exists, say so in the dispatch instead of omitting the line.
+  Take the build and test procedures for the baseline check before the first
+  task from the same resolved file.
 - **Playbook candidates:** every implementer dispatch requires the report to
   end with a `## Playbook candidates` section — procedural knowledge learned
   while doing the task that was not already in the brief or the playbook, each
@@ -32,8 +33,8 @@
   controller, COPY confirmed entries verbatim into
   `<MB_ROOT>/.superpowers/playbook-candidates.md` (first line
   `# Playbook candidates — work item: <slug>`; a foreign slug means a foreign
-  file — start a new one). Do not rephrase them; the harvest gate presents them
-  to the user.
+  file — start a new one). Do not rephrase them; the playbook gate presents
+  them to the user.
 - **Publication:** before dispatching the first task, publish the branch with the
   committed plan (Publication Contract, publication point 2): an announced push
   of your own ticket branch, alongside the baseline build/test check. Shared
