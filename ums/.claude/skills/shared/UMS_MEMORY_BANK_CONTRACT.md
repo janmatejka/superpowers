@@ -1,10 +1,12 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.2
-- Supersedes v2.1 (adds the Publication Contract and Cross-Branch Visibility
-  sections and the two-tier push policy). v2.0 renamed the document pair to
-  `design_`/`plan_` and added the Architect Review Gate; v1
-  (mb-plan/mb-act orchestration) remains superseded.
+- **Contract-Version:** 2.3
+- Supersedes v2.2 (narrows the mandatory document set to
+  `brief.md`/`architecture.md`/`tech.md`, introduces `playbook.md` with the
+  consult-before-write regime, adds Document Ownership and the playbook
+  candidate collection). v2.2 added the Publication Contract and Cross-Branch
+  Visibility; v2.0 renamed the document pair to `design_`/`plan_` and added the
+  Architect Review Gate; v1 (mb-plan/mb-act orchestration) remains superseded.
   See `VENDORED_FROM.md` for the vendored Superpowers version.
 
 ## Purpose & Roles
@@ -36,8 +38,8 @@ UMS Memory Bank uses a three-tier directory model across the monorepo:
   `Started`).
 - **`PLAN_MB`** — `<MB_ROOT>/<Target MB Pin>` — the project Memory Bank the
   current work targets. Holds the active design + plan pair and the project
-  documents (`brief.md`, `product.md`, `architecture.md`, `tech.md`,
-  `tasks.md`).
+  documents (`brief.md`, `architecture.md`, `tech.md`, and optionally
+  `playbook.md` — see Memory Bank Document Set).
 - **`AFFECTED_MBS`** — the set of project Memory Banks touched by a harvest.
   Derived at harvest time from the branch diff (see Harvest Contract), not
   hand-maintained in `context.md`.
@@ -86,6 +88,89 @@ Before reading or writing any Memory Bank file, verify that
   `proposals/{next,active,completed,abandoned}/` and project docs. Used when
   initializing project MBs for new components. Does not touch `CTX_DIR`.
 
+## Memory Bank Document Set
+
+**Mandatory core of a project MB:** `brief.md`, `architecture.md`, `tech.md`.
+
+**First-class optional:** `playbook.md` — prescriptive procedures (see
+Document Ownership and the Playbook Contract below).
+
+**Free extension:** any further document the MB needs (`data-flows.md`,
+`use-cases.md`, `open-questions.md`, `tasks.md`, …). These carry no normative
+status; skills update them when they exist and never create them speculatively.
+
+The orchestration root (`CTX_DIR`) is NOT bound by the core — it holds
+`context.md` plus whatever navigation the orchestrated tree needs.
+
+`brief.md` covers what earlier versions split between `brief.md` and
+`product.md`. Canonical section order (sections without content are omitted,
+never created empty):
+
+```markdown
+# Brief — <name>
+
+## Co to je
+## Klíčové funkce            (or Rozsah, depending on the component)
+## Pro koho a hodnota
+## Rizika
+## Stav a historie
+```
+
+### Legacy shape tolerance
+
+Permanent, like the `proposal_` grandfather clause. No MB is forced to migrate
+in order to stay valid.
+
+- **Reading:** when `product.md` exists, read it as well. When `playbook.md`
+  is absent and `tasks.md` exists, read `tasks.md` in its place.
+- **Writing procedures:** into `playbook.md` when it exists; otherwise into
+  `tasks.md` when it exists; otherwise create `playbook.md`.
+- Migration to the current shape is performed by the `mb-migrate-docs` skill,
+  never as a side effect of unrelated work.
+
+### Playbook Contract
+
+`playbook.md` is prescriptive: **how this project is built, tested and
+changed.** Authored by humans and by experience, not derived from code.
+
+**Write regime — consult before writing.** `playbook.md` is NEVER changed
+without the user's approval. An agent may propose anything — add an entry, fix
+a superseded procedure, rephrase it, delete one that stopped being true — but
+every change is presented for approval before it is written. The rule binds
+every writer, `mb-sync` included. The automatic current-state pass that
+`brief.md`, `architecture.md` and `tech.md` undergo (Harvest Contract §3) does
+NOT apply here: the content does not come from code, so it cannot be verified
+against code either.
+
+**Entry format** is free (heading + steps). When a persisted candidate carried
+evidence, a one-line `Proč:` travels with it — the reason is part of the
+procedure, not noise.
+
+**Candidate collection during work.** Procedural knowledge is gathered while
+the work happens, into `<MB_ROOT>/.superpowers/playbook-candidates.md`
+(git-ignored scratch, English, first line
+`# Playbook candidates — work item: <slug>`). A foreign slug means foreign
+work: leave that file alone and start a new one.
+
+Writers: implementer subagents report candidates in their report section
+`## Playbook candidates`; the orchestrator COPIES confirmed ones into the
+collection file without rephrasing; sessions outside SDD write directly.
+
+Candidate format — the first three fields are mandatory, an entry missing any
+of them is not written:
+
+```markdown
+## <short title>
+- **Tried:** <what was attempted>
+- **Happened:** <what actually happened — the evidence>
+- **Procedure:** <the rule that follows from it>
+- **Target MB:** <path>/memory-bank/        (only when harvest spans several MBs)
+- **Corrects:** <existing playbook entry>   (when it contradicts an entry already there)
+```
+
+The ban on invention is enforced by the FORMAT, not by a request in a prompt:
+without `Happened` there is no entry.
+
 ## Scope Lock (Memory Bank documents only)
 
 The scope lock governs **Memory Bank document writes only**:
@@ -99,8 +184,9 @@ Explicitly **legal and outside this lock**:
 
 - Source-code changes anywhere in the repository.
 - The superpowers scratch tree `<MB_ROOT>/.superpowers/` (task briefs,
-  implementer reports, review packages, progress ledger) — git-ignored,
-  ephemeral, owned by the superpowers execution skills.
+  implementer reports, review packages, progress ledger,
+  `playbook-candidates.md`) — git-ignored, ephemeral, owned by the superpowers
+  execution skills and the Playbook Contract.
 - Plan checkboxes and task-progress tracking inside the plan file and the
   `.superpowers/sdd/` ledger.
 
@@ -356,12 +442,46 @@ abolished — do not write them; ignore them when found in a stale file.
 ## MB Context Reading Rule
 
 Before proposing approaches (brainstorming) and before writing the
-implementation plan, read `<PLAN_MB>/brief.md`, `product.md`,
-`architecture.md`, `tech.md` (those that exist), plus the root
-`memory-bank/architecture.md` and `tech.md` when the work is cross-cutting.
-These documents are current-state reference — treat them as authoritative
-context, and note in the design when they are stale (the fix for staleness is
-`mb-sync` or the harvest at finish, not ad-hoc edits).
+implementation plan, read `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md`
+and `playbook.md` (those that exist; legacy shape per Memory Bank Document
+Set), plus the root `memory-bank/architecture.md` and `tech.md` when the work
+is cross-cutting. `playbook.md` is prescriptive — its procedures BIND the work,
+they are not background reading. The rest is current-state reference: treat it
+as authoritative context, and note in the design when it is stale (the fix for
+staleness is `mb-sync` or the harvest at finish, not ad-hoc edits).
+
+## Document Ownership
+
+One fact, one home. Duplication between documents is prevented by ownership,
+not by asking writers to be careful.
+
+| The question the fact answers | Home |
+|---|---|
+| What it is for, for whom, what value it has, what state it is in | `brief.md` |
+| What parts it consists of, who talks to whom and how, which pattern it follows | `architecture.md` |
+| What it runs on and with — stack, versions, dependencies, configuration, build, deployment | `tech.md` |
+| How do I do X — commands, procedures, conventions, traps | `playbook.md` |
+
+**Decision test for the contested `tech` × `architecture` pair** —
+deliberately a test, not a taxonomy, because a taxonomy can be bent:
+
+- Does the fact change when you **swap a library or version and leave the code
+  alone**? → `tech.md`
+- Does it change when you **rewrite the code and leave the dependencies
+  alone**? → `architecture.md`
+- Does it change in **both** cases (typically "the workflow engine runs on
+  Orleans")? → it belongs where the reader looks first, and the other document
+  **links** to it with a relative link. It never restates it.
+
+The third case carries the rule. Duplication does not arise for facts that
+clearly belong somewhere — it arises for the ones that belong in both.
+
+**Moving a fact is a legal operation.** `mb-harvest` and `mb-sync` may move a
+fact between documents of the same MB. The order is binding: **write into the
+target first, only then delete from the source.** Every move is named in the
+skill's report, so it is visible both there and in the commit diff. This is
+deliberately visibility, not a mechanical check — a move is a local edit
+someone reads at commit time.
 
 ## Harvest Contract
 
@@ -376,22 +496,42 @@ code.
    `git diff --name-only $(git merge-base <base> HEAD)..HEAD`, mapping each
    changed path to its nearest owning `memory-bank/` directory. Fall back to
    asking the user when the diff is unavailable.
-3. **Harvest style — CURRENT-STATE (MANDATORY):** persistent MB docs
-   (`architecture.md`, `tech.md`, `brief.md`, `product.md`, `tasks.md`)
-   describe the current state in present tense, as reference documentation.
-   They are NOT a changelog:
-   - Fold harvested facts into the relevant current-state section; do not
-     duplicate facts already described.
+3. **Harvest style — CURRENT-STATE (MANDATORY):** the current-state documents
+   (`architecture.md`, `tech.md`, `brief.md`) describe the current state in
+   present tense, as reference documentation. They are NOT a changelog.
+   `playbook.md` is NOT one of them — it changes only through the gate below.
+   - Place every fact in its owning document (see Document Ownership); fold it
+     into the relevant current-state section and do not duplicate a fact that
+     is already described elsewhere.
    - DO NOT create or append dated changelog sections ("Nedávné změny",
      "Recent Changes", "Changelog", "Historie změn", "Naposledy provedeno").
    - History lives in `proposals/completed/` and git — never in state docs.
    - When a change removes something, describe the new state; do not narrate
      the removal.
-   - Update `architecture.md` (components, patterns, diagrams, cross-project
-     links), `tech.md` (dependencies, versions, configuration, build notes),
-     and `brief.md`/`product.md` only if core features or UX changed.
    - Continue with remaining affected MBs if one update fails; capture
      failures for the final report.
+
+   **Staleness sweep (cheap, MANDATORY):** for each affected MB, grep ALL its
+   `memory-bank/*.md` documents for the key symbols, element ids and variable
+   names touched by the branch diff. Each hit has one of three outcomes:
+   1. the hit describes a **superseded** state → fold it to current state;
+   2. the hit is the fact's **existing home** → do not write a second copy;
+      update it in place;
+   3. the hit sits in the **wrong home** → move it per Document Ownership.
+
+   One pass therefore detects staleness and duplication alike. Report every
+   move.
+
+   **Playbook gate (the only non-autonomous step of the harvest):** when
+   `<MB_ROOT>/.superpowers/playbook-candidates.md` is non-empty AND its slug
+   matches the current work item, present the candidates with their evidence
+   to the user ONCE and let them choose. Approved ones are translated into
+   Czech and written to `playbook.md` of the target MB — or of the MB named by
+   the candidate's `Target MB` field. A candidate carrying `Corrects` is
+   presented NEXT TO the entry it contradicts, and the user decides between
+   replacing it, keeping both, or dropping the candidate. Unapproved
+   candidates vanish with the scratch; report their count. An empty or foreign
+   collection file skips the gate without a question.
 4. **Archive:** move only the design half `design_<slug>.md` (or legacy
    `proposal_<slug>-design.md`) from `active/` to `completed/` unchanged
    (durable spec record) and **delete** the plan half `plan_<slug>.md` (or
@@ -605,6 +745,9 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 - AI-facing instruction text (skill bodies, dispatch prompts, task briefs,
   implementer/reviewer reports, the `.superpowers/sdd/` ledger, orchestration
   metadata) MUST be in English.
+- `playbook-candidates.md` is AI-facing scratch and is therefore English;
+  `playbook.md` is a persistent artifact and is therefore Czech. The harvest
+  gate translates on persistence.
 - User-facing output and persistent artifacts MUST be in Czech: the proposal
   pair content, Memory Bank documents, commit messages, Jira comments, review
   findings rendered to the user, and status summaries.
