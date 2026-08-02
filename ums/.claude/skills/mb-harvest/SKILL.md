@@ -18,8 +18,9 @@ metadata:
 **Action:** Fold implemented knowledge into the affected Memory Bank documents,
 archive the design proposal to `completed/` and delete the implementation plan,
 reset `context.md` to IDLE.
-**Execution:** Autonomous, with ONE exception — the playbook gate in step 3
-asks the user which collected experiences to persist.
+**Execution:** Autonomous except where it must ask: the playbook gate in step 3
+(which experiences to persist), and step 2's fallback when the branch diff is
+unavailable (which projects are affected).
 
 **⛔ GIT PROHIBITION:** no `git commit`/`add`/`push` from this skill. When
 invoked from the finishing-a-development-branch Harvest Gate, that overlay owns
@@ -83,8 +84,9 @@ fact in its owning document (contract, Document Ownership):
 When a fact sits in the wrong document, MOVE it: write into the target first,
 then delete from the source, and name the move in the final report.
 
-Legacy shape: when `product.md` still exists, read it and keep it consistent;
-migrating it is `mb-migrate-docs`' job, not a side effect of this harvest.
+Legacy shape: when `product.md` still exists, read it as context — do NOT write
+into it. A fact that belongs in `brief.md` goes to `brief.md`; converting the
+MB is `mb-migrate-docs`' job, not a side effect of this harvest.
 
 Style rules (contract, Harvest Contract §3): present tense, fold facts into
 existing sections, no duplication, **no changelog sections** ("Nedávné změny",
@@ -110,7 +112,7 @@ One pass therefore catches both staleness (a walkthrough still describing
 pre-refactor names) and duplication (the same fact drifting into two
 documents).
 
-**Playbook gate (the only non-autonomous step):** read
+**Playbook gate (a non-autonomous step):** read
 `<MB_ROOT>/.superpowers/playbook-candidates.md`.
 
 - Missing, empty, or carrying a foreign work-item slug → skip silently, no
@@ -161,7 +163,7 @@ unchanged and report which MBs failed.
 > - Archivováno (jen design): `proposals/completed/design_<slug>.md`; implementační plán `plan_<slug>.md` smazán (u legacy práce původní proposal_ názvy)
 > - Případné neúspěchy: …
 > - Přesuny faktů mezi dokumenty: … (nebo „žádné")
-> - Playbook: zapsáno <N> zkušeností do `<MB>/playbook.md`, neschváleno <M>
+> - Playbook: zapsáno <N> zkušeností do `<MB>/<playbook.md nebo tasks.md dle podoby MB>`, neschváleno <M>
 >
 > 💡 Pokud je navázán Jira tiket, nabídni `mb-jira-update`.
 > 💡 Při samostatném vyvolání (mimo finishing) nabídni `mb-git-commit`.
