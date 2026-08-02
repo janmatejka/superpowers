@@ -32,9 +32,10 @@
   legitimate and common; an entry without `Happened` is not written. As
   controller, COPY confirmed entries verbatim into
   `<MB_ROOT>/.superpowers/playbook-candidates.md` (first line
-  `# Playbook candidates — work item: <slug>`; a foreign slug means a foreign
-  file — start a new one). Do not rephrase them; the playbook gate presents
-  them to the user.
+  `# Playbook candidates — work item: <slug>`; a foreign slug means the file
+  is OVERWRITTEN — its path is fixed, so there is no separate file to start
+  (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Playbook Contract")). Do not
+  rephrase them; the playbook gate presents them to the user.
 - **Publication:** before dispatching the first task, publish the branch with the
   committed plan (Publication Contract, publication point 2): an announced push
   of your own ticket branch, alongside the baseline build/test check. Shared

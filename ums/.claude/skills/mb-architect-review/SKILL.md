@@ -108,8 +108,8 @@ sees neither the design nor `context.md`.
    (assigned manually) → fail-closed: ask the user for the return assignee
    and the ticket branch.
 3. **Branch sync** (above) — then read the design document and the target
-   project's MB context (`brief.md`, `architecture.md`, `tech.md`) from the
-   ticket branch.
+   project's MB context (`brief.md`, `architecture.md`, `tech.md`,
+   `playbook.md`) from the ticket branch.
 4. Guide the architect through a structured assessment: goal and scope
    adequacy, technical approach, impacts, risks, alternatives. Help phrase
    the notes.
