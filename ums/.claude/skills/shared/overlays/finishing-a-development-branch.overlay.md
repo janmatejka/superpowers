@@ -8,7 +8,8 @@ After the user chooses and BEFORE executing the choice:
 
 - **Option 1, 2, or 3** (Merge Locally / Push and Create PR / Keep As-Is) →
   invoke the `mb-harvest` skill. It harvests knowledge into the affected
-  Memory Bank documents, archives the design document to
+  Memory Bank documents, runs the playbook gate (asks the user which collected
+  experiences to persist), archives the design document to
   `proposals/completed/` (deleting the implementation plan), resets
   `memory-bank/context.md` to IDLE and offers `mb-jira-update`. Commit the
   resulting Memory Bank changes on this branch (Czech commit message), then
