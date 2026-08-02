@@ -9,7 +9,7 @@ je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMOR
 
 | Prostředek | Cesta | Popis |
 |---|---|---|
-| Kontrakt v2 | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, work item (design+plan pár), Target-MB discovery, harvest, dispatch model policy, fail-closed |
+| Kontrakt v2 | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár), Target-MB discovery, harvest a playbook gate, dispatch model policy, fail-closed |
 | Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů |
 | Overlay fragmenty | [shared/overlays/](overlays/README.md) | UMS bloky aplikované do vendorovaných skillů |
 
@@ -36,6 +36,7 @@ UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-developmen
 | mb-epic-graph | [mb-epic-graph/SKILL.md](../mb-epic-graph/SKILL.md) | Generovaný graf závislostí epiku z Jira linků + konzistenční orákulum prose ↔ linky (read-only skript) |
 | mb-doc-index | [mb-doc-index/SKILL.md](../mb-doc-index/SKILL.md) | Read-only index dokumentů napříč větvemi origin (model tahu) + kolizní findings pro discovery |
 | mb-architect-review | [mb-architect-review/SKILL.md](../mb-architect-review/SKILL.md) | Design review živým architektem přes Jira tiket (request/respond/resume, branch sync dle tiketu, publikace větve dle Publication Contract) |
+| mb-migrate-docs | [mb-migrate-docs/SKILL.md](../mb-migrate-docs/SKILL.md) | Migrace MB dokumentů na aktuální sadu (product.md → brief.md, tasks.md → playbook.md; mechanická fáze + mazací agent pod verifikátorem) |
 
 ## Odstraněné v1 skilly (MB v1 → v2)
 
