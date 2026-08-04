@@ -1,4 +1,4 @@
-# Návrh: Model tiketových větví a integrace do báze
+# Návrh: Model tiketových větví, integrace a disciplína workspace
 
 - **Jira:** (žádný tiket)
 - **Target MB:** memory-bank/
@@ -18,12 +18,22 @@ Konkrétně:
   do lokální báze; lokální báze se v tiketovém klonu nepoužívá vůbec;
 - **báze a chráněné větve se stanou konfigurací**, protože dnešní zadrátované
   `origin/develop` a `release/*` neodpovídají skutečnosti ani v tomto forku, ani
-  v monorepu.
+  v monorepu;
+- **práce na více tiketech v opakovaně používaném workspace má uzavřenou
+  smyčku** — vstupní brána, parkování a dokončení — s jasně rozdělenou
+  odpovědností mezi uživatele a agenta.
 
-Návrh je **první ze dvou** pracovních položek. Druhá zavede pool samostatných
-klonů pro izolaci práce na více tiketech naráz; tento návrh k němu přihlíží
-(rezervovaný konfigurační klíč, formulace pravidel platné pro N lokálních
-klonů), ale nic z něj nestaví.
+Druhá polovina cíle vznikla z rozhodnutí **nezavádět pool workspaců**. Volbu
+a zakládání workspace vlastní uživatel; workspace se používá opakovaně a nese
+zbytky předchozí práce. Návrh proto neřeší, kdo workspace vyrobí, ale **co se
+stane, když uživatel v takovém workspace řekne „budeme implementovat
+UMS-5678"**.
+
+Automatizovaný pool (přejmenovávané sloty, manifest, akvizice a uvolnění
+skillem) byl zvážen a **zamítnut** — jeho pasti (zámky adresářů při
+přejmenování, `MB_ROOT` přeskakující mezi dvěma repozitáři, manifest jako
+externí stav mimo repozitáře) plynuly právě z toho, že životní cyklus řídil
+agent zevnitř sezení. Analýza je zaznamenaná v části „Zamítnuté varianty".
 
 ## Kontext a nalezená mrtvá místa
 
@@ -77,8 +87,39 @@ od každého tipu včetně dávno mrtvých.
 `UMS-1494-description-k-workflow`.
 
 **9. Popsaný, ale nepostavitelný worktree pool.** Kontrakt nese podsekci
-„Future worktree pool (interface only — not implemented)" s manifestem a
-mechanikou, kterou nikdo nepostaví — izolaci vyřeší pool klonů v druhé položce.
+„Future worktree pool (interface only — not implemented)" s manifestem
+a mechanikou, kterou nikdo nepostaví — izolace se řeší volbou workspace
+uživatelem a větví na místě.
+
+**10. Vrstva odkazuje na cestu ledgeru, která už neexistuje.** Upstream
+zavedl adresář per plán (`.superpowers/sdd/<plan-basename>/`) právě proto, že
+plochá cesta způsobovala reálnou kontaminaci — `RELEASE-NOTES.md` to popisuje
+jako *„observed in the wild, with multiple contamination rounds"*. Vrstva ale
+na plochou `.superpowers/sdd/progress.md` odkazuje dodnes: v PostCompact hooku
+[settings.json](../../../ums/.claude/settings.json), v [tech.md](../../tech.md)
+a v pěti `mb-*` skillech. **Po kompaktaci uprostřed plánu tedy vrstva posílá
+agenta na neexistující soubor** a ztratí kontext progresu.
+
+**11. Kandidáti playbooku mají fixní cestu s přepisovacím pravidlem.**
+Kontrakt nechává soubor s cizím slugem na prvním řádku **přepsat** a zdůvodňuje
+to tím, že patří práci, která *„already finished or was abandoned"* — což
+předpokládá sériovou práci. Při přepínání mezi **živými** tikety v jednom
+workspace to pravidlo maže živé důkazy, a ty existují jen tam: harvestová brána
+z nich čerpá na konci větve. Je to tatáž chyba, jakou upstream opravil u svého
+ledgeru (mrtvé místo 10), jen u souboru, který vlastní UMS.
+
+**12. Limit aktivních položek je zdůvodněný „per clone".** Kontrakt to opírá
+o věty *„one active work item per clone, because `context.md` holds one pin"*.
+Pin ale drží **každá větev vlastní**, takže text čtený doslova zakazuje začít
+tiket B, dokud je aktivní tiket A — přičemž A je aktivní na své vlastní větvi,
+což je právě ten zamýšlený postup. Mechanika je správná (lokální sken čte
+pracovní strom, tedy aktuální větev); špatné je zdůvodnění a s ním i chování
+brány.
+
+**13. Chybí operace „odložit".** Vrstva umí práci **dokončit** (finishing +
+harvest) a **opustit** (`mb-abort`). Nemá nic pro „nechám to rozdělané a vrátím
+se" — a to je přesně to, co opakovaně používaný workspace potřebuje, protože
+prokládání tiketů je jeho hlavní režim.
 
 Mimo tento návrh, ale zjištěné a hodné zápisu: tři trackované `.cmd` skripty
 (`Doc/Tools/!GenerateAll.cmd`, `Doc/Tools/GenerateCharakteristika_a_popis_produktu_DATASYS_UMS.cmd`,
@@ -96,8 +137,34 @@ zadrátovanou natvrdo.
 | 5 | `baseRef` a `protectedBranches` jsou **konfigurace repozitáře** | Vrstva je redistribuovatelná (mrtvá místa 1, 2) |
 | 6 | `doc-index.ps1` filtruje podle **poslední aktivity větve**, ne data commitu | Opravuje falešná negativa a zároveň zrychluje (mrtvé místo 7) |
 | 7 | Podsekce worktree poolu se z kontraktu **maže** | Popsané a špatné rozhraní je horší než žádné; zákaz worktrees jako takový zůstává |
+| 8 | **„Volný workspace" je derivovaný stav gitu**, ne záznam v evidenci | Tři příkazy nemohou zastarat ani lhát; ruší potřebu manifestu |
+| 9 | Hranice odpovědnosti: **agent nikdy nezničí nic, co nejde získat z `origin`** | Jediné pravidlo, ze kterého jde odvodit celou dělbu; totožné s dvouúrovňovou push policy |
+| 10 | Limit aktivních položek je **per větev**, a zastaví jen práci neobnovitelnou z `origin` | Commitnutá a pushnutá práce jiného tiketu **je** zaparkovaná; nejčastější případ musí být bez ptaní (mrtvé místo 12) |
+| 11 | Nová operace **`mb-park`**; kandidáti playbooku dostanou cestu per slug a park je commitne na větev | Doplňuje chybějící třetí konec životního cyklu (mrtvé místo 13) a činí zaparkovanou práci **celou** obnovitelnou z `origin` (mrtvé místo 11) |
+| 12 | Pool workspaců se **nezavádí**; volbu a zakládání workspace vlastní uživatel | Pasti poolu plynuly z toho, že životní cyklus řídil agent zevnitř sezení — viz níže |
 
 Zamítnuté varianty:
+
+- **Automatizovaný pool workspaců** (přejmenovávané sloty, manifest, akvizice
+  a uvolnění skillem). Zamítnuto po analýze sedmi pastí, z nichž čtyři plynou
+  z toho, že životní cyklus řídí agent zevnitř sezení: **(a)** `CLAUDE_PROJECT_DIR`
+  je fixní od začátku sezení a `MB_ROOT` je `git rev-parse --show-toplevel`, takže
+  by přeskakoval mezi dvěma repozitáři podle pracovního adresáře jednotlivého
+  volání — a náhradním cílem je základní workspace checkoutnutý na bázi, tedy ten
+  jediný, který má zůstat čistý; **(b)** Windows zamkne adresář, který je
+  pracovním adresářem běžícího procesu, takže sezení nemůže při uvolnění
+  přejmenovat samo sebe; **(c)** manifest by musel ležet mimo všechny repozitáře
+  (u klonů není sdílená `.git`), tedy mimo `CLAUDE_PROJECT_DIR`, s atomicitou
+  a zastaráváním; **(d)** nic by nebránilo dvěma sezením v jednom slotu.
+  Zbylé tři pasti (chybějící hooky v čerstvém klonu, `--reference` bez
+  `--dissociate`, zbytky po předchozím tiketu) jsou řešitelné a **tento návrh je
+  řeší** jako součást vstupní brány, protože platí i pro workspace vyrobený
+  uživatelem.
+- **Worktree pool místo klonů.** Měřením zamítnuto: klon monorepa má 25 GB,
+  z toho `.git` jen 4,1 GB (841 MiB packy + 3,3 GB LFS). Pracovní strom a build
+  output, tedy ~21 GB, potřebuje linked worktree úplně stejně — úspora by byla
+  16 %, ne většina. Zdůvodnění zákazu worktrees v kontraktu („worktree creation
+  is expensive") tedy neplatí ani obráceně.
 
 - **Zachovat `--no-ff` mergem v základním workspace.** Zachovalo by jeden
   pojmenovaný merge commit na tiket, ale integrace by dál procházela lokální
@@ -113,24 +180,45 @@ Zamítnuté varianty:
 
 **V rozsahu:** kontrakt v2.6; tři overlay fragmenty; `pre-push` a
 `guard-git-push.mjs` (seznam z konfigurace, dvě hlášky); `install-git-hooks.ps1`
-(generování seznamu); `doc-index.ps1` (konfigurace + filtr aktivity);
-`mb-architect-review`, `mb-jira-update`, `mb-state`, `mb-git-commit`;
+(generování seznamu); `doc-index.ps1` (konfigurace + filtr aktivity); **nový
+skill `mb-park`**; rozšíření `mb-state` na orákulum způsobilosti workspace;
+`mb-architect-review`, `mb-jira-update`, `mb-harvest`, `mb-git-commit`; oprava
+ploché cesty ledgeru v [settings.json](../../../ums/.claude/settings.json)
+a v pěti `mb-*` skillech; přesun kandidátů playbooku na cestu per slug;
 [CLAUDE.md](../../../CLAUDE.md) a [ums/CLAUDE.md.sample](../../../ums/CLAUDE.md.sample);
 Memory Bank dokumenty tohoto repa; čtyři existující testovací sady plus jedna
 nová.
 
-**Mimo rozsah:** pool klonů a adopce tří existujících ad-hoc klonů (druhá
-položka); mazání zbylých tiketových větví na `origin`; branch permissions na
-serveru; oprava tří `.cmd` skriptů se zadrátovaným `_datasys`.
+**Mimo rozsah:** automatizovaný pool workspaců a adopce tří existujících ad-hoc
+klonů; zakládání workspace (vlastní uživatel — návrh jen ověřuje způsobilost);
+mazání zbylých tiketových větví na `origin`; branch permissions na serveru;
+oprava tří `.cmd` skriptů se zadrátovaným `_datasys`.
 
 ## Technický návrh
 
 ### 1. Model větví a integrace
 
-**Založení.** `git fetch origin`, pak `git branch <TICKET>-<kebab-slug>
-origin/<baseRef>`. Žádná lokální báze, tedy ani dnešní „fetch + fast-forward
-lokální báze". Jméno větve je `<TICKET>-<kebab-slug>` v ASCII; existující větve
-s diakritikou se nepřejmenovávají. Bez tiketu se použije `<kebab-slug>` sám.
+**Založení.** `git fetch origin`, pak `git switch -c <TICKET>-<kebab-slug>
+origin/<baseRef>` — **vždy s explicitním výchozím bodem**, nikdy implicitní
+tvar. Žádná lokální báze, tedy ani dnešní „fetch + fast-forward lokální báze".
+Jméno větve je `<TICKET>-<kebab-slug>` v ASCII; existující větve s diakritikou
+se nepřejmenovávají. Bez tiketu se použije `<kebab-slug>` sám.
+
+Implicitní tvar je totiž nejpravděpodobnější destruktivní chyba celého modelu:
+`git switch -c UMS-5678` spuštěné na větvi `UMS-1234` založí novou větev z 1234
+a vtáhne do historie 5678 její pin v `context.md` i její aktivní pár. Proto
+k tomu patří **mechanická postkondice**, která tu chybu chytí strukturálně
+místo disciplínou — hned po založení musí platit:
+
+- `proposals/active/` je prázdný nebo chybí;
+- `context.md` je ve stavu `IDLE`.
+
+Když neplatí, větev vznikla z něčeho jiného: **STOP**, větev smazat, zopakovat.
+
+**Báze nikdy nesmí nést `ACTIVE` stav.** Věta „nová větev z báze = čistý štít"
+platí jen za tohoto invariantu. Zaručuje ho harvest před integrací (Option 1
+harvestuje vždy), ale kontroluje ho `mb-state` — kdyby jednou selhal, každá
+další větev zdědí cizí pin.
 
 **Lokální báze se v tiketovém klonu nepoužívá.** Pokud v něm existuje
 (adoptovaný klon), neaktualizuje se a nemerguje. Jediné místo, kde je báze
@@ -214,8 +302,8 @@ patří **před** handoff push.
 
 **Konflikt `memory-bank/context.md`** se při mergi báze řeší vždy ponecháním
 verze tiketové větve — cíleně `git checkout --ours memory-bank/context.md`,
-nikdy `merge -X ours` na celý merge. Je to stav tohoto klonu, ne fakt o
-produktu. U `proposals/active/` konflikt nevzniká (jiný slug = jiné soubory);
+nikdy `merge -X ours` na celý merge. Je to stav **této větve**, ne fakt
+o produktu. U `proposals/active/` konflikt nevzniká (jiný slug = jiné soubory);
 konflikt na **témže** slugu je kolize dvou aktérů, tedy STOP.
 
 ### 3. Konfigurace repozitáře
@@ -288,16 +376,183 @@ při deklarovaném záměru.
   přes `git log --stdin`;
 - `-BranchGlob` se aplikuje **před** filtrem aktivity, ne po něm.
 
+### 6. Disciplína workspace: dělba odpovědnosti a uzavřená smyčka
+
+Workspace zakládá a vybírá **uživatel**. Používá se opakovaně, takže při vstupu
+do nové práce v něm mohou ležet zbytky té předchozí. Tato sekce definuje, kdo
+za co odpovídá a jak smyčka začíná a končí.
+
+#### 6.1 Jediná hranice odpovědnosti
+
+**Agent nikdy nesmí zničit nic, co nejde získat zpátky z `origin`.** Z toho se
+odvodí všechno ostatní:
+
+- **Obnovitelné z `origin`** — pushnuté větve, build output, ledger plánu, jehož
+  návrh je už archivovaný. S tím smí agent hýbat sám; chyba nic nestojí.
+- **Neobnovitelné** — necommitnuté změny, položky ve stashi, nepushnuté commity,
+  nasbíraní kandidáti playbooku. To agent **nikdy nemaže**: buď zachová, nebo
+  zastaví a zeptá se.
+
+Rozhodnutí o neobnovitelných zbytcích patří **uživateli** (jen on ví, jestli je
+to smetí nebo cennost), **detekce a předložení agentovi** (uživatel si nesmí
+muset pamatovat, že má něco zkontrolovat), a všechno mechanicky ověřitelné je
+čistě na agentovi bez otázek. Je to tatáž hranice, jakou vrstva už používá
+u pushe: vlastní věc si agent udělá sám, o nevratné se ptá.
+
+#### 6.2 „Volný workspace" je derivovaný stav, ne evidence
+
+Workspace je bez zbytků, právě když jsou všechny tři výstupy prázdné:
+
+```
+git status --porcelain              # čistý pracovní strom
+git stash list                      # žádný odložený stav
+git log --branches --not --remotes  # nic nepushnutého
+```
+
+Tím se ruší jakákoli potřeba manifestu — stav se **derivuje z reality**, takže
+nemůže zastarat ani lhát. Ignorovaný build output se v `--porcelain` neobjeví,
+takže se řeší jen to, co skutečně někoho zajímá.
+
+Zbytky se dělí na dvě třídy a to rozdělení je pro bránu nosné:
+
+- **V cestě** — špinavý pracovní strom a stash. Blokují bezpečné přepnutí větve,
+  takže musí být vyřešené.
+- **Pouze přítomné** — nepushnuté commity na *jiných* větvích a kandidáti jiných
+  slugů. Neblokují nic; jen se ohlásí a agent na ně nesmí sáhnout.
+
+#### 6.3 Vstupní brána
+
+**Fáze 0 — způsobilost workspace.** Vlastní agent, fail-closed, bez otázek:
+`MB_ROOT` a existence `memory-bank/`; konfigurace a `baseRef`; **kontrola git
+hooků** (`git rev-parse --git-path hooks/pre-push` a case-sensitive marker
+`UMS pre-push guard`; při chybění `install-git-hooks.ps1` s fail-closed
+vyhodnocením exit kódu); `core.hooksPath` nenastavený nebo relativní;
+`git fetch origin`.
+
+Kontrola hooků je v tomto modelu **nejdůležitější agentí povinnost**, protože
+workspace zakládá uživatel a git hooky se s klonem nepřenášejí — bez ní se
+první tiket v novém workspace rozjede bez publikační záruky.
+
+**Fáze 1 — inventura zbytků.** Tři příkazy z 6.2 plus sken kandidátů,
+roztříděné podle obnovitelnosti a podle toho, co je v cestě.
+
+**Fáze 2 — právě jedno rozhodnutí uživatele**, a jen když je v cestě něco
+neobnovitelného: **zaparkovat** (doporučeno, jde-li o soudržnou práci) nebo
+**zahodit** (s vypsaným potvrzením, jako discard ve finishing). Možnost „nechat
+ležet" v témže workspace neexistuje — špinavý strom bezpečné přepnutí
+neumožňuje; kdo chce zbytky opravdu nechat, musí si vybrat jiný workspace, a to
+mu agent řekne.
+
+**Fáze 3 — určení záměru:**
+
+| Zjištění | Výsledek |
+|---|---|
+| Lokální větev pro tiket existuje | **resume** — přepnout, ověřit postkondice, ohlásit stav z checkboxů plánu a ledgeru |
+| Tiket je aktivní na cizí větvi na `origin` | **STOP** — kolizní kontrola (sekce 1 a 5) |
+| V `proposals/next/` čeká předběžný návrh | aktivace dle kontraktu |
+| Nic z toho | **nová větev** z `origin/<baseRef>` s postkondicí (sekce 1) |
+
+**Fáze 4** — zápis pinu a vstup do workflow.
+
+**Nejčastější případ musí být bez ptaní.** Strom čistý, stojíte na `UMS-1234`,
+`context.md` je `ACTIVE` na jejím slugu: dnešní limit aktivních prací by to
+zastavil, ale ta práce je commitnutá a pushnutá, tedy **už zaparkovaná**. Brána
+se proto zastaví jen tehdy, když aktivní slug na **aktuální větvi** není
+obnovitelný z `origin`; jinak jen ohlásí „UMS-1234 zůstává zaparkovaný na své
+větvi" a pokračuje.
+
+#### 6.4 Přepínání a nová operace `mb-park`
+
+**Nebezpečný případ přepnutí není to zablokované, ale tichý přenos.** Git nese
+necommitnuté změny s sebou, když je soubor na cílové větvi shodný — a pin
+napsaný pro tiket A, který takhle přijede na větev B, je stav, ze kterého se
+člověk nevymotá. Pravidlo: `git status --porcelain` prázdný, **žádné přepínání
+přes `git stash`, žádný auto-stash** — doslova tatáž formulace, jakou
+`mb-architect-review` už používá při branch syncu, aby vrstva neměla dvě různá
+pravidla na totéž. Přepínat se smí **jen na hranicích fází**, nikdy uprostřed
+tasku.
+
+Protože se pushuje po každém commitu, je „čisto a zapushováno" normální stav,
+takže to pravidlo prakticky nic nestojí.
+
+**`mb-park`** doplňuje chybějící třetí konec životního cyklu (dokončit /
+opustit / **odložit**): commitnout vše (`mb-git-commit`), pushnout, ohlásit
+zbytky, a **nechat větev checkoutnutou** — žádné zbytečné přepnutí znamená
+žádný zbytečný rebuild. `context.md` zůstává `ACTIVE` na zaparkované větvi;
+proto je per-branch semantika pinu nosná.
+
+**Kandidáti playbooku dostanou cestu per slug**
+(`.superpowers/playbook-candidates/<slug>.md`) a `mb-park` je přidá na tiketovou
+větev (`git add -f`). Tím je zaparkovaná práce **celá** obnovitelná z `origin`
+včetně důkazů, takže definice volného workspace v 6.2 platí bez výjimky
+a v tiketu lze pokračovat v jakémkoli workspace. Harvestová brána je přečte,
+schválené přeloží do `playbook.md` a soubor při archivaci smaže. Přepisovací
+semantika kontraktu zůstává **uvnitř** slugu; mizí jen ztráta napříč tikety.
+
+Je to vědomá výjimka z pravidla „scratch je git-ignored" a platí jen pro tento
+jeden soubor. Jazykový kontrakt ji unese: kandidáti jsou AI-facing, tedy
+anglicky, a do češtiny se překládají teprve při zápisu do `playbook.md`.
+
+**Životní cyklus se spouští na vlastní větvi tiketu.** Harvest, `mb-abort`
+i finalizace Jiry — jinak se archivuje cizí pár.
+
+### 7. Co se s větví nepřepne
+
+Memory Bank v repozitáři je výhoda i nevýhoda a stojí za to ji pojmenovat.
+**Výhoda: `git checkout` JE přepnutí kontextu** — tiketová větev je úplná,
+sebeopisná jednotka práce (návrh, plán, pin i kód v jednom commit grafu), takže
+není co ztratit ani co srovnávat. **Nevýhoda je zrcadlová: co není v gitu, se
+nepřepne.**
+
+| Co | Přepne se s větví? | Důsledek |
+|---|---|---|
+| `context.md`, `proposals/` | **ano** (trackované) | výhoda: checkout = přepnutí kontextu |
+| `.superpowers/sdd/<plan_slug>/` ledger | ne, ale je **per plán** | bezpečné; návrat k tiketu najde ledger, kde byl. Progres je navíc uložený dvojmo — checkboxy plánu jsou trackované, takže ledger je komfort, ne jediný záznam |
+| `.superpowers/playbook-candidates/` | ne | řešeno cestou per slug a commitem při parkování (6.4) |
+| build output (`obj/`, `bin/`, `DistOut/`) | ne | **rebuild na každé přepnutí** — přijatá cena za absenci poolu; proto se přepíná jen na hranicích fází |
+| git hooky | ne (leží mimo pracovní strom) | v pořádku; instalace se ověřuje ve fázi 0 |
+
+**Jedno sezení na workspace.** Dvě sezení v jednom klonu si perou o HEAD a git
+operace uprostřed buildu ho rozbije. Práce na více tiketech je proto
+**prokládaná, ne paralelní** — „tiket A čeká na review, přepnu na B". Skutečný
+paralelismus vyžaduje víc workspaců, a ty vyrábí uživatel.
+
+**Vidět odloženou práci** je nová potřeba, kterou přináší prokládání: `mb-state`
+vypíše lokální tiketové větve s jejich pinem a datem posledního commitu (jeden
+`git show <branch>:memory-bank/context.md` na větev), aby otázka „co mám
+rozpracovaného?" měla odpověď.
+
+### 8. Tabulka odpovědností
+
+| Věc | Detekuje | Rozhoduje | Provádí | Fail mode |
+|---|---|---|---|---|
+| Git hooky ve workspace | agent | — | agent | fail-closed, bez hooku se nepracuje |
+| Konfigurace, `baseRef` | agent | — | agent | fallback na default |
+| Špinavý strom, stash | agent | **uživatel** | agent dle volby | STOP, nikdy auto-stash |
+| Nepushnuté commity na jiných větvích | agent | **uživatel** | nikdo (jen report) | agent nemaže |
+| Kandidáti jiných slugů | agent | **uživatel** | nikdo | agent nepřepisuje |
+| Build output | — | — | nikdo | nikdy `git clean` |
+| Lokální větev obsažená v bázi | agent | — | agent smí smazat | — |
+| Volba a založení workspace | — | **uživatel** | uživatel | agent jen ověří způsobilost |
+| Založení tiketové větve | agent | — | agent | postkondice `active/` + `IDLE` |
+| Push do báze | agent připraví | **uživatel** | uživatel | `pre-push` hook |
+
 ## Dopady
 
 **Kontrakt v2.5 → 2.6.** Mění se *Publication Contract* (publikační body →
 pravidlo push-po-commitu, refspecový příkaz, integrační sekvence se stropem dvou
 kol), *Cross-Branch Visibility* (zakládání z `origin/<baseRef>` bez lokální
-báze), *Architect Review Gate* (jméno větve, merge asymetrie) a *Fail-Closed
-Behavior* (nemožný base sync, strop integračních kol). Přidávají se sekce **Base
-Sync & Drift Detection** a **Repository Configuration**. Maže se podsekce
-„Future worktree pool (interface only — not implemented)"; zákaz worktrees
-zůstává beze změny.
+báze), *Architect Review Gate* (jméno větve, merge asymetrie), *Fail-Closed
+Behavior* (nemožný base sync, strop integračních kol), *Active Work Item*
+(limit **per větev** a jen pro práci neobnovitelnou z `origin`, plus postkondice
+založení) a *Playbook Contract* (kandidáti na cestě per slug, commit při
+parkování, brána je čte pro aktuální slug). Přidávají se sekce **Base Sync
+& Drift Detection**, **Repository Configuration** a **Workspace Discipline**
+(hranice odpovědnosti, definice volného workspace, vstupní brána, parkování).
+V *Scope Locku* se upraví výčet scratch souborů o novou cestu kandidátů a jednu
+pojmenovanou výjimku, že právě tento soubor se při parkování commituje.
+Maže se podsekce „Future worktree pool (interface only — not implemented)";
+zákaz worktrees zůstává beze změny.
 
 **Tři overlaye.** `brainstorming` — zakládání větve z `origin/<baseRef>`.
 `subagent-driven-development` — base sync před prvním dispatchem, push po každém
@@ -321,8 +576,12 @@ mergi báze `merge-base(<base>, HEAD)` rovno tipu báze, takže derivace
 | [tech.md](../../tech.md) | pin kontraktu (dnes uvádí 2.3, tedy už teď zpožděný o dvě verze), nový `ums-repo.json` a generovaný seznam, počty asercí, změřený výkon `doc-index.ps1` |
 | `mb-architect-review` | branch sync, merge asymetrie, rozpoznání větve podle kódu tiketu |
 | `mb-jira-update` | spouštěč finalizace = ověřený FF push |
-| `mb-state` | přidat vzdálenost od báze (`git rev-list --count HEAD..origin/<baseRef>`) |
+| `mb-state` | **rozšíření na read-only orákulum způsobilosti workspace**: je volný (tři příkazy z 6.2), co je tu zaparkovaného (pin a datum na každou lokální tiketovou větev), co je v cestě, vzdálenost od báze (`git rev-list --count HEAD..origin/<baseRef>`), kontrola invariantu `IDLE` na bázi. Zůstává read-only — jednající skilly jsou oddělené |
+| **`mb-park`** (nový) | commit, push, ohlášení zbytků, commit kandidátů (`git add -f`), větev zůstává checkoutnutá; `context.md` zůstává `ACTIVE` |
+| `mb-harvest` | čte kandidáty z cesty per slug (i commitnuté) a soubor při archivaci maže |
 | `mb-git-commit` | zůstává „nikdy nepushuje"; formulovat tak, aby to nekolidovalo s pravidlem push-po-commitu (pushuje volající) |
+| [settings.json](../../../ums/.claude/settings.json) | PostCompact hook: opravit plochou `.superpowers/sdd/progress.md` na cestu per plán (mrtvé místo 10) |
+| pět `mb-*` skillů | tatáž oprava ploché cesty ledgeru (`mb-act`, `mb-git-commit`, `mb-git-message`, `mb-jira-update` a další nález greppem) |
 
 **Playbook se v taskech nepíše.** `playbook.md` má konzultační režim — postupy
 k práci s větvemi se během práce sbírají jako kandidáti do
@@ -342,6 +601,11 @@ vynechání symrefu `HEAD`, pořadí `-BranchGlob`; fixtury s explicitně nastav
 větev s týmž tiketem musí být v kolizní kontrole stále hlášená. Nová sada pro
 čtení konfigurace a fallbacky, s vlastní kopií `_assert.ps1` dle konvence repa.
 
+`mb-park` a rozšířený `mb-state` zůstávají **čistě instrukční Markdown** —
+kontroly z 6.2 jsou obyčejné git příkazy v těle skillu, takže nový spustitelný
+kód nevzniká a testovatelný povrch se nezvětšuje. Jediná nová sada je tedy ta
+konfigurační.
+
 **Jedno měření.** [tech.md](../../tech.md) přiznává, že výkon `doc-index.ps1` je
 ověřený jen v malém měřítku (3 větve, 1–2 s; rozpočet do 15 s při stovkách větví
 neověřen). Skript je read-only, takže jedno měření proti skutečnému monorepu je
@@ -359,3 +623,8 @@ protože mrtvé větve se přestanou procházet.
 | **Odstupňovaná verifikace svede k přeskakování testů** i tam, kde je průnik zřejmý | Rozhodnutí je uživatelovo a průnik se vypisuje jmenovitě, takže je viditelné, co se přeskakuje. |
 | **Souběžná integrace dvou aktérů** zacyklí smyčku fetch–merge–push | Strop dvě kola, pak STOP a report. |
 | **Upstream drift** rozbije kotvu finishing fragmentu | Existující detektor: miss `ANCHOR-BEFORE` shodí revendor, což je zamýšlené chování, ne chyba k obejití. |
+| **Rebuild na každé přepnutí** mezi tikety v jednom workspace | Vědomě přijatá cena za absenci poolu. Zmírňuje ji pravidlo přepínat jen na hranicích fází a to, že uživatel může pro paralelní práci použít druhý workspace. |
+| **Dvě sezení v jednom workspace** si perou o HEAD | Pravidlo „jedno sezení na workspace" je konvence, kterou nemá co vynutit; `mb-state` ale nesoulad větve a pinu ohlásí, takže se to projeví hned, ne u pushe. |
+| **Uživatel obejde vstupní bránu** a začne pracovat bez ověření hooků | Nejde zabránit. Zmírnění: kontrola je fail-closed a levná, a `pre-push` chybí jen v čerstvém klonu — v opakovaně používaném workspace je už nainstalovaný. |
+| **`git add -f` na kandidáty** je výjimka z pravidla „scratch je git-ignored" a může se rozšířit | Výjimka je pojmenovaná, platí pro jeden soubor a soubor se při archivaci maže, takže se v repozitáři nekumuluje. |
+| **Heuristika „obnovitelné z `origin`" selže**, když je `origin` nedostupný | Fáze 0 začíná `git fetch origin`; jeho selhání je STOP, protože bez čerstvé znalosti `origin` nelze o obnovitelnosti rozhodnout. |
