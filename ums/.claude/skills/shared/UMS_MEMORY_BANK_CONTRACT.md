@@ -330,7 +330,10 @@ configuration at all: `install-git-hooks.ps1` generates a plain text list from
 it into `<git-common-dir>/ums-protected-branches`, and the hook reads that.
 **Changing the list therefore requires a new run of the installer** — the
 generated file is a build product of the configuration, not a second source of
-truth.
+truth. The same safer-side degradation binds the installer: if the configuration
+loader is missing or the list cannot be written, it still installs the hook, so
+protection lands at the built-in list and the run reports exit 4 — never at an
+uninstalled hook, which would leave the shared branches unprotected altogether.
 
 `mb-init` populates the configuration by detecting it from the repository
 topology. The first version needs no approval (the same exception, for the same

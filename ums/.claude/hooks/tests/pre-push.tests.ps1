@@ -85,12 +85,16 @@ $installScript = Join-Path $PSScriptRoot '..\install-git-hooks.ps1'
 # Runs the real installer capturing BOTH its output and its exit code. The
 # exit code is part of its contract with sync-with-monorepo.ps1: "installed
 # and proven live" must never be indistinguishable from "guarantee absent".
-function Invoke-Installer([string] $RepoDir, [string] $Src) {
-    if (-not $Src) { $Src = (Join-Path $PSScriptRoot '..') }
-    $out = & pwsh -NoProfile -File $installScript -RepoRoot $RepoDir -SourceDir $Src 2>&1 | Out-String
+function Invoke-InstallerScript([string] $Script, [string] $RepoDir, [string] $Src) {
+    $out = & pwsh -NoProfile -File $Script -RepoRoot $RepoDir -SourceDir $Src 2>&1 | Out-String
     # Flat = whitespace-collapsed copy; phrase assertions run against it so a
     # console line wrap in the captured output cannot break them.
     return @{ Out = $out; Flat = ($out -replace '\s+', ' '); Code = $LASTEXITCODE }
+}
+
+function Invoke-Installer([string] $RepoDir, [string] $Src) {
+    if (-not $Src) { $Src = (Join-Path $PSScriptRoot '..') }
+    return Invoke-InstallerScript $installScript $RepoDir $Src
 }
 
 $res = Invoke-Installer $work $null
@@ -713,28 +717,47 @@ Assert-Eq $r.Code 0 'konfigurovaný seznam vestavěný NAHRAZUJE (main není chr
 # later cases keep rewriting, so a generated file there could not be told from
 # a hand-written one.
 #
-# `develop` is configured alongside `Branches/*` on purpose. The installer's
-# own proof runs the hook, which resolves the list relative to the working
-# directory, so the fixture's list is what the reject run reads — a
+# `develop` is configured alongside the extra pattern on purpose. The
+# installer's own proof runs the hook, which resolves the list relative to the
+# working directory, so the fixture's list is what the reject run reads — a
 # configuration that dropped `develop` would fail that run and the exit code
 # asserted below would be about the wrong thing.
+#
+# The extra pattern is `Maint/*`, deliberately NOT `Branches/*`: this fork's own
+# memory-bank/ums-repo.json contains `Branches/*`, so if the installer's proof
+# ever read the WRONG repository's list again (it resolves the list from the
+# current directory, and the suite runs from this fork's root), a stale
+# `Branches/*` would give the right answer for the wrong reason and the
+# regression would pass unnoticed. `Maint/*` cannot appear in this fork's list.
 # ---------------------------------------------------------------------------
-$root8 = Join-Path ([IO.Path]::GetTempPath()) ("mbgen-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
-$origin8 = Join-Path $root8 'origin.git'
-$work8 = Join-Path $root8 'work'
-New-Item -ItemType Directory -Force -Path $origin8, $work8 | Out-Null
-& git init --bare -q -b develop $origin8 | Out-Null
-& git init -q -b develop $work8 | Out-Null
-Invoke-GitOk $work8 @('remote', 'add', 'origin', $origin8) | Out-Null
-'base' | Out-File -FilePath (Join-Path $work8 'f.txt') -Encoding utf8
-Invoke-GitOk $work8 @('add', '-A') | Out-Null
-Invoke-GitOk $work8 @('commit', '-m', 'base') | Out-Null
-Invoke-GitOk $work8 @('push', '-u', 'origin', 'develop') | Out-Null
 
-New-Item -ItemType Directory -Force -Path (Join-Path $work8 'memory-bank') | Out-Null
-Set-Content -LiteralPath (Join-Path $work8 'memory-bank\ums-repo.json') -Value @'
+# work clone + bare origin with `develop` published - the minimum needed to
+# prove a REAL push is refused. Cases 17 and 18 need three independent ones.
+function New-PushFixture([string] $Label) {
+    $r = Join-Path ([IO.Path]::GetTempPath()) ("$Label-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $o = Join-Path $r 'origin.git'
+    $w = Join-Path $r 'work'
+    New-Item -ItemType Directory -Force -Path $o, $w | Out-Null
+    & git init --bare -q -b develop $o | Out-Null
+    & git init -q -b develop $w | Out-Null
+    Invoke-GitOk $w @('remote', 'add', 'origin', $o) | Out-Null
+    'base' | Out-File -FilePath (Join-Path $w 'f.txt') -Encoding utf8
+    Invoke-GitOk $w @('add', '-A') | Out-Null
+    Invoke-GitOk $w @('commit', '-m', 'base') | Out-Null
+    Invoke-GitOk $w @('push', '-u', 'origin', 'develop') | Out-Null
+    return @{ Root = $r; Origin = $o; Work = $w }
+}
+
+function Write-RepoConfig([string] $RepoDir, [string] $Json) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $RepoDir 'memory-bank') | Out-Null
+    Set-Content -LiteralPath (Join-Path $RepoDir 'memory-bank\ums-repo.json') -Value $Json
+}
+
+$fx8 = New-PushFixture 'mbgen'
+$work8 = $fx8.Work
+Write-RepoConfig $work8 @'
 {
-  "protectedBranches": ["develop", "Branches/*"]
+  "protectedBranches": ["develop", "Maint/*"]
 }
 '@
 
@@ -742,23 +765,113 @@ $res = Invoke-Installer $work8 $null
 $listFile8 = Join-Path (Resolve-GitCommonDir $work8) 'ums-protected-branches'
 Assert-True (Test-Path -LiteralPath $listFile8) 'generátor: instalátor vytvořil <git-common-dir>/ums-protected-branches'
 $generated = if (Test-Path -LiteralPath $listFile8) { [IO.File]::ReadAllText($listFile8) } else { '' }
-Assert-Match $generated '(?m)^Branches/\*\s*$' 'generátor: seznam obsahuje vzor Branches/* z konfigurace'
+Assert-Match $generated '(?m)^Maint/\*\s*$' 'generátor: seznam obsahuje vzor Maint/* z konfigurace'
 Assert-True (-not $generated.Contains("`r")) 'generátor: seznam je zapsaný s LF, bez CR (ne-msys sh nic nekonvertuje)'
 Assert-Eq $res.Code 0 'generátor: instalátor končí kódem 0 (seznam zapsán, hook ověřen)'
-# The third proof run must actually have happened - a decorative one would
-# leave every other assertion here green.
-Assert-Match $res.Flat "generated protected-branch list is consulted \(pattern 'Branches/\*'\)" 'generátor: self-test dokazuje, že hook vygenerovaný seznam skutečně čte'
+# The third proof run must actually have happened AND must have read THIS
+# fixture's list: `Maint/*` exists nowhere else, so a proof run reading another
+# repository's list cannot produce this line.
+Assert-Match $res.Flat "generated protected-branch list is consulted \(pattern 'Maint/\*'\)" 'generátor: self-test dokazuje, že hook čte seznam TOHOTO repozitáře (vzor Maint/* nikde jinde není)'
 
 # ... and the branch the built-in list cannot cover is rejected by a REAL push,
-# with no file written by this suite.
-Invoke-GitOk $work8 @('checkout', '-q', '-b', 'Branches/5.37') | Out-Null
+# with no file written by this suite. This is the assertion that stands on its
+# own: no synthetic stdin, no cwd of the installer's choosing.
+Invoke-GitOk $work8 @('checkout', '-q', '-b', 'Maint/5.37') | Out-Null
 'maint' | Out-File -FilePath (Join-Path $work8 'h.txt') -Encoding utf8
 Invoke-GitOk $work8 @('add', '-A') | Out-Null
 Invoke-GitOk $work8 @('commit', '-m', 'maint') | Out-Null
-$r = Invoke-GitTry $work8 @('push', 'origin', 'HEAD:refs/heads/Branches/5.37')
-Assert-True (($r.Code -ne 0) -and ($r.Out -match 'UMS') -and ($null -eq (Get-Sha $origin8 'refs/heads/Branches/5.37'))) 'generátor: push do Branches/5.37 je po instalaci zamítnutý (vzor se dostal ke hooku bez ručního zápisu)'
+$r = Invoke-GitTry $work8 @('push', 'origin', 'HEAD:refs/heads/Maint/5.37')
+Assert-True (($r.Code -ne 0) -and ($r.Out -match 'UMS') -and ($null -eq (Get-Sha $fx8.Origin 'refs/heads/Maint/5.37'))) 'generátor: push do Maint/5.37 je po instalaci zamítnutý (vzor se dostal ke hooku bez ručního zápisu)'
 
-Remove-Item -Recurse -Force $root8
+# The installer's third proof run stands on ONE property of the hook, so that
+# property is pinned here instead of being left to a comment: a BRANCH-CREATING
+# push (zero remote sha) is judged by the protected-branch rule ALONE. With a
+# fabricated remote sha the hook reaches `git merge-base --is-ancestor`, which
+# cannot resolve it and rejects EVERY branch name with a `UMS: ` message — which
+# is exactly what made an earlier version of that run decorative: it "proved"
+# the list was consulted for names nothing protected. Both spellings are
+# measured, so the discriminator cannot quietly stop discriminating.
+$hook8 = (Resolve-GitPath $work8 'hooks/pre-push') -replace '\\', '/'
+function Invoke-SyntheticPush([string] $Ref, [string] $RemoteSha) {
+    $out = & $gitBash -c 'cd "$1" && printf "%s %s %s %s\n" "$2" "$3" "$2" "$4" | "$5" origin verify' _ `
+        ($work8 -replace '\\', '/') $Ref $fakeSha $RemoteSha $hook8 2>&1 | Out-String
+    return @{ Out = $out; Code = $LASTEXITCODE }
+}
+$unprotZero = Invoke-SyntheticPush 'refs/heads/zzz-not-protected' $zeroSha
+$maintZero = Invoke-SyntheticPush 'refs/heads/Maint/x' $zeroSha
+$unprotFake = Invoke-SyntheticPush 'refs/heads/zzz-not-protected' $fakeSha
+Assert-True (($unprotZero.Code -eq 0) -and ($maintZero.Code -ne 0) -and ($maintZero.Out -match 'HEAD:Maint/x')) "tvar 3. důkazního běhu ROZLIŠUJE: se nulovou remote sha projde nechráněné jméno (exit $($unprotZero.Code)) a konfigurovaný vzor je zamítnut jako sdílená větev (exit $($maintZero.Code))"
+Assert-True ($unprotFake.Code -ne 0) "kontrola téhož: s vymyšlenou remote sha hook zamítne i nechráněné jméno (exit $($unprotFake.Code), non-fast-forward) — proto ten tvar důkaz použít NESMÍ"
+
+Remove-Item -Recurse -Force $fx8.Root
+
+# ---------------------------------------------------------------------------
+# 18. EXIT CODE 4 - the configuration path failed, but protection must land at
+# the BUILT-IN level, never at "no hook". Both triggers are covered, because
+# both used to degrade the wrong way: an unwritable list, and a missing
+# configuration loader (which THREW before any hook was installed - and
+# sync-with-monorepo.ps1 downgrades a non-zero exit to a warning, so an
+# incomplete layer copy left `develop` completely unprotected, strictly less
+# than the hook's own fallback would have given).
+# ---------------------------------------------------------------------------
+
+# 18a. Unwritable list: a DIRECTORY occupies the target path, so WriteAllText
+# fails while everything else about the run is fine.
+$fx9 = New-PushFixture 'mbexit4w'
+New-Item -ItemType Directory -Force -Path (Join-Path (Resolve-GitCommonDir $fx9.Work) 'ums-protected-branches') | Out-Null
+Write-RepoConfig $fx9.Work @'
+{
+  "protectedBranches": ["develop", "Maint/*"]
+}
+'@
+$res = Invoke-Installer $fx9.Work $null
+Assert-Eq $res.Code 4 'exit 4 (zápis): nezapsatelný seznam končí kódem 4, ne nulou ani 1'
+Assert-Match $res.Flat 'could not write the protected-branch list' 'exit 4 (zápis): instalátor hlásí selhání zápisu nahlas'
+Assert-Match $res.Flat 'list is NOT in place \(the list could not be written\)' 'exit 4 (zápis): souhrn pojmenuje příčinu'
+Assert-True (Test-Path -LiteralPath (Resolve-GitPath $fx9.Work 'hooks/pre-push')) 'exit 4 (zápis): hook je i tak nainstalovaný'
+Add-Content -Path (Join-Path $fx9.Work 'f.txt') -Value 'change'
+Invoke-GitOk $fx9.Work @('commit', '-am', 'develop change') | Out-Null
+$developBefore9 = Get-Sha $fx9.Origin 'refs/heads/develop'
+$r = Invoke-GitTry $fx9.Work @('push', 'origin', 'develop')
+Assert-True (($r.Code -ne 0) -and ((Get-Sha $fx9.Origin 'refs/heads/develop') -eq $developBefore9)) 'exit 4 (zápis): develop je chráněný vestavěným seznamem (degradace vede k méně ochrany, ne k žádné)'
+Remove-Item -Recurse -Force $fx9.Root
+
+# 18b. Missing loader. The installer is run from a COPY of the hooks directory
+# with no sibling skills\shared\scripts, so BOTH resolution paths (-SourceDir
+# and $PSScriptRoot) miss - which is exactly the shape a partially-deployed
+# layer takes.
+$fx10 = New-PushFixture 'mbexit4l'
+$hooksCopy = Join-Path $fx10.Root 'hooks-copy'
+New-Item -ItemType Directory -Force -Path $hooksCopy | Out-Null
+Copy-Item -Force (Join-Path $PSScriptRoot '..\install-git-hooks.ps1') $hooksCopy
+Copy-Item -Force (Join-Path $PSScriptRoot '..\pre-push') $hooksCopy
+Write-RepoConfig $fx10.Work @'
+{
+  "protectedBranches": ["develop", "Maint/*"]
+}
+'@
+$res = Invoke-InstallerScript (Join-Path $hooksCopy 'install-git-hooks.ps1') $fx10.Work $hooksCopy
+Assert-Eq $res.Code 4 'exit 4 (loader): chybějící Get-UmsRepoConfig.ps1 končí kódem 4, ne výjimkou'
+Assert-Match $res.Flat 'Get-UmsRepoConfig.ps1 not found' 'exit 4 (loader): instalátor pojmenuje chybějící loader nahlas'
+Assert-Match $res.Flat 'degrading to NO hook would not be' 'exit 4 (loader): instalátor říká, proč hook přesto instaluje'
+Assert-Match $res.Flat 'list is NOT in place \(the configuration loader' 'exit 4 (loader): souhrn pojmenuje příčinu'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path (Resolve-GitCommonDir $fx10.Work) 'ums-protected-branches'))) 'exit 4 (loader): žádný seznam se nevygeneroval (konfigurace se nefabrikuje)'
+# THE POINT of the whole case: the hook is installed and really guards.
+Assert-True (Test-Path -LiteralPath (Resolve-GitPath $fx10.Work 'hooks/pre-push')) 'exit 4 (loader): hook JE nainstalovaný'
+Add-Content -Path (Join-Path $fx10.Work 'f.txt') -Value 'change'
+Invoke-GitOk $fx10.Work @('commit', '-am', 'develop change') | Out-Null
+$developBefore10 = Get-Sha $fx10.Origin 'refs/heads/develop'
+$r = Invoke-GitTry $fx10.Work @('push', 'origin', 'develop')
+Assert-True (($r.Code -ne 0) -and ((Get-Sha $fx10.Origin 'refs/heads/develop') -eq $developBefore10)) 'exit 4 (loader): reálný push na develop je zamítnutý (vestavěný seznam platí, hook není mrtvý)'
+# Honest scope of exit 4: the CONFIGURED extra pattern is NOT enforced. Asserted
+# so nobody reads "exit 4" as "everything still protected".
+Invoke-GitOk $fx10.Work @('checkout', '-q', '-b', 'Maint/5.37') | Out-Null
+'maint' | Out-File -FilePath (Join-Path $fx10.Work 'h.txt') -Encoding utf8
+Invoke-GitOk $fx10.Work @('add', '-A') | Out-Null
+Invoke-GitOk $fx10.Work @('commit', '-m', 'maint') | Out-Null
+$r = Invoke-GitTry $fx10.Work @('push', 'origin', 'HEAD:refs/heads/Maint/5.37')
+Assert-Eq $r.Code 0 'exit 4 (loader): konfigurovaný vzor Maint/* vynucený NENÍ - přesně to nenulový kód říká'
+Remove-Item -Recurse -Force $fx10.Root
 
 Remove-Item -Recurse -Force $root
 
