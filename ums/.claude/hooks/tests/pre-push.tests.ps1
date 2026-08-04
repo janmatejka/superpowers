@@ -827,7 +827,8 @@ Write-RepoConfig $fx9.Work @'
 $res = Invoke-Installer $fx9.Work $null
 Assert-Eq $res.Code 4 'exit 4 (zápis): nezapsatelný seznam končí kódem 4, ne nulou ani 1'
 Assert-Match $res.Flat 'could not write the protected-branch list' 'exit 4 (zápis): instalátor hlásí selhání zápisu nahlas'
-Assert-Match $res.Flat 'list is NOT in place \(the list could not be written\)' 'exit 4 (zápis): souhrn pojmenuje příčinu'
+Assert-Match $res.Flat 'could not be refreshed \(the list could not be written\)' 'exit 4 (zápis): souhrn pojmenuje příčinu'
+Assert-Match $res.Flat 'no usable list on disk, so pre-push falls back to its built-in patterns' 'exit 4 (zápis): bez použitelného seznamu na disku je tvrzení o vestavěných vzorech pravdivé'
 Assert-True (Test-Path -LiteralPath (Resolve-GitPath $fx9.Work 'hooks/pre-push')) 'exit 4 (zápis): hook je i tak nainstalovaný'
 Add-Content -Path (Join-Path $fx9.Work 'f.txt') -Value 'change'
 Invoke-GitOk $fx9.Work @('commit', '-am', 'develop change') | Out-Null
@@ -854,7 +855,7 @@ $res = Invoke-InstallerScript (Join-Path $hooksCopy 'install-git-hooks.ps1') $fx
 Assert-Eq $res.Code 4 'exit 4 (loader): chybějící Get-UmsRepoConfig.ps1 končí kódem 4, ne výjimkou'
 Assert-Match $res.Flat 'Get-UmsRepoConfig.ps1 not found' 'exit 4 (loader): instalátor pojmenuje chybějící loader nahlas'
 Assert-Match $res.Flat 'degrading to NO hook would not be' 'exit 4 (loader): instalátor říká, proč hook přesto instaluje'
-Assert-Match $res.Flat 'list is NOT in place \(the configuration loader' 'exit 4 (loader): souhrn pojmenuje příčinu'
+Assert-Match $res.Flat 'could not be refreshed \(the configuration loader' 'exit 4 (loader): souhrn pojmenuje příčinu'
 Assert-True (-not (Test-Path -LiteralPath (Join-Path (Resolve-GitCommonDir $fx10.Work) 'ums-protected-branches'))) 'exit 4 (loader): žádný seznam se nevygeneroval (konfigurace se nefabrikuje)'
 # THE POINT of the whole case: the hook is installed and really guards.
 Assert-True (Test-Path -LiteralPath (Resolve-GitPath $fx10.Work 'hooks/pre-push')) 'exit 4 (loader): hook JE nainstalovaný'
@@ -872,6 +873,103 @@ Invoke-GitOk $fx10.Work @('commit', '-m', 'maint') | Out-Null
 $r = Invoke-GitTry $fx10.Work @('push', 'origin', 'HEAD:refs/heads/Maint/5.37')
 Assert-Eq $r.Code 0 'exit 4 (loader): konfigurovaný vzor Maint/* vynucený NENÍ - přesně to nenulový kód říká'
 Remove-Item -Recurse -Force $fx10.Root
+
+# ---------------------------------------------------------------------------
+# 19. STALE LIST on a degraded run. The exit-4 summary NAMES the protection in
+# force, so it must not assert the built-in set when a list from an earlier run
+# is still on disk: that list is non-empty, so the hook's built-in fallback
+# never fires. Measured before the fix: a repo installed with `develop` +
+# `Maint/*`, re-run without a loader, reported develop/main/master/release/* as
+# enforced while a push to `main` went straight through.
+#
+# The fix must NOT be "delete the stale list" - with a configuration richer than
+# the built-in set that would REMOVE protection. It must be to read the file
+# back (no loader needed for a text file) and report what is genuinely in force.
+# ---------------------------------------------------------------------------
+$fx11 = New-PushFixture 'mbstale'
+Write-RepoConfig $fx11.Work @'
+{
+  "protectedBranches": ["develop", "Maint/*"]
+}
+'@
+$res = Invoke-Installer $fx11.Work $null
+Assert-Eq $res.Code 0 'zastaralý seznam: první instalace (s loaderem) proběhne normálně'
+
+# Second run from a hooks copy with no loader: the list stays as the first run
+# left it, and the summary must say so instead of claiming the built-in set.
+$hooksCopy11 = Join-Path $fx11.Root 'hooks-copy'
+New-Item -ItemType Directory -Force -Path $hooksCopy11 | Out-Null
+Copy-Item -Force (Join-Path $PSScriptRoot '..\install-git-hooks.ps1') $hooksCopy11
+Copy-Item -Force (Join-Path $PSScriptRoot '..\pre-push') $hooksCopy11
+$res = Invoke-InstallerScript (Join-Path $hooksCopy11 'install-git-hooks.ps1') $fx11.Work $hooksCopy11
+Assert-Eq $res.Code 4 'zastaralý seznam: běh bez loaderu končí kódem 4'
+Assert-Match $res.Flat 'patterns in force: develop, Maint/\*' 'zastaralý seznam: souhrn vypíše vzory, které SKUTEČNĚ platí (přečtené z disku)'
+Assert-Match $res.Flat 'may be STALE' 'zastaralý seznam: souhrn říká, že seznam nebyl obnoven a může být zastaralý'
+# The false claim that motivated this case must be gone: `main` is NOT in force
+# here, so the summary must not say it is.
+Assert-NotMatch $res.Flat 'built-in patterns \(develop, main, master, release/\*\)' 'zastaralý seznam: výstup vestavěné vzory vůbec nejmenuje (main mezi platnými není, tvrdit to by byla lež)'
+# ... and the reality the claim would have misrepresented, by real push: `main`
+# passes (the stale list does not contain it), `Maint/5.37` is still rejected.
+Invoke-GitOk $fx11.Work @('checkout', '-q', '-b', 'Maint/5.37') | Out-Null
+'maint' | Out-File -FilePath (Join-Path $fx11.Work 'h.txt') -Encoding utf8
+Invoke-GitOk $fx11.Work @('add', '-A') | Out-Null
+Invoke-GitOk $fx11.Work @('commit', '-m', 'maint') | Out-Null
+$rMain = Invoke-GitTry $fx11.Work @('push', 'origin', 'HEAD:refs/heads/main')
+$rMaint = Invoke-GitTry $fx11.Work @('push', 'origin', 'HEAD:refs/heads/Maint/5.37')
+Assert-True (($rMain.Code -eq 0) -and ($rMaint.Code -ne 0)) "zastaralý seznam: realita odpovídá hlášení - main projde (main=$($rMain.Code)), Maint/5.37 je zamítnuta (maint=$($rMaint.Code))"
+Remove-Item -Recurse -Force $fx11.Root
+
+# ---------------------------------------------------------------------------
+# 20. The proof's own ACCEPT names are configuration-sensitive, and a repository
+# is free to protect the patterns they fall under.
+# ---------------------------------------------------------------------------
+
+# 20a. A configuration matching the third run's CONTROL name silently removed
+# the only guard against that run going decorative again. The install must still
+# succeed (the consultation claim is carried by the shared-branch message), but
+# the lost control must be REPORTED, not invisible.
+$fx12 = New-PushFixture 'mbctlskip'
+Write-RepoConfig $fx12.Work @'
+{
+  "protectedBranches": ["develop", "ums-*"]
+}
+'@
+$res = Invoke-Installer $fx12.Work $null
+Assert-Eq $res.Code 0 'kontrola 3. běhu: konfigurace pokrývající jméno kontroly instalaci neshodí'
+Assert-Match $res.Flat "generated protected-branch list is consulted \(pattern 'ums-\*'\)" 'kontrola 3. běhu: samotný důkaz konzultace platí dál'
+Assert-Match $res.Flat "covers the control name 'ums-install-verify-unprotected' too" 'kontrola 3. běhu: přeskočení kontroly je nahlas ohlášené, ne neviditelné'
+Assert-NotMatch $res.Flat 'control for that run: the same synthetic shape' 'kontrola 3. běhu: nehlásí se kontrola, která neproběhla'
+Remove-Item -Recurse -Force $fx12.Root
+
+# 20b. `feature/*` is an ordinary thing to protect, and it covers the DEFAULT
+# accept name. Before the pre-check the hook rejected it correctly, the proof
+# read that as a broken hook and the installer exited 1 — refusing to install a
+# working guard. A substitute accept name must be used instead.
+$fx13 = New-PushFixture 'mbacceptcfg'
+Write-RepoConfig $fx13.Work @'
+{
+  "protectedBranches": ["develop", "feature/*"]
+}
+'@
+$res = Invoke-Installer $fx13.Work $null
+Assert-Eq $res.Code 0 'accept vzor: konfigurace chránící feature/* instalaci neshodí (dřív exit 1)'
+Assert-Match $res.Flat 'installed \+ verified live' 'accept vzor: hook je ověřený jako živý'
+Assert-NotMatch $res.Flat "accepts a synthetic ticket-branch push to 'feature/" 'accept vzor: nepoužije se jméno, které konfigurace chrání'
+Assert-Match $res.Flat "accepts a synthetic ticket-branch push to '(ums-install-verify-accept|zzz-install-verify-accept)'" 'accept vzor: použije se náhradní jméno, které konfigurace nechrání'
+Remove-Item -Recurse -Force $fx13.Root
+
+# 20c. A configuration protecting `*` covers every candidate, so the accept half
+# cannot run at all - it must be skipped and reported, not turned into a failure.
+$fx14 = New-PushFixture 'mbacceptall'
+Write-RepoConfig $fx14.Work @'
+{
+  "protectedBranches": ["*"]
+}
+'@
+$res = Invoke-Installer $fx14.Work $null
+Assert-Eq $res.Code 0 'accept vzor: konfigurace chránící * instalaci neshodí'
+Assert-Match $res.Flat 'ACCEPT half of the proof was skipped' 'accept vzor: přeskočení accept poloviny důkazu je ohlášené'
+Remove-Item -Recurse -Force $fx14.Root
 
 Remove-Item -Recurse -Force $root
 

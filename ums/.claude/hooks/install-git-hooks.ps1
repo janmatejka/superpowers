@@ -61,11 +61,12 @@
       2  NOT installed: a foreign pre-push was already there and was left
          untouched — the guarantee is absent here
       3  installed, but no shell was available to run the proof
-      4  installed and proven live, but the protected-branch list is NOT in
-         place — either it could not be WRITTEN, or the configuration LOADER
-         (Get-UmsRepoConfig.ps1) was not found next to the hooks directory —
-         so only the hook's built-in patterns are enforced and any configured
-         pattern beyond them is not
+      4  installed and proven live, but the protected-branch list could NOT be
+         REFRESHED — either it could not be written, or the configuration
+         loader (Get-UmsRepoConfig.ps1) was not found next to the hooks
+         directory — so what is enforced is whatever list was already on disk
+         (possibly stale), or the hook's built-in patterns when there is none;
+         the run reads that back and names it rather than assuming
 
     CONFIGURATION. The protected-branch patterns are configuration (contract:
     "Repository Configuration"), not hook body: pre-push is POSIX sh and
@@ -76,12 +77,17 @@
     every working tree of the repository (unless core.hooksPath moves the hook
     itself, see above).
 
-    Anything that goes wrong on the CONFIGURATION path degrades to the hook's
-    built-in list — never to an uninstalled hook. A missing loader or an
-    unwritable list still installs pre-push and still exits 4, because the
-    hook's own fallback IS the built-in list: landing at built-in protection
-    is right, landing at NO protection would invert the very principle the
-    hook states about its fallback (contract: "Repository Configuration").
+    Anything that goes wrong on the CONFIGURATION path degrades to whatever
+    protection is already in place — never to an uninstalled hook. A missing
+    loader or an unwritable list still installs pre-push and still exits 4,
+    because the hook's own fallback IS the built-in list: landing at built-in
+    protection is right, landing at NO protection would invert the very
+    principle the hook states about its fallback (contract: "Repository
+    Configuration"). Such a run then READS THE LIST BACK off disk — no loader
+    and no JSON parser is needed for a text file — and names the patterns
+    genuinely in force, because a list left by an earlier run is non-empty and
+    the built-in fallback therefore never fires. The rule: never name a
+    protection this script has not established.
 
     Safe to re-run: re-installs over its own previously-installed copy,
     identified by a marker comment on one of the file's first few lines
@@ -154,6 +160,17 @@ $BUILTIN_PROTECTED = @('develop', 'main', 'master', 'release/*')
 # the control is skipped rather than reported as a failure.
 $EXTRA_CONTROL_NAME = 'ums-install-verify-unprotected'
 
+# Candidates for the ACCEPT case, tried in order. More than one because a
+# repository is free to protect `feature/*` (ordinary) or `ums-*` - and a
+# configured pattern covering the accept name would make the hook reject it
+# CORRECTLY, which the proof would then misread as a broken hook and refuse to
+# install over. Structurally different names so one pattern cannot cover all.
+$ACCEPT_NAME_CANDIDATES = @(
+    'feature/ums-install-verify',
+    'ums-install-verify-accept',
+    'zzz-install-verify-accept'
+)
+
 $EXIT_OK = 0
 $EXIT_PROOF_FAILED = 1
 $EXIT_NOT_INSTALLED = 2
@@ -187,10 +204,10 @@ if ($loaderFound) {
 else {
     Write-Host "WARNING: Get-UmsRepoConfig.ps1 not found next to the hooks directory - this copy of the layer is incomplete:" -ForegroundColor Red
     Write-Host "           $loader" -ForegroundColor Red
-    Write-Host '         The protected-branch list cannot be generated, so pre-push falls back to its built-in' -ForegroundColor Red
-    Write-Host '         list (develop, main, master, release/*). The hook IS still installed below: degrading to' -ForegroundColor Red
-    Write-Host '         built-in protection is correct, degrading to NO hook would not be. Any configured' -ForegroundColor Red
-    Write-Host '         pattern beyond the built-in list is NOT enforced here (exit 4).' -ForegroundColor Red
+    Write-Host '         The protected-branch list cannot be generated from the configuration, so this run does' -ForegroundColor Red
+    Write-Host '         NOT refresh it. The hook IS still installed below: degrading to whatever protection is' -ForegroundColor Red
+    Write-Host '         already in place is correct, degrading to NO hook would not be. What is ACTUALLY' -ForegroundColor Red
+    Write-Host '         enforced is read back off disk and named in the summary (exit 4).' -ForegroundColor Red
     $script:ListFailed = $true
     $script:ListFailedReason = 'the configuration loader Get-UmsRepoConfig.ps1 was not found'
 }
@@ -213,19 +230,52 @@ function Resolve-HookDestination([string] $Root, [string] $Name) {
     return (Join-Path $Root $rel)
 }
 
-# Materializes protectedBranches as one glob per line for the pre-push hook,
-# which is POSIX sh and cannot parse JSON. Written into the COMMON dir so a
-# single install covers every working tree of the repository.
-function Write-ProtectedList([string] $Root, [string[]] $Patterns) {
+# The COMMON dir, not the per-worktree one, so a single install covers every
+# working tree of the repository.
+function Resolve-ProtectedListPath([string] $Root) {
     $common = & git -C $Root rev-parse --git-common-dir 2>&1
     if ($LASTEXITCODE -ne 0) { throw "git rev-parse --git-common-dir failed for '$Root': $common" }
     $common = (($common | Select-Object -First 1).ToString()).Trim()
     if (-not [IO.Path]::IsPathRooted($common)) { $common = Join-Path $Root $common }
-    $dst = Join-Path $common $PROTECTED_LIST_NAME
+    return (Join-Path $common $PROTECTED_LIST_NAME)
+}
+
+# Materializes protectedBranches as one glob per line for the pre-push hook,
+# which is POSIX sh and cannot parse JSON.
+function Write-ProtectedList([string] $Root, [string[]] $Patterns) {
+    $dst = Resolve-ProtectedListPath $Root
     $header = '# Generated by install-git-hooks.ps1 from memory-bank/ums-repo.json - do not edit.'
     $body = (@($header) + @($Patterns)) -join "`n"
     [IO.File]::WriteAllText($dst, $body + "`n", (New-Object Text.UTF8Encoding($false)))
     return $dst
+}
+
+# Reads the list BACK, the way the hook does - stripping `#` comments and blank
+# lines. Needed on the degraded paths, where the configuration is unavailable
+# but the list from an EARLIER run may still be sitting there: no loader and no
+# JSON parser is required to read a text file, and a run that cannot refresh the
+# list must still be able to say what is genuinely in force. Reporting the
+# built-in set instead would be a claim about protection this run has not
+# established - measured false for `main` in exactly that situation.
+#
+# Returns $null when there is no usable list, i.e. when the hook's built-in
+# fallback really is what applies: no file, not a file (a directory can occupy
+# the path), unreadable, or nothing but comments and blanks. Never throws -
+# degraded REPORTING must not itself fail.
+function Read-ProtectedList([string] $Root) {
+    try {
+        $path = Resolve-ProtectedListPath $Root
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+        $lines = @(Get-Content -LiteralPath $path -ErrorAction Stop)
+        $patterns = @($lines |
+            ForEach-Object { ($_ -replace '#.*', '').Trim() } |
+            Where-Object { $_ })
+        if (@($patterns).Count -eq 0) { return $null }
+        return @{ Path = $path; Patterns = @($patterns) }
+    }
+    catch {
+        return $null
+    }
 }
 
 # git expands a leading ~ itself, so ~/hooks is NOT working-tree relative.
@@ -333,9 +383,31 @@ function Invoke-HookLine([string] $Shell, [string] $HookPath, [string] $Line) {
 # directory named "ums" (this layer's own deployment target included). Hence:
 # case-sensitive match on the hook's own message marker, AND an accept case
 # the broken hook cannot pass.
+#
+# Every run that expects a push to be ACCEPTED first checks its branch name
+# against the configuration: a repository protecting `feature/*` or `ums-*`
+# would make the hook reject that name CORRECTLY, and reading that as a broken
+# hook - refusing to install a working guard - is the wrong direction entirely.
+function Test-NameIsConfigured([string] $Name, [string[]] $Patterns) {
+    # PowerShell -like understands the same *, ? and [...] wildcards as the
+    # hook's `case` globs, and both sides are case-insensitive here (the hook
+    # lower-cases the ref and the patterns).
+    return (@($Patterns | Where-Object { $Name -like $_ }).Count -gt 0)
+}
+
 function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patterns) {
     $reject = Invoke-HookLine $Shell $HookPath "refs/heads/develop $SHA_FAKE refs/heads/develop $SHA_FAKE"
-    $accept = Invoke-HookLine $Shell $HookPath "refs/heads/feature/ums-install-verify $SHA_FAKE refs/heads/feature/ums-install-verify $SHA_ZERO"
+
+    $acceptName = @($ACCEPT_NAME_CANDIDATES | Where-Object { -not (Test-NameIsConfigured $_ $Patterns) }) |
+        Select-Object -First 1
+    $accept = $null
+    $acceptSkipReason = $null
+    if ($acceptName) {
+        $accept = Invoke-HookLine $Shell $HookPath "refs/heads/$acceptName $SHA_FAKE refs/heads/$acceptName $SHA_ZERO"
+    }
+    else {
+        $acceptSkipReason = "every candidate accept-case name ($($ACCEPT_NAME_CANDIDATES -join ', ')) is covered by a configured protected pattern, so no push here could legitimately be expected to pass"
+    }
 
     # Third run: proves the hook actually READS the generated list, not just
     # that its built-in fallback works. Uses the first configured pattern that
@@ -354,7 +426,7 @@ function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patter
         # Nothing to prove: the list this run exists to detect is not there,
         # and a legitimately failing run would be reported as a broken hook.
         $extra = $null
-        $skipReason = 'the protected-branch list is not in place, so there is no generated list to consult'
+        $skipReason = 'this run did not refresh the protected-branch list, so no rejection could be attributed to the configuration'
     }
     elseif (-not $extra) {
         if (@($candidates).Count -gt 0) {
@@ -367,6 +439,7 @@ function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patter
 
     $extraResult = $null
     $extraControl = $null
+    $controlSkipReason = $null
     if ($extra) {
         $sample = ($extra -replace '\*', 'x')
         # ZERO remote sha, exactly as the accept run uses. With a FABRICATED
@@ -385,15 +458,20 @@ function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patter
         # the decorative version from being reintroduced silently - flip
         # $extraRemote back to a fabricated sha and this control fails, so the
         # installer reports a failed proof instead of a false "verified".
-        # Skipped (not failed) in the pathological case where a repository's own
-        # patterns match the control name.
-        if (@($Patterns | Where-Object { $EXTRA_CONTROL_NAME -like $_ }).Count -eq 0) {
+        # Skipped (not failed) when a repository's own patterns match the control
+        # name - and the skip is REPORTED, because it silently removes the only
+        # thing standing between a decorative third run and a green install.
+        if (Test-NameIsConfigured $EXTRA_CONTROL_NAME $Patterns) {
+            $controlSkipReason = "the configuration covers the control name '$EXTRA_CONTROL_NAME' too, so the control could not be run - the run above still shows the list is consulted, but this install cannot demonstrate that it would notice if that run stopped discriminating"
+        }
+        else {
             $extraControl = Invoke-HookLine $Shell $HookPath "refs/heads/$EXTRA_CONTROL_NAME $SHA_FAKE refs/heads/$EXTRA_CONTROL_NAME $extraRemote"
         }
     }
 
     $saidUms = ($reject.Out -cmatch '(?m)^\s*UMS: ') -and ($reject.Out -cmatch 'Publication Contract')
-    $ok = ($reject.Code -ne 0) -and $saidUms -and ($accept.Code -eq 0)
+    $ok = ($reject.Code -ne 0) -and $saidUms
+    if ($null -ne $accept) { $ok = $ok -and ($accept.Code -eq 0) }
     if ($null -ne $extraResult) {
         # The SHARED-BRANCH message specifically, not any rejection: a
         # rejection for some other reason must not pass as "the list was
@@ -406,14 +484,17 @@ function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patter
         if ($null -ne $extraControl) { $ok = $ok -and ($extraControl.Code -eq 0) }
     }
     return @{
-        Ok           = $ok
-        Reject       = $reject
-        Accept       = $accept
-        Extra        = $extraResult
-        ExtraControl = $extraControl
-        ExtraPattern = $extra
-        ExtraSample  = $sample
-        SkipReason   = $skipReason
+        Ok                = $ok
+        Reject            = $reject
+        Accept            = $accept
+        AcceptName        = $acceptName
+        AcceptSkipReason  = $acceptSkipReason
+        Extra             = $extraResult
+        ExtraControl      = $extraControl
+        ControlSkipReason = $controlSkipReason
+        ExtraPattern      = $extra
+        ExtraSample       = $sample
+        SkipReason        = $skipReason
     }
 }
 
@@ -509,11 +590,20 @@ foreach ($hook in $installed) {
     }
     $proof = Test-HookIsLive $shell $hook.Path $protectedPatterns
     if ($proof.Ok) {
-        Write-Host "verified: pre-push rejects a synthetic push to 'develop' (exit $($proof.Reject.Code)) and accepts a synthetic ticket-branch push (exit 0)." -ForegroundColor Green
+        if ($null -ne $proof.Accept) {
+            Write-Host "verified: pre-push rejects a synthetic push to 'develop' (exit $($proof.Reject.Code)) and accepts a synthetic ticket-branch push to '$($proof.AcceptName)' (exit $($proof.Accept.Code))." -ForegroundColor Green
+        }
+        else {
+            Write-Host "verified: pre-push rejects a synthetic push to 'develop' (exit $($proof.Reject.Code))." -ForegroundColor Green
+            Write-Host "note: $($proof.AcceptSkipReason), so the ACCEPT half of the proof was skipped - the half a hook that cannot execute at all would also fail." -ForegroundColor Yellow
+        }
         if ($null -ne $proof.Extra) {
             Write-Host "verified: the generated protected-branch list is consulted (pattern '$($proof.ExtraPattern)') - it is NOT in the hook's built-in list, and a synthetic branch-creating push to '$($proof.ExtraSample)' was rejected as a shared branch (exit $($proof.Extra.Code))." -ForegroundColor Green
             if ($null -ne $proof.ExtraControl) {
                 Write-Host "          control for that run: the same synthetic shape with an unprotected name ('$EXTRA_CONTROL_NAME') came back clean (exit 0), so the run above discriminates instead of rejecting everything." -ForegroundColor Green
+            }
+            else {
+                Write-Host "note: $($proof.ControlSkipReason)." -ForegroundColor Yellow
             }
         }
         else {
@@ -527,8 +617,13 @@ foreach ($hook in $installed) {
         Write-Host 'WARNING: the installed pre-push hook did NOT behave like the UMS guard!' -ForegroundColor Red
         Write-Host "  protected-branch run: exit $($proof.Reject.Code) (expected non-zero with a 'UMS:' message)" -ForegroundColor Red
         Write-Host "    output: $($proof.Reject.Out.Trim())" -ForegroundColor Red
-        Write-Host "  ticket-branch run:    exit $($proof.Accept.Code) (expected 0, silent)" -ForegroundColor Red
-        Write-Host "    output: $($proof.Accept.Out.Trim())" -ForegroundColor Red
+        if ($null -ne $proof.Accept) {
+            Write-Host "  ticket-branch run:    exit $($proof.Accept.Code) (expected 0, silent, for '$($proof.AcceptName)')" -ForegroundColor Red
+            Write-Host "    output: $(([string]$proof.Accept.Out).Trim())" -ForegroundColor Red
+        }
+        else {
+            Write-Host "  ticket-branch run:    SKIPPED - $($proof.AcceptSkipReason)" -ForegroundColor Red
+        }
         if ($null -ne $proof.Extra) {
             Write-Host "  generated-list run:   exit $($proof.Extra.Code) (expected non-zero with the shared-branch message for '$($proof.ExtraSample)', from the configured pattern '$($proof.ExtraPattern)')" -ForegroundColor Red
             Write-Host "    output: $($proof.Extra.Out.Trim())" -ForegroundColor Red
@@ -547,7 +642,26 @@ foreach ($hook in $installed) {
 # Only when nothing worse happened: a configuration-path failure must never
 # mask an absent hook (2), a failed proof (1) or an unproven one (3).
 if ($script:ListFailed -and $exitCode -eq $EXIT_OK) {
-    Write-Host "summary: the protected-branch list is NOT in place ($script:ListFailedReason) - only the hook's built-in patterns (develop, main, master, release/*) are enforced here, any configured pattern beyond them is not." -ForegroundColor Red
+    Write-Host "summary: the protected-branch list could not be refreshed ($script:ListFailedReason)." -ForegroundColor Red
+    # Never name a protection this run has not established. A list left over from
+    # an EARLIER run is non-empty, so the hook's built-in fallback never fires and
+    # claiming "develop, main, master, release/* are enforced" would be false -
+    # measured: with a stale list of `develop` + `Branches/*`, a push to `main`
+    # went straight through while the summary asserted `main` was protected.
+    $inForce = Read-ProtectedList $RepoRoot
+    if ($null -ne $inForce) {
+        Write-Host '         What is ACTUALLY enforced here is the list already on disk, which this run did NOT' -ForegroundColor Red
+        Write-Host '         refresh, so it may be STALE with respect to memory-bank/ums-repo.json:' -ForegroundColor Red
+        Write-Host "           $($inForce.Path)" -ForegroundColor Red
+        Write-Host "           patterns in force: $($inForce.Patterns -join ', ')" -ForegroundColor Red
+        Write-Host '         Compare those against the configuration before relying on them; anything the' -ForegroundColor Red
+        Write-Host '         configuration adds beyond that list is NOT enforced here.' -ForegroundColor Red
+    }
+    else {
+        Write-Host '         There is no usable list on disk, so pre-push falls back to its built-in patterns' -ForegroundColor Red
+        Write-Host '         (develop, main, master, release/*) and any configured pattern beyond them is NOT' -ForegroundColor Red
+        Write-Host '         enforced here.' -ForegroundColor Red
+    }
     $exitCode = $EXIT_LIST_FAILED
 }
 
