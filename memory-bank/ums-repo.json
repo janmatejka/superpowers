@@ -1,0 +1,7 @@
+{
+  "baseRef": "origin/ums-memory-bank",
+  "protectedBranches": ["ums-memory-bank", "main", "master", "develop", "release/*", "Branches/*"],
+  "ticketPattern": "^UMS-[0-9]+",
+  "projectMarkers": ["*.csproj", "*.vcxproj", "*.sln", "package.json"],
+  "sharedRoots": ["ums/.claude/skills/shared/", "ums/.gitattributes"]
+}
