@@ -66,7 +66,7 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 | Klíč | Obsah |
 |---|---|
 | `hooks.SessionStart` | `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md` |
-| `hooks.PostCompact` | `systemMessage`: po kompaktaci znovu načíst kontrakt, `context.md` a při exekuci plánu i `.superpowers/sdd/progress.md` |
+| `hooks.PostCompact` | `systemMessage`: po kompaktaci znovu načíst kontrakt, `context.md` a při exekuci plánu i `.superpowers/sdd/<plan-basename>/progress.md` |
 | `hooks.PreToolUse` (`Write|Edit`) | `deny-superpowers-docs.mjs` — blokuje zápis do `docs/superpowers/**` a `docs/plans/**` |
 | `hooks.PreToolUse` (`Bash`) | `guard-git-push.mjs` — fail-open rychlé varování před pushem do chráněné větve nebo s `--no-verify`; NENÍ záruka, tou je git `pre-push` hook (níže) |
 | `hooks.PostToolUse` (`Write|Edit`) | `bpmn-validate.ps1` — validace BPMN v monorepu |

@@ -83,7 +83,7 @@ Read the root state first, then the work it points to:
 
 - read `<CTX_DIR>/context.md`
 - read the active proposal pair (or grandfathered legacy single file) referenced by the `Work item` slug (legacy `Proposal` accepted) in `## Active Work`
-- read any project docs explicitly needed for the current workflow step; task progress lives in the plan file's checkboxes and `.superpowers/sdd/progress.md`, not in `context.md`
+- read any project docs explicitly needed for the current workflow step; task progress lives in the plan file's checkboxes and `.superpowers/sdd/<plan-basename>/progress.md`, not in `context.md`
 
 Then:
 
@@ -123,7 +123,7 @@ This policy keeps context fresh while preventing redundant full reads between ta
 - **ACTIVE_WORK:** Root `context.md` contains active work; the referenced proposal pair (`design_<slug>.md` + `plan_<slug>.md`, legacy `proposal_<slug>-design.md` + `proposal_<slug>.md`, or a grandfathered single plan file) lives under `<PLAN_MB>/proposals/active/`. The sub-phase is read from the workflow artifacts, not from `context.md`:
   - **Design only** (no plan sibling yet): between brainstorming and writing-plans
   - **Pair complete, no task progress:** ready for subagent-driven-development / executing-plans
-  - **Tasks in progress:** plan checkboxes and `.superpowers/sdd/progress.md` show partial completion
+  - **Tasks in progress:** plan checkboxes and `.superpowers/sdd/<plan-basename>/progress.md` show partial completion
   - **All plan tasks complete:** ready for finishing-a-development-branch (harvest gate → `mb-harvest`)
 
 ### Write Safety Gate (MANDATORY)

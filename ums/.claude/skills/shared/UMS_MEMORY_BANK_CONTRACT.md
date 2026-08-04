@@ -286,7 +286,7 @@ Rules:
 - The pair is created by the superpowers workflow and is never duplicated into
   `docs/` or any parallel location.
 - Task progress lives in the plan file's checkboxes and in
-  `.superpowers/sdd/progress.md` — **not** in `context.md`.
+  `.superpowers/sdd/<plan-basename>/progress.md` — **not** in `context.md`.
 - **Archival asymmetry:** on **completion** (harvest → `completed/`) only the
   design half is retained; the plan half is **deleted** — after implementation
   its task steps are spent; code, git history and the harvested current-state
@@ -899,7 +899,7 @@ When anything important is missing or ambiguous:
   publication time; the same slug or ticket active on a foreign branch.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
-  `.superpowers/sdd/progress.md` ledger.
+  `.superpowers/sdd/<plan-basename>/progress.md` ledger.
 
 ## Resolution Protocol
 

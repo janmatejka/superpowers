@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"systemMessage\":\"Context was just compacted. Before continuing, invoke the Skill tool with skill: using-superpowers to re-establish how to find and use skills, re-read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md and memory-bank/context.md (Target MB Pin); if you are executing a plan, also re-read .superpowers/sdd/progress.md.\"}'"
+            "command": "echo '{\"systemMessage\":\"Context was just compacted. Before continuing, invoke the Skill tool with skill: using-superpowers to re-establish how to find and use skills, re-read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md and memory-bank/context.md (Target MB Pin); if you are executing a plan, also re-read the ledger of the plan you are executing: .superpowers/sdd/<plan-basename>/progress.md (per-plan directory; there is no flat progress.md).\"}'"
           }
         ]
       }

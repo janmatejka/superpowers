@@ -65,7 +65,7 @@ metadata:
   `KOLIZE AKTIVNÍ PRÁCE` finding is a warning here (mb-state
   never stops work) with the recommendation to resolve it before pinning new
   work.
-- Execution progress: does `.superpowers/sdd/progress.md` exist? (Presence =
+- Execution progress: does `.superpowers/sdd/<plan-basename>/progress.md` exist? (Presence =
   plan execution in flight; content shows the last completed task.)
 - Git: current branch (`git branch --show-current`), work on main/master is a
   warning.
@@ -83,7 +83,7 @@ Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
 Review: <žádné | ⏳ čeká na design review u architekta od YYYY-MM-DD>
 Zahájeno: <Started> <(⚠️ starší než 7 dní)>
-Exekuce: [.superpowers/sdd/progress.md nalezen — probíhá | nenalezen]
+Exekuce: [.superpowers/sdd/<plan-basename>/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
 Další aktivní proposaly: <žádné | ⚠️ výčet cizích slugů>
 Fronta (proposals/next/): <prázdná | výčet slugů s vlastnící MB>

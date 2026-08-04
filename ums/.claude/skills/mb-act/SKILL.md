@@ -16,7 +16,7 @@ Retired in Memory Bank v2 — Superpowers is the driving workflow
 (`<PLAN_MB>/proposals/active/plan_<slug>.md`, legacy `proposal_<slug>.md` naming grandfathered) via
 `subagent-driven-development` (recommended) or `executing-plans`, exactly as
 the plan's "For agentic workers" header says. Task progress lives in the plan
-checkboxes and `.superpowers/sdd/progress.md`, not in `context.md`.
+checkboxes and `.superpowers/sdd/<plan-basename>/progress.md`, not in `context.md`.
 
 Announce this redirect to the user in Czech. Do NOT execute any v1
 orchestration: do not write `context.md`, do not maintain an Implementation
