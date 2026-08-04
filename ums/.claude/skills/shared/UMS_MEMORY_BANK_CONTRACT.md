@@ -1,7 +1,11 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.5
-- Supersedes v2.4 (the plan half is never linked from a document: the
+- **Contract-Version:** 2.6
+- Supersedes v2.5 (integration is a fast-forward push of the ticket branch, so
+  the `--no-ff` convention is dropped; repository-specific values move out of
+  skill bodies into `<CTX_DIR>/ums-repo.json`; the active-work limit becomes
+  per-branch; workspace discipline and the park operation are added).
+- v2.5 superseded v2.4 (the plan half is never linked from a document: the
   `**Plán:**` field is dropped from the design header and cross-references
   between the halves run plan → design only, because the plan is deleted at
   harvest and every link to it dies in the archive).
@@ -33,7 +37,7 @@ Consumers of this contract:
    `<!-- UMS-OVERLAY -->` blocks (brainstorming, subagent-driven-development,
    finishing-a-development-branch).
 2. **`mb-*` utility skills** — `mb-init`, `mb-state`, `mb-scan`, `mb-sync`,
-   `mb-harvest`, `mb-abort`, `mb-git-commit`, `mb-git-message`,
+   `mb-harvest`, `mb-abort`, `mb-park`, `mb-git-commit`, `mb-git-message`,
    `mb-jira-update`.
 3. Any other agent or session working with Memory Bank documents.
 
@@ -89,7 +93,8 @@ Before reading or writing any Memory Bank file, verify that
 `mb-init` creates the standard `memory-bank/` structure in two modes:
 
 - **Orchestration root (`CTX_DIR`)** — creates `<MB_ROOT>/memory-bank/` with
-  proposal folders; leaves `context.md` absent. The orchestration root is not
+  proposal folders and `ums-repo.json` (see Repository Configuration); leaves
+  `context.md` absent. The orchestration root is not
   bound by the mandatory core (see Memory Bank Document Set). After `mb-init`,
   the next step is the superpowers workflow — Target-MB Discovery & Pinning
   (below) creates `context.md` during brainstorming.
@@ -172,12 +177,20 @@ evidence, a one-line `Proč:` travels with it — the reason is part of the
 procedure, not noise.
 
 **Candidate collection during work.** Procedural knowledge is gathered while
-the work happens, into `<MB_ROOT>/.superpowers/playbook-candidates.md`
-(git-ignored scratch, English, first line
-`# Playbook candidates — work item: <slug>`). A collection file whose first
-line carries a FOREIGN work-item slug is OVERWRITTEN: it is git-ignored
-scratch belonging to work that already finished or was abandoned, and its
-path is fixed, so there is no separate "new file" to start.
+the work happens, into
+`<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` (git-ignored scratch,
+English, first line `# Playbook candidates — work item: <slug>`). **One file per
+work-item slug.** The file of the CURRENT slug is OVERWRITTEN when its content
+is stale (a leftover from an earlier run of the same work item); files of
+FOREIGN slugs have their own paths and are never overwritten and never deleted.
+The former single fixed path assumed strictly serial work, so once live tickets
+were interleaved its overwrite rule deleted living evidence.
+
+**`mb-park` commits the current slug's file to the ticket branch** (`git add -f`,
+because `.superpowers/` is git-ignored), and the harvest deletes it after writing
+the approved entries into `playbook.md`. This is a **named exception** from "the
+scratch tree is git-ignored", valid for this one file only: parking must not
+lose evidence that exists nowhere else.
 
 Writers: implementer subagents report candidates in their report section
 `## Playbook candidates`; the driving session — the same actor named in
@@ -219,8 +232,10 @@ Explicitly **legal and outside this lock**:
 - Source-code changes anywhere in the repository.
 - The superpowers scratch tree `<MB_ROOT>/.superpowers/` (task briefs,
   implementer reports, review packages, progress ledger,
-  `playbook-candidates.md`) — git-ignored, ephemeral, owned by the superpowers
-  execution skills and the Playbook Contract.
+  `playbook-candidates/<slug>.md`) — git-ignored, ephemeral, owned by the
+  superpowers execution skills and the Playbook Contract. One named exception to
+  the git-ignored rule: `mb-park` commits the CURRENT slug's candidate file to
+  the ticket branch, so parking loses no evidence (see Playbook Contract).
 - Plan checkboxes and task-progress tracking inside the plan file and the
   `.superpowers/sdd/` ledger.
 
@@ -270,10 +285,180 @@ Other rules:
 - Enforced and consolidated by the `mb-link-audit` skill (read-only audit,
   `-Apply` for the mechanically determinable classes).
 
+## Repository Configuration
+
+**No repository-specific value may live in a skill body or in a script.** The
+layer is redistributable: a branch name like `develop`, a ticket prefix like
+`UMS-`, or a project marker file belongs to the repository that uses the layer,
+not to the layer itself.
+
+**Location: `<CTX_DIR>/ums-repo.json`.** Deliberately **not** in `.claude/`: the
+upstream `.gitignore` ignores every `.claude/` directory, so a file placed there
+would be untracked and would not travel with a clone. `CTX_DIR` is guaranteed to
+exist (Root Memory Bank Gate) and is tracked.
+
+Keys and their consumers — **a key without a named consumer is not
+introduced:**
+
+| Key | Consumers |
+|---|---|
+| `baseRef` | `mb-doc-index`, ticket-branch creation, base sync, integration |
+| `protectedBranches` | the `pre-push` hook (through the generated list below), `guard-git-push.mjs` |
+| `ticketPattern` | `mb-state`, the entry gate, `mb-architect-review` |
+| `projectMarkers`, `sharedRoots` | the intersection heuristic (see Base Sync & Drift Detection) |
+
+**A missing file is not an error, and the degradation leans to the safer
+side:** `baseRef` falls back to `origin/develop`; `protectedBranches` falls back
+to the built-in list, i.e. to *more* protection, never less; and without
+`projectMarkers` / `sharedRoots` the verification after a base merge is offered
+for **every** non-empty incoming diff rather than for none.
+
+`pre-push` is POSIX `sh` with no JSON parser available, so it does not read the
+configuration at all: `install-git-hooks.ps1` generates a plain text list from
+it into `<git-common-dir>/ums-protected-branches`, and the hook reads that.
+**Changing the list therefore requires a new run of the installer** — the
+generated file is a build product of the configuration, not a second source of
+truth.
+
+`mb-init` populates the configuration by detecting it from the repository
+topology. The first version needs no approval (the same exception, for the same
+reason, as the first `playbook.md` — there is nothing yet to overwrite and the
+detected values are verifiable against the repository itself); every later change
+does.
+
+## Base Sync & Drift Detection
+
+The base ref is merged into the ticket branch at **phase boundaries** only:
+
+- before `writing-plans`,
+- before dispatching the first task,
+- before a design-review request and before a design-review resume,
+- before the whole-branch review,
+- before `mb-harvest`.
+
+**Never in the middle of a task.** A task that starts on one tree and finishes on
+another cannot be reviewed against its own brief.
+
+Sequence at a boundary: `fetch` → `merge origin/<baseRef>` → intersection
+assessment → verification where it applies → commit → push.
+
+**Intersection assessment.** Both sets are computed **after `fetch` and before
+`merge`**, from the same merge-base:
+
+```bash
+MB=$(git merge-base HEAD origin/<baseRef>)
+prichozi=$(git diff --name-only $MB..origin/<baseRef>)
+vlastni=$(git diff --name-only  $MB..HEAD)
+```
+
+In the design phase the role of the **own** set is played by the target areas
+named in the design document — there is no code diff of one's own yet.
+
+**Mechanics without ecosystem knowledge.** Each path maps to the **nearest
+ancestor directory containing a match for `projectMarkers`** (a path with no such
+ancestor stays itself), and the intersection is sought over those owners; a path
+matching any pattern from `sharedRoots` is **always intersecting**. This is
+explicitly a **heuristic, not proof** — it decides whether verification is
+offered, never whether the work is correct.
+
+**Graduated verification:**
+
+- No intersection → no verification; a single-line statement of the fact is the
+  whole report.
+- Intersection → the agent lists the intersecting paths and **offers** a baseline
+  with a recommendation; the user decides.
+- A merge conflict counts as an intersection automatically.
+- In the design and design-review phases nothing is built, so it is purely an
+  offer.
+- Before dispatching the first task a baseline is mandatory already today.
+
+**STOP applies only where verification actually ran and came back red.** Someone
+else's breakage of the base is not repaired inside a ticket branch — report it
+and let the user decide.
+
+**Conflict handling.** The agent resolves merge conflicts only in files it
+changed on this branch itself; anything else is a STOP. A `context.md` conflict
+is always resolved by keeping the ticket branch's version, targeted:
+`git checkout --ours memory-bank/context.md` — **never `merge -X ours` over the
+whole merge**, which would silently drop incoming content everywhere else.
+`context.md` is the state of THIS branch, not a fact about the product. A
+conflict on the SAME slug in `proposals/active/` is two actors colliding over one
+work item, therefore a STOP.
+
+## Workspace Discipline
+
+A **workspace** is a clone the user works in. The user creates it and chooses
+it; it is used repeatedly and it carries the leftovers of previous work. The
+layer therefore treats a workspace as found, never as freshly provisioned.
+
+**The single boundary of responsibility: the agent never destroys anything that
+cannot be recovered from `origin`.**
+
+- **Recoverable** — pushed branches, build output, the ledger of an archived plan
+  — the agent may handle on its own.
+- **Non-recoverable** — uncommitted changes, stashes, unpushed commits, playbook
+  candidates — the agent NEVER deletes: it preserves them, or it stops and asks.
+
+The decision about non-recoverable content belongs to the user; detecting it and
+presenting it belongs to the agent.
+
+**"A free workspace" is a derived state, not a record.** It is derived from empty
+output of all three of `git status --porcelain`, `git stash list` and
+`git log --branches --not --remotes` — never from a flag or a bookkeeping file
+that can go stale.
+
+Leftovers split in two:
+
+- **In the way** — a dirty tree, a stash. They block a safe branch switch and
+  must be resolved.
+- **Merely present** — unpushed commits of other branches, candidate files of
+  other slugs. They are announced only; the agent does not touch them.
+
+**Entry gate**, in four phases:
+
+0. **Eligibility:** `MB_ROOT`, `memory-bank/`, the repository configuration, a
+   **fail-closed check of the git hooks**, `core.hooksPath` unset or relative,
+   and `git fetch origin`.
+1. **Leftover inventory** per the split above.
+2. **Exactly one user decision**, and only when something non-recoverable is in
+   the way: **park** it or **discard** it, with the confirmation spelled out.
+   "Leave it lying around" does not exist within the same workspace — that
+   option is what made leftovers ambiguous in the first place.
+3. **Intent:** a local branch for the ticket exists → resume; the ticket is
+   active on a foreign branch → STOP (cross-clone collision check); a
+   preliminary design draft waits in `next/` → activation; otherwise a new
+   branch.
+4. **Pin write** into `context.md`.
+
+The hook check is the most important agent duty in this model, because the user
+creates the workspace and **git hooks do not travel with a clone** — a workspace
+that looks exactly like a working one can be missing the whole publication
+guarantee (see Publication Contract).
+
+**Switching branches:** only with `git status --porcelain` empty, **no switching
+through `git stash`, no auto-stash** (the same rule as branch sync in
+`mb-architect-review`), and only at phase boundaries.
+
+**Park** (the `mb-park` skill) is the third end of a work item's life cycle,
+alongside completion (harvest) and abandonment (`mb-abort`): commit, push,
+announce the leftovers, commit the current slug's playbook candidates (Playbook
+Contract), leave the branch checked out, and leave `context.md` in `ACTIVE`
+state. Parked work is recoverable from `origin` by definition, which is why it
+does not block starting another ticket (Active Work Item).
+
+**One session per workspace.** Work on several tickets is interleaved, not
+parallel — two sessions in one clone would fight over the same working tree and
+the same `context.md`.
+
+Life-cycle operations (harvest, `mb-abort`, Jira finalization) always run on that
+ticket's own branch.
+
 ## Active Work Item (Design + Plan Pair)
 
-One active work item per repository = one **design + plan pair** in
-`<PLAN_MB>/proposals/active/`:
+One active work item per **branch** = one **design + plan pair** in
+`<PLAN_MB>/proposals/active/`. The limit is per branch because every branch
+carries its own pin in its own `context.md`; a parked work item on another branch
+therefore does not block starting a new one (see Workspace Discipline).
 
 - **`design_<slug>.md`** — the spec, written by `brainstorming`
   (intent source of truth).
@@ -442,9 +627,14 @@ identifiable — always before the design document is written.
    the user — finish it (`finishing-a-development-branch` → harvest) or
    abandon it (`mb-abort`) before pinning new work. Only `active/` counts;
    queued items in `next/` are ignored by this guard.
-   The two-actives guard stays LOCAL (one active work item per clone, because
-   `context.md` holds one pin); extending it to `origin` would forbid parallel
-   work across the team. Alongside it runs the **cross-clone collision check**:
+   The two-actives guard stays LOCAL; extending it to `origin` would forbid
+   parallel work across the team. **The limit is per BRANCH, not per workspace,
+   because each branch holds its own pin.** The guard therefore stops only when
+   the active slug on the CURRENT branch is **not recoverable from `origin`** —
+   it has uncommitted changes or unpushed commits. Committed and pushed work of
+   another ticket is **parked** (Workspace Discipline), and starting a new ticket
+   on a new branch is then normal operation: announce the parked item, do not
+   stop. Alongside it runs the **cross-clone collision check**:
    the SAME slug or the SAME Jira ticket active on a foreign branch is a
    fail-closed STOP (double work), and the report carries the branch and the last
    commit date so the user can tell an abandoned branch from live work. Foreign
@@ -581,7 +771,8 @@ code.
    `Work item` slug; the active proposal (pair or legacy single) exists in
    `<PLAN_MB>/proposals/active/` and matches the slug.
 2. **Affected MBs:** derive from
-   `git diff --name-only $(git merge-base <base> HEAD)..HEAD`, mapping each
+   `git diff --name-only $(git merge-base origin/<baseRef> HEAD)..HEAD`
+   (`baseRef` per Repository Configuration), mapping each
    changed path to its nearest owning `memory-bank/` directory. Fall back to
    asking the user when the diff is unavailable.
 3. **Harvest style — CURRENT-STATE (MANDATORY):** the current-state documents
@@ -611,15 +802,18 @@ code.
    move.
 
    **Playbook gate (a non-autonomous step of the harvest):** when
-   `<MB_ROOT>/.superpowers/playbook-candidates.md` is non-empty AND its slug
-   matches the current work item, present the candidates with their evidence
-   to the user ONCE and let them choose. Approved ones are translated into
-   Czech and written to `playbook.md` of the target MB — or of the MB named by
-   the candidate's `Target MB` field. A candidate carrying `Corrects` is
-   presented NEXT TO the entry it contradicts, and the user decides between
-   replacing it, keeping both, or dropping the candidate. Unapproved
-   candidates vanish with the scratch; report their count. An empty or foreign
-   collection file skips the gate without a question.
+   `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` of the current work
+   item is non-empty, present the candidates with their evidence to the user
+   ONCE and let them choose. Approved ones are translated into Czech and written
+   to `playbook.md` of the target MB — or of the MB named by the candidate's
+   `Target MB` field. A candidate carrying `Corrects` is presented NEXT TO the
+   entry it contradicts, and the user decides between replacing it, keeping both,
+   or dropping the candidate. Unapproved candidates vanish with the file; report
+   their count. A missing or empty file for the current slug skips the gate
+   without a question; files of other slugs are not read and not touched.
+   After the gate, DELETE the current slug's file — `git rm` when `mb-park`
+   committed it (Playbook Contract), plain deletion otherwise — so no spent
+   candidates travel on into the base.
 4. **Archive:** move only the design half `design_<slug>.md` (or legacy
    `proposal_<slug>-design.md`) from `active/` to `completed/` unchanged
    (durable spec record) and **delete** the plan half `plan_<slug>.md` (or
@@ -651,25 +845,36 @@ git branch -r --contains <sha>     # empty result = not on origin
 An unreachable commit is a fail-closed STOP with an offer to publish, never a
 warning.
 
-**Publication points** (when the actor's own branch is pushed):
+**The publication rule: the agent pushes its OWN ticket branch after every
+commit**, always announcing the branch and the outgoing commits. Publication is
+therefore not a list of milestones to remember but the normal end of every commit
+on a ticket branch — a commit that is not pushed is work only this workspace can
+see. The points below remain listed as its notable special cases, not as the
+whole rule:
 
 1. after the design document is written and committed (brainstorming),
 2. after the implementation plan is written and committed (before the first task
    dispatch),
-3. at elaboration window closure, BEFORE writing links into Jira,
-4. before every handoff (design review request/respond is the reference
-   implementation).
+3. after an implementer's commit for a task that verified green,
+4. after the commit that merges the base ref into the ticket branch (see Base
+   Sync & Drift Detection),
+5. at elaboration window closure, BEFORE writing links into Jira,
+6. before every handoff (design review request/respond is the reference
+   implementation),
+7. after the Memory Bank changes of a harvest are committed.
 
 **Two-tier push policy:**
 
 | Tier | Rule |
 |---|---|
 | The actor's own ticket branch (unprotected) | The agent pushes it itself — publishing its own branch is not a decision it puts to the user — but it ALWAYS announces the branch and the outgoing commits. The harness's own permission prompt still applies (`Bash(git push:*)` is deliberately in neither `allow` nor `deny`, so the tool call is confirmed like any other): "does not ask" means it does not negotiate whether to publish, not that the push is auto-approved. Force push is forbidden. |
-| Shared branches (`develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin develop` — see the human escape below). The agent then re-verifies reachability. |
+| Shared branches (the effective list is `protectedBranches` — see Repository Configuration; the built-in fallback is `develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>` — the refspec form, because integration pushes the ticket branch onto the base ref; see the human escape below). The agent then re-verifies reachability. |
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
 scoped to `refs/heads/*` — tag pushes are out of scope and always pass
-through), installed per clone by `install-git-hooks.ps1`. Verify it
+through), installed into each workspace by `install-git-hooks.ps1` — hooks do
+not travel with a clone, which is why the entry gate verifies them (Workspace
+Discipline). Verify it
 non-destructively — never with a real `git push origin develop`, which
 either publishes real commits if the hook turns out to be inert (this is
 exactly how a linked-worktree installation gap was first confirmed) or
@@ -718,8 +923,34 @@ syntax the way git itself does, so it allows anything it cannot parse with
 confidence. Neither hook stops a determined adversary; server-side branch
 permissions on `origin` remain the real backstop for that. Other harnesses
 follow this rule by contract text only, as with every other rule of this
-layer. `mb-git-commit` never pushes — publication is a workflow step at the
-points listed above, not a commit tool.
+layer. `mb-git-commit` never pushes — publication is a workflow step governed by
+the publication rule above, not a job of the commit tool.
+
+### Integration
+
+Integrating finished work is a **fast-forward push of the ticket branch onto the
+base ref**, not a local merge into a local base branch. The base has already been
+merged into the ticket branch at the last phase boundary (Base Sync & Drift
+Detection), so the ticket branch is a descendant of `origin/<baseRef>` and the
+push is a fast-forward. Sequence:
+
+1. `git fetch origin`,
+2. `git merge origin/<baseRef>` on the ticket branch,
+3. green verification (build and targeted tests),
+4. the agent prepares the human command with the outgoing commits enumerated,
+5. the user runs it — the base ref is a shared branch, so the agent never pushes
+   it itself,
+6. the agent re-verifies reachability (`git branch -r --contains <sha>`),
+7. `mb-jira-update` finalization.
+
+A push rejected as **non-fast-forward** means the base moved while the sequence
+ran: repeat from step 1. **At most two failed rounds** — after the second, STOP
+and report to the user instead of racing the base indefinitely.
+
+The ticket branch left behind on `origin` is **not deleted** (deleting a branch
+through a push stays forbidden) and it is not reported as a collision: the
+document index keys by phase, so an integrated ticket's branch no longer counts
+as active work.
 
 ## Cross-Branch Visibility
 
@@ -734,8 +965,18 @@ Documents are never pushed into a shared branch to make them visible; they are
   window closes with ONE commit carrying the ledger, the graph and all of the
   window's proposals, so a cherry-pick would drag in a foreign ledger. The
   taken-over design document records `**Převzato z:** <branch>@<sha>`.
-- **A ticket branch is created from the CURRENT base ref** (fetch +
-  fast-forward), otherwise it cannot see already-merged planning.
+- **A ticket branch is created with an EXPLICIT starting point, always:**
+  `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a `git fetch
+  origin` — otherwise it cannot see already-merged planning. The **local** base
+  branch is not used in a ticket workspace: if one exists it is neither updated
+  nor merged, and `origin/<baseRef>` is the only base that counts (`baseRef` per
+  Repository Configuration).
+  **Postcondition of creation:** `proposals/active/` is empty or absent and
+  `context.md` is `IDLE`. If it is not, STOP, delete the branch and repeat — a
+  fresh ticket branch must never inherit another work item's active state.
+  **Invariant: the base never carries `ACTIVE` state**, so a branch started from
+  it is clean by construction; an `ACTIVE` base means a work item was integrated
+  without a harvest and is reported as such.
 - **Resurrected queue:** after a takeover the original may still sit in `next/`
   on the source branch and reappear in the base when that branch merges. This is
   detected (`mb-doc-index`, `mb-epic-graph -Check`), not prevented; the cleanup
@@ -756,13 +997,22 @@ on that ticket's branch; every handoff (request and respond) ends with the
 state committed and pushed to origin per the Publication Contract (the ticket
 branch is the actor's own branch, so the push is announced, not negotiated).
 The design document, `context.md` (including the `Review:` line) and any
-notes are thus available to both sides and to Bitbucket links. Recommended
-branch naming: include the ticket code (e.g. `feature/ums-3302-toast-reconcile`).
+notes are thus available to both sides and to Bitbucket links. Recommended branch
+naming: `<TICKET>-<kebab-slug>`, for example `UMS-3302-toast-reconcile`. New names
+are ASCII; existing branches carrying diacritics are NOT renamed — a rename would
+break the request comment's authoritative branch name for no benefit.
 
 **Push policy:** per the Publication Contract — the ticket branch is the actor's
 own branch, so the handoff push is announced, not negotiated; shared branches are
 never pushed by the agent. Steps are ordered so one handoff needs exactly one
 push.
+
+**Base merge is asymmetric: only the RESOLVER's side merges the base** (request
+and resume). The architect in respond mode NEVER merges it. Branch sync's rule is
+"divergence = STOP", and a base merge from both sides produces exactly that
+divergence — the two sides would create different merge commits over the same
+base and the next sync would stop. The resolver's base merge belongs **before**
+the handoff push (Base Sync & Drift Detection).
 
 **Branch sync** (first step of respond and resume): resolve the ticket branch
 in this order — branch name from the request comment (authoritative) → remote
@@ -833,7 +1083,7 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 - AI-facing instruction text (skill bodies, dispatch prompts, task briefs,
   implementer/reviewer reports, the `.superpowers/sdd/` ledger, orchestration
   metadata) MUST be in English.
-- `playbook-candidates.md` is AI-facing scratch and is therefore English;
+- `playbook-candidates/<slug>.md` is AI-facing scratch and is therefore English;
   `playbook.md` is a persistent artifact and is therefore Czech. The harvest
   gate translates on persistence.
 - User-facing output and persistent artifacts MUST be in Czech: the proposal
@@ -855,7 +1105,7 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 - If language rules conflict across workflow surfaces, Czech requirements for
   user-facing/persistent text take precedence.
 
-## Worktree Policy & Pool Interface
+## Worktree Policy
 
 **Default: total ban.** Git worktrees must not be used in this monorepo — the
 repository is extremely large and worktree creation is expensive (time and
@@ -865,27 +1115,11 @@ superpowers isolation step resolves to **branch-in-place**: create a feature
 branch in the existing working directory (never work on main/master without
 explicit user consent).
 
-**Future worktree pool (interface only — not implemented):**
-
-- Activation requires BOTH: `<MB_ROOT>/.claude/worktree-pool.json` with
-  `"enabled": true`, AND an explicit user request for isolated/parallel
-  execution of the work item. Otherwise the ban stands.
-- Pool manifest shape:
-  `{ "enabled": bool, "slots": [{ "path": …, "state": "free"|"assigned",
-  "branch": …, "slug": …, "assignedAt": … }] }`.
-  Slots are pre-provisioned real linked worktrees (`git worktree add`),
-  created and rebuilt only by an out-of-band admin script — never by a skill.
-- Assignment: at execution start, claim a `free` slot (update manifest →
-  `git -C <slot> fetch && git -C <slot> checkout -B <branch> <base>` →
-  continue with the slot as working directory).
-- Detection: slots are genuine linked worktrees, so upstream
-  `using-git-worktrees` Step 0 recognizes them without patching
-  (`GIT_DIR != GIT_COMMON` → already isolated, skip creation).
-- Release: a future `mb-worktree-release` utility detaches the slot to the
-  base commit and marks the manifest `free`. Finishing's provenance rule
-  already protects slots (they are not under `.worktrees/`).
-- Enabling the pool later = flip `skillOverrides` for `using-git-worktrees`
-  back on; nothing else changes.
+The ban rests on a measurement, not on an impression: a clone of the monorepo
+occupies 25 GB, of which `.git` is 4.1 GB, so a linked worktree — which shares
+only `.git` — saves 16 %. That is not enough to pay for the extra tree, its
+build output and its hook installation. Isolation is achieved instead by the user
+choosing a workspace (Workspace Discipline).
 
 ## Fail-Closed Behavior
 
@@ -896,7 +1130,10 @@ When anything important is missing or ambiguous:
 - Hard failures: missing git; missing root `memory-bank/`; undefined
   `PLAN_MB` at spec-write time; ambiguous target MB; a second active proposal
   slug; mixed-language rule surfaces; an unreachable pinned commit at
-  publication time; the same slug or ticket active on a foreign branch.
+  publication time; the same slug or ticket active on a foreign branch; a base
+  sync that cannot be performed at a phase boundary (divergence or a dirty tree);
+  the ceiling of two integration rounds; a missing or unverified `pre-push` hook
+  in the workspace; a failing `git fetch origin` in phase 0 of the entry gate.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
   `.superpowers/sdd/<plan-basename>/progress.md` ledger.
