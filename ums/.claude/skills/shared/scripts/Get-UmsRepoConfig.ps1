@@ -14,6 +14,14 @@
     often, not less). A malformed file writes one warning to the warning
     stream and falls back to defaults.
 
+    Source reports WHERE the loader looked, not how much it used: 'file'
+    means a config file was found and parsed as an object (an object with
+    no usable keys, including {}, still counts — it overrides nothing, but
+    it IS a config); 'default' means there was no file, it could not be
+    parsed as JSON, or it parsed to something that is not an object (an
+    array, a bare scalar, or JSON null) — well-formed JSON that is
+    malformed AS CONFIGURATION.
+
     Dot-source this file, then call Get-UmsRepoConfig.
 #>
 Set-StrictMode -Version Latest
@@ -41,20 +49,40 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
         return $cfg
     }
 
+    # A value that parses as valid JSON but is not an object — {}, null, a
+    # bare scalar, a bare array — is malformed AS CONFIGURATION even though
+    # ConvertFrom-Json accepted it without error. Guard on the type BEFORE
+    # touching .PSObject.Properties: under Set-StrictMode, dereferencing
+    # .Properties.Name on $null or on some non-object shapes is itself an
+    # error, so the type check must come first, not inside a try/catch that
+    # already succeeded.
+    if ($json -isnot [System.Management.Automation.PSCustomObject]) {
+        Write-Warning "ums-repo.json nelze přečíst ($path): obsah není konfigurační objekt. Používám vestavěné defaulty."
+        return $cfg
+    }
+
     $cfg.Source = 'file'
+    # Materialize properties into a plain array first, then pull .Name from
+    # that array — not from the live PSMemberInfoCollection — so an empty
+    # object ({}) never triggers member-enumeration-on-empty-collection
+    # errors under Set-StrictMode. {} is a valid config that overrides
+    # nothing: Source stays 'file', every field keeps its default, no
+    # warning — the user wrote an empty config and got exactly what it says.
+    $propNames = @(@($json.PSObject.Properties) | ForEach-Object { $_.Name })
+
     # Each key falls back INDIVIDUALLY: a file naming only baseRef must not
     # wipe the built-in protected list.
-    if ($json.PSObject.Properties.Name -contains 'baseRef' -and $json.baseRef) {
+    if ($propNames -contains 'baseRef' -and $json.baseRef) {
         $cfg.BaseRef = [string]$json.baseRef
     }
-    if ($json.PSObject.Properties.Name -contains 'ticketPattern' -and $json.ticketPattern) {
+    if ($propNames -contains 'ticketPattern' -and $json.ticketPattern) {
         $cfg.TicketPattern = [string]$json.ticketPattern
     }
     foreach ($pair in @(
             @{ Key = 'protectedBranches'; Field = 'ProtectedBranches' },
             @{ Key = 'projectMarkers'; Field = 'ProjectMarkers' },
             @{ Key = 'sharedRoots'; Field = 'SharedRoots' })) {
-        if ($json.PSObject.Properties.Name -contains $pair.Key) {
+        if ($propNames -contains $pair.Key) {
             # @() so a single-element JSON array still exposes .Count.
             $values = @($json.($pair.Key)) | Where-Object { $_ } | ForEach-Object { [string]$_ }
             if (@($values).Count -gt 0) { $cfg[$pair.Field] = @($values) }
