@@ -971,6 +971,83 @@ Assert-Eq $res.Code 0 'accept vzor: konfigurace chránící * instalaci neshodí
 Assert-Match $res.Flat 'ACCEPT half of the proof was skipped' 'accept vzor: přeskočení accept poloviny důkazu je ohlášené'
 Remove-Item -Recurse -Force $fx14.Root
 
+# ---------------------------------------------------------------------------
+# 21. Three ways the self-test's own guards used to turn an ENFORCING hook into
+# "the guarantee is absent". All three are about the same rule from the other
+# side: the installer must not report absent protection it did not measure.
+# ---------------------------------------------------------------------------
+
+# 21a. An unterminated character class is a legal POSIX `case` glob but not a
+# legal PowerShell wildcard, and `-like` THROWS on it. Unhandled, that throw
+# skipped the summary entirely and exited 1 - "proof FAILED, treat the guarantee
+# as absent" - for a hook that was installed and enforcing.
+$fx15 = New-PushFixture 'mbbadglob'
+Write-RepoConfig $fx15.Work @'
+{
+  "protectedBranches": ["develop", "Maint/[0-9"]
+}
+'@
+$res = Invoke-Installer $fx15.Work $null
+Assert-Match $res.Flat 'summary: pre-push' 'nevalidní glob: běh dojde až k vypsanému souhrnu (dřív spadl bez souhrnu)'
+Assert-NotMatch $res.Flat 'wildcard character pattern is not valid' 'nevalidní glob: instalátor nespadne na PowerShell výjimce z -like'
+Assert-Eq $res.Code 0 'nevalidní glob: hook je nainstalovaný a ověřený, ne hlášený jako chybějící záruka'
+# Honest consequence of the conservative direction: a pattern that cannot be
+# parsed counts as covering every candidate name, so the accept half is skipped
+# - reported, never silent, and never a failed install.
+Assert-Match $res.Flat 'ACCEPT half of the proof was skipped' 'nevalidní glob: přeskočení accept poloviny je ohlášené'
+$developBefore15 = Get-Sha $fx15.Origin 'refs/heads/develop'
+Add-Content -Path (Join-Path $fx15.Work 'f.txt') -Value 'change'
+Invoke-GitOk $fx15.Work @('commit', '-am', 'develop change') | Out-Null
+$r = Invoke-GitTry $fx15.Work @('push', 'origin', 'develop')
+Assert-True (($r.Code -ne 0) -and ((Get-Sha $fx15.Origin 'refs/heads/develop') -eq $developBefore15)) 'nevalidní glob: hook skutečně hlídá (develop zamítnut), takže exit 0 nelže'
+Remove-Item -Recurse -Force $fx15.Root
+
+# 21b. Degraded run whose STALE list protects the accept name. The self-test was
+# fed the (empty) configuration instead of the list in force, so the hook's
+# correct rejection of `feature/ums-install-verify` read as a broken hook: exit 1
+# plus "guarantee as absent" - and because that is not exit 4, the report naming
+# the patterns actually in force was suppressed, so the run named NO protection.
+$fx16 = New-PushFixture 'mbstaleaccept'
+Write-RepoConfig $fx16.Work @'
+{
+  "protectedBranches": ["develop", "feature/*"]
+}
+'@
+$res = Invoke-Installer $fx16.Work $null
+Assert-Eq $res.Code 0 'zastaralý accept: první instalace (s loaderem) proběhne normálně'
+$hooksCopy16 = Join-Path $fx16.Root 'hooks-copy'
+New-Item -ItemType Directory -Force -Path $hooksCopy16 | Out-Null
+Copy-Item -Force (Join-Path $PSScriptRoot '..\install-git-hooks.ps1') $hooksCopy16
+Copy-Item -Force (Join-Path $PSScriptRoot '..\pre-push') $hooksCopy16
+$res = Invoke-InstallerScript (Join-Path $hooksCopy16 'install-git-hooks.ps1') $fx16.Work $hooksCopy16
+Assert-NotMatch $res.Flat 'PROOF FAILED' 'zastaralý accept: hook chránící feature/* NENÍ hlášen jako selhaný důkaz'
+Assert-Eq $res.Code 4 'zastaralý accept: běh končí kódem 4 (seznam nešel obnovit), ne kódem 1'
+Assert-Match $res.Flat 'patterns in force: develop, feature/\*' 'zastaralý accept: běh pojmenuje vzory, které skutečně platí (dřív nepojmenoval žádné)'
+Remove-Item -Recurse -Force $fx16.Root
+
+# 21c. The write-failure warning named the built-in patterns while the summary
+# five lines below reported a different, real list - and a reader stops at the red
+# WARNING. Read-only list file: the write fails, but the file stays READABLE, so
+# a usable list is genuinely in force (the directory trick in 18a removes it).
+$fx17 = New-PushFixture 'mbrolist'
+Write-RepoConfig $fx17.Work @'
+{
+  "protectedBranches": ["develop", "Maint/*"]
+}
+'@
+$res = Invoke-Installer $fx17.Work $null
+Assert-Eq $res.Code 0 'read-only seznam: první instalace proběhne normálně'
+$listFile17 = Join-Path (Resolve-GitCommonDir $fx17.Work) 'ums-protected-branches'
+Set-ItemProperty -LiteralPath $listFile17 -Name IsReadOnly -Value $true
+$res = Invoke-Installer $fx17.Work $null
+Assert-Eq $res.Code 4 'read-only seznam: nezapsatelný seznam končí kódem 4'
+Assert-Match $res.Flat 'patterns in force: develop, Maint/\*' 'read-only seznam: souhrn pojmenuje skutečně platné vzory'
+# THE finding: nothing in the run may name main/master/release as protected while
+# the list in force does not contain them.
+Assert-NotMatch $res.Flat 'main, master, release/\*' 'read-only seznam: ani varování, ani souhrn nejmenují vestavěné vzory, když platí jiný seznam'
+Set-ItemProperty -LiteralPath $listFile17 -Name IsReadOnly -Value $false
+Remove-Item -Recurse -Force $fx17.Root
+
 Remove-Item -Recurse -Force $root
 
 Complete-Tests

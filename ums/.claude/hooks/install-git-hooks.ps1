@@ -392,7 +392,18 @@ function Test-NameIsConfigured([string] $Name, [string[]] $Patterns) {
     # PowerShell -like understands the same *, ? and [...] wildcards as the
     # hook's `case` globs, and both sides are case-insensitive here (the hook
     # lower-cases the ref and the patterns).
-    return (@($Patterns | Where-Object { $Name -like $_ }).Count -gt 0)
+    foreach ($pattern in @($Patterns)) {
+        # -like THROWS on a wildcard it cannot parse (`Maint/[0-9` - an
+        # unterminated character class, which POSIX `case` accepts as a literal).
+        # An unhandled throw here skips the whole summary and exits 1, which by
+        # this script's own contract means "the guarantee is absent" - reported
+        # about a hook that is installed and enforcing. An unparseable pattern
+        # therefore counts as COVERING the name: that only ever skips a proof
+        # run (reported), it can never weaken what the hook enforces.
+        try { if ($Name -like $pattern) { return $true } }
+        catch { return $true }
+    }
+    return $false
 }
 
 function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patterns) {
@@ -531,8 +542,10 @@ if ($loaderFound) {
     }
     catch {
         Write-Host "WARNING: could not write the protected-branch list: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Host '         pre-push falls back to its built-in list (develop, main, master, release/*),' -ForegroundColor Red
-        Write-Host '         so any additional protected pattern from the configuration is NOT enforced here.' -ForegroundColor Red
+        Write-Host '         This run does NOT refresh it, so what is enforced is whatever list was already' -ForegroundColor Red
+        Write-Host '         on disk - read back and named in the summary below (exit 4). Naming the built-in' -ForegroundColor Red
+        Write-Host '         patterns here instead would be a claim about protection this run has not' -ForegroundColor Red
+        Write-Host '         established: a list left by an earlier run is non-empty, so the fallback never fires.' -ForegroundColor Red
         $script:ListFailed = $true
         $script:ListFailedReason = 'the list could not be written'
     }
@@ -573,6 +586,18 @@ foreach ($hook in $skipped) {
     $exitCode = $EXIT_NOT_INSTALLED
 }
 
+# What the self-test must reason about is the list that is IN FORCE, not the
+# configuration - and on a degraded run those differ. With $protectedPatterns
+# empty every accept candidate looks unconfigured, so a stale list protecting
+# `feature/*` makes the hook reject the accept case CORRECTLY and the proof
+# calls that a broken hook: measured, exit 1 and "the guarantee is absent" for
+# a hook that was enforcing, which also suppresses the exit-4 report below.
+$proofPatterns = $protectedPatterns
+if ($script:ListFailed) {
+    $inForceNow = Read-ProtectedList $RepoRoot
+    $proofPatterns = if ($null -ne $inForceNow) { @($inForceNow.Patterns) } else { @() }
+}
+
 foreach ($hook in $installed) {
     if ($hook.Name -ne 'pre-push') {
         Write-Host "summary: $($hook.Name) -> $($hook.Path)  [installed]" -ForegroundColor Cyan
@@ -588,7 +613,7 @@ foreach ($hook in $installed) {
         $exitCode = $EXIT_UNPROVEN
         continue
     }
-    $proof = Test-HookIsLive $shell $hook.Path $protectedPatterns
+    $proof = Test-HookIsLive $shell $hook.Path $proofPatterns
     if ($proof.Ok) {
         if ($null -ne $proof.Accept) {
             Write-Host "verified: pre-push rejects a synthetic push to 'develop' (exit $($proof.Reject.Code)) and accepts a synthetic ticket-branch push to '$($proof.AcceptName)' (exit $($proof.Accept.Code))." -ForegroundColor Green
