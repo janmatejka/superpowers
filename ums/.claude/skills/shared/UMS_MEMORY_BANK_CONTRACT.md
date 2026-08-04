@@ -180,11 +180,23 @@ procedure, not noise.
 the work happens, into
 `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` (git-ignored scratch,
 English, first line `# Playbook candidates — work item: <slug>`). **One file per
-work-item slug.** The file of the CURRENT slug is OVERWRITTEN when its content
-is stale (a leftover from an earlier run of the same work item); files of
-FOREIGN slugs have their own paths and are never overwritten and never deleted.
+work-item slug.** Files of FOREIGN slugs have their own paths and are never
+overwritten and never deleted.
+
+The overwrite licence for the CURRENT slug's file is narrow and keyed to git —
+**tracked means live:**
+
+- **Untracked** — ordinary git-ignored scratch. When its content is stale (a
+  leftover of a slug whose work already finished or was abandoned) it is
+  OVERWRITTEN; there is nothing to lose.
+- **Tracked** — `mb-park` committed it (below), so it is **live parked
+  evidence**. It is NEVER overwritten, not even for the slug currently being
+  resumed: work continues by APPENDING to it, and only the harvest removes it,
+  after its content has reached `playbook.md`.
+
 The former single fixed path assumed strictly serial work, so once live tickets
-were interleaved its overwrite rule deleted living evidence.
+were interleaved its overwrite rule deleted living evidence; the tracked/untracked
+test is what keeps the same accident from returning through a resumed slug.
 
 **`mb-park` commits the current slug's file to the ticket branch** (`git add -f`,
 because `.superpowers/` is git-ignored), and the harvest deletes it after writing
@@ -340,7 +352,14 @@ The base ref is merged into the ticket branch at **phase boundaries** only:
 another cannot be reviewed against its own brief.
 
 Sequence at a boundary: `fetch` → `merge origin/<baseRef>` → intersection
-assessment → verification where it applies → commit → push.
+assessment → verification where it applies → push.
+
+There is no separate commit step: `merge` creates the merge commit itself, and it
+is **not** deferred with `--no-commit` until verification passes — verification is
+supposed to run on the merged tree, which is the whole point of merging first, and
+a red result is reported, not un-merged (see the STOP rule below). **Only the push
+waits.** It may be deferred to the end of the phase boundary so that a handoff
+publishes the merge and the handoff commit in one push (Architect Review Gate).
 
 **Intersection assessment.** Both sets are computed **after `fetch` and before
 `merge`**, from the same merge-base:
@@ -398,6 +417,10 @@ cannot be recovered from `origin`.**
   — the agent may handle on its own.
 - **Non-recoverable** — uncommitted changes, stashes, unpushed commits, playbook
   candidates — the agent NEVER deletes: it preserves them, or it stops and asks.
+  For candidate files the discriminator is the one the Playbook Contract states,
+  **tracked means live**: a tracked file is parked evidence that only the harvest
+  removes — never overwrite it, append to it — while an untracked file of a
+  finished or abandoned slug is ordinary scratch and carries no such protection.
 
 The decision about non-recoverable content belongs to the user; detecting it and
 presenting it belongs to the agent.
@@ -416,9 +439,13 @@ Leftovers split in two:
 
 **Entry gate**, in four phases:
 
-0. **Eligibility:** `MB_ROOT`, `memory-bank/`, the repository configuration, a
+0. **Eligibility**, fail-closed except where stated: `MB_ROOT`, `memory-bank/`, a
    **fail-closed check of the git hooks**, `core.hooksPath` unset or relative,
-   and `git fetch origin`.
+   and `git fetch origin`. The repository configuration is inspected here too,
+   but the item is **informational only** — a missing `ums-repo.json` is reported
+   once ("built-in defaults apply", Repository Configuration) and never blocks
+   entry, because a repository that has not been migrated yet must still be
+   workable. The hook check and the fetch stay hard failures.
 1. **Leftover inventory** per the split above.
 2. **Exactly one user decision**, and only when something non-recoverable is in
    the way: **park** it or **discard** it, with the confirmation spelled out.
@@ -442,9 +469,11 @@ through `git stash`, no auto-stash** (the same rule as branch sync in
 **Park** (the `mb-park` skill) is the third end of a work item's life cycle,
 alongside completion (harvest) and abandonment (`mb-abort`): commit, push,
 announce the leftovers, commit the current slug's playbook candidates (Playbook
-Contract), leave the branch checked out, and leave `context.md` in `ACTIVE`
-state. Parked work is recoverable from `origin` by definition, which is why it
-does not block starting another ticket (Active Work Item).
+Contract), leave the branch checked out, and leave `context.md` in the ACTIVE
+state — a state name, not a literal token; the test is the pin in the
+`## Active Work` block (see the `context.md` Schema & Writers section). Parked
+work is recoverable from `origin` by definition, which is why it does not block
+starting another ticket (Active Work Item).
 
 **One session per workspace.** Work on several tickets is interleaved, not
 parallel — two sessions in one clone would fight over the same working tree and
@@ -495,6 +524,15 @@ ticket code normalized to lowercase snake case
 `<short_snake_case_topic>` alone. ASCII only, no diacritics, no dates in the
 name. When the ticket becomes known later, rename the slug's files to include
 it (within the same naming style).
+
+**Branch name derived from the slug.** The ticket branch is
+`<TICKET>-<kebab-slug>`: take the slug, replace `_` with `-`, and upper-case the
+leading ticket code (`ums_3302_toast_reconcile` → `UMS-3302-toast-reconcile`).
+The derivation runs **one way only** — the slug names the documents and the branch
+name follows from it. Nothing parses a branch name back into a slug: a ticket
+branch is recognized by the ticket code it contains (Architect Review Gate,
+branch sync), and the slug is then read from `context.md` on that branch, which
+is also why a branch whose name carries diacritics stays valid without renaming.
 
 **Grandfather clause (legacy `proposal_` naming):** files named
 `proposal_<slug>-design.md` (design half) and `proposal_<slug>.md` (plan
@@ -622,10 +660,13 @@ identifiable — always before the design document is written.
    already known from the activated preliminary proposal). If the ticket is
    known and the slug does not start with its code, rename the slug's files
    accordingly (Naming rule in the Active Work Item section).
-8. **Two-actives guard:** if an active proposal (pair or legacy single) with a
-   *different* slug already exists anywhere under `<MB_ROOT>`, stop and ask
-   the user — finish it (`finishing-a-development-branch` → harvest) or
-   abandon it (`mb-abort`) before pinning new work. Only `active/` counts;
+8. **Two-actives guard:** an active proposal (pair or legacy single) with a
+   *different* slug anywhere under `<MB_ROOT>` must be in one of **three**
+   resolved states before new work is pinned — finished
+   (`finishing-a-development-branch` → harvest), **parked** (`mb-park`), or
+   abandoned (`mb-abort`). Which of the three needs a question is decided by the
+   recoverability test below: unresolved work stops and asks the user, whereas
+   work that is already parked is merely announced. Only `active/` counts;
    queued items in `next/` are ignored by this guard.
    The two-actives guard stays LOCAL; extending it to `origin` would forbid
    parallel work across the team. **The limit is per BRANCH, not per workspace,
@@ -689,6 +730,14 @@ the correct continuation is `mb-architect-review` (resume).
 IDLE state: replace the `## Active Work` items with
 `(No active work - IDLE phase)`; keep the `- **Jira:** …` line of the last
 work item if it existed.
+
+**ACTIVE and IDLE are state NAMES, not tokens in the file.** The word `ACTIVE`
+never appears in `context.md`, so no skill may look for it — a grep for it
+matches nothing and would report every branch as idle. The mechanical test is
+whether the `## Active Work` block **carries a pin**: a `Target MB Pin` together
+with a `Work item` slug is the ACTIVE state; the `(No active work - IDLE phase)`
+marker, or a block with no pin, is the IDLE state. Wherever this contract says a
+branch is ACTIVE or IDLE, it means the outcome of that test.
 
 Readers MUST accept the legacy field name `- **Proposal:**` as an alias of
 `- **Work item:**` (stale files from contract v2.0); writers write only
@@ -972,10 +1021,11 @@ Documents are never pushed into a shared branch to make them visible; they are
   nor merged, and `origin/<baseRef>` is the only base that counts (`baseRef` per
   Repository Configuration).
   **Postcondition of creation:** `proposals/active/` is empty or absent and
-  `context.md` is `IDLE`. If it is not, STOP, delete the branch and repeat — a
+  `context.md` is IDLE (state names, tested by the pin — see the `context.md`
+  Schema & Writers section). If it is not, STOP, delete the branch and repeat — a
   fresh ticket branch must never inherit another work item's active state.
-  **Invariant: the base never carries `ACTIVE` state**, so a branch started from
-  it is clean by construction; an `ACTIVE` base means a work item was integrated
+  **Invariant: the base never carries ACTIVE state**, so a branch started from it
+  is clean by construction; an ACTIVE base means a work item was integrated
   without a harvest and is reported as such.
 - **Resurrected queue:** after a takeover the original may still sit in `next/`
   on the source branch and reappear in the base when that branch merges. This is
@@ -998,14 +1048,20 @@ state committed and pushed to origin per the Publication Contract (the ticket
 branch is the actor's own branch, so the push is announced, not negotiated).
 The design document, `context.md` (including the `Review:` line) and any
 notes are thus available to both sides and to Bitbucket links. Recommended branch
-naming: `<TICKET>-<kebab-slug>`, for example `UMS-3302-toast-reconcile`. New names
-are ASCII; existing branches carrying diacritics are NOT renamed — a rename would
-break the request comment's authoritative branch name for no benefit.
+naming: `<TICKET>-<kebab-slug>`, for example `UMS-3302-toast-reconcile`, derived
+from the work-item slug by the Naming rule in the Active Work Item section. New
+names are ASCII; existing branches carrying diacritics are NOT renamed — a rename
+would break the request comment's authoritative branch name for no benefit.
 
 **Push policy:** per the Publication Contract — the ticket branch is the actor's
 own branch, so the handoff push is announced, not negotiated; shared branches are
-never pushed by the agent. Steps are ordered so one handoff needs exactly one
-push.
+never pushed by the agent. Steps are ordered so one handoff needs exactly **one**
+push, and the order is what makes that true: the base merge (resolver side only)
+comes FIRST and is not pushed on its own, the handoff state is committed after it,
+and the single closing push publishes both commits together. That push satisfies
+the publication rule for the merge commit as well — a base merge is never left
+unpublished, it merely shares the push with the commit that follows it inside the
+same handoff.
 
 **Base merge is asymmetric: only the RESOLVER's side merges the base** (request
 and resume). The architect in respond mode NEVER merges it. Branch sync's rule is
