@@ -69,8 +69,15 @@ protected_file="$common_dir/ums-protected-branches"
 
 protected_patterns=''
 if [ -f "$protected_file" ]; then
+    # CR is deleted along with blanks, and that is load-bearing, not tidiness:
+    # a generator running on Windows easily writes the list with CRLF, and a
+    # NON-msys sh (Linux, macOS, WSL bash on a shared checkout) converts
+    # nothing on the way in. Every pattern would become `develop\r`, the list
+    # would be NON-empty so the fallback never fires, nothing would match, and
+    # the repository would be fully unprotected with hook and configuration
+    # both looking correct — the same inverted degradation `set -f` prevents.
     protected_patterns=$(sed -e 's/#.*//' "$protected_file" \
-        | tr -d '[:blank:]' \
+        | tr -d '[:blank:]\r' \
         | tr '[:upper:]' '[:lower:]' \
         | grep -v '^$')
 fi
@@ -159,7 +166,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             # one keeps a routine "the base moved" from being read as an
             # attempted history rewrite.
             echo "     Pokud integruješ tiketovou větev, báze se nejspíš pohnula: udělej" >&2
-            echo "     git fetch a merge origin/<báze>, znovu ověř a zkus push ještě raz." >&2
+            echo "     git fetch a merge origin/<báze>, znovu ověř a zkus push ještě jednou." >&2
             reject=1
             continue
         fi

@@ -584,6 +584,116 @@ $nonFfErrFile = Join-Path $root 'nonff.err'
 $nonFfErr = Get-Content -LiteralPath $nonFfErrFile -Raw -Encoding utf8
 Assert-Match $nonFfErr 'báze' 'zamítnutí non-fast-forward pojmenuje pohnutou bázi (odlišení od vynuceného přepisu historie)'
 
+# CRLF twin of Write-ProtectedList. A generator running on Windows can easily
+# produce this shape (Set-Content / Out-File default to CRLF), so the hook must
+# tolerate it rather than depend on the generator getting it right: the failure
+# mode is silent and total — every pattern becomes `develop\r`, the list is
+# NON-empty so the fallback never fires, nothing matches, and the repository is
+# unprotected while hook and configuration both look correct.
+function Write-ProtectedListCrlf([string] $Path, [string[]] $Lines) {
+    [IO.File]::WriteAllText($Path, (($Lines -join "`r`n") + "`r`n"))
+}
+
+# 16g. CRLF list, real push, protected branch still rejected.
+#
+# HONEST SCOPE: this case cannot go red on Git for Windows. Measured, both
+# stages of the loader pipeline drop a trailing CR on their own here — GfW
+# `sed` and `grep` read in TEXT mode — so the CR never reaches the pattern.
+# The exposure is a CRLF list read by a NON-msys `sh` (Linux, macOS, WSL bash
+# against a shared checkout), where neither tool converts. This case is the
+# cross-platform guard; 16h below is the one that can actually fail here.
+Write-ProtectedListCrlf $protectedFile @('develop', 'Branches/*')
+$developBeforeCrlf = Get-Sha $origin 'refs/heads/develop'
+$r = Invoke-GitTry $work @('push', 'origin', 'develop')
+Assert-True (($r.Code -ne 0) -and ((Get-Sha $origin 'refs/heads/develop') -eq $developBeforeCrlf)) 'seznam s CRLF řádkováním chrání dál (CR se ze vzorů odstraní), remote se nepohnul'
+
+# 16h. The same property under an emulated NON-msys /bin/sh, so it is covered
+# on the platform this suite actually runs on. The two tools the loader pipes
+# through get shimmed to their binary modes (`sed --binary`, `grep -U`), which
+# is what Linux/macOS/WSL do natively. Black-box: the REAL hook file runs,
+# unmodified, at its real installed path.
+#
+# The shim names the tools the loader uses TODAY. If the loader ever changes
+# tools the shim goes inert — it cannot then report a false protection claim,
+# only a stale test, and the control below is what keeps a BROKEN shim from
+# passing as a working one.
+$zeroSha = '0000000000000000000000000000000000000000'
+$posixShim = Join-Path $root 'posix-shim'
+New-Item -ItemType Directory -Force -Path $posixShim | Out-Null
+$emulator = Join-Path $root 'posix-sh-emulation.sh'
+[IO.File]::WriteAllText($emulator, (@'
+# $1 shim dir, $2 hook path, $3 repo, $4 local sha, $5 remote sha, $6 ref
+real_sed=$(command -v sed)
+real_grep=$(command -v grep)
+printf '#!/bin/sh\nexec "%s" --binary "$@"\n' "$real_sed" > "$1/sed"
+printf '#!/bin/sh\nexec "%s" -U "$@"\n' "$real_grep" > "$1/grep"
+chmod +x "$1/sed" "$1/grep"
+cd "$3" || exit 99
+# PATH entries must be POSIX paths: a Windows path keeps its drive-letter
+# colon, which PATH itself uses as the separator, so `C:/x/shim` silently
+# becomes the two useless entries `C` and `/x/shim` and the shim is never
+# reached (measured - the case then passes without testing anything).
+shimdir=$(cygpath -u "$1")
+PATH="$shimdir:$PATH"
+export PATH
+# Fail LOUDLY rather than inertly if the shim is not the sed being used.
+if [ "$(command -v sed)" != "$shimdir/sed" ] || [ "$(command -v grep)" != "$shimdir/grep" ]; then
+    echo "EXIT=98"
+    exit 0
+fi
+printf '%s %s %s %s\n' "$6" "$4" "$6" "$5" | "$2" origin verify >/dev/null 2>&1
+echo "EXIT=$?"
+'@ -replace "`r`n", "`n"))
+
+function Invoke-HookUnderPosixSh([string] $Ref) {
+    $out = & $gitBash ($emulator -replace '\\', '/') ($posixShim -replace '\\', '/') `
+        $hookInWork ($work -replace '\\', '/') $fakeSha $zeroSha $Ref 2>&1 | Out-String
+    if ($out -match 'EXIT=(\d+)') { return [int]$Matches[1] }
+    return -1
+}
+
+# The pattern under test must NOT be the last line of the list. Measured: msys
+# bash strips a trailing CRLF — not just the LF — when it closes a `$(...)`
+# substitution, so the LAST pattern comes out clean even under the shims and a
+# single-line CRLF list would pass without the fix and prove nothing. A real
+# POSIX shell strips nothing, so on Linux/macOS EVERY pattern keeps its CR;
+# `Branches/*` first, `feature/x` after it, reproduces the part that is
+# observable here.
+#
+# CONTROL first, on the LF twin of the very same list: `develop` must pass.
+# That proves the emulated sh really reads the configured file — a shim that
+# broke the pipeline would leave the patterns empty, fall back to the built-in
+# list, reject `develop`, and this case would go red instead of quietly
+# "passing" without testing anything.
+Write-ProtectedList $protectedFile @('Branches/*', 'feature/x')
+$posixControlExit = Invoke-HookUnderPosixSh 'refs/heads/develop'
+# TARGET: same list, CRLF this time — the pattern must still match.
+Write-ProtectedListCrlf $protectedFile @('Branches/*', 'feature/x')
+$posixCrlfExit = Invoke-HookUnderPosixSh 'refs/heads/Branches/5.37'
+Assert-True (($posixControlExit -eq 0) -and ($posixCrlfExit -ne 0)) "pod ne-msys sh (sed --binary, grep -U) CRLF seznam chrání dál (kontrola: LF seznam se čte, develop projde = $posixControlExit; CRLF: Branches/5.37 zamítnuta = $posixCrlfExit)"
+
+# 16i. STDIN-THEFT REGRESSION. git feeds the hook one line per ref, and the
+# configuration is loaded BEFORE the loop for exactly this reason: a `while
+# read` (or anything else consuming stdin) inside the loop swallows the
+# remaining refs and the hook stops checking — with exit code 0. Every other
+# case in this suite pushes a single ref, so moving the load inside the loop
+# would leave the whole suite green. Two ref lines, the innocuous one FIRST:
+# if only the first line is ever processed, the assertion fails.
+Remove-Item -LiteralPath $protectedFile -Force
+$multiRefScript = 'cd "$1" && printf "refs/heads/feature/x %s %s %s\nrefs/heads/develop %s %s %s\n" ' +
+    '"$2" "refs/heads/feature/x" "$3" "$2" "refs/heads/develop" "$3" | "$4" origin verify'
+$out = & $gitBash -c $multiRefScript _ ($work -replace '\\', '/') $fakeSha $zeroSha $hookInWork 2>&1 | Out-String
+$multiRefCode = $LASTEXITCODE
+Assert-True (($multiRefCode -ne 0) -and ($out -match "'develop'")) 'druhý ref na stdin je stále kontrolován (konfigurace se čte před smyčkou, nic ve smyčce nekrade stdin)'
+
+# 16j. REPLACE, not union. The configured list IS the list; the built-in one is
+# a fallback for "no usable file", not a floor that is always added. Pinned
+# with a built-in name the configuration omits: with only `Branches/*`
+# configured, `main` is pushable.
+Write-ProtectedList $protectedFile @('Branches/*')
+$r = Invoke-GitTry $work @('push', 'origin', 'HEAD:refs/heads/main')
+Assert-Eq $r.Code 0 'konfigurovaný seznam vestavěný NAHRAZUJE (main není chráněný, když ho seznam neobsahuje), nesjednocuje se s ním'
+
 Remove-Item -Recurse -Force $root
 
 Complete-Tests
