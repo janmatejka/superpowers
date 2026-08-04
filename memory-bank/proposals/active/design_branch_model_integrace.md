@@ -121,6 +121,21 @@ harvest) a **opustit** (`mb-abort`). Nemá nic pro „nechám to rozdělané a v
 se" — a to je přesně to, co opakovaně používaný workspace potřebuje, protože
 prokládání tiketů je jeho hlavní režim.
 
+**14. `.claude/` je ignorovaný, takže tam konfigurace nemůže být.** Upstream
+`.gitignore` ignoruje **každý** adresář `.claude/` (vede to i
+[tech.md](../../tech.md) jako past prostředí) a [ums/.gitignore](../../../ums/.gitignore)
+to neguje jen pro `ums/`. Konfigurační soubor v kořenovém `.claude/` by tedy byl
+netrackovaný a nepřenosný — přesně opak toho, k čemu má sloužit. Vada, kterou
+si do návrhu zavlekla jeho předchozí revize.
+
+**15. Skilly nesou hodnoty konkrétního repozitáře.** `origin/develop`,
+`release/*` a v předchozí revizi i seznam sdílených kořenů byly zapsané přímo
+ve skillech a skriptech, takže vrstva mimo UMS nefunguje správně, aniž by to
+kdokoli poznal — degraduje tiše (mrtvé místo 1 je jediný případ, kdy to spadne
+hlasitě). Do téže třídy patří i Jira konvence zapsané ve skillech (stavy
+`Design Review` a `Test`, pole `Flagged`, `customfield_11248`); ty tento návrh
+neřeší, ale nový konfigurační soubor je jejich přirozený budoucí domov.
+
 Mimo tento návrh, ale zjištěné a hodné zápisu: tři trackované `.cmd` skripty
 (`Doc/Tools/!GenerateAll.cmd`, `Doc/Tools/GenerateCharakteristika_a_popis_produktu_DATASYS_UMS.cmd`,
 `MobilChange/SMSInfo3/code_search.cmd`) mají absolutní cestu `_datasys`
@@ -142,6 +157,10 @@ zadrátovanou natvrdo.
 | 10 | Limit aktivních položek je **per větev**, a zastaví jen práci neobnovitelnou z `origin` | Commitnutá a pushnutá práce jiného tiketu **je** zaparkovaná; nejčastější případ musí být bez ptaní (mrtvé místo 12) |
 | 11 | Nová operace **`mb-park`**; kandidáti playbooku dostanou cestu per slug a park je commitne na větev | Doplňuje chybějící třetí konec životního cyklu (mrtvé místo 13) a činí zaparkovanou práci **celou** obnovitelnou z `origin` (mrtvé místo 11) |
 | 12 | Pool workspaců se **nezavádí**; volbu a zakládání workspace vlastní uživatel | Pasti poolu plynuly z toho, že životní cyklus řídil agent zevnitř sezení — viz níže |
+| 13 | **Žádná hodnota konkrétního repozitáře v těle skillu**; vše v `<CTX_DIR>/ums-repo.json` | Vrstva je redistribuovatelná a mimo UMS by tiše degradovala (mrtvé místo 15) |
+| 14 | Konfigurace jde do **kořenové Memory Bank**, ne do `.claude/` | `.claude/` je upstreamem ignorovaný, soubor by byl netrackovaný (mrtvé místo 14) |
+| 15 | Heuristika průniku zná jen **mechaniku** (nejbližší předek s projektovým markerem + vždy-protínající vzory); hodnoty dodá konfigurace | Odstraňuje z pravidla znalost .NET i UMS, aniž by se pravidlo oslabilo |
+| 16 | Naplnění konfigurace detekuje **`mb-init`**, první verze bez schvalování, každá další změna se schvaluje | Přesný precedens: totéž a ze stejného důvodu už kontrakt povoluje pro první `playbook.md` |
 
 Zamítnuté varianty:
 
@@ -181,7 +200,8 @@ Zamítnuté varianty:
 **V rozsahu:** kontrakt v2.6; tři overlay fragmenty; `pre-push` a
 `guard-git-push.mjs` (seznam z konfigurace, dvě hlášky); `install-git-hooks.ps1`
 (generování seznamu); `doc-index.ps1` (konfigurace + filtr aktivity); **nový
-skill `mb-park`**; rozšíření `mb-state` na orákulum způsobilosti workspace;
+skill `mb-park`**; rozšíření `mb-init` (detekce konfigurace a režim obnovy)
+a `mb-state` (orákulum způsobilosti workspace);
 `mb-architect-review`, `mb-jira-update`, `mb-harvest`, `mb-git-commit`; oprava
 ploché cesty ledgeru v [settings.json](../../../ums/.claude/settings.json)
 a v pěti `mb-*` skillech; přesun kandidátů playbooku na cestu per slug;
@@ -192,7 +212,9 @@ nová.
 **Mimo rozsah:** automatizovaný pool workspaců a adopce tří existujících ad-hoc
 klonů; zakládání workspace (vlastní uživatel — návrh jen ověřuje způsobilost);
 mazání zbylých tiketových větví na `origin`; branch permissions na serveru;
-oprava tří `.cmd` skriptů se zadrátovaným `_datasys`.
+oprava tří `.cmd` skriptů se zadrátovaným `_datasys`; **přesun Jira konvencí do
+konfigurace** (stavy, `Flagged`, `customfield_11248` — pojmenované jako budoucí
+obsah téhož souboru, mrtvé místo 15).
 
 ## Technický návrh
 
@@ -273,12 +295,20 @@ vlastni=$(git diff --name-only  $MB..HEAD)                # co větev změnila
 Ve fázi návrhu, kdy ještě není co změněno, roli **vlastní** množiny hrají cílové
 oblasti pojmenované v návrhu.
 
-Porovnání na úrovni jednotlivých souborů je v .NET příliš úzké — změna ve
-sdíleném projektu, který ten váš referencuje, je drift bez shody souborů. Proto
-se cesty mapují na **vlastnící projekt nebo solution** a průnik se hledá tam;
-jako vždy-protínající se berou sdílené kořeny (`Common/`, `Lib/`,
-`SharedAssemblyInfo.xml`, `*.sln`, `Build.proj`). **Je to heuristika**, ne
-důkaz — pojmenovaná tak i v kontraktu.
+Porovnání na úrovni jednotlivých souborů je příliš úzké — změna ve sdíleném
+projektu, který ten váš referencuje, je drift bez shody souborů. Pravidlo je
+proto dvoustupňové a **neobsahuje žádnou znalost konkrétního ekosystému ani
+repozitáře**:
+
+1. Každá cesta se namapuje na **nejbližší nadřazený adresář obsahující shodu
+   s `projectMarkers`** (konfigurace, sekce 3) a průnik se hledá na této úrovni.
+   Cesta bez takového předka zůstává sama sebou.
+2. Cesta odpovídající některému vzoru ze `sharedRoots` se považuje za
+   **vždy protínající**.
+
+Skill tedy zná jen tuhle mechaniku; co je projekt a co je sdílený kořen, říká
+konfigurace repozitáře. **Je to heuristika**, ne důkaz — pojmenovaná tak
+i v kontraktu.
 
 **Odstupňovaná verifikace:**
 
@@ -308,22 +338,62 @@ konflikt na **témže** slugu je kolize dvou aktérů, tedy STOP.
 
 ### 3. Konfigurace repozitáře
 
-Nový trackovaný soubor `<MB_ROOT>/.claude/ums-repo.json`:
+**Žádná hodnota specifická pro konkrétní repozitář nesmí být v těle skillu.**
+Vrstva je redistribuovatelná a `UMS` je jen jeden z jejích cílů, takže báze,
+chráněné větve, vzor kódu tiketu ani sdílené kořeny nesmí být zadrátované
+v Markdownu skillu. Všechny žijí v jednom souboru per repozitář.
+
+**Umístění: `<CTX_DIR>/ums-repo.json`**, tedy v kořenové Memory Bank — ne
+v `.claude/`. Důvod je mechanický: upstream `.gitignore` ignoruje **každý**
+adresář `.claude/` a `ums/.gitignore` to neguje pouze pro `ums/`, takže soubor
+v kořenovém `.claude/` by byl v tomto forku netrackovaný, a tedy nepřenosný
+(mrtvé místo 14). `CTX_DIR` je naopak podle kontraktu garantovaně existující
+(Root Memory Bank Gate) i trackovaný a kontrakt o něm říká, že drží `context.md`
+plus to, co orchestrovaný strom potřebuje.
 
 ```json
 {
   "baseRef": "origin/develop",
   "protectedBranches": ["develop", "main", "master", "release/*", "Branches/*"],
-  "clonePool": { "enabled": false }
+  "ticketPattern": "^[A-Z][A-Z0-9]+-[0-9]+",
+  "projectMarkers": ["*.csproj", "*.vcxproj", "*.sln", "package.json"],
+  "sharedRoots": ["Common/", "Lib/", "SharedAssemblyInfo.xml", "*.sln", "Build.proj"]
 }
 ```
 
-- `clonePool` je **rezervovaný a vypnutý** — místo pro druhou položku.
-- **Chybějící soubor není chyba.** `baseRef` degraduje na `origin/develop`,
-  ochrana na dnešní zadrátovaný seznam. Vrstva musí fungovat i v repu, který
-  konfiguraci nepřijal.
-- V tomto forku bude `baseRef` rovno `origin/ums-memory-bank`, čímž mizí
-  spadnutí z mrtvého místa 1.
+| Klíč | K čemu | Konzument |
+|---|---|---|
+| `baseRef` | integrační báze repozitáře | `doc-index.ps1`, zakládání větve, base sync, integrace |
+| `protectedBranches` | co agent nikdy nepushne | `pre-push` (přes generovaný seznam), `guard-git-push.mjs` |
+| `ticketPattern` | co je tiketová větev a jak z ní přečíst kód tiketu | `mb-state` (výpis zaparkované práce), vstupní brána, `mb-architect-review` |
+| `projectMarkers` | jak namapovat cestu na vlastnící projekt | heuristika průniku (sekce 2) |
+| `sharedRoots` | co se vždy považuje za protínající | heuristika průniku (sekce 2) |
+
+`ticketPattern` se do návrhu vrací — v předchozí revizi jsem ho odstranil jako
+nekonzumovaný, ale disciplína workspace mu dala tři konzumenty.
+
+**Chybějící soubor není chyba, ale degradace míří k bezpečnější straně.**
+`baseRef` padne na `origin/develop`, ochrana na dnešní zadrátovaný seznam
+(tedy k *více* ochrany, nikdy k méně). U heuristiky průniku je bezpečnější
+strana ta štědřejší: bez `sharedRoots` a `projectMarkers` se verifikace
+**nabídne při každém neprázdném příchozím diffu**, protože bez znalosti
+topologie repozitáře nelze tvrdit, že drift nemůže zasáhnout do práce.
+
+V tomto forku bude `baseRef` rovno `origin/ums-memory-bank`, čímž mizí spadnutí
+z mrtvého místa 1.
+
+**Naplnění souboru má podporu, ne ruční sepisování.** Detekci a návrh obsahu
+dělá `mb-init`, který už dnes stejnou věc umí pro `playbook.md` — z build
+souborů detekuje příkazy a první verzi napíše bez schvalování, protože
+detekované hodnoty jsou ověřitelné proti build souborům samotným. Sdílené kořeny
+a projektové markery patří do téže třídy: derivují se z topologie repozitáře
+(kde leží solution soubory, které projekty referencuje víc než jeden jiný, kde
+jsou sdílené `props`/`targets`), takže platí tatáž výjimka. **Každá pozdější
+změna už schválení vyžaduje** — přesně jako u `playbook.md`, a ze stejného
+důvodu: topologie se mění a jen člověk ví, jestli je nová hodnota záměr.
+
+`mb-init` proto dostane i **režim obnovy** nad existujícím souborem: detekuje
+znovu, rozdíl předloží a zapíše až po schválení.
 
 ### 4. Chráněné větve a dvě vrstvy vynucení
 
@@ -578,6 +648,7 @@ mergi báze `merge-base(<base>, HEAD)` rovno tipu báze, takže derivace
 | `mb-jira-update` | spouštěč finalizace = ověřený FF push |
 | `mb-state` | **rozšíření na read-only orákulum způsobilosti workspace**: je volný (tři příkazy z 6.2), co je tu zaparkovaného (pin a datum na každou lokální tiketovou větev), co je v cestě, vzdálenost od báze (`git rev-list --count HEAD..origin/<baseRef>`), kontrola invariantu `IDLE` na bázi. Zůstává read-only — jednající skilly jsou oddělené |
 | **`mb-park`** (nový) | commit, push, ohlášení zbytků, commit kandidátů (`git add -f`), větev zůstává checkoutnutá; `context.md` zůstává `ACTIVE` |
+| `mb-init` | detekce `ums-repo.json` z topologie repozitáře (první verze bez schvalování, jako `playbook.md`) a **režim obnovy** nad existujícím souborem s předložením rozdílu |
 | `mb-harvest` | čte kandidáty z cesty per slug (i commitnuté) a soubor při archivaci maže |
 | `mb-git-commit` | zůstává „nikdy nepushuje"; formulovat tak, aby to nekolidovalo s pravidlem push-po-commitu (pushuje volající) |
 | [settings.json](../../../ums/.claude/settings.json) | PostCompact hook: opravit plochou `.superpowers/sdd/progress.md` na cestu per plán (mrtvé místo 10) |
@@ -628,3 +699,5 @@ protože mrtvé větve se přestanou procházet.
 | **Uživatel obejde vstupní bránu** a začne pracovat bez ověření hooků | Nejde zabránit. Zmírnění: kontrola je fail-closed a levná, a `pre-push` chybí jen v čerstvém klonu — v opakovaně používaném workspace je už nainstalovaný. |
 | **`git add -f` na kandidáty** je výjimka z pravidla „scratch je git-ignored" a může se rozšířit | Výjimka je pojmenovaná, platí pro jeden soubor a soubor se při archivaci maže, takže se v repozitáři nekumuluje. |
 | **Heuristika „obnovitelné z `origin`" selže**, když je `origin` nedostupný | Fáze 0 začíná `git fetch origin`; jeho selhání je STOP, protože bez čerstvé znalosti `origin` nelze o obnovitelnosti rozhodnout. |
+| **Detekovaná konfigurace je špatná nebo zastará** (repozitář se přestrukturuje, `sharedRoots` už neodpovídají) | Režim obnovy `mb-init` předloží rozdíl ke schválení; a degradace míří ke štědřejší nabídce verifikace, takže špatná konfigurace vede k nadbytečným buildům, ne k propuštěnému driftu. |
+| **Konfigurace se rozšíří v nekontrolovaný registr nastavení** | Do souboru patří jen to, co má **jmenovaného konzumenta** (tabulka v sekci 3); klíč bez konzumenta se nezavádí — v předchozí revizi byl takový klíč z návrhu odstraněn. |
