@@ -481,6 +481,109 @@ $r = Invoke-GitTry $work @('push', 'origin', 'develop')
 Assert-True ($r.Code -ne 0) 'po odstranění proměnné je push na develop opět zamítnut'
 Assert-Eq (Get-Sha $origin 'refs/heads/develop') $developAfterEscape 'remote develop se po opětovném zamítnutí nepohnul'
 
+# ---------------------------------------------------------------------------
+# 16. The protected-branch list is CONFIGURATION, not hook body. pre-push is
+# POSIX sh with no JSON parser, so install-git-hooks.ps1 materializes the
+# repository's `protectedBranches` into <git-common-dir>/ums-protected-branches
+# (one glob per line, `#` starts a comment) and the hook reads that file. The
+# generator is a later task, so the file is written BY HAND here.
+#
+# The governing rule these four cases pin down: a missing, empty or
+# comment-only file falls back to the BUILT-IN list, because degradation must
+# always lead to MORE protection, never less.
+# ---------------------------------------------------------------------------
+
+# The hook resolves the file through `git rev-parse --git-common-dir` — for a
+# linked worktree that is the MAIN repo's .git, not the worktree's own, so a
+# fixture must not simply assume "<repo>\.git".
+function Resolve-GitCommonDir([string] $RepoDir) {
+    $p = (& git -C $RepoDir rev-parse --git-common-dir).Trim()
+    if (-not [IO.Path]::IsPathRooted($p)) { $p = Join-Path $RepoDir $p }
+    return (Resolve-Path $p).Path
+}
+
+# LF endings on purpose. The hook strips comments and blanks, not CRs, so a
+# CRLF file would leave a trailing CR glued to every pattern and NOTHING would
+# match — a silently unprotected repository. The generator must write LF too.
+function Write-ProtectedList([string] $Path, [string[]] $Lines) {
+    [IO.File]::WriteAllText($Path, (($Lines -join "`n") + "`n"))
+}
+
+$protectedFile = Join-Path (Resolve-GitCommonDir $work) 'ums-protected-branches'
+Invoke-GitOk $work @('checkout', '-b', 'Branches/5.37', 'refs/heads/feature/x') | Out-Null
+'maint' | Out-File -FilePath (Join-Path $work 'h.txt') -Encoding utf8
+Invoke-GitOk $work @('add', 'h.txt') | Out-Null
+Invoke-GitOk $work @('commit', '-m', 'maint base') | Out-Null
+
+# 16a. Without the generated list, `Branches/5.37` PASSES: the built-in
+# fallback does not contain `Branches/*`. This is what makes the fallback a
+# fallback rather than a second hardcoded list — if this case ever went red,
+# the "configuration" would be decoration.
+$r = Invoke-GitTry $work @('push', 'origin', 'HEAD:refs/heads/Branches/5.37')
+Assert-Eq $r.Code 0 'bez generovaného seznamu push do Branches/5.37 projde (vestavěný fallback Branches/* nezná)'
+
+# 16b. With `Branches/*` configured, the very same branch is rejected — the
+# real reason this task exists (this fork's maintenance branches Branches/5.33
+# -5.37 were unprotected, `release/*` never matched them).
+#
+# An untracked `branches/` DIRECTORY in the working tree is part of the case,
+# not scenery: the hook splits the pattern list with an unquoted expansion, and
+# an unquoted expansion is also PATHNAME-expanded, so without `set -f` the
+# lowercased pattern `branches/*` gets replaced by the files in that directory
+# and the protection silently disappears. Removing this directory would keep
+# the case green while quietly retiring that half of the proof.
+New-Item -ItemType Directory -Force -Path (Join-Path $work 'branches') | Out-Null
+Set-Content -LiteralPath (Join-Path $work 'branches\notes.txt') -Value 'glob bait'
+Write-ProtectedList $protectedFile @(
+    '# generated from memory-bank/ums-repo.json by install-git-hooks.ps1',
+    '',
+    'develop',
+    'Branches/*   # trailing comment, and the case folding of the pattern'
+)
+Add-Content -Path (Join-Path $work 'h.txt') -Value 'maint change'
+Invoke-GitOk $work @('commit', '-am', 'maint change') | Out-Null
+$maintBefore = Get-Sha $origin 'refs/heads/Branches/5.37'
+$r = Invoke-GitTry $work @('push', 'origin', 'HEAD:refs/heads/Branches/5.37')
+Assert-True (($r.Code -ne 0) -and ($r.Out -match 'UMS') -and ((Get-Sha $origin 'refs/heads/Branches/5.37') -eq $maintBefore)) 'Branches/5.37 je zamítnuta, když ji generovaný seznam obsahuje (UMS hláška, remote se nepohnul)'
+
+# 16c. Fallback must not TAKE protection away: with the file gone again,
+# `develop` is still rejected.
+Remove-Item -LiteralPath $protectedFile -Force
+Invoke-GitOk $work @('checkout', 'develop') | Out-Null
+$developBeforeFallback = Get-Sha $origin 'refs/heads/develop'
+$r = Invoke-GitTry $work @('push', 'origin', 'develop')
+Assert-True (($r.Code -ne 0) -and ((Get-Sha $origin 'refs/heads/develop') -eq $developBeforeFallback)) 'develop je zamítnutý i bez generovaného seznamu (degradace vede k více ochrany, ne k méně)'
+
+# 16d. A file with nothing but comments and blank lines must behave like a
+# MISSING file, not like "nothing is protected" — the shape a half-written or
+# emptied generated file takes. Both halves asserted together: develop stays
+# protected AND Branches/5.37 goes back to passing, which is exactly the
+# built-in list and not "everything allowed".
+Write-ProtectedList $protectedFile @('# nothing configured here', '', '   ', '# not even here')
+$rDevelop = Invoke-GitTry $work @('push', 'origin', 'develop')
+Invoke-GitOk $work @('checkout', 'Branches/5.37') | Out-Null
+$rMaint = Invoke-GitTry $work @('push', 'origin', 'HEAD:refs/heads/Branches/5.37')
+Assert-True (($rDevelop.Code -ne 0) -and ($rMaint.Code -eq 0)) 'seznam jen s komentáři a prázdnými řádky se chová jako chybějící soubor (develop chráněný, Branches/5.37 ne), ne jako „nic není chráněné"'
+
+# 16e. The advice in the shared-branch rejection must be a command that works
+# where the user actually is: in a ticket clone WITHOUT a local `develop`,
+# `git push origin develop` fails on an unknown local ref, so the refspec form
+# is the only one that runs. (Reuses the rejection captured just above.)
+Assert-Match $rDevelop.Out 'HEAD:develop' 'zamítnutí sdílené větve radí refspecový tvar HEAD:<větev> (funguje i v klonu bez lokální báze)'
+
+# 16f. Non-fast-forward has two very different causes — a rewritten history
+# and a base that simply moved on — and the message must name the second, or
+# the reader treats a routine "fetch + merge" as a forbidden force push.
+#
+# Captured through a SHELL-LEVEL redirect and read back as UTF-8: git's stderr
+# otherwise reaches this suite through the console code page, which mangles
+# diacritics (hence the ASCII-only assertions elsewhere). The word under test
+# is Czech, so this one case needs the real bytes.
+$nonFfErrFile = Join-Path $root 'nonff.err'
+& $gitBash -c 'cd "$1" && git push --force origin feature/x 2>"$2"' _ $work ($nonFfErrFile -replace '\\', '/') 2>&1 | Out-Null
+$nonFfErr = Get-Content -LiteralPath $nonFfErrFile -Raw -Encoding utf8
+Assert-Match $nonFfErr 'báze' 'zamítnutí non-fast-forward pojmenuje pohnutou bázi (odlišení od vynuceného přepisu historie)'
+
 Remove-Item -Recurse -Force $root
 
 Complete-Tests

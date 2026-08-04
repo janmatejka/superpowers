@@ -53,6 +53,55 @@ to_lower() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+# Protected-branch patterns come from the repository configuration
+# (contract: "Repository Configuration"), materialized as one glob per line
+# by install-git-hooks.ps1 — this is POSIX sh, there is no JSON parser here.
+# A missing, empty or comment-only file falls back to the built-in list:
+# degradation must always lead to MORE protection, never less.
+#
+# Loaded ONCE, BEFORE the main loop: the loop reads git's ref list from the
+# hook's stdin, and any stdin-consuming command inside it would swallow the
+# remaining refs — a hook that silently stops checking looks exactly like a
+# hook that works.
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null)
+[ -z "$common_dir" ] && common_dir='.git'
+protected_file="$common_dir/ums-protected-branches"
+
+protected_patterns=''
+if [ -f "$protected_file" ]; then
+    protected_patterns=$(sed -e 's/#.*//' "$protected_file" \
+        | tr -d '[:blank:]' \
+        | tr '[:upper:]' '[:lower:]' \
+        | grep -v '^$')
+fi
+if [ -z "$protected_patterns" ]; then
+    protected_patterns='develop
+main
+master
+release/*'
+fi
+
+# Pathname expansion off for the rest of this hook. The `for` below relies on
+# an unquoted expansion to split the pattern list on whitespace — and an
+# unquoted expansion in POSIX sh is ALSO glob-expanded against the working
+# tree, which is the repository root when git runs a hook. Measured, not
+# theorized: in a clone that has a top-level `branches/` directory, the
+# pattern `branches/*` came out of the loop as `branches/notes.txt` and the
+# branch was pushed through unprotected. `release/*` has the same exposure.
+# Nothing else in this hook globs ($pat inside `case` is a pattern, not an
+# expansion, and is unaffected by -f).
+set -f
+
+# $pat is deliberately UNQUOTED inside `case` so it is treated as a glob.
+is_protected() {
+    for pat in $protected_patterns; do
+        case "$1" in
+            $pat) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ -z "$local_ref" ] && continue
 
@@ -71,26 +120,28 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         *) continue ;;
     esac
 
-    case "$remote_ref_lc" in
-        refs/heads/develop|refs/heads/main|refs/heads/master|refs/heads/release/*)
-            b=$(branch_name "$remote_ref")
-            if [ "$UMS_ALLOW_SHARED_PUSH" = "1" ]; then
-                # Deliberate human publication — announced, not silent, so an
-                # escape left set in a shell stays visible. NOT a `continue`:
-                # the deletion and non-fast-forward rules below still apply to
-                # this ref, the escape lifts the shared-branch rule only.
-                echo "UMS: UMS_ALLOW_SHARED_PUSH=1 — push do sdílené větve '$b' povolen (vědomá výjimka člověka)." >&2
-            else
-                echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
-                echo "     Připrav příkaz a nech ho uživateli:" >&2
-                echo "     \`! UMS_ALLOW_SHARED_PUSH=1 git push $remote_name $b\`" >&2
-                echo "     UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka pro člověka; agent ji nikdy nenastavuje." >&2
-                echo "     (Výjimka platí jen na sdílené větve — mazání a force push zůstávají zakázané.)" >&2
-                reject=1
-                continue
-            fi
-            ;;
-    esac
+    branch_lc=${remote_ref_lc#refs/heads/}
+    if is_protected "$branch_lc"; then
+        b=$(branch_name "$remote_ref")
+        if [ "$UMS_ALLOW_SHARED_PUSH" = "1" ]; then
+            # Deliberate human publication — announced, not silent, so an
+            # escape left set in a shell stays visible. NOT a `continue`:
+            # the deletion and non-fast-forward rules below still apply to
+            # this ref, the escape lifts the shared-branch rule only.
+            echo "UMS: UMS_ALLOW_SHARED_PUSH=1 — push do sdílené větve '$b' povolen (vědomá výjimka člověka)." >&2
+        else
+            echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
+            echo "     Připrav příkaz a nech ho uživateli:" >&2
+            # Refspec form on purpose: in a ticket clone WITHOUT a local
+            # copy of the shared branch, `git push origin <b>` fails on an
+            # unknown local ref, so the advice would not even run.
+            echo "     \`! UMS_ALLOW_SHARED_PUSH=1 git push $remote_name HEAD:$b\`" >&2
+            echo "     UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka pro člověka; agent ji nikdy nenastavuje." >&2
+            echo "     (Výjimka platí jen na sdílené větve — mazání a force push zůstávají zakázané.)" >&2
+            reject=1
+            continue
+        fi
+    fi
 
     if [ "$local_sha" = "$zero" ]; then
         b=$(branch_name "$remote_ref")
@@ -104,6 +155,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             b=$(branch_name "$remote_ref")
             echo "UMS: push do '$b' není fast-forward (vynucený/force push) — zakázáno" >&2
             echo "     (Publication Contract). Historii nikdy nepřepisuj tiše, řeš to s uživatelem." >&2
+            # Non-fast-forward has two very different causes; naming the benign
+            # one keeps a routine "the base moved" from being read as an
+            # attempted history rewrite.
+            echo "     Pokud integruješ tiketovou větev, báze se nejspíš pohnula: udělej" >&2
+            echo "     git fetch a merge origin/<báze>, znovu ověř a zkus push ještě raz." >&2
             reject=1
             continue
         fi
