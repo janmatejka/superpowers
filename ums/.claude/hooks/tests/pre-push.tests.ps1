@@ -386,13 +386,20 @@ Copy-Item -Recurse -Force -LiteralPath $realUms.Path -Destination $forkCopy
 # minimal but complete monorepo shape for the claude+Monorepo branch
 New-Item -ItemType Directory -Force -Path @(
     (Join-Path $fakeMono '.claude\scripts'),
-    (Join-Path $fakeMono '.claude\skills\shared'),
+    (Join-Path $fakeMono '.claude\skills\shared\scripts'),
     (Join-Path $fakeMono '.claude\skills\mb-fake'),
     (Join-Path $fakeMono '.claude\hooks')
 ) | Out-Null
 Set-Content -LiteralPath (Join-Path $fakeMono '.claude\settings.json') -Value '{}'
 Set-Content -LiteralPath (Join-Path $fakeMono '.claude\scripts\revendor-superpowers.ps1') -Value '# stub'
 Set-Content -LiteralPath (Join-Path $fakeMono '.claude\skills\shared\x.md') -Value 'shared stub'
+# The REAL loader, not a stub, and not optional scenery: `skills\shared` is
+# MIRRORED by the sync (destination replaced outright), so a fake monorepo
+# without it leaves the fork copy without one either - and the installer treats
+# a missing loader as a hard error, which the sync then downgrades to a warning
+# with no hook installed at all. A real monorepo carrying this layer has it.
+Copy-Item -Force (Join-Path $realUms.Path '.claude\skills\shared\scripts\Get-UmsRepoConfig.ps1') `
+    (Join-Path $fakeMono '.claude\skills\shared\scripts\Get-UmsRepoConfig.ps1')
 Set-Content -LiteralPath (Join-Path $fakeMono '.claude\skills\mb-fake\y.md') -Value 'skill stub'
 Set-Content -LiteralPath (Join-Path $fakeMono 'CLAUDE.md') -Value "# stub`n"
 Copy-Item -Force (Join-Path $realUms.Path '.claude\hooks\install-git-hooks.ps1') (Join-Path $fakeMono '.claude\hooks\install-git-hooks.ps1')
@@ -693,6 +700,65 @@ Assert-True (($multiRefCode -ne 0) -and ($out -match "'develop'")) 'druhý ref n
 Write-ProtectedList $protectedFile @('Branches/*')
 $r = Invoke-GitTry $work @('push', 'origin', 'HEAD:refs/heads/main')
 Assert-Eq $r.Code 0 'konfigurovaný seznam vestavěný NAHRAZUJE (main není chráněný, když ho seznam neobsahuje), nesjednocuje se s ním'
+
+# ---------------------------------------------------------------------------
+# 17. THE GENERATOR, the other half of case 16. Case 16 writes the list BY
+# HAND; here nothing is written by hand — install-git-hooks.ps1 must
+# materialize memory-bank/ums-repo.json's `protectedBranches` into
+# <git-common-dir>/ums-protected-branches itself, because pre-push is POSIX sh
+# with no JSON parser. Without this step the configuration reaches the hook
+# nowhere and the hook only ever sees its built-in fallback.
+#
+# Own fixture: the primary one above has no configuration file and a list that
+# later cases keep rewriting, so a generated file there could not be told from
+# a hand-written one.
+#
+# `develop` is configured alongside `Branches/*` on purpose. The installer's
+# own proof runs the hook, which resolves the list relative to the working
+# directory, so the fixture's list is what the reject run reads — a
+# configuration that dropped `develop` would fail that run and the exit code
+# asserted below would be about the wrong thing.
+# ---------------------------------------------------------------------------
+$root8 = Join-Path ([IO.Path]::GetTempPath()) ("mbgen-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$origin8 = Join-Path $root8 'origin.git'
+$work8 = Join-Path $root8 'work'
+New-Item -ItemType Directory -Force -Path $origin8, $work8 | Out-Null
+& git init --bare -q -b develop $origin8 | Out-Null
+& git init -q -b develop $work8 | Out-Null
+Invoke-GitOk $work8 @('remote', 'add', 'origin', $origin8) | Out-Null
+'base' | Out-File -FilePath (Join-Path $work8 'f.txt') -Encoding utf8
+Invoke-GitOk $work8 @('add', '-A') | Out-Null
+Invoke-GitOk $work8 @('commit', '-m', 'base') | Out-Null
+Invoke-GitOk $work8 @('push', '-u', 'origin', 'develop') | Out-Null
+
+New-Item -ItemType Directory -Force -Path (Join-Path $work8 'memory-bank') | Out-Null
+Set-Content -LiteralPath (Join-Path $work8 'memory-bank\ums-repo.json') -Value @'
+{
+  "protectedBranches": ["develop", "Branches/*"]
+}
+'@
+
+$res = Invoke-Installer $work8 $null
+$listFile8 = Join-Path (Resolve-GitCommonDir $work8) 'ums-protected-branches'
+Assert-True (Test-Path -LiteralPath $listFile8) 'generátor: instalátor vytvořil <git-common-dir>/ums-protected-branches'
+$generated = if (Test-Path -LiteralPath $listFile8) { [IO.File]::ReadAllText($listFile8) } else { '' }
+Assert-Match $generated '(?m)^Branches/\*\s*$' 'generátor: seznam obsahuje vzor Branches/* z konfigurace'
+Assert-True (-not $generated.Contains("`r")) 'generátor: seznam je zapsaný s LF, bez CR (ne-msys sh nic nekonvertuje)'
+Assert-Eq $res.Code 0 'generátor: instalátor končí kódem 0 (seznam zapsán, hook ověřen)'
+# The third proof run must actually have happened - a decorative one would
+# leave every other assertion here green.
+Assert-Match $res.Flat "generated protected-branch list is consulted \(pattern 'Branches/\*'\)" 'generátor: self-test dokazuje, že hook vygenerovaný seznam skutečně čte'
+
+# ... and the branch the built-in list cannot cover is rejected by a REAL push,
+# with no file written by this suite.
+Invoke-GitOk $work8 @('checkout', '-q', '-b', 'Branches/5.37') | Out-Null
+'maint' | Out-File -FilePath (Join-Path $work8 'h.txt') -Encoding utf8
+Invoke-GitOk $work8 @('add', '-A') | Out-Null
+Invoke-GitOk $work8 @('commit', '-m', 'maint') | Out-Null
+$r = Invoke-GitTry $work8 @('push', 'origin', 'HEAD:refs/heads/Branches/5.37')
+Assert-True (($r.Code -ne 0) -and ($r.Out -match 'UMS') -and ($null -eq (Get-Sha $origin8 'refs/heads/Branches/5.37'))) 'generátor: push do Branches/5.37 je po instalaci zamítnutý (vzor se dostal ke hooku bez ručního zápisu)'
+
+Remove-Item -Recurse -Force $root8
 
 Remove-Item -Recurse -Force $root
 
