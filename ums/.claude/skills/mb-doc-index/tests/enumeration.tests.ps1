@@ -75,6 +75,31 @@ $outside = @($idxGlob.entries | Where-Object {
     $_.branch -notin @('local', 'base') -and $_.branch -notlike 'origin/feature/ums-1-*' })
 Assert-Eq (@($outside).Count) 0 'do indexu nevstoupí žádná vzdálená větev mimo -BranchGlob'
 
+# --- case 5: a DORMANT branch reached through a commit it SHARES with a live ---
+# branch must not enter the index. `feature/ums-13-ziva` is cut from
+# `feature/ums-13-uspany-zdroj`'s design commit, so `branch -r --contains` on
+# that one sha reports both — the dormant tip (400 days) and the live one
+# (1 day). Stage 1's active set is the authority, and stage 2 intersects against
+# it precisely so the dormant branch cannot ride in on the shared commit.
+#
+# Without that intersection the dormant entry is also created with NO activity
+# stamp, and the display filter lets a missing stamp through unconditionally
+# (`-not $_.activity`, which exists for the local/base pseudo-branches), so it
+# prints no matter what -SinceDays says. Every other case in this suite stays
+# green with that line deleted; this is the one that goes red.
+Assert-Eq (@($idx.entries | Where-Object { $_.branch -eq 'origin/feature/ums-13-uspany-zdroj' }).Count) 0 `
+    'uspaná větev se nedostane do indexu přes commit, který dělí se živou větví'
+Assert-NotMatch $r.Out 'ums-13-uspany-zdroj' 'uspaná větev se netiskne ani do tabulky'
+# Positive control, so the case cannot pass by indexing nothing at all: the LIVE
+# child IS indexed, and it carries the shared design document.
+Assert-Eq (@($idx.entries | Where-Object {
+    $_.branch -eq 'origin/feature/ums-13-ziva' -and $_.slug -eq 'ums_13_zdedeny' }).Count) 1 `
+    'živá větev s týmž (společným) commitem návrhu v indexu JE'
+# The second half of the same guarantee: every remote entry has an activity
+# stamp, because only branches from stage 1's map can produce one.
+Assert-Eq (@($idx.entries | Where-Object { $_.branch -like 'origin/*' -and -not $_.activity }).Count) 0 `
+    'každý záznam vzdálené větve nese stopu aktivity (jinak by ho okno -SinceDays nemohlo filtrovat)'
+
 # ---------------------------------------------------------------------------
 # The 'local' pseudo-branch is enumerated from git (one `ls-files` call with a
 # pathspec) rather than by a recursive directory walk, because this script is

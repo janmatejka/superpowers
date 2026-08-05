@@ -129,13 +129,13 @@ Nastav `- **Contract-Version:** 2.6` a nad dosavadní řádek o v2.4 vlož:
 - [ ] **Step 2: Publication Contract**
 
 - Nahraď výčet čtyř publikačních bodů pravidlem: **agent pushuje vlastní tiketovou větev po každém commitu**, vždy s ohlášením větve a odchozích commitů; dosavadní čtyři body zůstávají uvedené jako jeho zvláštní případy a doplňují se o commit implementátora po zeleném tasku, commit po mergi báze a commit MB změn po harvestu.
-- V tabulce dvouúrovňové policy změň příklad příkazu u sdílených větví na refspecový tvar: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>`.
-- Přidej podsekci **Integration** se sekvencí: `fetch` → `merge origin/<baseRef>` → zelená verifikace → agent připraví lidský příkaz s výčtem odchozích commitů → uživatel spustí → agent znovu ověří dosažitelnost → `mb-jira-update` finalizace. Selhání pushe na non-fast-forward znamená pohnutou bázi: opakuj od `fetch`, **strop dvě neúspěšná kola**, pak STOP a report.
+- V tabulce dvouúrovňové policy změň příklad příkazu u sdílených větví na refspecový tvar: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`.
+- Přidej podsekci **Integration** se sekvencí: `fetch` → `merge <baseRef>` → zelená verifikace → agent připraví lidský příkaz s výčtem odchozích commitů → uživatel spustí → agent znovu ověří dosažitelnost → `mb-jira-update` finalizace. Selhání pushe na non-fast-forward znamená pohnutou bázi: opakuj od `fetch`, **strop dvě neúspěšná kola**, pak STOP a report.
 - Doplň, že zbylá tiketová větev na `origin` se nemaže (mazání větve přes push zůstává zakázané) a jako kolize se nehlásí, protože index klíčuje podle fáze.
 
 - [ ] **Step 3: Cross-Branch Visibility**
 
-Nahraď pravidlo *„A ticket branch is created from the CURRENT base ref (fetch + fast-forward)"* za: tiketová větev se zakládá `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` **vždy s explicitním výchozím bodem**; lokální báze se v tiketovém klonu nepoužívá — pokud existuje, neaktualizuje se a nemerguje. Doplň postkondici založení: `proposals/active/` je prázdný nebo chybí a `context.md` je `IDLE`; jinak STOP, větev smazat, zopakovat. Doplň invariant, že **báze nikdy nenese `ACTIVE` stav**.
+Nahraď pravidlo *„A ticket branch is created from the CURRENT base ref (fetch + fast-forward)"* za: tiketová větev se zakládá `git switch -c <TICKET>-<kebab-slug> <baseRef>` **vždy s explicitním výchozím bodem**; lokální báze se v tiketovém klonu nepoužívá — pokud existuje, neaktualizuje se a nemerguje. Doplň postkondici založení: `proposals/active/` je prázdný nebo chybí a `context.md` je `IDLE`; jinak STOP, větev smazat, zopakovat. Doplň invariant, že **báze nikdy nenese `ACTIVE` stav**.
 
 - [ ] **Step 4: Architect Review Gate**
 
@@ -171,12 +171,12 @@ Vlož za sekci `Scope Lock`. Obsah:
 Vlož za `Repository Configuration`. Obsah:
 
 - Hranice fází, na kterých se merguje báze: před `writing-plans`; před dispatchem prvního tasku; před requestem a před resume design review; před whole-branch review; před `mb-harvest`. **Nikdy uprostřed tasku.**
-- Sekvence: `fetch` → `merge origin/<baseRef>` → posouzení průniku → případná verifikace → commit → push.
+- Sekvence: `fetch` → `merge <baseRef>` → posouzení průniku → případná verifikace → commit → push.
 - Posouzení průniku, obě množiny počítané **po `fetch` a před `merge`** ze stejného merge-base:
 
   ```
-  MB=$(git merge-base HEAD origin/<baseRef>)
-  prichozi=$(git diff --name-only $MB..origin/<baseRef>)
+  MB=$(git merge-base HEAD <baseRef>)
+  prichozi=$(git diff --name-only $MB..<baseRef>)
   vlastni=$(git diff --name-only  $MB..HEAD)
   ```
 
@@ -975,7 +975,7 @@ aplikuje před filtrem aktivity."
 
 - [ ] **Step 1: `brainstorming.overlay.md`**
 
-V odrážce **Item 6** nahraď větu o založení větve: místo „if you are on the default branch, create a feature branch in place first" napiš, že tiketová větev se zakládá `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` po `git fetch origin`, **vždy s explicitním výchozím bodem** (implicitní tvar na cizí tiketové větvi vtáhne do historie její pin a její aktivní pár), a že po založení musí platit postkondice: `proposals/active/` prázdný nebo chybějící a `context.md` ve stavu `IDLE`, jinak STOP a větev smazat. `baseRef` přichází z `<CTX_DIR>/ums-repo.json`.
+V odrážce **Item 6** nahraď větu o založení větve: místo „if you are on the default branch, create a feature branch in place first" napiš, že tiketová větev se zakládá `git switch -c <TICKET>-<kebab-slug> <baseRef>` po `git fetch origin`, **vždy s explicitním výchozím bodem** (implicitní tvar na cizí tiketové větvi vtáhne do historie její pin a její aktivní pár), a že po založení musí platit postkondice: `proposals/active/` prázdný nebo chybějící a `context.md` ve stavu `IDLE`, jinak STOP a větev smazat. `baseRef` přichází z `<CTX_DIR>/ums-repo.json`.
 
 Větu o publikaci (`publication point 1`) nahraď odkazem na pravidlo push po každém commitu.
 
@@ -986,14 +986,14 @@ Do odrážky **Item 1** doplň, že před pinováním práce se ověří způsob
 - Odrážku **Isolation** ponech (zákaz worktrees platí), jen doplň, že volbu workspace vlastní uživatel a sezení běží v tom workspace, kde práce je.
 - Do odrážky **Playbook candidates** změň cestu na `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` a přepiš věto o přepisu: přepisuje se soubor **téhož slugu**, cizí slugy mají vlastní soubory a nikdy se nemažou.
 - Odrážku **Publication** přepiš na pravidlo push po každém commitu, s poznámkou, že to zahrnuje commit implementátora po zeleném tasku.
-- Přidej odrážku **Base sync**: před dispatchem prvního tasku `fetch` a `merge origin/<baseRef>`, pak posouzení průniku a případná verifikace dle sekce `Base Sync & Drift Detection`; **nikdy nemerguj bázi uprostřed tasku**. Povinná baseline před prvním dispatchem zůstává.
+- Přidej odrážku **Base sync**: před dispatchem prvního tasku `fetch` a `merge <baseRef>`, pak posouzení průniku a případná verifikace dle sekce `Base Sync & Drift Detection`; **nikdy nemerguj bázi uprostřed tasku**. Povinná baseline před prvním dispatchem zůstává.
 
 - [ ] **Step 3: `finishing-a-development-branch.overlay.md`**
 
 Přepiš odrážky k Option 1. Kotva `ANCHOR-BEFORE: ## Step 5: Execute Choice` zůstává nezměněná.
 
 - Smaž otázku na refresh lokální báze i větu „Merge with `--no-ff` per repo convention".
-- Napiš, že upstream Option 1 „Merge Locally" se v tomto repozitáři **nahrazuje** integrací pushem tiketové větve (stejný typ přesměrování jako u cesty k dokumentům): před harvestem base sync, po harvestu a jeho commitu `fetch` a `merge origin/<baseRef>`, zelená verifikace, a pak předání příkazu `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>` uživateli s výčtem odchozích commitů. Agent nepushuje sdílenou větev a nikdy si tu proměnnou nenastavuje; `--no-verify` není náhrada.
+- Napiš, že upstream Option 1 „Merge Locally" se v tomto repozitáři **nahrazuje** integrací pushem tiketové větve (stejný typ přesměrování jako u cesty k dokumentům): před harvestem base sync, po harvestu a jeho commitu `fetch` a `merge <baseRef>`, zelená verifikace, a pak předání příkazu `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` uživateli s výčtem odchozích commitů. Agent nepushuje sdílenou větev a nikdy si tu proměnnou nenastavuje; `--no-verify` není náhrada.
 - Doplň souběh: selhání pushe na non-fast-forward znamená pohnutou bázi, opakuj od `fetch`, strop dvě kola, pak STOP a report.
 - Ponech, že `mb-jira-update` ve finalizačním režimu běží až po ověřené dosažitelnosti, a přeformuluj spouštěč z „po zeleném lokálním mergi" na „po ověřeném FF pushi do báze".
 
@@ -1120,8 +1120,8 @@ Přidej odrážky, každou s konkrétním příkazem:
   ```
 
   Vypiš slug, tiket a datum posledního commitu. Neexistující `context.md` na větvi není chyba.
-- **Vzdálenost od báze:** `git rev-list --count HEAD..origin/<baseRef>` — kolik commitů báze chybí; nad nulou doporuč base sync na nejbližší hranici fáze.
-- **Invariant báze:** `git show origin/<baseRef>:memory-bank/context.md` musí být `IDLE`; `ACTIVE` na bázi je **chyba**, protože každá nová větev z báze pak zdědí cizí pin.
+- **Vzdálenost od báze:** `git rev-list --count HEAD..<baseRef>` — kolik commitů báze chybí; nad nulou doporuč base sync na nejbližší hranici fáze.
+- **Invariant báze:** `git show <baseRef>:memory-bank/context.md` musí být `IDLE`; `ACTIVE` na bázi je **chyba**, protože každá nová větev z báze pak zdědí cizí pin.
 - **Kandidáti playbooku:** vypiš soubory `.superpowers/playbook-candidates/*.md` a jejich slugy; soubory jiných slugů se jen hlásí a nikdy nemažou.
 
 U two-actives odrážky uprav formulaci: aktivní slug **na aktuální větvi** odlišný od pinu je varování; slugy jiných lokálních větví jsou zaparkovaná práce, ne kolize.
@@ -1232,7 +1232,7 @@ Kontrakt v tasku 2 pravidla **vyslovil**; tyto tři skilly je **provádějí**, 
 - [ ] **Step 1: `mb-architect-review` — branch sync a merge asymetrie**
 
 - V kroku branch sync (první krok režimů respond a resume) doplň **merge asymetrii**: bázi merguje jen strana **řešitele** (request a resume). V režimu **respond** se báze nemerguje nikdy — skill má vlastní pravidlo „diverged local branch = STOP" a merge z obou stran by ho na té pojistce zastavil. Napiš to jako zákaz, ne jako doporučení.
-- V režimech request a resume doplň base sync **před** handoff push: `fetch`, `merge origin/<baseRef>`, posouzení průniku a případná nabídka verifikace dle sekce `Base Sync & Drift Detection`. Pořadí kroků zůstává takové, aby jeden handoff potřeboval právě jeden push.
+- V režimech request a resume doplň base sync **před** handoff push: `fetch`, `merge <baseRef>`, posouzení průniku a případná nabídka verifikace dle sekce `Base Sync & Drift Detection`. Pořadí kroků zůstává takové, aby jeden handoff potřeboval právě jeden push.
 - V pořadí rozpoznávání tiketové větve (jméno z request komentáře → vzdálené větve obsahující kód tiketu → dotaz uživateli) doplň, že tvar jména je `<TICKET>-<kebab-slug>` a kód tiketu se poznává podle `ticketPattern` z konfigurace, ne podle zadrátovaného `UMS-`. Pravidlo „víc nejednoznačných kandidátů se vždy ptá" zůstává.
 
 - [ ] **Step 2: `mb-jira-update` — spouštěč finalizace**
@@ -1294,7 +1294,7 @@ commitu."
 
 - [ ] **Step 1: Uprav `ums/CLAUDE.md.sample`**
 
-V odrážce **Dokončení větve** smaž větu „Merge do develop dělej vždy `--no-ff` (explicitní merge commit dle konvence repa)." a větu „Před merge do lokálního develop se zeptej na refresh z origin/develop (fetch + FF, žádný push; nahrazuje upstream git pull)." Nahraď je: integrace je fast-forward push tiketové větve do báze; agent připraví `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>` s výčtem odchozích commitů a spouští ho uživatel; při selhání na non-fast-forward se báze pohnula, opakuj od `fetch`, strop dvě kola. Lokální báze se v tiketovém klonu nepoužívá.
+V odrážce **Dokončení větve** smaž větu „Merge do develop dělej vždy `--no-ff` (explicitní merge commit dle konvence repa)." a větu „Před merge do lokálního develop se zeptej na refresh z origin/develop (fetch + FF, žádný push; nahrazuje upstream git pull)." Nahraď je: integrace je fast-forward push tiketové větve do báze; agent připraví `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` s výčtem odchozích commitů a spouští ho uživatel; při selhání na non-fast-forward se báze pohnula, opakuj od `fetch`, strop dvě kola. Lokální báze se v tiketovém klonu nepoužívá.
 
 Do odrážky **Exekuce plánu (SDD)** doplň: bázi merguj na hranicích fází (nikdy uprostřed tasku), po mergi porovnej příchozí a vlastní cesty a verifikaci **nabídni** podle průniku; povinná baseline před prvním dispatchem zůstává.
 
@@ -1315,7 +1315,7 @@ rg -n 'no-ff|lokálního develop|refresh z origin' CLAUDE.md ums/CLAUDE.md.sampl
 Expected: žádný výstup a `exit=1`.
 
 ```bash
-rg -n 'mb-park|HEAD:<baseRef>|jedno sezení na workspace' CLAUDE.md ums/CLAUDE.md.sample
+rg -n 'mb-park|HEAD:<baseBranch>|jedno sezení na workspace' CLAUDE.md ums/CLAUDE.md.sample
 ```
 
 Expected: nálezy v obou souborech.

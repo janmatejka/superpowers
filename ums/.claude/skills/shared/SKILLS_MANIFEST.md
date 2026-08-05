@@ -27,7 +27,7 @@ UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-developmen
 | mb-abort | [mb-abort/SKILL.md](../mb-abort/SKILL.md) | Zrušení aktivní práce (pár → abandoned/, reset context.md) |
 | mb-park | [mb-park/SKILL.md](../mb-park/SKILL.md) | Odložení rozpracované práce: commit, publikace, commit kandidátů playbooku; pár zůstává v `active/` a `context.md` v ACTIVE |
 | mb-init | [mb-init/SKILL.md](../mb-init/SKILL.md) | Inicializace memory-bank/ struktury (CTX_DIR nebo projektová MB) |
-| mb-state | [mb-state/SKILL.md](../mb-state/SKILL.md) | Read-only stav: pin, slug, úplnost páru, staleness |
+| mb-state | [mb-state/SKILL.md](../mb-state/SKILL.md) | Read-only stav workflow i workspace: pin, slug, úplnost páru, staleness + způsobilost workspace (pre-push hook, konfigurace repa), zbytky, zaparkovaná práce na jiných větvích, vzdálenost od báze |
 | mb-scan | [mb-scan/SKILL.md](../mb-scan/SKILL.md) | Read-only hloubková analýza projektu |
 | mb-sync | [mb-sync/SKILL.md](../mb-sync/SKILL.md) | Synchronizace MB dokumentů s realitou kódu |
 | mb-git-message | [mb-git-message/SKILL.md](../mb-git-message/SKILL.md) | Návrh commit message (bez commitu) |

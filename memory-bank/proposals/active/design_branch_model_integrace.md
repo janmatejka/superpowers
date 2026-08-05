@@ -221,7 +221,7 @@ obsah téhož souboru, mrtvé místo 15).
 ### 1. Model větví a integrace
 
 **Založení.** `git fetch origin`, pak `git switch -c <TICKET>-<kebab-slug>
-origin/<baseRef>` — **vždy s explicitním výchozím bodem**, nikdy implicitní
+<baseRef>` — **vždy s explicitním výchozím bodem**, nikdy implicitní
 tvar. Žádná lokální báze, tedy ani dnešní „fetch + fast-forward lokální báze".
 Jméno větve je `<TICKET>-<kebab-slug>` v ASCII; existující větve s diakritikou
 se nepřejmenovávají. Bez tiketu se použije `<kebab-slug>` sám.
@@ -256,9 +256,9 @@ harvestu. Force push zůstává zakázaný.
 **Integrace.** Sekvence po dokončení harvestu a jeho commitu:
 
 1. `git fetch origin`
-2. `git merge origin/<baseRef>` (base sync dle sekce 2)
+2. `git merge <baseRef>` (base sync dle sekce 2)
 3. zelená verifikace
-4. agent připraví `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>`
+4. agent připraví `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`
    s výčtem odchozích commitů; **uživatel ho spustí**
 5. agent znovu ověří dosažitelnost (`git fetch origin`,
    `git branch -r --contains <sha>`)
@@ -279,7 +279,7 @@ fáze a návrh je po harvestu v `proposals/completed/`.
 dispatchem prvního tasku; před requestem a před resume design review; před
 whole-branch review; před `mb-harvest`. **Nikdy uprostřed tasku.**
 
-**Sekvence na každé hranici:** `fetch` → `merge origin/<baseRef>` → posouzení
+**Sekvence na každé hranici:** `fetch` → `merge <baseRef>` → posouzení
 průniku (níže) → případná verifikace → commit → push.
 
 **Posouzení průniku je mechanické.** Obě množiny cest se počítají **po `fetch`,
@@ -287,8 +287,8 @@ ale před `merge`**, ze stejného merge-base — tím je definice nezávislá na
 si kdo zapamatoval před fetchem:
 
 ```
-MB=$(git merge-base HEAD origin/<baseRef>)
-prichozi=$(git diff --name-only $MB..origin/<baseRef>)   # co merge přinese
+MB=$(git merge-base HEAD <baseRef>)
+prichozi=$(git diff --name-only $MB..<baseRef>)   # co merge přinese
 vlastni=$(git diff --name-only  $MB..HEAD)                # co větev změnila
 ```
 
@@ -520,7 +520,7 @@ mu agent řekne.
 | Lokální větev pro tiket existuje | **resume** — přepnout, ověřit postkondice, ohlásit stav z checkboxů plánu a ledgeru |
 | Tiket je aktivní na cizí větvi na `origin` | **STOP** — kolizní kontrola (sekce 1 a 5) |
 | V `proposals/next/` čeká předběžný návrh | aktivace dle kontraktu |
-| Nic z toho | **nová větev** z `origin/<baseRef>` s postkondicí (sekce 1) |
+| Nic z toho | **nová větev** z `<baseRef>` s postkondicí (sekce 1) |
 
 **Fáze 4** — zápis pinu a vstup do workflow.
 
@@ -611,7 +611,7 @@ rozpracovaného?" měla odpověď.
 
 **Kontrakt v2.5 → 2.6.** Mění se *Publication Contract* (publikační body →
 pravidlo push-po-commitu, refspecový příkaz, integrační sekvence se stropem dvou
-kol), *Cross-Branch Visibility* (zakládání z `origin/<baseRef>` bez lokální
+kol), *Cross-Branch Visibility* (zakládání z `<baseRef>` bez lokální
 báze), *Architect Review Gate* (jméno větve, merge asymetrie), *Fail-Closed
 Behavior* (nemožný base sync, strop integračních kol), *Active Work Item*
 (limit **per větev** a jen pro práci neobnovitelnou z `origin`, plus postkondice
@@ -624,7 +624,7 @@ pojmenovanou výjimku, že právě tento soubor se při parkování commituje.
 Maže se podsekce „Future worktree pool (interface only — not implemented)";
 zákaz worktrees zůstává beze změny.
 
-**Tři overlaye.** `brainstorming` — zakládání větve z `origin/<baseRef>`.
+**Tři overlaye.** `brainstorming` — zakládání větve z `<baseRef>`.
 `subagent-driven-development` — base sync před prvním dispatchem, push po každém
 zeleném tasku, zákaz merge uprostřed tasku. `finishing-a-development-branch` —
 největší přepis: upstream Option 1 „Merge Locally" se **nahrazuje** integrací
@@ -646,7 +646,7 @@ mergi báze `merge-base(<base>, HEAD)` rovno tipu báze, takže derivace
 | [tech.md](../../tech.md) | pin kontraktu (dnes uvádí 2.3, tedy už teď zpožděný o dvě verze), nový `ums-repo.json` a generovaný seznam, počty asercí, změřený výkon `doc-index.ps1` |
 | `mb-architect-review` | branch sync, merge asymetrie, rozpoznání větve podle kódu tiketu |
 | `mb-jira-update` | spouštěč finalizace = ověřený FF push |
-| `mb-state` | **rozšíření na read-only orákulum způsobilosti workspace**: je volný (tři příkazy z 6.2), co je tu zaparkovaného (pin a datum na každou lokální tiketovou větev), co je v cestě, vzdálenost od báze (`git rev-list --count HEAD..origin/<baseRef>`), kontrola invariantu `IDLE` na bázi. Zůstává read-only — jednající skilly jsou oddělené |
+| `mb-state` | **rozšíření na read-only orákulum způsobilosti workspace**: je volný (tři příkazy z 6.2), co je tu zaparkovaného (pin a datum na každou lokální tiketovou větev), co je v cestě, vzdálenost od báze (`git rev-list --count HEAD..<baseRef>`), kontrola invariantu `IDLE` na bázi. Zůstává read-only — jednající skilly jsou oddělené |
 | **`mb-park`** (nový) | commit, push, ohlášení zbytků, commit kandidátů (`git add -f`), větev zůstává checkoutnutá; `context.md` zůstává `ACTIVE` |
 | `mb-init` | detekce `ums-repo.json` z topologie repozitáře (první verze bez schvalování, jako `playbook.md`) a **režim obnovy** nad existujícím souborem s předložením rozdílu |
 | `mb-harvest` | čte kandidáty z cesty per slug (i commitnuté) a soubor při archivaci maže |

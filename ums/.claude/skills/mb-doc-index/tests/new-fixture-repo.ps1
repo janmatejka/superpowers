@@ -128,6 +128,28 @@ function New-FixtureRepo {
     Invoke-GitCommit $work 'diakritika' 1
     Invoke-Git $work @('push', 'origin', 'feature/ums-12-diakritika-ěšč') | Out-Null
 
+    # DORMANT branch whose design commit is ALSO the start point of a LIVE
+    # branch. `git branch -r --contains <that sha>` therefore reports BOTH, and
+    # the dormant one is outside the activity window: without stage 2's
+    # intersection against $activityByBranch the dormant branch is smuggled back
+    # into the index through a commit it shares with a live one, and its entry
+    # gets NO activity stamp — which the display filter passes through
+    # unconditionally (`-not $_.activity`), so it prints regardless of
+    # -SinceDays. Deleting that one line leaves every other case in this suite
+    # green, which is why this fixture exists.
+    Invoke-Git $work @('checkout', '-b', 'feature/ums-13-uspany-zdroj', 'develop') | Out-Null
+    Add-Doc $work 'memory-bank/proposals/active/design_ums_13_zdedeny.md' 'UMS-13'
+    Invoke-GitCommit $work 'zdroj: návrh na uspané větvi' 400
+    Invoke-Git $work @('push', 'origin', 'feature/ums-13-uspany-zdroj') | Out-Null
+    # The live child is cut from that very commit and its own tip touches NO
+    # Memory Bank path, so the ONLY indexable commit it reaches is the dormant
+    # branch's design commit — the shared-commit shape, not a copy of the file.
+    Invoke-Git $work @('checkout', '-b', 'feature/ums-13-ziva', 'feature/ums-13-uspany-zdroj') | Out-Null
+    Set-Content -LiteralPath (Join-Path $work 'ziva.txt') -Encoding UTF8 -Value 'live child of a dormant branch'
+    Invoke-Git $work @('add', 'ziva.txt') | Out-Null
+    Invoke-GitCommit $work 'živá větev: čerstvý tip bez MB změn' 1
+    Invoke-Git $work @('push', 'origin', 'feature/ums-13-ziva') | Out-Null
+
     # A real clone has refs/remotes/origin/HEAD (a symref to the base branch);
     # `git init` + `remote add` does not, so create it explicitly — the index
     # must skip it instead of indexing the base twice.
