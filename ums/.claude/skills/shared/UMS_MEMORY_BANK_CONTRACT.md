@@ -1266,6 +1266,72 @@ a diverged local branch = STOP and report. Only after branch sync read
 - Resume without the flag (architect answered manually in Jira): warn and
   continue only after user confirmation.
 
+## Epic Backflow (design → epic)
+
+Refining a design can change the scope or the dependencies its ticket was
+given when the epic was elaborated, and nothing else propagates that back:
+the epic graph is a snapshot from elaboration time. This section closes the
+gap with one bounded, fail-open step after final design approval.
+
+**Trigger point.** The step runs once per work item, after the design is
+FINALLY approved: at `mb-architect-review` resume when a review took place,
+otherwise immediately after the user approves the spec. Never before the
+review — a review may change the design, so an earlier check would be done
+twice.
+
+**When the step does not run:**
+
+- No Jira ticket linked → skipped silently. Work without a ticket belongs to
+  no epic; this is normality, not an exception, so nothing is announced.
+- Atlassian MCP unavailable, or the ticket belongs to no epic → skipped with
+  a one-line announcement.
+
+**The trigger is the existing oracle, never a scope-diff metric.** Run the
+`mb-epic-graph` skill with `-Check` (read-only). A finding concerning THIS
+ticket is the trigger; findings about other tickets are printed and left
+alone. An oracle failure skips the step with an announcement — the step is
+fail-open and never blocks an approved design.
+
+**On a finding, in this order:**
+
+1. **Queue the note, always.** Append a dirty-set row to the epic's ledger
+   (`<MB_ROOT>/memory-bank/epics/<epic_key_snake>/ledger.md`):
+   „Položka/Tiket" = this ticket, „Zašpiněno oknem" = `návrh <slug>` (the
+   dirt came from a design, not a window), „Důvod" = one line
+   `návrh <slug> změnil <co>; okno by mělo přehodnotit <co>`. When no ledger
+   exists, write the same line into
+   `<MB_ROOT>/memory-bank/epics/<epic_key_snake>/notes.md` (created with the
+   heading `# Poznámky pro elaboraci — <EPIC>`); the next elaboration window
+   reads it at framing time. The note is committed on the ticket branch like
+   any other commit of this work item — it is this work item's record, so it
+   legitimately rides the ticket branch into the base at integration.
+2. **Offer, never launch** (the user decides; "the graph is inconsistent" is
+   exactly the situation where an agent slides into "just reconciling it"):
+   - **(a) elaborate now — an inline window in this session.** The step
+     stands at a phase boundary with a clean tree, so switching branches is
+     legal: switch to an elaboration branch created from `<baseRef>`
+     (explicit start point, after `git fetch origin`), run the window
+     interactively per `mb-epic-elaboration` (the human window is preserved —
+     subagents inside the window are a dispatch detail), close it with the
+     window's single commit, push, switch back to the ticket branch and
+     continue with writing-plans. Returning to the ticket branch is part of
+     the step, not a follow-up.
+   - **(b) keep the note and continue** — the human window is deferred to
+     when the human wants it.
+
+Elaboration artifacts therefore never land on the ticket branch: a window
+closes with one commit on its own branch, and on a ticket branch that commit
+would ride the fast-forward integration into the base as part of the ticket —
+two units of work in one history. `mb-park` is NOT a prerequisite of this
+step: parking remains the general workspace tool, but an inline window at a
+phase boundary needs no second session.
+
+A dirty-set row whose concern an inline window has already resolved (the row
+lives on the ticket branch, the window on its own branch — neither sees the
+other until both reach the base) is cleaned by the first window that sees
+both; dirty rows are never deleted, cleaning is recorded (ledger maintenance
+rules).
+
 ## Dispatch Model Policy
 
 Model selection is owned by the superpowers workflow. SDD's **Model
