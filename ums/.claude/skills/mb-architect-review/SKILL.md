@@ -53,11 +53,14 @@ push. A refusal to publish stops the handoff — without the push the other side
 sees neither the design nor `context.md`.
 
 **The step order is what makes one push true:** on the resolver's side the base
-merge comes FIRST and is not pushed on its own, the handoff state is committed
-after it, and the single closing push publishes both commits together. That push
-satisfies the publication rule for the merge commit as well — a base merge is
-never left unpublished, it merely shares the push with the commit that follows it
-inside the same handoff.
+merge comes before the handoff-state commit and is not pushed on its own, the
+handoff state is committed after it, and the single closing push publishes every
+commit of the mode together. That push satisfies the publication rule for the
+merge commit as well — a base merge is never left unpublished, it merely shares
+the push with the commits around it. Whatever the mode commits before the merge —
+in request the design commit that stabilizes the SHA — rides the same push; the
+count of pushes is set by there being exactly one at the end, not by the merge
+being the first commit of all.
 
 ## Branch Sync (first step of respond and resume)
 
@@ -77,7 +80,7 @@ inside the same handoff.
    branch.
 
 **Branch sync itself never merges the base.** The base merge is asymmetric and
-belongs to the RESOLVER's side only — request (step 3 there) and resume (step 3
+belongs to the RESOLVER's side only — request (step 4 there) and resume (step 3
 there). **In respond mode the base is NEVER merged**, not even when the base has
 moved meanwhile and not "just to assess a current tree": a base merge from both
 sides produces two different merge commits over the same base, which is exactly
@@ -89,16 +92,32 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 1. **Preconditions (fail-closed):** `context.md` has a Jira ticket and a
    `Work item` slug (legacy `Proposal:` accepted); the design half of the
    active work item exists in `<PLAN_MB>/proposals/active/` — either style
-   (`design_<slug>.md` or legacy `proposal_<slug>-design.md`). Stabilize the
-   SHA per mb-jira-update §5–6 (uncommitted design → user-confirmed local
-   commit, else STOP).
-2. If still on the default branch, create the ticket branch in place
+   (`design_<slug>.md` or legacy `proposal_<slug>-design.md`). Read them; do NOT
+   commit yet — the SHA is stabilized in step 3, once the branch that will carry
+   the commit exists.
+2. **Be on the ticket branch before anything is committed.** Normally
+   brainstorming created it, and then this step only confirms you are on it and
+   not on the base. If you are still on the default branch, create it in place
    (branch-in-place, always with an explicit starting point after a
    `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <baseRef>`, where
-   `baseRef` comes from `<CTX_DIR>/ums-repo.json` — contract section
-   "Repository Configuration"). Normally brainstorming created the branch
-   already, so this is the exception, not the rule. Git worktrees are banned.
-3. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
+   `baseRef` comes from `<CTX_DIR>/ums-repo.json` — contract section "Repository
+   Configuration"). Git worktrees are banned.
+   **The order matters: the branch first, the design commit after it.** `switch -c`
+   starts from `<baseRef>`, so a design commit created before the switch stays
+   behind on the branch it was made on and the new ticket branch carries no design
+   document at all — the push in step 6 would publish a branch without it and step
+   7 would then STOP at reachability with an empty result. Never carry such a
+   commit across branches to repair the order; do the steps in this order instead.
+   Note that an uncommitted design travels with the switch on its own, which is
+   precisely why committing it later costs nothing — and state you carried in
+   yourself is not another work item's inherited state, so it is not a finding to
+   report against the contract's creation postcondition. If the design turns out to
+   be **already committed** on a non-ticket branch when this mode starts, STOP and
+   report it: the commit sits on a branch it does not belong to, and relocating it
+   is the user's decision, not this skill's.
+3. **Stabilize the SHA** per mb-jira-update §5–6, on the ticket branch:
+   uncommitted design → user-confirmed local commit, else STOP.
+4. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
    `git merge <baseRef>` on the ticket branch, then the intersection assessment
    and, where it applies, the offered verification, per the contract's "Base Sync
    & Drift Detection" section. In the design phase the role of the own set is
@@ -106,33 +125,33 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    so verification is purely an offer. Conflicts: resolve only in files this
    branch changed itself, a `context.md` conflict always targeted with
    `git checkout --ours` (never `merge -X ours` over the whole merge); anything
-   else is a STOP. **Do not push the merge commit on its own** — step 5's single
-   push publishes it together with the handoff state. The SHA stabilized in step 1
+   else is a STOP. **Do not push the merge commit on its own** — step 6's single
+   push publishes it together with the handoff state. The SHA stabilized in step 3
    stays valid: a merge adds a commit, it never rewrites the design commit, and a
    merge conflict on the same slug in `proposals/active/` is a STOP anyway, so the
    pinned content cannot change underneath the link. Do not re-stabilize it.
-4. Write the `- **Review:** design-review requested YYYY-MM-DD` line into
+5. Write the `- **Review:** design-review requested YYYY-MM-DD` line into
    `## Active Work` of `context.md` and commit it (Czech commit message,
    `mb-git-commit` conventions).
-5. **Publish the ticket branch** (announced push per the Publication
+6. **Publish the ticket branch** (announced push per the Publication
    Contract; the pinned design commit MUST be reachable on origin before step
-   6 writes the link). The single push covers the base merge, the design and the
+   7 writes the link). The single push covers the base merge, the design and the
    `context.md` commit.
-6. Publish a Czech comment to the ticket: a 10–15 line summary of the design
+7. Publish a Czech comment to the ticket: a 10–15 line summary of the design
    (Cíl / Scope / klíčová rozhodnutí / rizika), the commit-pinned Bitbucket
    link to the design file (mb-jira-update §7), the **ticket branch name**,
    and the **original resolver** (accountId + displayName). Also refresh the
    `**Návrh (design):**` line in the ticket description (mb-jira-update §7b).
-7. Architect selection: fetch assignable users of the project, offer the
+8. Architect selection: fetch assignable users of the project, offer the
    choice to the user (one question), set the chosen architect as assignee.
-8. Transition the ticket to **"Design Review"**. Missing transition =
+9. Transition the ticket to **"Design Review"**. Missing transition =
    fail-closed STOP: instruct the user to create the status (contract
    prerequisite).
-9. Append to **AgentSessions** (customfield_11248):
-   `YYYY-MM-DD <harness> <session-id> — design review request (<ticket>)`.
-   Session id best-effort; undetectable → line without id + tell the user.
-   Field unavailable → put the line into the comment from step 6 instead.
-10. Announce (Czech): handed off to design review; work resumes via resume
+10. Append to **AgentSessions** (customfield_11248):
+    `YYYY-MM-DD <harness> <session-id> — design review request (<ticket>)`.
+    Session id best-effort; undetectable → line without id + tell the user.
+    Field unavailable → put the line into the comment from step 7 instead.
+11. Announce (Czech): handed off to design review; work resumes via resume
     mode after the ticket returns, ideally in this session
     (`--resume <session-id>`). **The workflow stops here — do NOT invoke
     writing-plans.** `context.md` stays pinned; the two-actives guard
@@ -171,14 +190,19 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 3. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
    `git merge <baseRef>` on the ticket branch, with the intersection assessment
    and the offered verification per the contract's "Base Sync & Drift Detection"
-   section (same mechanics and same conflict rules as request step 3). Resume
+   section (same mechanics and same conflict rules as request step 4). Resume
    merges the base because it is the resolver's side; respond never does.
 4. Transition the ticket to **"In Progress"**, clear the flag, remove the
-   `Review:` line from `context.md` (commit with the next natural commit — that
-   commit's push publishes the base merge with it). If no further commit follows
-   shortly, push the base merge on its own: a base merge is never left
-   unpublished.
-5. Continue per workflow state: fold the notes into the design
+   `Review:` line from `context.md` and commit that removal here (Czech commit
+   message, `mb-git-commit` conventions) — it is the natural companion of the base
+   merge, so one push carries both.
+5. **Publish the ticket branch before leaving this mode** (announced push per the
+   Publication Contract). This is not "at some later convenient commit": an
+   unpushed base merge leaves the branch ahead of `origin`, and the next branch
+   sync — the architect's or your own in a second workspace — reads that as
+   divergence and STOPs. Resume therefore ends with the branch published, exactly
+   like a handoff, and it too needs only the one push.
+6. Continue per workflow state: fold the notes into the design
    (brainstorming-style dialog over the architect's points, update the design
    file) → after user approval invoke writing-plans.
 

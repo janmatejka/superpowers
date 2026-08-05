@@ -250,22 +250,44 @@ sequence) — with a linked ticket. Never self-selected, never in standalone
 invocations (standalone runs NEVER change ticket status).
 
 **Until that push into the base is verified reachable on `origin`, the ticket
-does NOT move to „Test".** The gate below is what enforces it; nothing about the
-gate changes because the integration is a push rather than a local merge — only
-which commit it is asked about.
+does NOT move to „Test".** The gate below is what enforces it, and its rules —
+STOP before publishing, the escape belongs to the human, re-verify after the push
+— are unchanged by the move to a push-based integration. What the move does change
+is which commit the gate asks about and against what: the tip of the ticket branch,
+tested for reachability **from the base ref**, because on a ticket branch that
+commit is already on `origin` regardless of whether the base ever received it.
 
 0. **Publication gate (FIRST, before the comment is published):** verify the tip
-   commit of the ticket branch that was pushed onto the base ref is reachable on
-   `origin` (`git branch -r --contains <sha>`). If it is not, **STOP** — do not
-   publish the comment and do not transition: tell the user in Czech that the code
-   is local only and the tester would have nothing to test, and hand over the exact
-   command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the
+   commit of the ticket branch that was pushed onto the base ref is reachable
+   **from the base ref on `origin`**:
+
+   ```bash
+   git fetch origin
+   git merge-base --is-ancestor <sha> <baseRef>   # non-zero exit = not on the base
+   ```
+
+   The base must be named in the check, and `git fetch origin` must precede it.
+   A bare `git branch -r --contains <sha>` is NOT sufficient here: the publication
+   rule already pushed that commit to the ticket branch on `origin`, so
+   `--contains` reports the ticket branch, the result is non-empty and the gate
+   would pass while the base carries none of the code — exactly the state this
+   gate exists to catch when the user never runs the base push or it was rejected
+   as non-fast-forward and nobody retried. Filtering the `--contains` output for
+   `<baseRef>` is an equally valid spelling; a check that does not name the base is
+   not. Without the fetch, the remote-tracking refs may be stale and a push made
+   from another clone would be reported as missing. If the commit is not on the
+   base, **STOP** — do not
+   publish the comment and do not transition: tell the user in Czech that the work
+   has not reached the base and the tester would have nothing to test, and hand over
+   the exact command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the
    refspec form, because integration pushes the ticket branch onto the base ref,
    and `<baseBranch>` is `baseRef` minus its remote prefix; the human's
    deliberate escape from the pre-push guard, which would otherwise reject the
    command handed over; the agent never pushes a shared branch and never sets
    that variable itself, and `--no-verify` is not a substitute — it disables
-   every hook). Re-verify after the user's push, then continue. If the server
+   every hook). Re-verify after the user's push with the same two commands — the
+   fetch included, since the push may well have happened in another clone — then
+   continue. If the server
    refuses a direct push to the base branch, report it and offer the fallback
    (short branch + an exceptional PR).
 
