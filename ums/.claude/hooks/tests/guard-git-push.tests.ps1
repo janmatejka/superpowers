@@ -101,6 +101,65 @@ Assert-Match (Test-Cmd 'git fetch origin refs/heads/*:*') 'permissionDecision.*d
 Assert-Eq (Test-Cmd 'git fetch origin +refs/heads/*:refs/remotes/origin/*') '' 'běžný refspec do remote-tracking refů projde'
 
 # ---------------------------------------------------------------------------
+# protected branches come from memory-bank/ums-repo.json's `protectedBranches`
+# (task 3), the SAME source of truth as the pre-push hook — the contract
+# explicitly warns that the two enforcement layers disagreeing is a defect.
+# ---------------------------------------------------------------------------
+function New-ConfigFixture([string] $Json) {
+    $r = Join-Path ([IO.Path]::GetTempPath()) ("mbhookcfg-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path (Join-Path $r 'memory-bank') | Out-Null
+    Set-Content -LiteralPath (Join-Path $r 'memory-bank\ums-repo.json') -Value $Json
+    return $r
+}
+
+# 1. Configured pattern the built-in list does NOT know: `Branches/*` denies
+# a push to `Branches/5.37` only once it comes from configuration.
+$cfg1 = New-ConfigFixture @'
+{
+  "protectedBranches": ["Branches/*"]
+}
+'@
+Assert-Match (Test-Cmd 'git push origin Branches/5.37' $cfg1) 'permissionDecision.*deny' 'zamítnuto: konfigurace obsahuje Branches/*, push na Branches/5.37 je zamítnutý'
+# glob -> regex must stay case-insensitive: a pattern written as `Branches/*`
+# has to match the lower-cased spelling too.
+Assert-Match (Test-Cmd 'git push origin branches/5.37' $cfg1) 'permissionDecision.*deny' 'zamítnuto: shoda vzoru je case-insensitive (branches/5.37 vs. konfigurovaný Branches/*)'
+Remove-Item -Recurse -Force $cfg1
+
+# 2. THE LOAD-BEARING NEGATIVE: without any configuration, the SAME push must
+# be ALLOWED, because the built-in fallback list does not know `Branches/*`.
+# If this passed as denied, it would prove the guard denies everything rather
+# than actually reading the configured list.
+$noCfg = Join-Path ([IO.Path]::GetTempPath()) ("mbhooknocfg-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $noCfg | Out-Null
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $noCfg) '' 'povoleno: bez konfigurace zná guard jen vestavěný seznam, Branches/* v něm není'
+
+# 3. Without configuration, a BUILT-IN name is still protected — the fallback
+# itself must still work, not just "fall back to nothing".
+Assert-Match (Test-Cmd 'git push origin develop' $noCfg) 'permissionDecision.*deny' 'zamítnuto i bez konfigurace: develop je součástí vestavěného seznamu'
+
+# 4. Broken configuration (malformed JSON) must behave exactly like a missing
+# one: MORE protection than "no fallback", never less.
+$cfgBroken = New-ConfigFixture '{ this is not valid json'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgBroken) '' 'povoleno: rozbitá konfigurace padá na vestavěný seznam (Branches/* v něm chybí)'
+Assert-Match (Test-Cmd 'git push origin develop' $cfgBroken) 'permissionDecision.*deny' 'zamítnuto: rozbitá konfigurace stále chrání vestavěný seznam'
+Remove-Item -Recurse -Force $cfgBroken
+
+# 4b. Valid JSON that is NOT AN OBJECT (array / number / null) — same fallback
+# trap that hit task 3's PowerShell loader (a Critical there), in JS shape:
+# `parsed.protectedBranches` on a non-object must not throw, it must miss.
+foreach ($json in @('[1,2,3]', '42', 'null')) {
+    $cfgNonObj = New-ConfigFixture $json
+    Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgNonObj) '' "povoleno: konfigurace '$json' (validní JSON, ne objekt) padá na vestavěný seznam bez vyhození výjimky"
+    Assert-Match (Test-Cmd 'git push origin develop' $cfgNonObj) 'permissionDecision.*deny' "zamítnuto: konfigurace '$json' stále chrání vestavěný seznam"
+    Remove-Item -Recurse -Force $cfgNonObj
+}
+
+# 5. The rejection message must advise the REFSPEC form (task 4 changed the
+# pre-push hint the same way) — a bare `git push origin <branch>` fails on a
+# ticket clone that never had a local copy of the shared branch.
+Assert-Match (Test-Cmd 'git push origin develop') 'HEAD:' 'zamítnutí radí refspecový tvar (obsahuje HEAD:)'
+
+# ---------------------------------------------------------------------------
 # UMS_ALLOW_SHARED_PUSH=1 — the human escape the pre-push hook honours. This
 # early-warning layer must not stand in front of the command the layer itself
 # hands the user, otherwise the escape is unusable in-session.

@@ -17,15 +17,37 @@
 // happens to mention "push" must all pass); the pre-push hook remains the
 // backstop for anything this early check misses or gets wrong.
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-const PROTECTED = [/^develop$/i, /^main$/i, /^master$/i, /^release\//i];
+const BUILTIN_PROTECTED = ['develop', 'main', 'master', 'release/*'];
+
+// Glob -> anchored, case-insensitive regex. Only `*` is a wildcard here; every
+// other regex metacharacter is escaped, so a pattern like `release/*` cannot
+// accidentally mean something else.
+const globToRe = (glob) =>
+  new RegExp('^' + String(glob).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') + '$', 'i');
+
+// Same source of truth as the pre-push hook, read directly (this is Node, a
+// JSON parser is available). A missing, malformed, or non-object-shaped file
+// falls back to the built-in list: degradation must lead to MORE protection,
+// never less.
+const loadProtected = (cwd) => {
+  try {
+    const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
+    const parsed = JSON.parse(raw);
+    const list = parsed && typeof parsed === 'object' ? parsed.protectedBranches : undefined;
+    if (Array.isArray(list) && list.length > 0) return list.map(globToRe);
+  } catch { /* missing or malformed -> built-in list below */ }
+  return BUILTIN_PROTECTED.map(globToRe);
+};
 
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//, '');
-const isProtected = (ref) => PROTECTED.some((re) => re.test(stripRef(ref)));
+const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
 
 const sharedBranchMessage = (branch) =>
   `UMS: '${branch}' je sdílená větev — agent do ní nepushuje. Připrav příkaz a nech ho uživateli: ` +
-  `\`! UMS_ALLOW_SHARED_PUSH=1 git push origin ${branch}\` — UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka ` +
+  `\`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:${branch}\` — UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka ` +
   'pro člověka, agent ji nikdy nenastavuje (Publication Contract, dvouúrovňová push policy).';
 
 // The human escape honoured by the pre-push hook (the real boundary). A
@@ -78,7 +100,7 @@ const isGitToken = (tok) => {
 // flag, non-plain remote, multiple/malformed refspecs, unresolvable current
 // branch) now ALLOWS — the pre-push hook is the real check, and it resolves
 // the current branch itself from the actual push, not from a guessed cwd.
-function evaluatePush(args, cwd) {
+function evaluatePush(args, cwd, patterns) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
@@ -99,7 +121,7 @@ function evaluatePush(args, cwd) {
     }
   }
 
-  if (target && isProtected(target)) {
+  if (target && isProtected(target, patterns)) {
     return { deny: true, reason: sharedBranchMessage(stripRef(target)) };
   }
   return { deny: false };
@@ -119,7 +141,7 @@ const isWildcardLocalBranch = (ref) => {
 // Fetch stays best-effort on the same footing as before: only denies an
 // explicit refspec whose destination is a protected local ref; everything
 // else passes (fetch is frequent and normally harmless).
-function evaluateFetch(args) {
+function evaluateFetch(args, patterns) {
   for (const t of args) {
     if (t.startsWith('-') || !t.includes(':')) continue;
     const dst = t.split(':').pop();
@@ -127,11 +149,11 @@ function evaluateFetch(args) {
     if (isWildcardLocalBranch(dst)) {
       return {
         deny: true,
-        reason: `UMS: refspec '${t}' míří žolíkem na lokální větve — přepsal by i sdílené (develop, main, ` +
-          'master, release/*), agent to nesmí udělat (Publication Contract, dvouúrovňová push policy).',
+        reason: `UMS: refspec '${t}' míří žolíkem na lokální větve — přepsal by i sdílené (sdílené větve dle ` +
+          'konfigurace repozitáře), agent to nesmí udělat (Publication Contract, dvouúrovňová push policy).',
       };
     }
-    if (isProtected(dst)) {
+    if (isProtected(dst, patterns)) {
       return {
         deny: true,
         reason: `UMS: '${stripRef(dst)}' je sdílená větev — tenhle fetch by přepsal její lokální ref, agent to ` +
@@ -149,6 +171,11 @@ process.stdin.on('end', () => {
   try { input = JSON.parse(raw); } catch { process.exit(0); }
   const command = String(input?.tool_input?.command ?? '');
   const cwd = input?.cwd;
+  // Loaded ONCE for this invocation, before any scanning below — not per
+  // call. A stale call site passing the old (patterns-less) signature would
+  // silently receive `undefined` and match nothing, i.e. a guard that never
+  // guards.
+  const patterns = loadProtected(cwd);
 
   // Context-free substring check: `--no-verify` next to `push` (in a command
   // that also mentions `git`, so e.g. `npm run push -- --no-verify` does not
@@ -194,10 +221,10 @@ process.stdin.on('end', () => {
     }
 
     if (subcommand === 'push') {
-      const r = evaluatePush(args, cwd);
+      const r = evaluatePush(args, cwd, patterns);
       if (r.deny) deny(r.reason);
     } else if (subcommand === 'fetch') {
-      const r = evaluateFetch(args);
+      const r = evaluateFetch(args, patterns);
       if (r.deny) deny(r.reason);
     }
     // any other subcommand: not this hook's concern, keep scanning
