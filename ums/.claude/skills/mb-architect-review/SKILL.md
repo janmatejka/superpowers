@@ -97,24 +97,34 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    the commit exists.
 2. **Be on the ticket branch before anything is committed.** Normally
    brainstorming created it, and then this step only confirms you are on it and
-   not on the base. If you are still on the default branch, create it in place
-   (branch-in-place, always with an explicit starting point after a
-   `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <baseRef>`, where
-   `baseRef` comes from `<CTX_DIR>/ums-repo.json` — contract section "Repository
-   Configuration"). Git worktrees are banned.
-   **The order matters: the branch first, the design commit after it.** `switch -c`
-   starts from `<baseRef>`, so a design commit created before the switch stays
-   behind on the branch it was made on and the new ticket branch carries no design
-   document at all — the push in step 6 would publish a branch without it and step
-   7 would then STOP at reachability with an empty result. Never carry such a
+   not on the base. Otherwise, in this order — the checks come BEFORE any
+   `switch -c`, because a linear reader who creates the branch first can strand the
+   very commit the first check exists to catch:
+
+   a. **Is the design already committed on a branch that is not the ticket
+      branch?** (`git log --oneline <baseRef>..HEAD -- <design path>`, or the file
+      being tracked and unmodified while the branch carries no ticket code.) If so,
+      **STOP** and report it: the commit sits on a branch it does not belong to, and
+      relocating it is the user's decision, not this skill's. This holds for **any**
+      non-ticket branch — the base, the default branch, or some other branch
+      entirely; a fail-closed skill must not leave the third case uncovered, and
+      "not the default branch" is not the same as "safe".
+   b. **Otherwise the design is uncommitted**, which is the good case: an
+      uncommitted design travels with the switch on its own, which is precisely why
+      committing it later costs nothing. Create the branch in place
+      (branch-in-place, always with an explicit starting point after a
+      `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <baseRef>`, where
+      `baseRef` comes from `<CTX_DIR>/ums-repo.json` — contract section "Repository
+      Configuration"). Git worktrees are banned. State you carried in yourself is
+      not another work item's inherited state, so it is not a finding to report
+      against the contract's creation postcondition.
+
+   **The order matters: the checks first, then the branch, then the design commit.**
+   `switch -c` starts from `<baseRef>`, so a design commit created before the switch
+   stays behind on the branch it was made on and the new ticket branch carries no
+   design document at all — the push in step 6 would publish a branch without it and
+   step 7 would then STOP at reachability with an empty result. Never carry such a
    commit across branches to repair the order; do the steps in this order instead.
-   Note that an uncommitted design travels with the switch on its own, which is
-   precisely why committing it later costs nothing — and state you carried in
-   yourself is not another work item's inherited state, so it is not a finding to
-   report against the contract's creation postcondition. If the design turns out to
-   be **already committed** on a non-ticket branch when this mode starts, STOP and
-   report it: the commit sits on a branch it does not belong to, and relocating it
-   is the user's decision, not this skill's.
 3. **Stabilize the SHA** per mb-jira-update §5–6, on the ticket branch:
    uncommitted design → user-confirmed local commit, else STOP.
 4. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
@@ -154,8 +164,13 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 11. Announce (Czech): handed off to design review; work resumes via resume
     mode after the ticket returns, ideally in this session
     (`--resume <session-id>`). **The workflow stops here — do NOT invoke
-    writing-plans.** `context.md` stays pinned; the two-actives guard
-    deliberately blocks other work in this repo during the review.
+    writing-plans.** `context.md` stays pinned on THIS branch, and that pin blocks
+    nothing elsewhere: the active-work limit is **per branch**, and step 6 has just
+    pushed this branch, so the work item is parked in the contract's sense —
+    recoverable from `origin`, announced rather than blocking. Another ticket may be
+    started on another branch in this same workspace while the review runs (contract,
+    Active Work Item and Workspace Discipline). What the `Review:` line does block is
+    continuing THIS work item past brainstorming.
 
 ## Mode: respond (architect)
 

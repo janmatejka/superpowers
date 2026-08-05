@@ -21,7 +21,12 @@ Adjustments to the checklist above:
      decision is the failure mode to avoid: it leaves the tree dirty, and the
      `git switch -c` of step 4 is then forbidden outright (no auto-stash, no
      switching through `git stash`), which either strands the work or rides foreign
-     uncommitted changes onto the ticket branch and into the design commit. Within
+     uncommitted changes onto the ticket branch and into the design commit.
+     **Offer park only where park can act:** `mb-park` needs the current branch to
+     carry a pin, so on an IDLE branch — typically the base, which is where a new
+     ticket starts — it stops with „Není co parkovat" and commits nothing. There the
+     one decision is **commit them on this branch** or **discard**; the leftovers
+     still have to be resolved either way. Within
      eligibility, an **installed and verified `pre-push` hook is a fail-closed
      precondition**, because hooks do not travel with a clone and a workspace
      missing the hook looks exactly like a working one while carrying no publication

@@ -51,10 +51,16 @@ performing one. Reading another branch's state never checks that branch out.
     enforcing anything. Do NOT verify by pushing: mb-state is read-only, and the
     executable self-test (feeding the hook a synthetic ref line) belongs to
     `install-git-hooks.ps1` and to the entry gate, not here.
-  - `git config --get core.hooksPath` must be **unset** (exit 1, no output) or
-    hold a **relative** value. An absolute value points git at a hooks directory
-    outside this working tree, so the installed hook is bypassed — report it as a
-    missing guarantee, in the same class as a missing hook.
+  - `git config --get core.hooksPath` decides **where** the hook above was looked
+    for, and `git rev-parse --git-path hooks/pre-push` already honours it — so a
+    marker found there is a marker in the directory git itself will execute. An
+    absolute value is therefore **not** a bypass and is not reported as one; it is
+    a **scope** warning: the directory is shared with other repositories (a global
+    husky or pre-commit setup), so installing or removing the layer's hook there
+    reaches every repository using that config, and the file may equally have been
+    put there by another repository's install. The marker check settles that
+    provenance question, which is the only thing that was ever at stake. A missing
+    or unmarked hook stays a missing guarantee whatever `core.hooksPath` says.
   - `<CTX_DIR>/ums-repo.json` — its presence decides which values are in force.
     Absent means the **built-in defaults** apply (`origin/develop` as base, the
     built-in protected-branch list, the generic ticket pattern), not the
@@ -64,7 +70,7 @@ performing one. Reading another branch's state never checks that branch out.
   - mb-state **reports**, it never stops work: an unverified hook is the loudest
     line in the report and a next-step suggestion, not a hard failure. Failing
     closed on it is the entry gate's job (Workspace Discipline).
-- **A free workspace** is a derived state, read every time from these three
+- **A free workspace** is a derived state, read every time from these four
   commands and never from a flag or a bookkeeping file (contract, Workspace
   Discipline):
 
@@ -72,16 +78,30 @@ performing one. Reading another branch's state never checks that branch out.
   git status --porcelain
   git stash list
   git log --branches --not --remotes --oneline
+  git ls-files --error-unmatch <MB_ROOT>/.superpowers/playbook-candidates/<slug>.md
   ```
 
-  All three empty = "no leftovers". Otherwise split the findings in two, and keep
+  The fourth command is the fourth signal, and the three before it cannot report
+  it: `.superpowers/` is git-ignored, so a non-empty **untracked** candidate file of
+  the CURRENT slug is invisible to `git status --porcelain` while the evidence
+  exists only in this workspace. Probe it directly — does it exist, is it non-empty,
+  is it tracked. `<slug>` is the `Work item` slug read from `context.md` further
+  down this list; with no pin there is no current slug and this signal is simply
+  clear (files of other slugs are merely present, never in the way).
+
+  All four clear = "no leftovers". Otherwise split the findings in two, and keep
   the split in the report:
 
-  - **In the way** — a dirty working tree, a stash. They block a safe branch
-    switch and have to be resolved before one.
+  - **In the way** — a dirty working tree, a stash, and a **non-empty untracked
+    candidate file of the CURRENT slug**. They block a safe branch switch and have
+    to be resolved before one. The candidate file is in the way because it is
+    non-recoverable: switching away leaves it attached to no branch, and committing
+    it is what `mb-park`'s named exception exists for (contract, Playbook Contract).
   - **Merely present** — unpushed commits of other branches, candidate files of
-    other slugs. Announced only; mb-state neither touches nor recommends touching
-    them beyond naming the owner.
+    other slugs, and a **tracked** candidate file of the current slug (`mb-park`
+    already committed it, so it is recoverable from `origin` — tracked means live,
+    and only the harvest removes it). Announced only; mb-state neither touches nor
+    recommends touching them beyond naming the owner.
 
   The boundary behind the split: the agent never destroys anything it cannot get
   back from `origin`. Suggest resolutions, never perform them.
@@ -133,7 +153,9 @@ performing one. Reading another branch's state never checks that branch out.
 - **Playbook candidates:** list `<MB_ROOT>/.superpowers/playbook-candidates/*.md`
   and the slug each file is named for. `.superpowers/` is git-ignored, so these
   files are invisible to `git status --porcelain` — the directory listing is the
-  only way to see them. Files of other slugs are reported and **never** deleted.
+  only way to see them. Files of other slugs are reported and **never** deleted. The
+  CURRENT slug's file is also classified by the leftover split above (untracked and
+  non-empty = in the way; tracked = merely present, already parked).
 - `<CTX_DIR>/context.md` → `Jira`, `Target MB Pin`, `Work item` slug (legacy
   `Proposal` accepted), `Started`. Apply the same pin test as above — a missing
   file, or a `## Active Work` block carrying no pin → `PHASE = IDLE`, a pin
@@ -201,7 +223,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | kombinace nálezů: ⚠️ pre-push hook chybí/neověřený + ⚠️ core.hooksPath je absolutní — hook je obcházen + ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
+Workspace: <✅ způsobilý | kombinace nálezů: ⚠️ pre-push hook chybí/neověřený + ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je) + ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
@@ -237,7 +259,10 @@ missing hook, an absolute `core.hooksPath` and a missing configuration are
 independent findings that can hold at once, so list every one that applies (and
 only `✅ způsobilý` when none does). A missing `ums-repo.json` carries `ℹ️`, not
 `⚠️` — its absence is informational and never a defect, the same weight the
-gather step and the contract give it.
+gather step and the contract give it. An absolute `core.hooksPath` is a warning
+about SCOPE, never a claim that the hook is bypassed: the hook was resolved through
+that very path, so a verified marker there is a live guarantee, and `✅ způsobilý`
+plus this one warning is a legitimate combination.
 
 Everything under „Další krok" is a suggestion addressed to the **user**. mb-state
 performs none of it: it does not park, does not install the hook, does not sync

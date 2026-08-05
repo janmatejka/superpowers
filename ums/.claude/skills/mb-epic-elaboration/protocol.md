@@ -144,7 +144,8 @@ A window closes only when its slice is internally consistent. Order:
    `mb-git-commit`, Czech message referencing the epic and window, e.g.
    `UMS-3304: okno W05 — <téma>`). Branch-in-place if on the default branch;
    git worktrees are banned.
-6. **Publish the branch** (Publication Contract, publication point 3): push the
+6. **Publish the branch** (Publication Contract, publication point 5 — the
+   elaboration window closure, BEFORE writing links into Jira): push the
    actor's own branch — announced, not negotiated. The commit-pinned links
    written in the next step MUST be reachable on `origin`, so this push precedes
    them. Never push a shared branch.

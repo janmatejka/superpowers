@@ -44,8 +44,16 @@ After the user chooses and BEFORE executing the choice:
      exact command with the outgoing commits enumerated:
      `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`. The refspec form
      is deliberate: integration pushes the ticket branch onto the base ref.
-  6. Re-verify reachability: `git fetch origin`, then
-     `git branch -r --contains <sha>` (an empty result = not on origin).
+  6. Re-verify reachability **from the base ref**: `git fetch origin`, then
+     `git merge-base --is-ancestor <sha> <baseRef>` (non-zero exit = the commit is
+     NOT on the base). Naming the base is the whole point: steps 2 and 3 already
+     pushed this commit to the ticket branch on `origin`, so a bare
+     `git branch -r --contains <sha>` reports that ticket branch, comes back
+     non-empty and would pass while the base has none of the code — the branch would
+     then be closed as integrated after a base push the user never ran or that was
+     rejected as non-fast-forward. Without a Jira ticket this is the ONLY gate;
+     `mb-jira-update`'s equivalent check never runs. A non-zero exit is a STOP:
+     report it in Czech and go back to step 5.
 
   Step 3 is what makes the push a **fast-forward** — the ticket branch is a
   descendant of `<baseRef>`. The ticket branch left behind on `origin` is

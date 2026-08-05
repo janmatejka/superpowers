@@ -326,7 +326,12 @@ source, a merge-base, a diff endpoint, a `switch -c` start point, a
 `origin/origin/develop` resolves to nothing.
 
 **`<baseBranch>` is a derivation, not a config key:** `baseRef` minus its remote
-prefix (`origin/develop` → `develop`). It exists for exactly one purpose, the
+prefix — strip the remote name and the **single** following slash, and nothing
+else (`origin/develop` → `develop`, `origin/Branches/5.37` → `Branches/5.37`).
+Stripping to the LAST slash instead would turn `origin/Branches/5.37` into `5.37`,
+and `git push origin HEAD:5.37` then creates a **new** remote branch rather than
+updating the base — and `pre-push` would not flag it, because `Branches/*` does not
+match `5.37`. It exists for exactly one purpose, the
 **push destination**, because a refspec's right-hand side names a branch on the
 remote and not a remote-tracking ref: `git push origin HEAD:<baseBranch>`. With
 `baseRef` there instead, the push would create a junk branch literally named
@@ -341,6 +346,14 @@ side:** `baseRef` falls back to `origin/develop`; `protectedBranches` falls back
 to the built-in list, i.e. to *more* protection, never less; and without
 `projectMarkers` / `sharedRoots` the verification after a base merge is offered
 for **every** non-empty incoming diff rather than for none.
+
+**Every list-valued key accepts a bare string as a single-element list**, and every
+consumer must normalize it the same way: `"protectedBranches": "Branches/*"` means
+exactly `["Branches/*"]`. The rule exists because `protectedBranches` has two
+independent enforcement layers — the generated list the `pre-push` hook reads, and
+`guard-git-push.mjs` — and **they must never give different answers for the same
+configuration**, which a shape one layer accepts and the other rejects guarantees
+they would.
 
 `pre-push` is POSIX `sh` with no JSON parser available, so it does not read the
 configuration at all: `install-git-hooks.ps1` generates a plain text list from
@@ -396,7 +409,13 @@ named in the design document — there is no code diff of one's own yet.
 **Mechanics without ecosystem knowledge.** Each path maps to the **nearest
 ancestor directory containing a match for `projectMarkers`** (a path with no such
 ancestor stays itself), and the intersection is sought over those owners; a path
-matching any pattern from `sharedRoots` is **always intersecting**. This is
+matching any entry of `sharedRoots` is **always intersecting**. **How a
+`sharedRoots` entry matches:** an entry ending in `/` is a **path prefix** — every
+path under that directory matches, at any depth — and any other entry is a **glob**
+against the whole path. Both spellings are needed and neither can stand in for the
+other: `mb-init` writes directories with a trailing slash
+(`ums/.claude/skills/shared/`), and a trailing-slash directory is not a glob, so
+glob-only matching would miss every file inside it. This is
 explicitly a **heuristic, not proof** — it decides whether verification is
 offered, never whether the work is correct.
 
@@ -447,21 +466,38 @@ presenting it belongs to the agent.
 
 **"A free workspace" is a derived state, not a record.** It is derived from empty
 output of all three of `git status --porcelain`, `git stash list` and
-`git log --branches --not --remotes` — never from a flag or a bookkeeping file
-that can go stale.
+`git log --branches --not --remotes`, plus a **fourth signal none of those three
+can report:** a non-empty **untracked** candidate file of the CURRENT slug,
+`<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md`. `.superpowers/` is
+git-ignored, so `git status --porcelain` is silent about it while the evidence
+exists in this workspace and nowhere else — probe it directly (does it exist, is it
+non-empty, is it tracked, per `git ls-files --error-unmatch`). All four are derived
+every time, never from a flag or a bookkeeping file that can go stale.
 
 Leftovers split in two:
 
-- **In the way** — a dirty tree, a stash. They block a safe branch switch and
-  must be resolved.
+- **In the way** — a dirty tree, a stash, and a non-empty untracked candidate file
+  of the CURRENT slug. They block a safe branch switch and must be resolved. The
+  candidate file belongs here because it is non-recoverable by the classification
+  above: switching away leaves it behind unattached to any branch, and committing it
+  is what `mb-park`'s named exception exists for.
 - **Merely present** — unpushed commits of other branches, candidate files of
-  other slugs. They are announced only; the agent does not touch them.
+  other slugs (and a TRACKED candidate file of the current slug — `mb-park` already
+  parked it, so it is recoverable from `origin`). They are announced only; the agent
+  does not touch them.
 
 **Entry gate**, in four phases:
 
 0. **Eligibility**, fail-closed except where stated: `MB_ROOT`, `memory-bank/`, a
-   **fail-closed check of the git hooks**, `core.hooksPath` unset or relative,
-   and `git fetch origin`. The repository configuration is inspected here too,
+   **fail-closed check of the git hooks**, and `git fetch origin`.
+   `core.hooksPath` is inspected but is **informational**: the hook check resolves
+   through `git rev-parse --git-path hooks/pre-push`, which honours
+   `core.hooksPath`, so a marked hook found there is the hook git will actually
+   execute — the value does not bypass anything. An **absolute** value is reported
+   as a **scope** warning (the hooks directory is shared with other repositories,
+   so an install or a removal there reaches all of them, and the file may have been
+   placed there by another repository), and the marker check is what settles that
+   provenance. The repository configuration is inspected here too,
    but the item is **informational only** — a missing `ums-repo.json` is reported
    once ("built-in defaults apply", Repository Configuration) and never blocks
    entry, because a repository that has not been migrated yet must still be
@@ -471,6 +507,13 @@ Leftovers split in two:
    the way: **park** it or **discard** it, with the confirmation spelled out.
    "Leave it lying around" does not exist within the same workspace — that
    option is what made leftovers ambiguous in the first place.
+   **Park is only offered where park can act:** `mb-park` requires the current
+   branch to carry a pin, so on an IDLE branch — the base, or a ticket branch whose
+   work item is already harvested — it stops with "nothing to park" and commits
+   nothing. Offer **commit them on this branch** or **discard** there instead; the
+   decision is still exactly one, and the leftovers still have to be resolved,
+   because phase 4's `git switch -c` needs `git status --porcelain` empty and no
+   auto-stash is permitted.
 3. **Intent:** a local branch for the ticket exists → resume; the ticket is
    active on a foreign branch → STOP (cross-clone collision check); a
    preliminary design draft waits in `next/` → activation; otherwise a new
@@ -978,14 +1021,25 @@ plausibly have typed by accident.
 
 Two known, accepted bypasses — both require deliberate,
 visible intent, unlike the CLI-spelling tricks this hook exists to close:
-`git push --no-verify` skips it entirely, and `core.hooksPath` (local or
-global — routine with tools like husky or pre-commit) points git at a
-different hooks directory altogether, so the installer detects it and
-installs there instead (a relative value is resolved per working tree, so
-each linked worktree then needs its own install). `--no-verify` is a BYPASS
+`git push --no-verify` skips it entirely, and a one-shot
+`git -c core.hooksPath=<other> push` points git at a hooks directory this layer
+never installed into. `--no-verify` is a BYPASS
 of the guarantee, never the documented way to publish `develop`: it disables
 every hook in the repository, so it is exactly as unsafe as it looks, and
-`guard-git-push.mjs` denies it on sight (escape or no escape). The PreToolUse hook
+`guard-git-push.mjs` denies it on sight (escape or no escape).
+
+A **configured** `core.hooksPath` (local or global — routine with tools like husky
+or pre-commit) is a different thing and is **not** a bypass. It moves the
+directory git looks in, and every check in this layer resolves the hook through
+`git rev-parse --git-path hooks/pre-push`, which honours it: the installer
+installs there and proves the hook live there, and `mb-state` and the entry gate
+find it there. The remaining concern is **provenance and scope**, not bypass — a
+shared hooks directory may already hold another repository's `pre-push`, and an
+install or a removal in it reaches every repository using that config. The
+`UMS pre-push guard` marker check settles provenance, and an absolute value is
+therefore reported as a scope warning rather than a missing guarantee (a relative
+value is resolved per working tree instead, so each linked worktree needs its own
+install). A missing or unmarked hook stays fail-closed either way. The PreToolUse hook
 (`.claude/hooks/guard-git-push.mjs`) is only a best-effort, fail-open early
 warning for the common accident, not a guarantee — it does not see shell
 syntax the way git itself does, so it allows anything it cannot parse with
@@ -1009,7 +1063,16 @@ push is a fast-forward. Sequence:
 4. the agent prepares the human command with the outgoing commits enumerated,
 5. the user runs it — the base ref is a shared branch, so the agent never pushes
    it itself,
-6. the agent re-verifies reachability (`git branch -r --contains <sha>`),
+6. the agent re-verifies reachability **from the base ref**: `git fetch origin`,
+   then `git merge-base --is-ancestor <sha> <baseRef>` (non-zero exit = not on the
+   base). A bare `git branch -r --contains <sha>` is NOT sufficient here — the
+   publication rule has already pushed that commit to the ticket branch on
+   `origin`, so `--contains` reports the ticket branch, the result is non-empty and
+   the check passes while the base carries none of the code. That is exactly the
+   state this step exists to catch: the user never ran step 5, or it was rejected
+   as non-fast-forward and nobody retried. The check must name the base, and it
+   must run with **no** Jira ticket too — `mb-jira-update`'s own gate does not
+   exist then,
 7. `mb-jira-update` finalization.
 
 A push rejected as **non-fast-forward** means the base moved while the sequence
@@ -1235,14 +1298,19 @@ When anything important is missing or ambiguous:
   repository, or artifact location.
 - Hard failures: missing git; missing root `memory-bank/`; undefined
   `PLAN_MB` at spec-write time; ambiguous target MB; a second active proposal
-  slug; mixed-language rule surfaces; an unreachable pinned commit at
+  slug **on the current branch that is not recoverable from `origin`** (the limit
+  is per branch and a parked slug is normal operation — see Active Work Item);
+  mixed-language rule surfaces; an unreachable pinned commit at
   publication time; the same slug or ticket active on a foreign branch; a base
   sync that cannot be performed at a phase boundary (divergence or a dirty tree);
   the ceiling of two integration rounds; a missing or unverified `pre-push` hook
   in the workspace; a failing `git fetch origin` in phase 0 of the entry gate.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
-  `.superpowers/sdd/<plan-basename>/progress.md` ledger.
+  `.superpowers/sdd/<plan-basename>/progress.md` ledger; an absolute
+  `core.hooksPath` (a scope warning, not a bypass — the hook check resolves
+  through it, see Workspace Discipline); a parked active work item on another
+  branch; an untracked playbook-candidate file of another slug.
 
 ## Resolution Protocol
 

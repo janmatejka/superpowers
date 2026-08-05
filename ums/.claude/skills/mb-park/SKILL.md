@@ -154,8 +154,22 @@ from `origin`, which is the whole promise of parking.
   the branch together with the outgoing commits (`git log --oneline @{u}..HEAD`,
   or against `<baseRef>` when the branch has no upstream yet; `baseRef`
   from `<CTX_DIR>/ums-repo.json`, contract section "Repository Configuration").
-- When the current branch is in `protectedBranches` (same section; the built-in
-  fallback is `develop`, `main`, `master`, `release/*`) the agent does NOT push.
+- **When the current branch IS the base — `<baseBranch>`, i.e. `baseRef` minus its
+  remote prefix — this is a STOP, not a prepared command.** Park leaves
+  `context.md` in the ACTIVE state by design, and the contract's invariant
+  (Cross-Branch Visibility) is that **the base never carries ACTIVE state**: every
+  branch cut from it afterwards would inherit a foreign pin, which is why `mb-state`
+  reports a pinned base as an *error* rather than a warning. Handing the user a
+  command that publishes an ACTIVE pin onto the base would create exactly that
+  state, so the command is not offered at all. Report it in Czech („aktivní práce je
+  na bázi `<branch>` — park by na bázi publikoval aktivní pin, což je porušení
+  invariantu"), and name the way out: move the work to a ticket branch (the entry
+  gate's intent phase) and park there, or resolve it as finishing / `mb-abort`.
+  Everything already committed by steps 2 and 3 stays committed — park destroys
+  nothing — it is only the push that does not happen.
+- When the current branch is in `protectedBranches` **without being the base**
+  (same section; the built-in fallback is `develop`, `main`, `master`,
+  `release/*`) the agent does NOT push.
   It prepares the exact command carrying `UMS_ALLOW_SHARED_PUSH=1` with the
   outgoing commits enumerated and the user runs it. The agent never sets that
   variable itself, and it never reaches for `--no-verify` — that disables every
@@ -184,7 +198,8 @@ from `origin`, which is the whole promise of parking.
 >
 > - Work item: `<slug>`, tiket: `<UMS-XXXX | (žádný tiket)>`, větev: `<branch>`
 > - Publikováno: `<branch>` → `origin`, commity: `<seznam>` (u sdílené větve:
->   „připraven příkaz pro tebe — agent sdílenou větev nepushuje")
+>   „připraven příkaz pro tebe — agent sdílenou větev nepushuje"; u báze:
+>   „⛔ nepublikuji — viz STOP níže")
 > - Pár návrh+plán zůstává v `<PLAN_MB>/proposals/active/`; `context.md` zůstává
 >   na této větvi v aktivním stavu (pin se nemaže). Nic se nezahodilo a nic se
 >   nesklízelo.

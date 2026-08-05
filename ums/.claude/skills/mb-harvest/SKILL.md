@@ -60,14 +60,24 @@ Policy).
 ### 2. Derive affected MBs
 
 ```bash
-git diff --name-only $(git merge-base <base-branch> HEAD)..HEAD
+git fetch origin
+git diff --name-only $(git merge-base <baseRef> HEAD)..HEAD
 ```
+
+`<baseRef>` is the fully-qualified remote-tracking ref from
+`<CTX_DIR>/ums-repo.json` (contract, "Repository Configuration") — this is a READ
+site, so it is used as-is and never prefixed with `origin/` a second time. A local
+base branch is NOT used: a ticket workspace need not have one, and a stale one
+would silently widen `AFFECTED_MBS` with foreign paths.
 
 Map each changed path to its nearest owning `memory-bank/` directory
 (walk up from the file; a project MB owns the paths beside it). The result is
 `AFFECTED_MBS` (always includes `PLAN_MB` when its project code changed).
-If the diff is unavailable (no base branch, detached state), ask the user to
-name the affected projects.
+Only if the diff genuinely cannot be produced — `<baseRef>` does not resolve even
+after the fetch (no such remote-tracking ref) — ask the user to name the affected
+projects. That is a last resort, not the normal path: the derivation is mechanical
+by contract, so an unresolvable base ref is worth reporting as a configuration
+problem rather than quietly asking the user on every harvest.
 
 ### 3. Harvest (current-state style — MANDATORY)
 
