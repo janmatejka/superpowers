@@ -223,13 +223,34 @@ Never write `<baseBranch>` into the file. It is a **derivation** of `baseRef`
 (the ref minus its remote prefix) with exactly one use, a push destination — it
 is not a key, and the loader does not read it.
 
-`origin/HEAD` reports the **remote's** default branch, which is not always the
-branch work integrates into: in a fork that keeps its upstream's default branch
-as a read-only mirror and integrates into a long-lived branch of its own,
-`origin/HEAD` names the mirror. Detection cannot see that distinction, so put the
-detected value and its provenance on its own line in the report — this is the one
-key a repository of that shape usually has to correct (a later change, therefore
-an approved one).
+**Two signals, and a question when they disagree.** `origin/HEAD` reports the
+**remote's** default branch, which is not always the branch work integrates into:
+a fork that keeps its upstream's default branch as a read-only mirror and
+integrates into a long-lived branch of its own has `origin/HEAD` naming the
+mirror. So read the second signal too — the upstream of the branch currently
+checked out:
+
+```bash
+git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null
+```
+
+- **Both resolve and agree** → that is the value. Nothing to ask; the
+  approval-free first write applies in full.
+- **They disagree** → **ask the user which one is the base**, showing both with
+  their provenance (`origin/HEAD` says X, the checked-out branch tracks Y). An
+  ambiguous base is precisely where the first-write exception does not reach: the
+  exception rests on values being verifiable against the repository, and here the
+  repository says two things. Writing the mirror unasked would point base sync,
+  `doc-index.ps1` and every merge-base at a read-only branch, and correcting it
+  afterwards would need an approval anyway — so ask once, now.
+- **Ignore the second signal when the checked-out branch cannot be a base:** its
+  name matches the detected `ticketPattern`, or it sits under one of the
+  working-branch namespaces found while grouping prefixes below. A ticket
+  branch's upstream is itself and would be a worse answer than the mirror.
+- **No upstream at all** (a fresh clone, a detached HEAD) → the symref alone
+  decides, no question.
+
+Report the chosen value with its provenance on its own line either way.
 
 #### `protectedBranches` — proposals, always confirmed
 
@@ -308,9 +329,21 @@ the first version.
 git ls-files | grep -Ei '\.(sln|csproj|vcxproj)$|(^|/)(package\.json|pom\.xml|build\.gradle(\.kts)?|Cargo\.toml|pyproject\.toml)$'
 ```
 
-Write **only the patterns that actually occur**, in the form the consumer
-matches: `*.csproj`, `*.vcxproj`, `*.sln`, `package.json`, `pom.xml`,
-`build.gradle`, `Cargo.toml`, `pyproject.toml`. A pattern for an ecosystem the
+That lists **paths**; the key holds **patterns**, so aggregate the hits to the
+kinds present and how many of each:
+
+```bash
+git ls-files | grep -Ei '\.(sln|csproj|vcxproj)$|(^|/)(package\.json|pom\.xml|build\.gradle(\.kts)?|Cargo\.toml|pyproject\.toml)$' |
+  grep -Eoi '\.(sln|csproj|vcxproj)$|(package\.json|pom\.xml|build\.gradle(\.kts)?|Cargo\.toml|pyproject\.toml)$' |
+  sort -f | uniq -ci
+```
+
+Each surviving kind becomes one pattern: an **extension** hit becomes `*.<ext>`
+(`.csproj` → `*.csproj`), a **whole-filename** hit stays the filename
+(`package.json` → `package.json`). The counts do not go into the file — they go
+into the report, as the evidence for each pattern.
+
+Write **only the patterns that actually occur**. A pattern for an ecosystem the
 repository does not use matches nothing and only misleads the next reader about
 what this repository is.
 
@@ -401,6 +434,14 @@ nothing to compare against, so the first-write path of step 3 applies unchanged.
 2. Compare against the file and present the difference **per key** — for the two
    scalars as `old → new`, for the three lists split into: detected and present,
    detected and missing from the file, present in the file and not detected.
+   A scalar difference carries a **recommendation**, not just the two values, and
+   the mirror case of step 3 decides it for `baseRef`: when detection would move
+   the base toward the remote's default branch while the file names a different
+   long-lived branch, the standing recommendation is to **keep the file's value**
+   — that is the read-only-mirror shape, not drift, and the file is the side that
+   knows. Say so in the diff; do not present the flip as the obvious answer. The
+   two signals of step 3 apply here too: with the checked-out long-lived branch
+   tracking exactly what the file says, there is nothing to propose at all.
 3. **No difference → write nothing.** Report that the configuration matches the
    topology and stop. Never rewrite the file to reformat or reorder it.
 4. A difference is **written only after the user approves it** — the rule for
