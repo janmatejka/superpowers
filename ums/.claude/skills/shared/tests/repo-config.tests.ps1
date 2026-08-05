@@ -37,6 +37,19 @@ Write-Host "== jednoprvkove pole zustava polem"
 $c = Get-UmsRepoConfig $tmp
 Assert-Eq (@($c.ProtectedBranches).Count) 1 'jednoprvkove pole ma Count 1'
 
+Write-Host "== bare string se normalizuje na jednoprvkovy seznam (parita s guard-git-push.mjs)"
+# The cross-layer parity case. The SAME input is asserted in
+# hooks/tests/guard-git-push.tests.ps1: `"protectedBranches": "Branches/*"` must
+# mean exactly ["Branches/*"] in BOTH layers. It already did here (@() wraps a
+# bare string) while the JS guard required Array.isArray and fell back to the
+# built-in four, so one config produced two different answers - pre-push
+# rejecting `Branches/5.37`, guard-git-push allowing it. Reproduced empirically;
+# the invariant "the layers must not disagree" is stated in pre-push itself.
+'{ "protectedBranches": "Branches/*" }' | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $tmp 'memory-bank\ums-repo.json')
+$c = Get-UmsRepoConfig $tmp
+Assert-Eq (@($c.ProtectedBranches).Count) 1 'bare string da jednoprvkovy seznam, ne 4 vestavene vzory'
+Assert-Eq (@($c.ProtectedBranches)[0]) 'Branches/*' 'bare string se propise jako jediny vzor'
+
 Write-Host "== chybejici klic bere svuj default, ne cely default"
 '{ "baseRef": "origin/trunk" }' | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $tmp 'memory-bank\ums-repo.json')
 $c = Get-UmsRepoConfig $tmp

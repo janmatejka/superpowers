@@ -220,11 +220,35 @@ $cfgEmptyArr = New-ConfigFixture '{ "protectedBranches": [] }'
 Assert-Match (Test-Cmd 'git push origin develop' $cfgEmptyArr) 'permissionDecision.*deny' 'zamítnuto: protectedBranches: [] padá na vestavěný seznam'
 Remove-Item -Recurse -Force $cfgEmptyArr
 
-# protectedBranches as a bare STRING instead of an array
+# protectedBranches as a bare STRING instead of an array: NORMALIZED to a
+# single-element list, exactly as the PowerShell loader's @() wrapping does.
+#
+# This assertion used to pin the opposite behaviour — the fall-back to the
+# built-in list — and that made the two enforcement layers DISAGREE about one
+# configuration: Get-UmsRepoConfig.ps1 accepted the bare string, the installer
+# baked it into the generated list and `pre-push` REJECTED a push to
+# `Branches/5.37`, while this guard required Array.isArray, fell back to the
+# built-in four and ALLOWED the very same push (reproduced empirically). No
+# protection was lost — the stricter layer is the real boundary — but the
+# pre-push hook states in its own comment that the layers must not disagree, so
+# the layer was shipping an invariant it violated.
 $cfgStrShape = New-ConfigFixture '{ "protectedBranches": "develop" }'
-Assert-Match (Test-Cmd 'git push origin develop' $cfgStrShape) 'permissionDecision.*deny' 'zamítnuto: protectedBranches jako string (ne pole) padá na vestavěný seznam'
-Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgStrShape) '' 'povoleno: protectedBranches jako string nedává ochranu navíc'
+Assert-Match (Test-Cmd 'git push origin develop' $cfgStrShape) 'permissionDecision.*deny' 'zamítnuto: protectedBranches jako string se normalizuje na jednoprvkový seznam (develop je v něm)'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgStrShape) '' 'povoleno: protectedBranches: "develop" chrání jen develop, nic navíc'
 Remove-Item -Recurse -Force $cfgStrShape
+
+# CROSS-LAYER PARITY for the bare-string shape. The same input the PowerShell
+# side is asserted on in shared/tests/repo-config.tests.ps1: `"Branches/*"` as a
+# bare string must yield the single-element list ["Branches/*"], which means the
+# configured pattern REPLACES the built-in list here exactly as an array would —
+# `Branches/5.37` denied, `develop` allowed. Under the old Array.isArray-only
+# read both answers were inverted, and the pre-push side's answers were not.
+$cfgStrParity = New-ConfigFixture '{ "protectedBranches": "Branches/*" }'
+Assert-Match (Test-Cmd 'git push origin Branches/5.37' $cfgStrParity) 'permissionDecision.*deny' 'parita s pre-push: bare string "Branches/*" zamítá Branches/5.37 (dřív oba layery odpovídaly různě)'
+Assert-Eq (Test-Cmd 'git push origin develop' $cfgStrParity) '' 'parita s pre-push: bare string "Branches/*" nahrazuje vestavěný seznam stejně jako pole, takže develop projde'
+$fullStrParity = Test-CmdFull 'git push origin Branches/5.37' $cfgStrParity
+Assert-Eq $fullStrParity.Err '' 'žádný stderr: normalizace bare stringu nevyhodí nezachycenou výjimku'
+Remove-Item -Recurse -Force $cfgStrParity
 
 # a configured pattern carrying a regex metacharacter must stay LITERAL — "."
 # must not mean "any character" the way it would in a raw regex. Confined to

@@ -83,6 +83,13 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
             @{ Key = 'projectMarkers'; Field = 'ProjectMarkers' },
             @{ Key = 'sharedRoots'; Field = 'SharedRoots' })) {
         if ($propNames -contains $pair.Key) {
+            # @() also NORMALIZES A BARE STRING into a single-element list:
+            # `"protectedBranches": "Branches/*"` becomes @('Branches/*'), the
+            # same answer guard-git-push.mjs now gives for the same shape. The
+            # two enforcement layers must not disagree (the pre-push hook says
+            # so in its own comment), and for a while they did — the JS side
+            # required Array.isArray, fell back to the built-in four and
+            # ALLOWED a push the generated list here rejected.
             # @() so a single-element JSON array still exposes .Count. Kept
             # to entries that ARE strings (post-ConvertFrom-Json, a JSON
             # string is [string]; a number/bool/object/array is not) with

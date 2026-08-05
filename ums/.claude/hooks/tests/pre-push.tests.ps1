@@ -513,9 +513,13 @@ function Resolve-GitCommonDir([string] $RepoDir) {
     return (Resolve-Path $p).Path
 }
 
-# LF endings on purpose. The hook strips comments and blanks, not CRs, so a
-# CRLF file would leave a trailing CR glued to every pattern and NOTHING would
-# match — a silently unprotected repository. The generator must write LF too.
+# LF endings on purpose — the shape the generator writes, so these cases pin the
+# NORMAL path. The hook does strip CRs as well as comments and blanks
+# (`tr -d '[:blank:]\r'`, whose own comment explains why the CR deletion is
+# load-bearing), so a CRLF list is tolerated rather than fatal; 16g and 16h below
+# are the cases that assert exactly that, 16h under an emulated non-msys `sh`.
+# Do not read this helper as evidence that CRLF would break the hook — it would
+# not, and the hook forbids that regression on purpose.
 function Write-ProtectedList([string] $Path, [string[]] $Lines) {
     [IO.File]::WriteAllText($Path, (($Lines -join "`n") + "`n"))
 }
@@ -995,6 +999,12 @@ Assert-Eq $res.Code 0 'nevalidní glob: hook je nainstalovaný a ověřený, ne 
 # parsed counts as covering every candidate name, so the accept half is skipped
 # - reported, never silent, and never a failed install.
 Assert-Match $res.Flat 'ACCEPT half of the proof was skipped' 'nevalidní glob: přeskočení accept poloviny je ohlášené'
+# ... and the REASON must name the unparseable pattern, not claim coverage the
+# configuration does not give. POSIX `case` reads `Maint/[0-9` as a literal, so
+# the configuration covers no accept-case name at all; "the configuration covers
+# them" was a false reason for a true skip.
+Assert-Match $res.Flat "the configured pattern 'Maint/\[0-9' is not a parseable wildcard" 'nevalidní glob: důvod přeskočení jmenuje neparsovatelný vzor'
+Assert-NotMatch $res.Flat 'is covered by a configured protected pattern' 'nevalidní glob: důvod netvrdí, že vzory to jméno pokrývají (nepokrývají)'
 $developBefore15 = Get-Sha $fx15.Origin 'refs/heads/develop'
 Add-Content -Path (Join-Path $fx15.Work 'f.txt') -Value 'change'
 Invoke-GitOk $fx15.Work @('commit', '-am', 'develop change') | Out-Null
@@ -1047,6 +1057,30 @@ Assert-Match $res.Flat 'patterns in force: develop, Maint/\*' 'read-only seznam:
 Assert-NotMatch $res.Flat 'main, master, release/\*' 'read-only seznam: ani varování, ani souhrn nejmenují vestavěné vzory, když platí jiný seznam'
 Set-ItemProperty -LiteralPath $listFile17 -Name IsReadOnly -Value $false
 Remove-Item -Recurse -Force $fx17.Root
+
+# 21d. The shape where an unparseable pattern silently removed the THIRD run's
+# control. With `["Branches/*", "Maint/[0-9"]` the third run itself fires (its
+# sample comes from `Branches/*`; bracketed patterns are excluded from sampling),
+# but the control name could not be tested against `Maint/[0-9` - `-like` throws -
+# so it was conservatively treated as covered and the control was skipped. The
+# skip was reported with the reason "the configuration covers the control name",
+# which is FALSE: POSIX `case` reads that pattern as a literal. The run then
+# printed "the generated protected-branch list is consulted" and
+# "[installed + verified live]" with exit 0, having lost the only guard against a
+# decorative third run behind a wrong explanation.
+$fx18 = New-PushFixture 'mbbadglobctl'
+Write-RepoConfig $fx18.Work @'
+{
+  "protectedBranches": ["Branches/*", "Maint/[0-9"]
+}
+'@
+$res = Invoke-Installer $fx18.Work $null
+Assert-Eq $res.Code 0 'kontrola 3. běhu: neparsovatelný vzor vedle použitelného instalaci neshodí'
+Assert-Match $res.Flat "generated protected-branch list is consulted \(pattern 'Branches/\*'\)" 'kontrola 3. běhu: třetí běh proběhl (vzorek se bere z Branches/*)'
+Assert-Match $res.Flat "the configured pattern 'Maint/\[0-9' is not a parseable wildcard" 'kontrola 3. běhu: důvod přeskočení kontroly jmenuje neparsovatelný vzor'
+Assert-NotMatch $res.Flat 'the configuration covers the control name' 'kontrola 3. běhu: důvod už netvrdí, že konfigurace kontrolní jméno pokrývá'
+Assert-Match $res.Flat 'the only run that would notice if the run above stopped discriminating' 'kontrola 3. běhu: hlásí se i důsledek — chybí jediná pojistka proti dekorativnímu třetímu běhu'
+Remove-Item -Recurse -Force $fx18.Root
 
 Remove-Item -Recurse -Force $root
 

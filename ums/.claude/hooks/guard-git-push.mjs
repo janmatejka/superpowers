@@ -42,11 +42,23 @@ const globToRe = (glob) =>
 // fork-round finding, same trap as task 3's PowerShell loader in a different
 // shape. Filtering first means "nothing usable remains" degrades exactly
 // like "the key is absent".
+//
+// A BARE STRING is normalized to a single-element list, exactly as the
+// PowerShell loader's @() wrapping does. Without this, `"protectedBranches":
+// "Branches/*"` made the two enforcement layers disagree: the loader accepted
+// it and the installer baked it into the generated list, so `pre-push`
+// REJECTED a push to `Branches/5.37`, while this file required Array.isArray,
+// fell back to the built-in four and ALLOWED the very same push. Reproduced
+// empirically. No protection was lost — the stricter layer is the real
+// boundary — but the layers must give the same answer for the same config
+// (see the pre-push hook's own comment on that invariant), so the shape is
+// normalized here rather than rejected.
 const loadProtected = (cwd) => {
   try {
     const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
     const parsed = JSON.parse(raw);
-    const list = parsed && typeof parsed === 'object' ? parsed.protectedBranches : undefined;
+    const value = parsed && typeof parsed === 'object' ? parsed.protectedBranches : undefined;
+    const list = typeof value === 'string' ? [value] : value;
     if (Array.isArray(list)) {
       const usable = list.filter((v) => typeof v === 'string' && v.trim() !== '');
       if (usable.length > 0) return usable.map(globToRe);

@@ -207,7 +207,10 @@ else {
     Write-Host '         The protected-branch list cannot be generated from the configuration, so this run does' -ForegroundColor Red
     Write-Host '         NOT refresh it. The hook IS still installed below: degrading to whatever protection is' -ForegroundColor Red
     Write-Host '         already in place is correct, degrading to NO hook would not be. What is ACTUALLY' -ForegroundColor Red
-    Write-Host '         enforced is read back off disk and named in the summary (exit 4).' -ForegroundColor Red
+    Write-Host '         enforced is read back off disk and named in the summary (exit 4) UNLESS something worse' -ForegroundColor Red
+    Write-Host '         happens first - a foreign hook (exit 2), a failed proof (exit 1) or no shell for it' -ForegroundColor Red
+    Write-Host '         (exit 3) takes precedence, and then that verdict is the one to act on: with the hook' -ForegroundColor Red
+    Write-Host '         itself absent or unproven, which list it would consult is not the finding that matters.' -ForegroundColor Red
     $script:ListFailed = $true
     $script:ListFailedReason = 'the configuration loader Get-UmsRepoConfig.ps1 was not found'
 }
@@ -388,7 +391,20 @@ function Invoke-HookLine([string] $Shell, [string] $HookPath, [string] $Line) {
 # against the configuration: a repository protecting `feature/*` or `ums-*`
 # would make the hook reject that name CORRECTLY, and reading that as a broken
 # hook - refusing to install a working guard - is the wrong direction entirely.
-function Test-NameIsConfigured([string] $Name, [string[]] $Patterns) {
+#
+# Returns BOTH facts, because they are not the same fact and the caller reports
+# them differently: .Covered says "do not expect this name to pass", and
+# .Unparseable names the pattern that could not be evaluated at all. Collapsing
+# them into one boolean is what made the skip reasons lie - a run with
+# `["Branches/*", "Maint/[0-9"]` printed "the configuration covers the control
+# name", which is FALSE: POSIX `case` treats `Maint/[0-9` as a literal, so the
+# configuration covers no such thing. The third run itself still fires (its
+# sample comes from `Branches/*`, bracketed patterns being excluded from
+# sampling), so the only thing lost was the control - the one guard against a
+# decorative third run - and it was lost behind a wrong reason and a green
+# `[installed + verified live]`.
+function Get-NameCoverage([string] $Name, [string[]] $Patterns) {
+    $unparseable = $null
     # PowerShell -like understands the same *, ? and [...] wildcards as the
     # hook's `case` globs, and both sides are case-insensitive here (the hook
     # lower-cases the ref and the patterns).
@@ -399,22 +415,34 @@ function Test-NameIsConfigured([string] $Name, [string[]] $Patterns) {
         # this script's own contract means "the guarantee is absent" - reported
         # about a hook that is installed and enforcing. An unparseable pattern
         # therefore counts as COVERING the name: that only ever skips a proof
-        # run (reported), it can never weaken what the hook enforces.
-        try { if ($Name -like $pattern) { return $true } }
-        catch { return $true }
+        # run (reported), it can never weaken what the hook enforces. But it is
+        # reported AS an unparseable pattern, never as coverage.
+        try { if ($Name -like $pattern) { return @{ Covered = $true; Unparseable = $null } } }
+        catch {
+            $unparseable = $pattern
+            return @{ Covered = $true; Unparseable = $pattern }
+        }
     }
-    return $false
+    return @{ Covered = $false; Unparseable = $unparseable }
 }
 
 function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patterns) {
     $reject = Invoke-HookLine $Shell $HookPath "refs/heads/develop $SHA_FAKE refs/heads/develop $SHA_FAKE"
 
-    $acceptName = @($ACCEPT_NAME_CANDIDATES | Where-Object { -not (Test-NameIsConfigured $_ $Patterns) }) |
-        Select-Object -First 1
+    $acceptName = $null
+    $acceptUnparseable = $null
+    foreach ($candidate in $ACCEPT_NAME_CANDIDATES) {
+        $coverage = Get-NameCoverage $candidate $Patterns
+        if ($coverage.Unparseable -and -not $acceptUnparseable) { $acceptUnparseable = $coverage.Unparseable }
+        if (-not $coverage.Covered) { $acceptName = $candidate; break }
+    }
     $accept = $null
     $acceptSkipReason = $null
     if ($acceptName) {
         $accept = Invoke-HookLine $Shell $HookPath "refs/heads/$acceptName $SHA_FAKE refs/heads/$acceptName $SHA_ZERO"
+    }
+    elseif ($acceptUnparseable) {
+        $acceptSkipReason = "the configured pattern '$acceptUnparseable' is not a parseable wildcard, so no candidate accept-case name ($($ACCEPT_NAME_CANDIDATES -join ', ')) could be tested against the configuration and all of them were conservatively treated as covered - the configuration does NOT necessarily cover them"
     }
     else {
         $acceptSkipReason = "every candidate accept-case name ($($ACCEPT_NAME_CANDIDATES -join ', ')) is covered by a configured protected pattern, so no push here could legitimately be expected to pass"
@@ -472,8 +500,14 @@ function Test-HookIsLive([string] $Shell, [string] $HookPath, [string[]] $Patter
         # Skipped (not failed) when a repository's own patterns match the control
         # name - and the skip is REPORTED, because it silently removes the only
         # thing standing between a decorative third run and a green install.
-        if (Test-NameIsConfigured $EXTRA_CONTROL_NAME $Patterns) {
-            $controlSkipReason = "the configuration covers the control name '$EXTRA_CONTROL_NAME' too, so the control could not be run - the run above still shows the list is consulted, but this install cannot demonstrate that it would notice if that run stopped discriminating"
+        $controlCoverage = Get-NameCoverage $EXTRA_CONTROL_NAME $Patterns
+        if ($controlCoverage.Covered) {
+            if ($controlCoverage.Unparseable) {
+                $controlSkipReason = "the configured pattern '$($controlCoverage.Unparseable)' is not a parseable wildcard, so the control name '$EXTRA_CONTROL_NAME' could not be tested against the configuration and was conservatively treated as covered - the configuration does NOT necessarily cover it; the control was therefore skipped, and with it the only run that would notice if the run above stopped discriminating"
+            }
+            else {
+                $controlSkipReason = "the configuration covers the control name '$EXTRA_CONTROL_NAME' too, so the control could not be run - the run above still shows the list is consulted, but this install cannot demonstrate that it would notice if that run stopped discriminating"
+            }
         }
         else {
             $extraControl = Invoke-HookLine $Shell $HookPath "refs/heads/$EXTRA_CONTROL_NAME $SHA_FAKE refs/heads/$EXTRA_CONTROL_NAME $extraRemote"
@@ -543,7 +577,9 @@ if ($loaderFound) {
     catch {
         Write-Host "WARNING: could not write the protected-branch list: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host '         This run does NOT refresh it, so what is enforced is whatever list was already' -ForegroundColor Red
-        Write-Host '         on disk - read back and named in the summary below (exit 4). Naming the built-in' -ForegroundColor Red
+        Write-Host '         on disk - read back and named in the summary below (exit 4), unless a foreign hook' -ForegroundColor Red
+        Write-Host '         (2), a failed proof (1) or a missing shell (3) takes precedence, in which case that' -ForegroundColor Red
+        Write-Host '         verdict is reported instead and this list question is moot. Naming the built-in' -ForegroundColor Red
         Write-Host '         patterns here instead would be a claim about protection this run has not' -ForegroundColor Red
         Write-Host '         established: a list left by an earlier run is non-empty, so the fallback never fires.' -ForegroundColor Red
         $script:ListFailed = $true
