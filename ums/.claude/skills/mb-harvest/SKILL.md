@@ -24,7 +24,10 @@ unavailable (which projects are affected).
 
 **⛔ GIT PROHIBITION:** no `git commit`/`add`/`push` from this skill. When
 invoked from the finishing-a-development-branch Harvest Gate, that overlay owns
-the commit. When invoked standalone, offer `mb-git-commit` at the end.
+the commit. When invoked standalone, offer `mb-git-commit` at the end. One
+carve-out, in step 3 only: `git rm -f` of the current slug's playbook-candidate
+file when `mb-park` committed it (see the playbook gate below). That stages a
+removal, it does not commit or push — the commit still belongs to the caller.
 
 **Model selection:** harvesting is summarization work — when delegated to a
 subagent, dispatch it on the cheapest capable tier (contract, Dispatch Model
@@ -113,10 +116,11 @@ pre-refactor names) and duplication (the same fact drifting into two
 documents).
 
 **Playbook gate (a non-autonomous step):** read
-`<MB_ROOT>/.superpowers/playbook-candidates.md`.
+`<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — the file of the CURRENT
+work-item slug, one file per slug (contract, Playbook Contract).
 
-- Missing, empty, or carrying a foreign work-item slug → skip silently, no
-  question.
+- Missing or empty → skip silently, no question. Files of OTHER slugs are
+  foreign: they have their own paths and are neither read nor deleted here.
 - Otherwise present ALL candidates to the user in ONE Czech list: for each, the
   proposed procedure and its evidence (`Tried` / `Happened`). A candidate with
   `Corrects` is shown NEXT TO the existing `playbook.md` entry it contradicts,
@@ -132,6 +136,25 @@ documents).
 - Keep a persisted candidate's evidence as a one-line `Proč:`.
 - Report the number of candidates the user did not approve. They vanish with
   the scratch file — do not re-ask.
+- **Then delete the current slug's file**, so no spent candidates travel on into
+  the base. The file may be **committed on this branch** — `mb-park` adds it with
+  `git add -f`, the named exception from "the scratch tree is git-ignored" — so
+  decide by a git query, never by reading the file:
+
+  ```bash
+  git ls-files --error-unmatch .superpowers/playbook-candidates/<slug>.md
+  ```
+
+  Exit 0 (tracked) → remove it with `git rm -f`, which stages the removal at once;
+  a plain delete would leave it unstaged, and scoped staging enumerates Memory
+  Bank paths only, so the spent file would silently survive the harvest commit.
+  Non-zero (untracked) → an ordinary file delete is enough, there is nothing for
+  git to record.
+
+  This is the same `tracked means live` test the Playbook Contract states, read
+  from the other end: while the work runs, tracked means the file is parked
+  evidence nobody may overwrite; here, at the one point where its content has
+  reached `playbook.md`, it means the removal has to be recorded in git.
 
 ### 4. Archive the design, delete the plan
 
