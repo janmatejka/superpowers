@@ -123,6 +123,16 @@ Adjustments to the checklist above:
   linked, proceed to item 9 as usual. **This amends the terminal-state rule
   above:** in this repository `mb-architect-review` may follow brainstorming;
   writing-plans remains the only *implementation* successor.
+- **Epic Backflow check (after the design is finally approved):** per the
+  contract's "Epic Backflow (design → epic)" section. When the Architect
+  Review Gate above hands the work off, the design is not finally approved
+  yet — the check then belongs to `mb-architect-review` resume, not here; run
+  it here only when no review takes place (no ticket → the whole step is
+  skipped silently; review declined but ticket linked → run it after the
+  user's spec approval). On a finding concerning this ticket: queue the
+  ledger note, then offer the inline elaboration window or deferral — never
+  launch elaboration unasked. Fail-open: an oracle failure or missing Jira
+  skips the step with a one-line announcement.
 - While `memory-bank/context.md` contains a
   `- **Review:** design-review requested` line, the workflow is parked: do
   NOT invoke writing-plans; the correct continuation is `mb-architect-review`
