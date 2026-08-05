@@ -104,7 +104,9 @@ After the user chooses and BEFORE executing the choice:
   `origin`. The branch published on `origin` is left in place: deleting a branch
   through a push is forbidden with or without the escape variable.
 
-  If the linked ticket sits in "Design Review", offer the Jira cleanup per the
-  contract's Architect Review Gate (transition back, restore assignee, clear the
-  flag).
+  If the linked ticket sits in "Design Review" (fallback shape included —
+  status "Review" with the `[DESIGN REVIEW]` request-comment marker; contract,
+  Architect Review Gate, "Design Review" fallback), offer the Jira cleanup per
+  the contract's Architect Review Gate (transition back, restore assignee,
+  clear the flag).
 <!-- UMS-OVERLAY END -->

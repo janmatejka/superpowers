@@ -90,8 +90,10 @@ finishing Discard path.
 
 ### 4b. Jira cleanup (Design Review only)
 
-If `context.md` carried a `Review:` line, or the linked ticket is in the
-"Design Review" status: offer (Czech, user confirms) the cleanup per the
+If `context.md` carried a `Review:` line, or the linked ticket sits in
+"Design Review" (fallback shape included — status "Review" with the
+`[DESIGN REVIEW]` request-comment marker; contract, Architect Review Gate,
+"Design Review" fallback): offer (Czech, user confirms) the cleanup per the
 contract's Architect Review Gate — transition the ticket back to
 "In Progress" (or its previous status), restore the assignee to the original
 resolver, clear the `Flagged` field. Without cleanup the architect keeps a

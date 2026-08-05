@@ -162,7 +162,12 @@ pwsh <this skill>/scripts/epic-graph.ps1 `
   PLANNING, i.e. status category done (Done, Cancelled) or status name Test /
   Review / Documentation (an external/unknown-status blocker counts as
   blocking; external tickets get no glyph). Design Review deliberately keeps
-  blocking: a design under review is not an implementation. In Proposals mode
+  blocking: a design under review is not an implementation. A ticket in the
+  "Design Review" FALLBACK shape (status "Review" + the `[DESIGN REVIEW]`
+  request-comment marker; contract, Architect Review Gate) gets the plain
+  "Review" glyph (🧪): the graph does not read comments. A documented
+  imprecision of the fallback bridge, not a defect — it corrects itself once
+  the "Design Review" status exists in Jira. In Proposals mode
   the glyph comes from the proposal stage (`completed/` = ✅, `active/` = 🔨,
   `next/` = ▶️/⏳ by readiness, `abandoned/` = 💡/⛔ by readiness) and 🧪/👀/❔
   never appear there, because the `**Stav:**` header field is free text and the
