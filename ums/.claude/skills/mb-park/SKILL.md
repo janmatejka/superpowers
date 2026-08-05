@@ -49,6 +49,15 @@ needs. Whoever parks may switch afterwards, at a phase boundary, on a clean tree
   anything.
 - Record for the report: the slug, the `Jira` line, and the current branch
   (`git rev-parse --abbrev-ref HEAD`).
+- **A detached HEAD is a STOP** (`git symbolic-ref -q HEAD` fails). Park's whole
+  promise is that the work is recoverable from `origin`, and there is no branch to
+  publish; life-cycle operations run on the work item's own branch (Workspace
+  Discipline). Report it and let the user check out the ticket branch first.
+- When the pair named by the slug is NOT in `<PLAN_MB>/proposals/active/`, do
+  **not** stop: park preserves, and refusing here would push the user toward
+  leaving leftovers lying around, which is the one option Workspace Discipline
+  does not allow. Park what is there, note the inconsistency in the report and
+  suggest `mb-state`.
 
 ### 1. Leftover inventory
 
@@ -58,14 +67,36 @@ git stash list
 git log --branches --not --remotes --oneline
 ```
 
-- All three empty means the work **is already parked** — a derived state, read
-  from git every time, never from a flag or a bookkeeping file that can go
-  stale. Announce it and stop; do not manufacture an empty commit.
-- Otherwise classify what the three commands returned, per Workspace
-  Discipline: a dirty tree and a stash are **in the way**; unpushed commits of
-  other branches and candidate files of other slugs are **merely present**.
-  Park resolves only what it commits below; everything merely present is
-  reported and left untouched.
+A **fourth item** belongs in the inventory, and none of the three commands can
+report it: the current slug's candidate file
+`<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md`. `.superpowers/` is
+git-ignored, so a non-empty **untracked** candidate file is invisible to
+`git status --porcelain` — probe it directly: does it exist, is it non-empty, and
+is it tracked?
+
+```bash
+git ls-files --error-unmatch <MB_ROOT>/.superpowers/playbook-candidates/<slug>.md
+```
+
+Non-empty and untracked is **work to park**, exactly like a dirty tree: the
+evidence exists only in this workspace, and committing it is what the named
+exception in step 3 is for. This is the state the three git commands hide, and
+mistaking it for "nothing to do" loses evidence in precisely the case the
+exception was created for — the last task is committed and pushed, and the
+candidates were appended afterwards.
+
+- The work **is already parked** only when all FOUR are clear: nothing to commit,
+  no stash, nothing unpushed, AND no untracked candidate content. Then announce
+  it and stop; do not manufacture an empty commit. It is a derived state, read
+  from git and from the file every time, never from a flag or a bookkeeping file
+  that can go stale.
+- Anything else continues through steps 2–4 — including a clean tree whose only
+  leftover is a fresh untracked candidate file. Step 3 then carries the single
+  commit of this park; step 2 finds nothing to commit and says so.
+- Classify the rest per Workspace Discipline: a dirty tree and a stash are **in
+  the way**; unpushed commits of other branches and candidate files of other
+  slugs are **merely present**. Park resolves only what it commits below;
+  everything merely present is reported and left untouched.
 
 ### 2. Commit the work in progress
 
@@ -73,6 +104,9 @@ Invoke the `mb-git-commit` skill. Never hand-roll a `git commit` here — the sa
 division of labour `mb-abort` uses, so the repository's single commit-message
 convention (Czech, ticket prefix, ` - ` detail lines) holds across the whole
 layer.
+
+When step 1 found the working tree clean, there is nothing to commit here: skip
+to step 3, whose staged candidate file then becomes the park's only commit.
 
 **A stash is never folded into the park.** Park does not pop it, does not apply
 it and does not drop it; its existence is reported in the report below and the
@@ -87,12 +121,19 @@ The file is `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — the CURRE
 slug only. Files of other slugs have their own paths and are neither read, nor
 committed, nor deleted.
 
-- Missing or empty → nothing to do; the step is silent.
-- Non-empty → stage it with `git add -f`. The `-f` is required because
-  `.superpowers/` is git-ignored, and committing this one file is a **named
-  exception** from "the scratch tree is git-ignored" (Playbook Contract): parked
-  evidence exists nowhere else, so without the exception every experience learned
-  on this branch would be lost the moment the workspace moves on.
+- Missing or empty (step 1's probe already established which) → nothing to do;
+  the step is silent.
+- Non-empty → stage it with `git add -f`, **whatever its tracked-ness**. The `-f`
+  is required because `.superpowers/` is git-ignored, and committing this one file
+  is a **named exception** from "the scratch tree is git-ignored" (Playbook
+  Contract): parked evidence exists nowhere else, so without the exception every
+  experience learned on this branch would be lost the moment the workspace moves
+  on. Both non-empty states need the explicit path: an **untracked** file needs
+  `-f` to get past the ignore rule at all, and a **tracked** file with newly
+  appended entries needs naming because `mb-git-commit`'s scoped staging
+  enumerates Memory Bank and source paths, and `.superpowers/` is not among them.
+  A tracked file that is unchanged leaves git nothing to record, and that is the
+  correct outcome — the evidence is already parked.
 - The `git add -f` must happen **before** `mb-git-commit` is invoked —
   `mb-git-commit`'s own staging never picks up an ignored path. Preferably stage
   it before the invocation in step 2, so one commit carries the work and the
@@ -102,8 +143,6 @@ committed, nor deleted.
   Contract): it is live parked evidence. Resumed work on this slug APPENDS to it,
   and only the harvest removes it — after its content has reached `playbook.md`.
   Park never truncates it, never rewrites it and never overwrites it.
-- When the file is already tracked and unmodified there is nothing to commit: the
-  evidence is already parked. Report that and move on.
 
 ### 4. Publication
 
@@ -122,10 +161,20 @@ from `origin`, which is the whole promise of parking.
   variable itself, and it never reaches for `--no-verify` — that disables every
   hook in the repository, so it is a bypass of the guarantee, not a way to
   publish.
-- Then re-verify reachability: `git fetch origin` and
-  `git branch -r --contains <sha>`. An empty result means the park is not
-  published, so the claim "recoverable from `origin`" is false — a fail-closed
-  STOP with an offer to publish, never a warning.
+- **Re-verify reachability AFTER a push has actually happened** — the agent's own
+  on its own branch, the user's on a shared one — in that order, as in the
+  contract's Publication Contract, subsection "Integration":
+
+  ```bash
+  git fetch origin
+  git branch -r --contains <sha>
+  ```
+
+  An empty result then means the park is not published, so the claim "recoverable
+  from `origin`" is false — a fail-closed STOP with an offer to publish, never a
+  warning. On the shared-branch path the check therefore waits for the user; do
+  not run it against the prepared command and report a STOP whose only remedy is
+  the command the user has not run yet.
 
 ---
 
@@ -153,8 +202,8 @@ Early exits, both without a commit:
 
 > „ℹ️ Není co parkovat — `context.md` na této větvi nemá pin (stav IDLE)."
 
-> „ℹ️ Práce je už zaparkovaná — čistý strom, prázdný stash, nic nepushnutého.
-> Nedělám prázdný commit."
+> „ℹ️ Práce je už zaparkovaná — čistý strom, prázdný stash, nic nepushnutého
+> a žádní necommitnutí kandidáti playbooku. Nedělám prázdný commit."
 
 ---
 

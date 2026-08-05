@@ -142,14 +142,19 @@ work-item slug, one file per slug (contract, Playbook Contract).
   decide by a git query, never by reading the file:
 
   ```bash
-  git ls-files --error-unmatch .superpowers/playbook-candidates/<slug>.md
+  git ls-files --error-unmatch <MB_ROOT>/.superpowers/playbook-candidates/<slug>.md
   ```
 
-  Exit 0 (tracked) → remove it with `git rm -f`, which stages the removal at once;
-  a plain delete would leave it unstaged, and scoped staging enumerates Memory
-  Bank paths only, so the spent file would silently survive the harvest commit.
-  Non-zero (untracked) → an ordinary file delete is enough, there is nothing for
-  git to record.
+  Exit 0 (tracked) → remove it with
+  `git rm -f <MB_ROOT>/.superpowers/playbook-candidates/<slug>.md`, which stages
+  the removal at once; a plain delete would leave it unstaged, and scoped staging
+  enumerates Memory Bank paths only, so the spent file would silently survive the
+  harvest commit. Non-zero (untracked) → an ordinary file delete is enough, there
+  is nothing for git to record. **Both commands take the `<MB_ROOT>`-prefixed
+  path**, like every other path in this skill: a repository-relative spelling is
+  resolved against the current working directory, so from any directory below the
+  root the query reports "untracked" for a file that is tracked — and the branch it
+  then takes is the one that leaves the removal unstaged.
 
   This is the same `tracked means live` test the Playbook Contract states, read
   from the other end: while the work runs, tracked means the file is parked
