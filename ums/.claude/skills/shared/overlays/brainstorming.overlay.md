@@ -8,7 +8,14 @@ This repository injects a Memory Bank document layer. Read
 `../shared/UMS_MEMORY_BANK_CONTRACT.md` before writing the design document.
 Adjustments to the checklist above:
 
-- **Item 1 (Explore project context)** additionally requires: as soon as the
+- **Item 1 (Explore project context)** additionally requires: before any work is
+  pinned, confirm the workspace is eligible per the contract's "Workspace
+  Discipline" section (entry gate, phase 0) — an **installed and verified
+  `pre-push` hook is a fail-closed precondition**, because hooks do not travel
+  with a clone and a workspace missing the hook looks exactly like a working one
+  while carrying no publication guarantee. A failing `git fetch origin` is a hard
+  failure too; a missing `<CTX_DIR>/ums-repo.json` is only reported once
+  ("built-in defaults apply") and never blocks entry. Then: as soon as the
   affected code area is identifiable, run Target-MB discovery per the
   contract's "Target-MB Discovery & Pinning" section (scan active work items,
   run the mb-doc-index skill with `-Json <path>` — the printed table has no
@@ -28,7 +35,10 @@ Adjustments to the checklist above:
   what makes the check work here at all: the design document does not exist
   yet, so with an empty local set an undeclared run cannot tell a collision
   from ordinary parallel work. Then persist `Target MB Pin`,
-  `Jira`, `Work item` slug and `Started` into `memory-bank/context.md`, then
+  `Jira`, `Work item` slug and `Started` into `memory-bank/context.md` — when the
+  intent is a NEW ticket branch, create the branch BEFORE this pin write (item 6
+  states how), so the pin lands on the branch that owns it and the branch's
+  IDLE postcondition still holds when it is created — then
   read `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and `playbook.md`
   (those that exist; legacy shape per Memory Bank Document Set) as design
   context — `playbook.md` is prescriptive and BINDS the work, the rest is
@@ -38,11 +48,22 @@ Adjustments to the checklist above:
 - **Item 6 (Write design doc)**: save to
   `<PLAN_MB>/proposals/active/design_<slug>.md` (Czech content, header per
   the contract's "Superpowers Document Placement" section) instead of the
-  default `docs/superpowers/specs/` path. Before committing, if you are on
-  the default branch, create a feature branch in place first — git worktrees
-  are banned in this repository. After committing the design, publish the
-  branch (Publication Contract, publication point 1) — an announced push of
-  your own ticket branch.
+  default `docs/superpowers/specs/` path. Before committing, be on the ticket
+  branch, created **always with an explicit starting point**:
+  `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a
+  `git fetch origin`, where `baseRef` comes from `<CTX_DIR>/ums-repo.json` (the
+  contract's "Repository Configuration" section). The implicit form, without a
+  starting point, branches off whatever happens to be checked out: run on a
+  foreign ticket branch it pulls that branch's pin and its active pair into your
+  history. The local base branch is not used in a ticket workspace —
+  `origin/<baseRef>` is the only base that counts — and git worktrees are banned
+  in this repository (branch-in-place). **Postcondition right after creating the
+  branch:** `proposals/active/` is empty or absent and `context.md` is IDLE. If it
+  is not, STOP, delete the branch and repeat; an ACTIVE base means a work item was
+  integrated without a harvest, and that is the finding to report (the contract's
+  "Cross-Branch Visibility" section). After committing the design, push the
+  branch — the agent pushes its OWN ticket branch after every commit, always
+  announcing the branch and the outgoing commits (Publication Contract).
 - **Architect Review Gate (between item 8 and item 9):** when a Jira ticket
   is linked, ALWAYS offer a design review by a human architect after the
   user approves the spec — with your own yes/no recommendation based on

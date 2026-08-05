@@ -16,7 +16,11 @@
 - **Isolation:** git worktrees are banned in this repository (see CLAUDE.md).
   The using-git-worktrees step resolves to branch-in-place: ensure you are on
   a feature branch (never main/master without explicit consent) and continue
-  in the existing working directory.
+  in the existing working directory. Isolation comes from the workspace, and the
+  **workspace is the user's choice** — the user creates it and picks it; the
+  session runs in the workspace where the work already is and never provisions
+  another one (contract, "Workspace Discipline"). One session per workspace: work
+  on several tickets is interleaved, not parallel.
 - **Playbook:** resolve the target Memory Bank's procedure document FIRST —
   `<PLAN_MB>/playbook.md` when it exists, otherwise `<PLAN_MB>/tasks.md` when
   THAT exists (legacy shape, contract, Memory Bank Document Set), otherwise
@@ -35,13 +39,28 @@
   entry when this procedure contradicts one already there). An empty section
   is legitimate and common; an entry without `Happened` is not written. As
   controller, COPY confirmed entries verbatim into
-  `<MB_ROOT>/.superpowers/playbook-candidates.md` (first line
-  `# Playbook candidates — work item: <slug>`; a foreign slug means the file
-  is OVERWRITTEN — its path is fixed, so there is no separate file to start
-  (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Playbook Contract")). Do not
-  rephrase them; the playbook gate presents them to the user.
-- **Publication:** before dispatching the first task, publish the branch with the
-  committed plan (Publication Contract, publication point 2): an announced push
-  of your own ticket branch, alongside the baseline build/test check. Shared
-  branches are never pushed by the agent.
+  `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — **one file per
+  work-item slug**, first line `# Playbook candidates — work item: <slug>`. Only
+  the CURRENT slug's file may be replaced, and only while it is **untracked**
+  (ordinary git-ignored scratch, left over from a slug whose work finished or was
+  abandoned); a **tracked** file is parked evidence, so APPEND to it and leave its
+  removal to the harvest. Files of FOREIGN slugs have their own paths and are
+  never overwritten and never deleted (see
+  `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Playbook Contract"). Do not
+  rephrase entries; the playbook gate presents them to the user.
+- **Base sync:** before dispatching the first task — a phase boundary — run
+  `git fetch origin` and then `git merge origin/<baseRef>` on the ticket branch
+  (`baseRef` from `<CTX_DIR>/ums-repo.json`, contract section "Repository
+  Configuration"), followed by the intersection assessment and the verification
+  that follows from it per the contract's "Base Sync & Drift Detection" section.
+  **Never merge the base in the middle of a task** — a task that starts on one
+  tree and finishes on another cannot be reviewed against its own brief. The
+  mandatory baseline build/test check before the first dispatch stays mandatory,
+  and it runs on the merged tree.
+- **Publication:** the agent pushes its OWN ticket branch **after every commit**,
+  always announcing the branch and the outgoing commits (Publication Contract).
+  That covers the commit carrying the implementation plan before the first
+  dispatch, the base-merge commit, and an implementer's commit for a task that
+  verified green. A commit that is not pushed is work only this workspace can
+  see. Shared branches are never pushed by the agent.
 <!-- UMS-OVERLAY END -->
