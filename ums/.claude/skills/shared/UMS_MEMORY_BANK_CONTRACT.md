@@ -1004,6 +1004,36 @@ through a push stays forbidden) and it is not reported as a collision: the
 document index keys by phase, so an integrated ticket's branch no longer counts
 as active work.
 
+### Abandon
+
+Abandoning a work item is the other way it ends on a ticket branch, and it is
+**published like any other outcome**. The sequence is the same whichever door it is
+reached through — the `mb-abort` skill, or Discard in
+`finishing-a-development-branch`:
+
+1. move BOTH halves of the pair to `proposals/abandoned/`, unchanged, deleting
+   nothing (Active Work Item, archival asymmetry),
+2. reset `context.md` to IDLE (see the `context.md` Schema & Writers section),
+3. **commit** that move and **push** it — the ticket branch is the actor's own, so
+   the agent pushes it and announces the outgoing commits; a shared current branch
+   is the user's command, as everywhere,
+4. only where a branch is actually being left behind: detach
+   (`git switch --detach origin/<baseRef>` — git cannot delete the branch that is
+   checked out, and a ticket workspace has no local base branch to return to) and
+   delete the **local** branch. The remote branch is never deleted.
+
+Step 3 is the step that is not obvious and therefore the one that gets skipped. An
+abandon that is not published exists only in the workspace that performed it: on
+`origin` the branch still carries the ACTIVE pin with the pair still in `active/`,
+so `mb-doc-index` keeps reporting that slug and that ticket as active work — a
+`KOLIZE AKTIVNÍ PRÁCE` no later session can clear, which means the ticket can never
+be picked up again. The exemption granted to an integrated branch does not help
+here: the index keys by phase, and `abandoned/` is not an active phase.
+
+`mb-abort` performs steps 1–3 and deletes no branches; step 4 belongs to the
+finishing Discard path, which is the caller that ends the branch as well as the work
+item.
+
 ## Cross-Branch Visibility
 
 Documents are never pushed into a shared branch to make them visible; they are

@@ -44,7 +44,9 @@ Adjustments to the checklist above:
   `Jira`, `Work item` slug and `Started` into `memory-bank/context.md` — when the
   intent is a NEW ticket branch, create the branch BEFORE this pin write (item 6
   states how), so the pin lands on the branch that owns it and the branch's
-  IDLE postcondition still holds when it is created — then
+  IDLE postcondition still holds when it is created. The same order binds the
+  **activation** intent: activating a queued draft from `proposals/next/` moves files
+  and therefore also happens on the ticket branch, created first — then
   read `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and `playbook.md`
   (those that exist; legacy shape per Memory Bank Document Set) as design
   context — `playbook.md` is prescriptive and BINDS the work, the rest is

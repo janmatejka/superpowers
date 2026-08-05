@@ -70,7 +70,9 @@ After the user chooses and BEFORE executing the choice:
   finalization stops at its publication gate and the ticket does NOT move to
   „Test". Options 2 and 3 never change the ticket status.
 - **The discard path** ("If your human partner asks to discard the work") →
-  do NOT harvest. After the typed confirmation, in this order:
+  do NOT harvest. After the typed confirmation, in this order — the normative source
+  for it is the contract's Publication Contract, subsection "Abandon", which the
+  `mb-abort` skill follows too:
   1. move the active work item pair to `proposals/abandoned/` — BOTH halves,
      unchanged, nothing deleted (contract, "Active Work Item (Design + Plan
      Pair)", archival asymmetry) — and reset `memory-bank/context.md` to IDLE,

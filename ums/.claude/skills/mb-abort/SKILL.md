@@ -8,13 +8,16 @@ metadata:
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Active Work Item (Design + Plan Pair)" and "`context.md` Schema & Writers".
+> especially "Active Work Item (Design + Plan Pair)", "`context.md` Schema & Writers"
+> and the Publication Contract's "Abandon" subsection, which owns the order of the
+> steps below.
 > This skill is the abandon-path counterpart of `mb-harvest`.
 
 # Command: mb-abort
 
 **Action:** Archive the active proposal pair to `abandoned/`, reset
-`context.md` to IDLE. Code changes are NOT reverted.
+`context.md` to IDLE, then commit and publish that change. Code changes are NOT
+reverted.
 **Execution:** Requires **explicit confirmation**.
 
 The escape hatch outside `finishing-a-development-branch` — use it when work
@@ -66,6 +69,24 @@ Overwrite `<CTX_DIR>/context.md` with the IDLE baseline per the contract
 schema: `## Active Work` → `(No active work - IDLE phase)` + keep the
 `- **Jira:** …` line if it existed. Do not preserve any other section or
 history.
+
+### 4a. Commit and publish the abandon
+
+Per the contract's Publication Contract, subsection "Abandon" — steps 1–3 of that
+sequence are this skill's job, and step 3 is what makes the abandon visible outside
+this workspace:
+
+- Commit the archive move and the IDLE reset through the `mb-git-commit` skill, never
+  a hand-rolled `git commit`, so the repository's single commit-message convention
+  holds. Commit message in Czech.
+- Then publish: the agent pushes its OWN ticket branch, announcing the branch and the
+  outgoing commits. If the current branch is shared (`protectedBranches`, see the
+  contract's Repository Configuration section), the agent does NOT push — it prepares
+  the exact command carrying `UMS_ALLOW_SHARED_PUSH=1` together with the outgoing
+  commits and the user runs it; the agent never sets that variable itself.
+
+This skill deletes no branches — step 4 of the contract's sequence belongs to the
+finishing Discard path.
 
 ### 4b. Jira cleanup (Design Review only)
 
