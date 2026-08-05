@@ -97,7 +97,7 @@ Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
 **UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 12 sad, dohromady
-388 asercí:
+412 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -108,10 +108,15 @@ v [playbook.md](playbook.md).
 - [`mb-epic-elaboration/tests/`](../ums/.claude/skills/mb-epic-elaboration/tests/) —
   `ledger-status.tests.ps1` (9) + fixtures.
 - [`mb-doc-index/tests/`](../ums/.claude/skills/mb-doc-index/tests/) —
-  `enumeration.tests.ps1` (20; traversal, lokální sken, `-SinceDays`/`-BaseRef`,
-  filtrování `tests/fixtures`), `findings.tests.ps1` (28; kolize, self-kolize
-  vlastní pushnuté větve, fronta na více větvích, obživlá fronta) proti
-  fixture repu generovanému `new-fixture-repo.ps1`.
+  `enumeration.tests.ps1` (39; okno aktivity podle tipu větve, čerstvá větev
+  se starým návrhovým commitem, symref `origin/HEAD`, `-BranchGlob` před
+  filtrem aktivity, báze z `ums-repo.json` vs. explicitní `-BaseRef`, jméno
+  větve s diakritikou, lokální sken, filtrování `tests/fixtures`),
+  `findings.tests.ps1` (33; kolize včetně uspané větve při deklarovaném záměru,
+  self-kolize vlastní pushnuté větve, fronta na více větvích, obživlá fronta)
+  proti fixture repu generovanému `new-fixture-repo.ps1` (commity mají
+  explicitní `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`, aby byl věk tipů
+  deterministický).
 - [`mb-migrate-docs/tests/`](../ums/.claude/skills/mb-migrate-docs/tests/) —
   `migrate.tests.ps1` (37; plán i `-Apply` mechanické migrace — sloučení
   `product.md` do `brief.md`, přejmenování `tasks.md` na `playbook.md`,
@@ -177,6 +182,24 @@ jeho Python (ruff, ty).
 - **`git branch --show-current` vrací i jméno nenarozené větve** (repo bez
   jediného commitu) — cestu „nejde určit aktuální větev" tak reálně
   vyzkouší jen detached HEAD, ne čerstvě inicializovaný repozitář.
-- **Výkon `doc-index.ps1` je ověřený jen v malém měřítku.** V tomto forku má
-  `origin` 3 větve a běh trvá cca 1–2 s; očekávaný rozpočet z návrhu (do 15 s
-  při stovkách vzdálených větví cílového monorepa) touto větví ověřen není.
+- **Výkon `doc-index.ps1` je změřený v obou měřítkách.** V tomto forku (4 refy
+  pod `refs/remotes/origin/`) trvá běh 2,0 s s `-NoFetch` a 3,0 s včetně
+  `git fetch`. Proti monorepu UMS (219 vzdálených větví, `.git` 4,1 GB) trvá
+  běh s `-NoFetch` a defaultním oknem 30 dní **32–35 s**; deklarovaný záměr
+  (`-Jira`/`-Slug`), který enumeruje bez časového omezení, **57 s**. Rozpočet
+  z návrhu (do 15 s) tedy splněný není — předchozí implementace filtrující
+  podle data commitu byla na témže repu ještě pomalejší (39,7 s). Čtení refů
+  ani traverzace nejsou úzké místo (`for-each-ref` 219 refů 0,10 s,
+  `git log --stdin` 0,12 s / 33 commitů); čas žere `git branch -r --contains`
+  na každý commit (3,1 s / 33 commitů) a pak `cat-file -e` + `show` na každý
+  pár (větev, cesta) — 139 párů v tom běhu. Refy se do `git log` předávají
+  přes `--stdin`, protože 219 jmen refů na příkazové řádce má 13,7 kB a míří
+  k 32k limitu Windows.
+- **Jména refů se v `doc-index.ps1` vrací zpátky do gitu, takže musí přežít
+  round trip přes PowerShell.** `git for-each-ref` tiskne jméno větve jako
+  surové UTF-8 a to, co z něj PowerShell dekóduje, přesně to pošle na stdin
+  `git log --stdin`. Bez `[Console]::OutputEncoding = UTF8` (dekódovací strana,
+  ta nese váhu; `$OutputEncoding` je pojistka na kódovací straně) skončí větev
+  s diakritikou jako `fatal: bad revision` a celý index spadne na exit 1.
+  Monorepo takové větve reálně má (`origin/UMS-1646-mobilní-klient-pro-alarminfo`),
+  fixture repo testů je proto taky má.

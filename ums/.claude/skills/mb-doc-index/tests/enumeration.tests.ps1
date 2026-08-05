@@ -2,6 +2,13 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '_assert.ps1')
 . (Join-Path $PSScriptRoot 'new-fixture-repo.ps1')
 
+# ---------------------------------------------------------------------------
+# -SinceDays means "the BRANCH's tip is this recent", not "commits are this
+# recent". The suite is written against that meaning: the old commit-date
+# filter dropped a live branch whose design document was committed long ago,
+# which is why its default had to be inflated to 120 days.
+# ---------------------------------------------------------------------------
+
 $fx = New-FixtureRepo
 $json = Join-Path $fx.Work 'index.json'
 $r = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch', '-Json', $json)
@@ -10,7 +17,6 @@ Assert-Eq $r.Code 0 'čistý běh bez kolizí končí kódem 0'
 Assert-Match $r.Out 'ums_1_alfa' 'tabulka obsahuje aktivní slug z cizí větve'
 Assert-Match $r.Out 'origin/feature/ums-1-alfa' 'tabulka uvádí větev, která slug drží'
 Assert-NotMatch $r.Out 'design_fixture' 'cesty pod tests/fixtures/ se vylučují'
-Assert-NotMatch $r.Out 'ums_5_stare' 'commit starší než -SinceDays se nezapočítá'
 Assert-NotMatch $r.Out 'design_hotovo' 'dokončené dokumenty z báze nejsou v tabulce'
 
 $idx = Get-Content -LiteralPath $json -Raw | ConvertFrom-Json
@@ -23,12 +29,51 @@ Assert-Eq $idx.base 'origin/develop' 'JSON nese použitou bázi'
 $hotovoCount = @($idx.entries | Where-Object { $_.slug -eq 'hotovo' -and $_.phase -eq 'completed' }).Count
 Assert-True ($hotovoCount -gt 0) 'dokončené dokumenty JSOU v entries, jen se netisknou v tabulce'
 
+# --- case 1: branch whose TIP is older than the window is not in the table ---
+Assert-NotMatch $r.Out 'ums_5_stare' 'větev, jejíž tip je starší než -SinceDays, v tabulce není'
 $stare = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch', '-SinceDays', '1000')
-Assert-Match $stare.Out 'ums_5_stare' 'vyšší -SinceDays starou větev zahrne'
+Assert-Match $stare.Out 'ums_5_stare' 'vyšší -SinceDays větev se starým tipem zahrne'
 
-$glob = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch', '-BranchGlob', 'origin/feature/ums-1-*')
+# --- case 2: fresh tip, ancient design commit = the fixed false negative -----
+# Under the old commit-date filter this branch vanished from the index even
+# though it is the most alive thing in the fixture.
+Assert-Match $r.Out 'ums_10_obnovena' 'větev s čerstvým tipem je v tabulce, i když její návrh vznikl dávno'
+$obnAll = @($idx.entries | Where-Object { $_.slug -eq 'ums_10_obnovena' })
+Assert-True (@($obnAll).Count -gt 0) 'záznam větve s čerstvým tipem a starým návrhem je v indexu'
+if (@($obnAll).Count -gt 0) {
+    $obn = $obnAll[0]
+    $obnDate = [datetimeoffset]::Parse([string]$obn.date)
+    Assert-True ($obnDate -lt [datetimeoffset]::UtcNow.AddDays(-300)) `
+        'nalezený commit návrhu je opravdu starší než okno (traverzace přeživších větví není datově omezená)'
+    Assert-True ([int64]$obn.activity -gt [DateTimeOffset]::UtcNow.AddDays(-30).ToUnixTimeSeconds()) `
+        'záznam nese aktivitu (datum tipu větve), ne datum svého commitu'
+}
+
+# --- refs now round-trip through PowerShell (for-each-ref -> log --stdin) ----
+# A branch name with diacritics must survive that round trip; if the decode is
+# not UTF-8, git answers "fatal: bad revision" and the run aborts with exit 1.
+Assert-Match $r.Out 'ums_12_diakritika' 'větev se jménem s diakritikou se indexuje (UTF-8 round trip refů)'
+Assert-Eq (@($idx.entries | Where-Object { $_.branch -eq 'origin/feature/ums-12-diakritika-ěšč' }).Count) 1 `
+    'jméno větve s diakritikou se přenese do indexu nepoškozené'
+
+# --- case 3: refs/remotes/origin/HEAD is a symref to the base ----------------
+# It must be skipped, otherwise the base is indexed a second time under the
+# branch name origin/HEAD.
+Assert-Eq (@($idx.entries | Where-Object { $_.branch -eq 'origin/HEAD' }).Count) 0 `
+    'symref origin/HEAD se neindexuje jako samostatná větev'
+Assert-Eq (@($idx.entries | Where-Object { $_.slug -eq 'hotovo' }).Count) 1 `
+    'obsah báze se přes symref origin/HEAD nezduplikuje'
+
+# --- case 4: -BranchGlob is applied BEFORE the activity filter ---------------
+$glob = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch',
+    '-BranchGlob', 'origin/feature/ums-1-*', '-Json', ($json + '.glob'))
 Assert-Match $glob.Out 'ums_1_alfa' '-BranchGlob propustí odpovídající větev'
 Assert-NotMatch $glob.Out 'ums_2_beta' '-BranchGlob odfiltruje ostatní větve'
+Assert-NotMatch $glob.Out 'ums_10_obnovena' 'čerstvá větev mimo -BranchGlob se nezapočítá'
+$idxGlob = Get-Content -LiteralPath ($json + '.glob') -Raw | ConvertFrom-Json
+$outside = @($idxGlob.entries | Where-Object {
+    $_.branch -notin @('local', 'base') -and $_.branch -notlike 'origin/feature/ums-1-*' })
+Assert-Eq (@($outside).Count) 0 'do indexu nevstoupí žádná vzdálená větev mimo -BranchGlob'
 
 # ---------------------------------------------------------------------------
 # The 'local' pseudo-branch is enumerated from git (one `ls-files` call with a
@@ -62,20 +107,60 @@ Remove-Item -LiteralPath $json2
 
 Remove-Item -Recurse -Force (Split-Path $fx.Work)
 
+# ---------------------------------------------------------------------------
+# case 5 + 6: the base ref comes from memory-bank/ums-repo.json (contract:
+# "Repository Configuration"). An explicit -BaseRef always wins; the empty
+# default means "take it from the config", whose own fallback is origin/develop.
+# The loader reads the FILE, so the fixture's working-tree copy is what counts.
+# ---------------------------------------------------------------------------
+$fx3 = New-FixtureRepo
+$cfgPath = Join-Path $fx3.Work 'memory-bank/ums-repo.json'
+Invoke-Git $fx3.Work @('push', 'origin', 'develop:baseline') | Out-Null
+Invoke-Git $fx3.Work @('fetch', 'origin') | Out-Null
+Set-Content -LiteralPath $cfgPath -Encoding UTF8 -Value '{ "baseRef": "origin/baseline" }'
+
+$json3 = Join-Path ([IO.Path]::GetTempPath()) ("mbidx-cfg-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.json')
+$cfgRun = Invoke-Index @('-RepoPath', $fx3.Work, '-NoFetch', '-Json', $json3)
+Assert-Eq $cfgRun.Code 0 'běh bez -BaseRef s bází z konfigurace končí kódem 0'
+$idx3 = Get-Content -LiteralPath $json3 -Raw | ConvertFrom-Json
+Assert-Eq $idx3.base 'origin/baseline' 'bez -BaseRef se báze vezme z memory-bank/ums-repo.json'
+Assert-Match $cfgRun.Out 'ums_1_alfa' 'báze z konfigurace opravdu funguje jako báze traverzace'
+
+$explicit = Invoke-Index @('-RepoPath', $fx3.Work, '-NoFetch', '-BaseRef', 'origin/develop', '-Json', $json3)
+Assert-Eq $explicit.Code 0 'explicitní -BaseRef proti konfiguraci končí kódem 0'
+$idx3b = Get-Content -LiteralPath $json3 -Raw | ConvertFrom-Json
+Assert-Eq $idx3b.base 'origin/develop' 'explicitní -BaseRef má přednost před konfigurací'
+
+Remove-Item -LiteralPath $cfgPath
+$noCfg = Invoke-Index @('-RepoPath', $fx3.Work, '-NoFetch', '-Json', $json3)
+Assert-Eq $noCfg.Code 0 'chybějící konfigurace degraduje na vestavěný default, nepadá'
+$idx3c = Get-Content -LiteralPath $json3 -Raw | ConvertFrom-Json
+Assert-Eq $idx3c.base 'origin/develop' 'bez konfigurace zůstává báze origin/develop'
+Remove-Item -LiteralPath $json3
+
+# case 6: a base ref from the config that does not exist is a hard stop
+Set-Content -LiteralPath $cfgPath -Encoding UTF8 -Value '{ "baseRef": "origin/neexistuje" }'
+$badBase = Invoke-Index @('-RepoPath', $fx3.Work, '-NoFetch')
+Assert-Eq $badBase.Code 1 'neexistující báze z konfigurace končí kódem 1'
+Assert-Match $badBase.Out 'Base ref not found: origin/neexistuje' 'hláška uvádí bázi, kterou skript opravdu použil'
+
+Remove-Item -Recurse -Force (Split-Path $fx3.Work)
+
 # A genuine git-level failure in the traversal must surface as exit 1, not a
 # silent "clean, nothing found" empty table. Reproduced offline/deterministically
 # by pointing an origin remote-tracking ref at a well-formed but nonexistent
 # SHA-1: "git rev-parse --verify --quiet <BaseRef>" (a different, valid ref)
-# still succeeds, but "git log --remotes=origin --not <BaseRef> ..." must walk
-# ALL refs under refs/remotes/, including the broken one, and fails with
-# "fatal: bad object" — confirmed manually before writing this assertion.
+# still succeeds, but the ref enumeration must read EVERY ref under
+# refs/remotes/origin/, including the broken one, and fails there
+# ("fatal: missing object …" from for-each-ref) — confirmed manually before
+# writing this assertion.
 $fx2 = New-FixtureRepo
 $brokenRef = Join-Path $fx2.Work '.git\refs\remotes\origin\broken'
 New-Item -ItemType Directory -Force -Path (Split-Path $brokenRef) | Out-Null
 Set-Content -LiteralPath $brokenRef -Encoding ascii -Value '0123456789abcdef0123456789abcdef01234567'
 $broken = Invoke-Index @('-RepoPath', $fx2.Work, '-BaseRef', 'origin/develop', '-NoFetch')
-Assert-Eq $broken.Code 1 'poškozená vzdálená větev shodí traverzaci na exit 1, ne na tichou prázdnou tabulku'
-Assert-NotMatch $broken.Out 'Index dokumentů' 'při selhání traverzace se tabulka vůbec netiskne'
+Assert-Eq $broken.Code 1 'poškozená vzdálená větev shodí enumeraci na exit 1, ne na tichou prázdnou tabulku'
+Assert-NotMatch $broken.Out 'Index dokumentů' 'při selhání enumerace se tabulka vůbec netiskne'
 
 Remove-Item -Recurse -Force (Split-Path $fx2.Work)
 Complete-Tests

@@ -5,8 +5,9 @@ Read-only index of Memory Bank documents across origin branches (pull model).
 
 .DESCRIPTION
 Builds the candidate set for Target-MB discovery, the cross-clone collision
-check and the epic graph: one history traversal over remote refs above the base
-ref, filtered by path and age. Writes nothing but the optional -Json file.
+check and the epic graph: remote branches are picked by the age of their TIP,
+then one history traversal walks the survivors above the base ref, filtered by
+path only. Writes nothing but the optional -Json file.
 
 Three sources are merged into one picture: foreign origin branches (the log
 traversal below), the local working tree (pseudo-branch "local") and the base
@@ -20,10 +21,17 @@ Repository root. Defaults to the toplevel of the current directory.
 
 .PARAMETER BaseRef
 Ref the traversal excludes (commits already visible there don't need a pull
-model). Defaults to origin/develop.
+model). An explicit value always wins; the EMPTY default means "take it from
+memory-bank/ums-repo.json" (contract: "Repository Configuration"), whose own
+fallback is origin/develop.
 
 .PARAMETER SinceDays
-Only commits within this many days (by committer date) are considered.
+Activity window over BRANCHES: only origin branches whose TIP is this recent
+are considered, and their history is then walked with NO date limit. It is
+deliberately NOT a filter on commit dates — that filter dropped a live branch
+whose design document happened to be committed long ago. Declared intent
+(-Jira/-Slug) enumerates without any limit and the window then only trims the
+printed table, never the findings. 0 = no window at all.
 
 .PARAMETER BranchGlob
 When set, restricts the ORIGIN branches considered to those matching this
@@ -53,8 +61,8 @@ Czech table + findings. Exit: 0 = OK, 1 = input/script failure, 2 = collisions.
 [CmdletBinding()]
 param(
     [string] $RepoPath = '',
-    [string] $BaseRef = 'origin/develop',
-    [int]    $SinceDays = 120,
+    [string] $BaseRef = '',
+    [int]    $SinceDays = 30,
     [string] $BranchGlob = '',
     [string] $Jira = '',
     [string] $Slug = '',
@@ -65,6 +73,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+# LOAD-BEARING, not cosmetic: ref names now ROUND-TRIP through PowerShell
+# (`for-each-ref` -> `git log --stdin`). git prints them as raw UTF-8, and
+# whatever PowerShell decodes them into is exactly what it sends back on stdin,
+# so both directions must be UTF-8 — otherwise a branch with diacritics (the
+# target monorepo really has origin/UMS-1646-mobilní-klient-pro-alarminfo)
+# comes back as "fatal: bad revision" and the whole index aborts. Confirmed by
+# reproducing it with the decode left at the console default.
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
 $script:ExitCode = 0
 
 # --- repo resolution (contract: one discovery step) -------------------------
@@ -105,6 +121,17 @@ function Stop-OnGitFailure([string] $What) {
         exit 1
     }
 }
+
+# Repository configuration (contract: "Repository Configuration"). An explicit
+# -BaseRef always wins; the empty default means "take it from the config",
+# whose own fallback is origin/develop.
+$loader = Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsRepoConfig.ps1'
+if (-not (Test-Path -LiteralPath $loader)) {
+    Write-Error "Get-UmsRepoConfig.ps1 not found at $loader"; exit 1
+}
+. $loader
+$script:RepoCfg = Get-UmsRepoConfig $RepoPath
+if (-not $BaseRef) { $BaseRef = $script:RepoCfg.BaseRef }
 
 if (-not $NoFetch) {
     Invoke-RepoGit @('fetch', '--prune', 'origin') | Out-Null
@@ -172,15 +199,64 @@ function Add-Finding([string] $Code, [string] $Severity, [string] $Message) {
 }
 
 # --- one traversal: commits above the base that touched MB proposal paths ---
-$since = (Get-Date).AddDays(-$SinceDays).ToString('yyyy-MM-dd')
-$log = Invoke-RepoGit @(
-    'log', '--remotes=origin', '--not', $BaseRef, "--since=$since",
-    '--name-only', '--format=%x01%H%x09%cI%x09%an', '--',
-    ':(glob)**/memory-bank/proposals/next/*.md',
-    ':(glob)**/memory-bank/proposals/active/*.md',
-    ':(glob)**/memory-bank/proposals/completed/*.md'
-)
-Stop-OnGitFailure 'log --remotes=origin --not <BaseRef>'
+# Stage 1: pick branches by their TIP's age - one ref read, no history walk.
+# This replaces the old --since, which filtered by COMMIT date and therefore
+# dropped a live branch whose design document was committed long ago.
+# refs/remotes/origin/HEAD is a symref to the base and must be skipped, or it
+# duplicates the base.
+function Get-ActiveRemoteRefs([int] $Days, [string] $Glob) {
+    $cutoff = if ($Days -gt 0) { [DateTimeOffset]::UtcNow.AddDays(-$Days).ToUnixTimeSeconds() } else { 0 }
+    $raw = Invoke-RepoGit @('for-each-ref', '--format=%(refname) %(committerdate:unix)', 'refs/remotes/origin/')
+    Stop-OnGitFailure 'for-each-ref refs/remotes/origin/'
+    $out = @()
+    foreach ($line in @($raw)) {
+        if (-not $line) { continue }
+        $parts = ($line.ToString().Trim() -split ' ', 2)
+        if (@($parts).Count -lt 2) { continue }
+        $refName = $parts[0]
+        if ($refName -eq 'refs/remotes/origin/HEAD') { continue }
+        $short = $refName -replace '^refs/remotes/', ''
+        # Glob BEFORE the activity filter, so an excluded branch never counts.
+        if ($Glob -and ($short -notlike $Glob)) { continue }
+        $stamp = 0
+        [void][int64]::TryParse($parts[1], [ref] $stamp)
+        if ($cutoff -gt 0 -and $stamp -lt $cutoff) { continue }
+        $out += [pscustomobject]@{ Ref = $refName; Short = $short; Activity = $stamp }
+    }
+    return $out
+}
+
+# Declared intent must NOT be narrowed by the display window: a colleague's
+# dormant branch on the SAME ticket is exactly what has to stop pinning. So
+# enumerate WIDE when intent is declared and filter narrow only for display.
+$enumDays = if ($Jira -or $Slug) { 0 } else { $SinceDays }
+$activeRefs = Get-ActiveRemoteRefs $enumDays $BranchGlob
+# 0 = no window (same convention as Get-ActiveRemoteRefs), otherwise nothing
+# except the local/base pseudo-branches could ever be printed.
+$displayCutoff = if ($SinceDays -gt 0) { [DateTimeOffset]::UtcNow.AddDays(-$SinceDays).ToUnixTimeSeconds() } else { 0 }
+
+# Short branch name -> tip activity. This map is also the AUTHORITY on which
+# origin branches may enter the index at all (see the intersection under
+# `branch -r --contains` below), which is what keeps -BranchGlob and the
+# activity window applied exactly once, in stage 1.
+$activityByBranch = @{}
+foreach ($ar in @($activeRefs)) { $activityByBranch[$ar.Short] = $ar.Activity }
+
+# Stage 2: walk the survivors' history with NO date limit, so a design document
+# committed long ago on a live branch is found in full. Refs go in via --stdin:
+# hundreds of them on a Windows command line hit the 32k limit (the target
+# monorepo has 219 remote branches, so this is not theoretical).
+$log = ''
+if (@($activeRefs).Count -gt 0) {
+    $revs = (@($activeRefs | ForEach-Object { $_.Ref }) + @("^$BaseRef")) -join "`n"
+    $log = $revs | & git -C $RepoPath log --stdin --name-only `
+        '--format=%x01%H%x09%cI%x09%an' '--' `
+        ':(glob)**/memory-bank/proposals/next/*.md' `
+        ':(glob)**/memory-bank/proposals/active/*.md' `
+        ':(glob)**/memory-bank/proposals/completed/*.md' 2>$null
+    Stop-OnGitFailure 'log --stdin --not <BaseRef>'
+    if ($null -eq $log) { $log = '' }
+}
 
 # Records are separated by \x01; the header line is SHA \t ISO date \t author,
 # every following non-empty line is a path touched by that commit.
@@ -218,7 +294,12 @@ foreach ($commit in $commits) {
         if ($b -match '\s->\s') { return }   # skip "origin/HEAD -> origin/develop"
         $b
     } | Where-Object { $_ })
-    if ($BranchGlob) { $branches = @($branches | Where-Object { $_ -like $BranchGlob }) }
+    # Stage 1's active set is the authority: --contains also reports branches
+    # whose TIP fell outside the window (or outside -BranchGlob) but which
+    # happen to contain this commit. Keeping them would smuggle a dormant
+    # branch back in through a commit it shares with a live one — and leave the
+    # entry with no activity stamp to display-filter on.
+    $branches = @($branches | Where-Object { $activityByBranch.ContainsKey($_) })
     if (@($branches).Count -eq 0) { continue }
 
     foreach ($branch in $branches) {
@@ -239,14 +320,18 @@ foreach ($commit in $commits) {
             $docJira = Get-JiraHeader $content
 
             $entries += [pscustomobject]@{
-                slug   = Get-Slug $path
-                jira   = $docJira
-                phase  = Get-Phase $path
-                path   = $path
-                branch = $branch
-                commit = $commit.Sha
-                date   = $commit.Date
-                author = $commit.Author
+                slug     = Get-Slug $path
+                jira     = $docJira
+                phase    = Get-Phase $path
+                path     = $path
+                branch   = $branch
+                commit   = $commit.Sha
+                date     = $commit.Date
+                author   = $commit.Author
+                # Tip age of the branch this record comes from — the value the
+                # display window filters on. NOT $commit.Date: an old design
+                # commit on a live branch must stay visible.
+                activity = $activityByBranch[$branch]
             }
         }
     }
@@ -297,14 +382,17 @@ foreach ($rel in $localPaths) {
     }
 
     $entries += [pscustomobject]@{
-        slug   = Get-Slug $rel
-        jira   = $docJira
-        phase  = Get-Phase $rel
-        path   = $rel
-        branch = 'local'
-        commit = $sha
-        date   = $date
-        author = $author
+        slug     = Get-Slug $rel
+        jira     = $docJira
+        phase    = Get-Phase $rel
+        path     = $rel
+        branch   = 'local'
+        commit   = $sha
+        date     = $date
+        author   = $author
+        # The pseudo-branches have no tip age and are never time-filtered: my
+        # own working tree and the base content are always relevant.
+        activity = 0
     }
 }
 
@@ -331,14 +419,15 @@ foreach ($path in $baseTree) {
     $docJira = Get-JiraHeader $content
 
     $entries += [pscustomobject]@{
-        slug   = Get-Slug $path
-        jira   = $docJira
-        phase  = Get-Phase $path
-        path   = $path
-        branch = 'base'
-        commit = $baseSha
-        date   = $baseDate
-        author = $baseAuthor
+        slug     = Get-Slug $path
+        jira     = $docJira
+        phase    = Get-Phase $path
+        path     = $path
+        branch   = 'base'
+        commit   = $baseSha
+        date     = $baseDate
+        author   = $baseAuthor
+        activity = 0
     }
 }
 
@@ -446,10 +535,15 @@ foreach ($g in $bySlug) {
 }
 
 # --- output -------------------------------------------------------------------
-$printable = @($entries | Where-Object { $_.phase -in @('next', 'active') } |
-    Sort-Object slug, branch)
+# The display window trims the TABLE only. Findings above were computed from the
+# FULL set on purpose: under declared intent the enumeration is unbounded, and a
+# dormant colleague's branch must be reported even though it is not printed.
+$printable = @($entries | Where-Object {
+        $_.phase -in @('next', 'active') -and
+        ($_.activity -ge $displayCutoff -or -not $_.activity)
+    } | Sort-Object slug, branch)
 
-Write-Output "📇 Index dokumentů (báze $BaseRef, posledních $SinceDays dní)"
+Write-Output "📇 Index dokumentů (báze $BaseRef, větve s aktivitou za posledních $SinceDays dní)"
 if ($declared) { Write-Output "Kontrola kolize pro zamýšlenou práci: $declared" }
 Write-Output ''
 Write-Output '| Slug | Tiket | Fáze | Větev | Poslední commit | Autor |'
@@ -459,7 +553,7 @@ foreach ($e in $printable) {
     $jiraCell = if ($e.jira) { $e.jira } else { '(žádný tiket)' }
     Write-Output "| $($e.slug) | $jiraCell | $($e.phase) | $($e.branch) | $shortSha | $($e.author) |"
 }
-if (@($printable).Count -eq 0) { Write-Output '' ; Write-Output '_(žádné položky ve fázích next/active v okně -SinceDays)_' }
+if (@($printable).Count -eq 0) { Write-Output '' ; Write-Output '_(žádné položky ve fázích next/active mezi větvemi aktivními v okně -SinceDays)_' }
 
 Write-Output ''
 Write-Output 'Nálezy:'

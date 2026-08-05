@@ -55,6 +55,17 @@ $dupSlug = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '
 Assert-Eq $dupSlug.Code 2 'deklarovaný slug aktivní na cizí větvi = exit 2 i bez lokálního dokumentu'
 Assert-Match $dupSlug.Out 'KOLIZE AKTIVNÍ PRÁCE' 'kolize deklarovaného slugu se hlásí jako CHYBA'
 
+# 1e) DECLARED INTENT vs. the display window: a colleague's DORMANT branch (tip
+# outside -SinceDays) carrying active work on the SAME ticket is exactly the
+# collision that must stop pinning, so declared intent enumerates with NO time
+# limit. The window then only trims the printed table — never the findings.
+$uspana = Invoke-Index @('-RepoPath', $fx.Work, '-BaseRef', 'origin/develop', '-NoFetch', '-Jira', 'UMS-11')
+Assert-Eq $uspana.Code 2 'uspaná větev se stejným tiketem je kolize i mimo okno -SinceDays'
+Assert-Match $uspana.Out 'KOLIZE AKTIVNÍ PRÁCE.*ums_11_uspana' 'kolize s uspanou větví se hlásí jako CHYBA'
+Assert-Match $uspana.Out 'origin/feature/ums-11-uspana' 'hlášení nese větev uspaného aktéra'
+Assert-NotMatch $uspana.Out '\| ums_11_uspana \|' 'uspaná větev se přitom netiskne do tabulky (okno filtruje jen výpis)'
+Assert-NotMatch $r.Out 'ums_11_uspana' 'bez deklarovaného záměru se uspaná větev neobjeví vůbec'
+
 # 2) the SAME slug active locally and on a foreign branch = collision, exit 2
 $local = Join-Path $fx.Work 'memory-bank/proposals/active/design_ums_1_alfa.md'
 New-Item -ItemType Directory -Force -Path (Split-Path $local) | Out-Null

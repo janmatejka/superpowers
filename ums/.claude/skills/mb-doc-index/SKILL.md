@@ -23,7 +23,7 @@ report collisions.
 
 ```powershell
 pwsh <this skill>/scripts/doc-index.ps1 `
-  [-RepoPath <repo>] [-BaseRef origin/develop] [-SinceDays 120] `
+  [-RepoPath <repo>] [-BaseRef <ref>] [-SinceDays 30] `
   [-BranchGlob 'origin/feature/*'] [-Jira UMS-1234] [-Slug <slug>] `
   [-Json <path>] [-NoFetch]
 ```
@@ -48,8 +48,16 @@ pwsh <this skill>/scripts/doc-index.ps1 `
 
 ## Notes
 
-- `-BaseRef` defaults to `origin/develop`; in the superpowers fork use
-  `origin/ums-memory-bank`.
+- `-BaseRef` comes from `memory-bank/ums-repo.json` (`baseRef`) when not given —
+  no need to remember that this fork's base is `origin/ums-memory-bank`. An
+  explicit `-BaseRef` always wins; with no config the fallback is
+  `origin/develop`.
+- `-SinceDays` is an activity window over BRANCHES, not commits: only origin
+  branches whose TIP is that recent are considered, and their history is then
+  walked with no date limit, so a design document committed long ago on a live
+  branch is still found. `-Jira`/`-Slug` (declared intent) enumerate without any
+  window — a dormant foreign branch on the same ticket must still stop pinning —
+  and the window then only trims the printed table, never the findings.
 - The index is git-only and never sees Jira descriptions, so it does NOT report
   unreachable commits inside already published Jira links — reachability is
   enforced at write time by `mb-jira-update` §6b.
