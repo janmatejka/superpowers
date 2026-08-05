@@ -4,11 +4,12 @@ description: Design review by a human architect via a Jira ticket — hand off a
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.1"
+  version: "1.2"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Architect Review Gate" (normative for this skill), "Active Work
+> especially "Architect Review Gate" (normative for this skill), "Base Sync &
+> Drift Detection", "Repository Configuration", "Active Work
 > Item (Design + Plan Pair)" and "`context.md` Schema & Writers". Bitbucket
 > link mechanics (git preconditions, SHA stabilization, commit-pinned URLs,
 > description-line refresh) are reused from
@@ -51,16 +52,37 @@ negotiated; shared branches are never pushed by the agent. One handoff = one
 push. A refusal to publish stops the handoff — without the push the other side
 sees neither the design nor `context.md`.
 
+**The step order is what makes one push true:** on the resolver's side the base
+merge comes FIRST and is not pushed on its own, the handoff state is committed
+after it, and the single closing push publishes both commits together. That push
+satisfies the publication rule for the merge commit as well — a base merge is
+never left unpublished, it merely shares the push with the commit that follows it
+inside the same handoff.
+
 ## Branch Sync (first step of respond and resume)
 
 1. Resolve the ticket branch: request-comment branch name (authoritative) →
-   `git ls-remote --heads origin` filtered case-insensitively by the ticket
-   code → ask the user. Multiple ambiguous candidates: always ask.
+   remote branches whose name contains the ticket code
+   (`git ls-remote --heads origin`, case-insensitive) → ask the user. Multiple
+   ambiguous candidates: always ask. The branch name has the shape
+   `<TICKET>-<kebab-slug>` (contract, Architect Review Gate), and the ticket
+   code is recognised by `ticketPattern` from `<CTX_DIR>/ums-repo.json`
+   (contract section "Repository Configuration") — never by a hardcoded prefix
+   such as `UMS-`; without the configuration the built-in generic pattern
+   applies. Existing branches carrying diacritics are NOT renamed.
 2. Require a clean working tree; dirty = STOP and report (no auto-stash).
 3. `git fetch origin` + checkout the ticket branch + fast-forward to origin.
    Diverged local branch = STOP and report.
 4. Only now read `context.md` and the design document — they live on this
    branch.
+
+**Branch sync itself never merges the base.** The base merge is asymmetric and
+belongs to the RESOLVER's side only — request (step 3 there) and resume (step 3
+there). **In respond mode the base is NEVER merged**, not even when the base has
+moved meanwhile and not "just to assess a current tree": a base merge from both
+sides produces two different merge commits over the same base, which is exactly
+the divergence step 3 above stops on, so the resolver's next sync would STOP.
+This is a prohibition, not a preference (contract, Architect Review Gate).
 
 ## Mode: request (resolver → architect)
 
@@ -71,34 +93,50 @@ sees neither the design nor `context.md`.
    SHA per mb-jira-update §5–6 (uncommitted design → user-confirmed local
    commit, else STOP).
 2. If still on the default branch, create the ticket branch in place
-   (branch-in-place; recommended name contains the ticket code, e.g.
-   `feature/ums-3302-toast-reconcile`). Git worktrees are banned.
-3. Write the `- **Review:** design-review requested YYYY-MM-DD` line into
+   (branch-in-place, always with an explicit starting point after a
+   `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <baseRef>`, where
+   `baseRef` comes from `<CTX_DIR>/ums-repo.json` — contract section
+   "Repository Configuration"). Normally brainstorming created the branch
+   already, so this is the exception, not the rule. Git worktrees are banned.
+3. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
+   `git merge <baseRef>` on the ticket branch, then the intersection assessment
+   and, where it applies, the offered verification, per the contract's "Base Sync
+   & Drift Detection" section. In the design phase the role of the own set is
+   played by the target areas named in the design document and nothing is built,
+   so verification is purely an offer. Conflicts: resolve only in files this
+   branch changed itself, a `context.md` conflict always targeted with
+   `git checkout --ours` (never `merge -X ours` over the whole merge); anything
+   else is a STOP. **Do not push the merge commit on its own** — step 5's single
+   push publishes it together with the handoff state. The SHA stabilized in step 1
+   stays valid: a merge adds a commit, it never rewrites the design commit, and a
+   merge conflict on the same slug in `proposals/active/` is a STOP anyway, so the
+   pinned content cannot change underneath the link. Do not re-stabilize it.
+4. Write the `- **Review:** design-review requested YYYY-MM-DD` line into
    `## Active Work` of `context.md` and commit it (Czech commit message,
    `mb-git-commit` conventions).
-4. **Publish the ticket branch** (announced push per the Publication
+5. **Publish the ticket branch** (announced push per the Publication
    Contract; the pinned design commit MUST be reachable on origin before step
-   5 writes the link). The single push covers the design and the
+   6 writes the link). The single push covers the base merge, the design and the
    `context.md` commit.
-5. Publish a Czech comment to the ticket: a 10–15 line summary of the design
+6. Publish a Czech comment to the ticket: a 10–15 line summary of the design
    (Cíl / Scope / klíčová rozhodnutí / rizika), the commit-pinned Bitbucket
    link to the design file (mb-jira-update §7), the **ticket branch name**,
    and the **original resolver** (accountId + displayName). Also refresh the
    `**Návrh (design):**` line in the ticket description (mb-jira-update §7b).
-6. Architect selection: fetch assignable users of the project, offer the
+7. Architect selection: fetch assignable users of the project, offer the
    choice to the user (one question), set the chosen architect as assignee.
-7. Transition the ticket to **"Design Review"**. Missing transition =
+8. Transition the ticket to **"Design Review"**. Missing transition =
    fail-closed STOP: instruct the user to create the status (contract
    prerequisite).
-8. Append to **AgentSessions** (customfield_11248):
+9. Append to **AgentSessions** (customfield_11248):
    `YYYY-MM-DD <harness> <session-id> — design review request (<ticket>)`.
    Session id best-effort; undetectable → line without id + tell the user.
-   Field unavailable → put the line into the comment from step 5 instead.
-9. Announce (Czech): handed off to design review; work resumes via resume
-   mode after the ticket returns, ideally in this session
-   (`--resume <session-id>`). **The workflow stops here — do NOT invoke
-   writing-plans.** `context.md` stays pinned; the two-actives guard
-   deliberately blocks other work in this repo during the review.
+   Field unavailable → put the line into the comment from step 6 instead.
+10. Announce (Czech): handed off to design review; work resumes via resume
+    mode after the ticket returns, ideally in this session
+    (`--resume <session-id>`). **The workflow stops here — do NOT invoke
+    writing-plans.** `context.md` stays pinned; the two-actives guard
+    deliberately blocks other work in this repo during the review.
 
 ## Mode: respond (architect)
 
@@ -107,9 +145,12 @@ sees neither the design nor `context.md`.
 2. Read the ticket (description, request comment). Missing request comment
    (assigned manually) → fail-closed: ask the user for the return assignee
    and the ticket branch.
-3. **Branch sync** (above) — then read the design document and the target
-   project's MB context (`brief.md`, `architecture.md`, `tech.md`,
-   `playbook.md`) from the ticket branch.
+3. **Branch sync** (above) — **and no base merge here: respond is the
+   architect's side of the asymmetry, so `git merge <baseRef>` is forbidden in
+   this mode**, however stale the base looks. Assess the design on the tree the
+   resolver handed over. Then read the design document and the target project's
+   MB context (`brief.md`, `architecture.md`, `tech.md`, `playbook.md`) from the
+   ticket branch.
 4. Guide the architect through a structured assessment: goal and scope
    adequacy, technical approach, impacts, risks, alternatives. Help phrase
    the notes.
@@ -127,9 +168,17 @@ sees neither the design nor `context.md`.
    user confirmation.
 2. **Branch sync** (above) — the architect may have pushed. Then read the
    architect's comments and summarize them in Czech.
-3. Transition the ticket to **"In Progress"**, clear the flag, remove the
-   `Review:` line from `context.md` (commit with the next natural commit).
-4. Continue per workflow state: fold the notes into the design
+3. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
+   `git merge <baseRef>` on the ticket branch, with the intersection assessment
+   and the offered verification per the contract's "Base Sync & Drift Detection"
+   section (same mechanics and same conflict rules as request step 3). Resume
+   merges the base because it is the resolver's side; respond never does.
+4. Transition the ticket to **"In Progress"**, clear the flag, remove the
+   `Review:` line from `context.md` (commit with the next natural commit — that
+   commit's push publishes the base merge with it). If no further commit follows
+   shortly, push the base merge on its own: a base merge is never left
+   unpublished.
+5. Continue per workflow state: fold the notes into the design
    (brainstorming-style dialog over the architect's points, update the design
    file) → after user approval invoke writing-plans.
 

@@ -4,7 +4,7 @@ description: Extract implementation status and deployment instructions from acti
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.3"
+  version: "2.4"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the proposal pair model, and fail-closed rules.
@@ -14,7 +14,7 @@ metadata:
 **Action:** Extract implementation status and deployment instructions from active proposals and publish a summary comment to Jira.
 **Precondition:** `- **Jira:** <ID>` must exist in `<CTX_DIR>/context.md` (or be provided in the user prompt).
 
-**Model selection:** producing the Czech Jira note is summarization work — if invoked as a delegated/isolated session (e.g. offered by `mb-harvest` from the finishing-a-development-branch harvest gate), run it on the cheapest capable tier (see [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy)).
+**Model selection:** producing the Czech Jira note is summarization work — if invoked as a delegated/isolated session (e.g. offered by `mb-harvest` from the finishing-a-development-branch harvest gate), run it on the cheapest capable tier (see [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy").
 
 ---
 
@@ -49,7 +49,7 @@ Rules:
 
 If `<CTX_DIR>/context.md` exists, read the `## Active Work` → `Target MB Pin` field to derive `PLAN_MB`. If the pin is missing, `context.md` does not exist, or the pin points to a non-existent directory, `PLAN_MB` is **undefined**. Do NOT silently default to `<CTX_DIR>`.
 
-When `PLAN_MB` is undefined, this skill does not select a target itself — Target-MB Discovery & Pinning runs in the superpowers workflow (during brainstorming) per `UMS_MEMORY_BANK_CONTRACT.md`: discovery scan for `**/memory-bank/proposals/active/` files matching `{design_,plan_,proposal_}*.md` (apply the contract's [Discovery & pairing rule](../shared/UMS_MEMORY_BANK_CONTRACT.md#active-work-item-design--plan-pair)) → evidence tags (`seed_hit`, `active_hit`, `explicit_hit`, `untrusted`) → A/B/C disambiguation (where options A/B/C represent specific candidate Memory Banks (MBs) derived dynamically from the current conversation context; the agent provides recommendations, but the choice is always made by the user) → persist `Target MB Pin`.
+When `PLAN_MB` is undefined, this skill does not select a target itself — Target-MB Discovery & Pinning runs in the superpowers workflow (during brainstorming) per `UMS_MEMORY_BANK_CONTRACT.md`: discovery scan for `**/memory-bank/proposals/active/` files matching `{design_,plan_,proposal_}*.md` (apply the discovery & pairing rule of [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Active Work Item (Design + Plan Pair)") → evidence tags (`seed_hit`, `active_hit`, `explicit_hit`, `untrusted`) → A/B/C disambiguation (where options A/B/C represent specific candidate Memory Banks (MBs) derived dynamically from the current conversation context; the agent provides recommendations, but the choice is always made by the user) → persist `Target MB Pin`.
 
 If the protocol is exhausted and no trusted candidate remains, STOP and ask the user to confirm `<CTX_DIR>` as the target or provide an explicit path. Do NOT silently fall back to `<CTX_DIR>`. If the user confirms `<CTX_DIR>`, use it as `PLAN_MB`.
 
@@ -242,16 +242,26 @@ Scope lock remains active until command completion.
 
 ### 10. Finalization mode (finishing gate only)
 
-Invoked EXPLICITLY by the finishing-a-development-branch overlay after a
-successful local merge (Option 1) with a linked ticket — never self-selected,
-never in standalone invocations (standalone runs NEVER change ticket status).
+Invoked EXPLICITLY by the finishing-a-development-branch overlay **after a
+verified fast-forward push of the ticket branch into the base ref** — the
+integration path that replaces the upstream local-merge option (contract,
+Publication Contract, subsection "Integration"; it is the last step of that
+sequence) — with a linked ticket. Never self-selected, never in standalone
+invocations (standalone runs NEVER change ticket status).
 
-0. **Publication gate (FIRST, before the comment is published):** verify the
-   merge commit of the work (HEAD of the base branch) is reachable on `origin`
-   (`git branch -r --contains <sha>`). If it is not, **STOP** — do not publish
-   the comment and do not transition: tell the user in Czech that the code is
-   local only and the tester would have nothing to test, and hand over the exact
-   command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin <base>` — the human's
+**Until that push into the base is verified reachable on `origin`, the ticket
+does NOT move to „Test".** The gate below is what enforces it; nothing about the
+gate changes because the integration is a push rather than a local merge — only
+which commit it is asked about.
+
+0. **Publication gate (FIRST, before the comment is published):** verify the tip
+   commit of the ticket branch that was pushed onto the base ref is reachable on
+   `origin` (`git branch -r --contains <sha>`). If it is not, **STOP** — do not
+   publish the comment and do not transition: tell the user in Czech that the code
+   is local only and the tester would have nothing to test, and hand over the exact
+   command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the
+   refspec form, because integration pushes the ticket branch onto the base ref,
+   and `<baseBranch>` is `baseRef` minus its remote prefix; the human's
    deliberate escape from the pre-push guard, which would otherwise reject the
    command handed over; the agent never pushes a shared branch and never sets
    that variable itself, and `--no-verify` is not a substitute — it disables

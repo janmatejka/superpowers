@@ -4,7 +4,7 @@ description: You MUST use this before committing code changes - runs a generic c
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.0"
+  version: "2.1"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the proposal pair model, and fail-closed rules.
@@ -142,7 +142,7 @@ Scope lock remains active until command completion.
 - Shared repository state means the same repo, branch, worktree, and staging area.
 - The delegated worker MUST re-activate this skill (or equivalent command instructions) in its own session and verify git state before any write.
 - If shared git state cannot be guaranteed, do not execute the final git write in the delegated worker; return the prepared result to the parent session or keep the entire command in the parent session.
-- If delegation proceeds, dispatch the delegated worker on the cheapest capable tier — this is summarization/bookkeeping work (see [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy)).
+- If delegation proceeds, dispatch the delegated worker on the cheapest capable tier — this is summarization/bookkeeping work (see [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy").
 
 ## Idle Git Fallback
 
@@ -210,6 +210,7 @@ ${stagedDiff}
 - Never execute `git push` as part of this command.
 - Never ask for interactive approval/confirmation to run `git push`.
 - If remote update is requested, require a separate explicit user command outside `mb-git-commit`.
+- **This is a boundary, not a contradiction of the publication rule.** The contract's Publication Contract has the agent push its own ticket branch after every commit — that publication is performed by the **calling** workflow step immediately after the commit returns, never by this skill. Commit and push are two responsibilities; this skill owns the first one only, so "never pushes" here and "push after every commit" there describe the same flow from its two ends.
 
 ---
 

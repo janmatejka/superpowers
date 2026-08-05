@@ -125,4 +125,4 @@ vocabulary, invariants, and Jira sync mechanics, read
 | New ledger | Copy [ledger-template.md](ledger-template.md) → `memory-bank/epics/<epic>/ledger.md`, fill items from the source doc |
 | Design conversation inside a window | brainstorming skill's method (one question at a time, sections as you go), scoped to the agenda |
 | Preliminary design draft structure | design-document sections (## Cíl, ## Scope, ## Technický návrh — scaled to what is known), saved as `proposals/next/design_<slug>.md`; detailed plans are NOT written ahead |
-| Sub-dispatch models | [Dispatch Model Policy](../shared/UMS_MEMORY_BANK_CONTRACT.md#dispatch-model-policy): read-only reality-verification dispatch = cheapest capable tier; review scaled per superpowers Model Selection |
+| Sub-dispatch models | [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy": read-only reality-verification dispatch = cheapest capable tier; review scaled per superpowers Model Selection |
