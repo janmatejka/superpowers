@@ -200,7 +200,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    the notes.
 5. Publish the notes as a Czech comment, set the assignee back to the
    original resolver, and **set the flag** (Flagged/Impediment — team
-   convention: "returned, attend to it"). Status stays "Design Review".
+   convention: "returned, attend to it"). The status stays unchanged
+   ("Design Review", or "Review" in the fallback shape).
    If commits were made on the ticket branch, push them (announced push per
    Push Policy — the ticket branch is unprotected, so no approval is needed).
 
