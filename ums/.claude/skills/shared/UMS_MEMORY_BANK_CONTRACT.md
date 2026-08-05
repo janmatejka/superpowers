@@ -1,7 +1,11 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.6
-- Supersedes v2.5 (integration is a fast-forward push of the ticket branch, so
+- **Contract-Version:** 2.7
+- Supersedes v2.6 (adds the Epic Backflow section — design-approval check of
+  the epic graph with a queued ledger note and an offered inline elaboration
+  window — and the "Design Review" → "Review" status fallback with the
+  `[DESIGN REVIEW]` request-comment marker).
+- v2.6 superseded v2.5 (integration is a fast-forward push of the ticket branch, so
   the `--no-ff` convention is dropped; repository-specific values move out of
   skill bodies into `<CTX_DIR>/ums-repo.json`; the active-work limit becomes
   per-branch; workspace discipline and the park operation are added).
@@ -1218,8 +1222,25 @@ a diverged local branch = STOP and report. Only after branch sync read
 
 - Status flow: request transitions the ticket to **"Design Review"**; the
   architect's respond leaves the status unchanged; resume transitions to
-  **"In Progress"**. Missing "Design Review" transition = fail-closed STOP
-  with an instruction to create the status (prerequisite).
+  **"In Progress"**.
+- **"Design Review" fallback.** When the "Design Review" transition does not
+  exist (the status is not configured in the Jira instance), request falls
+  back to the existing **"Review"** status. The request comment ALWAYS begins
+  with the marker line **`[DESIGN REVIEW]`** — written unconditionally, so the
+  fallback never depends on having predicted the transition's absence — and in
+  the fallback state that marker is what distinguishes a design review from an
+  ordinary review (code review / test). The fallback is announced to the user;
+  the fail-closed STOP fires only when the "Review" transition is missing too.
+  Wherever this contract or a skill tests that a ticket "sits in Design
+  Review", the test reads: status "Design Review", OR status "Review" AND a
+  request comment whose first line carries `[DESIGN REVIEW]`. The marker adds
+  no new evidence — the request comment already records the resolver and the
+  branch. A deleted marker degrades to the existing "respond without a request
+  comment" path (ask the user, never guess). The fallback is a bridge, not a
+  mode: once the "Design Review" status exists, the primary path stops using
+  the fallback on its own — no configuration, no switch. `mb-epic-graph` does
+  not read comments, so a fallback-shaped ticket gets the plain "Review"
+  glyph — a documented imprecision of the bridge, not a defect to fix.
 - **Flag** (`Flagged` field, value Impediment): set by respond when returning
   the ticket, cleared by resume (and by mb-jira-update finalization if still
   present). Team convention: a flag means "work returned to you — attend to
