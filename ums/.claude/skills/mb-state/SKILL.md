@@ -172,10 +172,16 @@ performing one. Reading another branch's state never checks that branch out.
   slug per the pairing rule, per owning MB) and list the queued preliminary
   proposals — they activate by moving to `active/` when work on them starts
   (contract, Target-MB Discovery & Pinning).
-- **Foreign branches:** run the `mb-doc-index` skill (read-only). Report
-  foreign active work items (slug, ticket, branch, last commit — invoke with
-  `-Json` for the commit date, which the default table does not print) and
-  its findings. When `context.md` carries active work, pass its identity as
+- **Foreign branches:** run the `mb-doc-index` skill **with `-NoFetch`**. The
+  switch is not optional here: without it the script runs
+  `git fetch --prune origin`, which rewrites remote-tracking refs and
+  `FETCH_HEAD` and moves `origin/<branch>` under the user — a write, and one
+  mb-state has no business performing offline, on a metered connection, or in
+  the middle of a task. **The foreign-branch view is therefore as of the last
+  fetch**, exactly like the base distance above; say so rather than implying it
+  is live. Report foreign active work items (slug, ticket, branch, last commit —
+  invoke with `-Json` for the commit date, which the default table does not
+  print) and its findings. When `context.md` carries active work, pass its identity as
   declared intent (`-Jira <ticket>` / `-Slug <work item>`): the collision
   check is otherwise computed against the local working tree only, so it
   stays blind while the pin exists but the design document does not. A
@@ -195,7 +201,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: [✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ core.hooksPath je absolutní — hook je obcházen | ⚠️ ums-repo.json chybí (platí vestavěné defaulty)]
+Workspace: <✅ způsobilý | kombinace nálezů: ⚠️ pre-push hook chybí/neověřený + ⚠️ core.hooksPath je absolutní — hook je obcházen + ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
@@ -220,10 +226,18 @@ Další krok:
 - čeká na review → mb-architect-review (resume) po vrácení tiketu; writing-plans je do té doby blokován
 - hotová implementace → finishing-a-development-branch (harvest gate)
 - opuštěná práce → mb-abort; pozdní sklizeň → mb-harvest
-- zbytky v cestě → mb-park (odložit), nebo zahodit po tvém výslovném potvrzení
+- zbytky v cestě a větev MÁ pin → mb-park (odložit), nebo zahodit po tvém výslovném potvrzení
+- zbytky v cestě a větev je IDLE → commitni je, nebo zahoď po tvém výslovném potvrzení (mb-park by řekl „Není co parkovat")
 - pre-push chybí/neověřený → spusť install-git-hooks.ps1 a znovu ověř
 - báze chybí commity → base sync na nejbližší hranici fáze (ne uprostřed tasku)
 ```
+
+Two notes on the template. The `Workspace:` line is **not** an alternation: a
+missing hook, an absolute `core.hooksPath` and a missing configuration are
+independent findings that can hold at once, so list every one that applies (and
+only `✅ způsobilý` when none does). A missing `ums-repo.json` carries `ℹ️`, not
+`⚠️` — its absence is informational and never a defect, the same weight the
+gather step and the contract give it.
 
 Everything under „Další krok" is a suggestion addressed to the **user**. mb-state
 performs none of it: it does not park, does not install the hook, does not sync
