@@ -319,6 +319,23 @@ introduced:**
 | `ticketPattern` | `mb-state`, the entry gate, `mb-architect-review` |
 | `projectMarkers`, `sharedRoots` | the intersection heuristic (see Base Sync & Drift Detection) |
 
+**`baseRef` is a fully-qualified remote-tracking ref** (`origin/develop`,
+`origin/ums-memory-bank`) and is used as-is wherever git READS the base: a merge
+source, a merge-base, a diff endpoint, a `switch -c` start point, a
+`switch --detach` target. It is never prefixed with `origin/` a second time —
+`origin/origin/develop` resolves to nothing.
+
+**`<baseBranch>` is a derivation, not a config key:** `baseRef` minus its remote
+prefix (`origin/develop` → `develop`). It exists for exactly one purpose, the
+**push destination**, because a refspec's right-hand side names a branch on the
+remote and not a remote-tracking ref: `git push origin HEAD:<baseBranch>`. With
+`baseRef` there instead, the push would create a junk branch literally named
+`origin/develop` on the remote rather than updating the base — and the `pre-push`
+guard would not catch it, because it strips `refs/heads/` and matches the
+remainder against `protectedBranches`, where `origin/develop` appears nowhere.
+`<baseBranch>` appears at push destinations only; everywhere else the base is
+`baseRef`.
+
 **A missing file is not an error, and the degradation leans to the safer
 side:** `baseRef` falls back to `origin/develop`; `protectedBranches` falls back
 to the built-in list, i.e. to *more* protection, never less; and without
@@ -354,7 +371,7 @@ The base ref is merged into the ticket branch at **phase boundaries** only:
 **Never in the middle of a task.** A task that starts on one tree and finishes on
 another cannot be reviewed against its own brief.
 
-Sequence at a boundary: `fetch` → `merge origin/<baseRef>` → intersection
+Sequence at a boundary: `fetch` → `merge <baseRef>` → intersection
 assessment → verification where it applies → push.
 
 There is no separate commit step: `merge` creates the merge commit itself, and it
@@ -368,8 +385,8 @@ publishes the merge and the handoff commit in one push (Architect Review Gate).
 `merge`**, from the same merge-base:
 
 ```bash
-MB=$(git merge-base HEAD origin/<baseRef>)
-prichozi=$(git diff --name-only $MB..origin/<baseRef>)
+MB=$(git merge-base HEAD <baseRef>)
+prichozi=$(git diff --name-only $MB..<baseRef>)
 vlastni=$(git diff --name-only  $MB..HEAD)
 ```
 
@@ -823,7 +840,7 @@ code.
    `Work item` slug; the active proposal (pair or legacy single) exists in
    `<PLAN_MB>/proposals/active/` and matches the slug.
 2. **Affected MBs:** derive from
-   `git diff --name-only $(git merge-base origin/<baseRef> HEAD)..HEAD`
+   `git diff --name-only $(git merge-base <baseRef> HEAD)..HEAD`
    (`baseRef` per Repository Configuration), mapping each
    changed path to its nearest owning `memory-bank/` directory. Fall back to
    asking the user when the diff is unavailable.
@@ -920,7 +937,7 @@ whole rule:
 | Tier | Rule |
 |---|---|
 | The actor's own ticket branch (unprotected) | The agent pushes it itself — publishing its own branch is not a decision it puts to the user — but it ALWAYS announces the branch and the outgoing commits. The harness's own permission prompt still applies (`Bash(git push:*)` is deliberately in neither `allow` nor `deny`, so the tool call is confirmed like any other): "does not ask" means it does not negotiate whether to publish, not that the push is auto-approved. Force push is forbidden. |
-| Shared branches (the effective list is `protectedBranches` — see Repository Configuration; the built-in fallback is `develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>` — the refspec form, because integration pushes the ticket branch onto the base ref; see the human escape below). The agent then re-verifies reachability. |
+| Shared branches (the effective list is `protectedBranches` — see Repository Configuration; the built-in fallback is `develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the refspec form, because integration pushes the ticket branch onto the base ref; see the human escape below). The agent then re-verifies reachability. |
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
 scoped to `refs/heads/*` — tag pushes are out of scope and always pass
@@ -983,11 +1000,11 @@ the publication rule above, not a job of the commit tool.
 Integrating finished work is a **fast-forward push of the ticket branch onto the
 base ref**, not a local merge into a local base branch. The base has already been
 merged into the ticket branch at the last phase boundary (Base Sync & Drift
-Detection), so the ticket branch is a descendant of `origin/<baseRef>` and the
+Detection), so the ticket branch is a descendant of `<baseRef>` and the
 push is a fast-forward. Sequence:
 
 1. `git fetch origin`,
-2. `git merge origin/<baseRef>` on the ticket branch,
+2. `git merge <baseRef>` on the ticket branch,
 3. green verification (build and targeted tests),
 4. the agent prepares the human command with the outgoing commits enumerated,
 5. the user runs it — the base ref is a shared branch, so the agent never pushes
@@ -1018,7 +1035,7 @@ reached through — the `mb-abort` skill, or Discard in
    the agent pushes it and announces the outgoing commits; a shared current branch
    is the user's command, as everywhere,
 4. only where a branch is actually being left behind: detach
-   (`git switch --detach origin/<baseRef>` — git cannot delete the branch that is
+   (`git switch --detach <baseRef>` — git cannot delete the branch that is
    checked out, and a ticket workspace has no local base branch to return to) and
    delete the **local** branch. The remote branch is never deleted.
 
@@ -1048,10 +1065,10 @@ Documents are never pushed into a shared branch to make them visible; they are
   window's proposals, so a cherry-pick would drag in a foreign ledger. The
   taken-over design document records `**Převzato z:** <branch>@<sha>`.
 - **A ticket branch is created with an EXPLICIT starting point, always:**
-  `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a `git fetch
+  `git switch -c <TICKET>-<kebab-slug> <baseRef>` after a `git fetch
   origin` — otherwise it cannot see already-merged planning. The **local** base
   branch is not used in a ticket workspace: if one exists it is neither updated
-  nor merged, and `origin/<baseRef>` is the only base that counts (`baseRef` per
+  nor merged, and `<baseRef>` is the only base that counts (`baseRef` per
   Repository Configuration).
   **Postcondition of creation:** `proposals/active/` is empty or absent and
   `context.md` is IDLE (state names, tested by the pin — see the `context.md`

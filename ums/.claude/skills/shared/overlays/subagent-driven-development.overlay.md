@@ -49,7 +49,7 @@
   `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Playbook Contract"). Do not
   rephrase entries; the playbook gate presents them to the user.
 - **Base sync:** before dispatching the first task — a phase boundary — run
-  `git fetch origin` and then `git merge origin/<baseRef>` on the ticket branch
+  `git fetch origin` and then `git merge <baseRef>` on the ticket branch
   (`baseRef` from `<CTX_DIR>/ums-repo.json`, contract section "Repository
   Configuration"), followed by the intersection assessment and the verification
   that follows from it per the contract's "Base Sync & Drift Detection" section.

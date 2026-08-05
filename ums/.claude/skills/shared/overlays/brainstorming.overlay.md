@@ -51,7 +51,7 @@ Adjustments to the checklist above:
      parallel work.
   4. **Create the ticket branch** — the entry gate's intent phase — with the tree
      clean, per the rule stated in item 6:
-     `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a
+     `git switch -c <TICKET>-<kebab-slug> <baseRef>` after a
      `git fetch origin`, always with the explicit start point. When step 3 answered
      "none", the kebab slug alone names the branch — the ticket code is part of the
      name only when there is one (contract, "Active Work Item (Design + Plan Pair)",
@@ -82,13 +82,13 @@ Adjustments to the checklist above:
 
   The rule that governed that creation, invoked by item 1 step 4 and stated here in
   full: **always with an explicit starting
-  point**, `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a
+  point**, `git switch -c <TICKET>-<kebab-slug> <baseRef>` after a
   `git fetch origin`, where `baseRef` comes from `<CTX_DIR>/ums-repo.json` (the
   contract's "Repository Configuration" section). The implicit form, without a
   starting point, branches off whatever happens to be checked out: run on a
   foreign ticket branch it pulls that branch's pin and its active pair into your
   history. The local base branch is not used in a ticket workspace —
-  `origin/<baseRef>` is the only base that counts — and git worktrees are banned
+  `<baseRef>` is the only base that counts — and git worktrees are banned
   in this repository (branch-in-place). **Postcondition, tested at creation time
   and only then:** `proposals/active/` is empty or absent and `context.md` is IDLE.
   If it is not, STOP, delete the just-created branch and repeat; an ACTIVE base

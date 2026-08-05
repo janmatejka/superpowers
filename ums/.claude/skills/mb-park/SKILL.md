@@ -152,7 +152,7 @@ from `origin`, which is the whole promise of parking.
 
 - The ticket branch is the actor's OWN branch: the agent pushes it and announces
   the branch together with the outgoing commits (`git log --oneline @{u}..HEAD`,
-  or against `origin/<baseRef>` when the branch has no upstream yet; `baseRef`
+  or against `<baseRef>` when the branch has no upstream yet; `baseRef`
   from `<CTX_DIR>/ums-repo.json`, contract section "Repository Configuration").
 - When the current branch is in `protectedBranches` (same section; the built-in
   fallback is `develop`, `main`, `master`, `release/*`) the agent does NOT push.
