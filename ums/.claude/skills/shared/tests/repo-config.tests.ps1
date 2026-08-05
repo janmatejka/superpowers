@@ -82,5 +82,19 @@ $c = Get-UmsRepoConfig $tmp
 Assert-Eq $c.Source 'default' 'holy array degraduje na defaulty'
 Assert-True (@($c.ProtectedBranches).Count -eq 4) 'holy array ma 4 vestavene vzory'
 
+Write-Host "== protectedBranches se samymi non-string prvky pada na default (task 6 fix round 1)"
+'{ "protectedBranches": [1,2,3] }' | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $tmp 'memory-bank\ums-repo.json')
+$c = Get-UmsRepoConfig $tmp
+Assert-True (@($c.ProtectedBranches).Count -eq 4) 'protectedBranches [1,2,3] (zadny string) pada na vestaveny seznam'
+Assert-True (@($c.ProtectedBranches) -notcontains '1') 'protectedBranches [1,2,3] neobsahuje stringifikovane "1"'
+
+'{ "protectedBranches": [null] }' | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $tmp 'memory-bank\ums-repo.json')
+$c = Get-UmsRepoConfig $tmp
+Assert-True (@($c.ProtectedBranches).Count -eq 4) 'protectedBranches [null] pada na vestaveny seznam'
+
+'{ "protectedBranches": [""] }' | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $tmp 'memory-bank\ums-repo.json')
+$c = Get-UmsRepoConfig $tmp
+Assert-True (@($c.ProtectedBranches).Count -eq 4) 'protectedBranches [""] (prazdny string) pada na vestaveny seznam'
+
 Remove-Item -Recurse -Force $tmp
 Complete-Tests

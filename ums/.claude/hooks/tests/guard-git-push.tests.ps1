@@ -15,6 +15,23 @@ function Test-Cmd([string] $Command, [string] $Cwd = '') {
     return Invoke-Hook ($payload | ConvertTo-Json -Depth 5 -Compress)
 }
 
+# Same shape as Test-Cmd, but returns exit code and stderr too (via
+# Invoke-HookFull) — for assertions whose point is "must not throw", where
+# stdout alone cannot distinguish a crash from a clean allow.
+function Test-CmdFull([string] $Command, [string] $Cwd = '') {
+    $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $Command } }
+    if ($Cwd) { $payload.cwd = $Cwd }
+    return Invoke-HookFull ($payload | ConvertTo-Json -Depth 5 -Compress)
+}
+
+# For `cwd` shapes Test-CmdFull's [string] parameter cannot carry — explicit
+# JSON null, a number, an object — always emits the `cwd` key, whatever its
+# value.
+function Test-CmdRawFull([string] $Command, $CwdValue) {
+    $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $Command }; cwd = $CwdValue }
+    return Invoke-HookFull ($payload | ConvertTo-Json -Depth 5 -Compress)
+}
+
 # ---------------------------------------------------------------------------
 # allowed: ordinary, unprotected pushes/fetches and unrelated commands
 # ---------------------------------------------------------------------------
@@ -96,6 +113,12 @@ Assert-Match (Test-Cmd 'git fetch https://example.com/evil.git feature:refs/head
 # a WILDCARD destination names no branch, so the protected-name test alone
 # never matched it — yet it overwrites every local branch, develop included
 Assert-Match (Test-Cmd 'git fetch https://example.com/evil.git +refs/heads/*:refs/heads/*') 'permissionDecision.*deny' 'zamítnuto: fetch se žolíkem do lokálních větví'
+# the WORDING is asserted too, not just the deny — otherwise a revert of the
+# fix-round-1 message change (dropping the hardcoded "develop, main, master,
+# release/*" list, which lies whenever the configured list differs) would
+# pass unnoticed
+Assert-Match (Test-Cmd 'git fetch https://example.com/evil.git +refs/heads/*:refs/heads/*') 'chráněné větve tohoto repozitáře' 'zamítnutí žolíkového fetchu mluví o chráněných větvích repozitáře, ne o natvrdo vypsaném seznamu'
+Assert-NotMatch (Test-Cmd 'git fetch https://example.com/evil.git +refs/heads/*:refs/heads/*') 'develop, main, master' 'zamítnutí žolíkového fetchu už nejmenuje natvrdo vypsaný vestavěný seznam (lhal by, kdyby byl nakonfigurovaný seznam jiný)'
 Assert-Match (Test-Cmd 'git fetch origin refs/heads/*:*') 'permissionDecision.*deny' 'zamítnuto: žolík bez prefixu refs/ je taky lokální větev'
 # ... while the everyday refspec into remote-tracking refs must keep passing
 Assert-Eq (Test-Cmd 'git fetch origin +refs/heads/*:refs/remotes/origin/*') '' 'běžný refspec do remote-tracking refů projde'
@@ -158,6 +181,109 @@ foreach ($json in @('[1,2,3]', '42', 'null')) {
 # pre-push hint the same way) — a bare `git push origin <branch>` fails on a
 # ticket clone that never had a local copy of the shared branch.
 Assert-Match (Test-Cmd 'git push origin develop') 'HEAD:' 'zamítnutí radí refspecový tvar (obsahuje HEAD:)'
+
+# ---------------------------------------------------------------------------
+# fix round 1, IMPORTANT: an array whose entries are all non-strings must
+# fall back, not silently replace the built-in list with useless patterns.
+# `Array.isArray(list) && list.length > 0` alone accepted [1, null, ["x"],
+# {"a":1}] and globToRe() stringified each entry into /^1$/, /^null$/, /^x$/,
+# /^\[object Object\]$/ — none of which match any real branch, so `develop`
+# passed through UNPROTECTED with no warning. Filtering to usable (string,
+# non-empty-after-trim) entries BEFORE the length test fixes this: "nothing
+# usable remains" now degrades exactly like "the key is absent".
+# ---------------------------------------------------------------------------
+$cfgNonStr = New-ConfigFixture '{ "protectedBranches": [1, null, ["x"], {"a":1}] }'
+Assert-Match (Test-Cmd 'git push origin develop' $cfgNonStr) 'permissionDecision.*deny' 'zamítnuto: pole se samými non-string prvky padá na vestavěný seznam (develop je v něm)'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgNonStr) '' 'povoleno: pole se samými non-string prvky nedává žádnou ochranu navíc (Branches/* ve vestavěném seznamu není)'
+$fullNonStr = Test-CmdFull 'git push origin develop' $cfgNonStr
+Assert-Eq $fullNonStr.Code 0 'exit 0: pole se samými non-string prvky nezpůsobí pád procesu'
+Assert-Eq $fullNonStr.Err '' 'žádný stderr: pole se samými non-string prvky nevyhodí nezachycenou výjimku'
+Remove-Item -Recurse -Force $cfgNonStr
+
+# minimal repro of the same trap: a single non-string entry
+$cfgSingleNonStr = New-ConfigFixture '{ "protectedBranches": [1] }'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgSingleNonStr) '' 'povoleno: protectedBranches: [1] (jediný prvek, ne string) padá na vestavěný seznam'
+Remove-Item -Recurse -Force $cfgSingleNonStr
+
+# ---------------------------------------------------------------------------
+# fix round 1, minor: configuration shapes that previously had no coverage
+# ---------------------------------------------------------------------------
+
+# protectedBranches: null (key present, value null)
+$cfgNull = New-ConfigFixture '{ "protectedBranches": null }'
+Assert-Match (Test-Cmd 'git push origin develop' $cfgNull) 'permissionDecision.*deny' 'zamítnuto: protectedBranches: null padá na vestavěný seznam'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgNull) '' 'povoleno: protectedBranches: null nedává ochranu navíc'
+Remove-Item -Recurse -Force $cfgNull
+
+# protectedBranches: [] (key present, explicitly empty array)
+$cfgEmptyArr = New-ConfigFixture '{ "protectedBranches": [] }'
+Assert-Match (Test-Cmd 'git push origin develop' $cfgEmptyArr) 'permissionDecision.*deny' 'zamítnuto: protectedBranches: [] padá na vestavěný seznam'
+Remove-Item -Recurse -Force $cfgEmptyArr
+
+# protectedBranches as a bare STRING instead of an array
+$cfgStrShape = New-ConfigFixture '{ "protectedBranches": "develop" }'
+Assert-Match (Test-Cmd 'git push origin develop' $cfgStrShape) 'permissionDecision.*deny' 'zamítnuto: protectedBranches jako string (ne pole) padá na vestavěný seznam'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $cfgStrShape) '' 'povoleno: protectedBranches jako string nedává ochranu navíc'
+Remove-Item -Recurse -Force $cfgStrShape
+
+# a configured pattern carrying a regex metacharacter must stay LITERAL — "."
+# must not mean "any character" the way it would in a raw regex. Confined to
+# the parseable branch-name charset (letters/digits/./_/-//), since the outer
+# refspec parser (REFSPEC_RE) only trusts those characters as "simple" and
+# would fail-open on anything else regardless of the protected list.
+$cfgDot = New-ConfigFixture '{ "protectedBranches": ["release.1"] }'
+Assert-Eq (Test-Cmd 'git push origin releaseX1' $cfgDot) '' 'povoleno: literální "." se neinterpretuje jako regex "libovolný znak" (releaseX1 neodpovídá release.1)'
+Assert-Match (Test-Cmd 'git push origin release.1' $cfgDot) 'permissionDecision.*deny' 'zamítnuto: přesná shoda s literálním vzorem release.1'
+Remove-Item -Recurse -Force $cfgDot
+
+# invalid / nonexistent cwd must not throw, and must degrade toward the
+# built-in list like every other unreadable-configuration case
+$cfgProof = New-ConfigFixture '{ "protectedBranches": ["Branches/*"] }'
+$nonexistentCwd = Join-Path $cfgProof 'does-not-exist-zzz'
+Assert-Match (Test-Cmd 'git push origin develop' $nonexistentCwd) 'permissionDecision.*deny' 'zamítnuto: neexistující cwd padá na vestavěný seznam (develop je v něm)'
+Assert-Eq (Test-Cmd 'git push origin Branches/5.37' $nonexistentCwd) '' 'povoleno: neexistující cwd nemůže přečíst Branches/*, žádná ochrana navíc'
+$fullNonexistentCwd = Test-CmdFull 'git push origin develop' $nonexistentCwd
+Assert-Eq $fullNonexistentCwd.Code 0 'exit 0: neexistující cwd nezpůsobí pád procesu'
+Assert-Eq $fullNonexistentCwd.Err '' 'žádný stderr: neexistující cwd nevyhodí nezachycenou výjimku'
+Remove-Item -Recurse -Force $cfgProof
+
+# cwd: JSON null — falsy in JS, so `cwd || process.cwd()` falls through to
+# the guard's own process cwd. Whichever repository that happens to be, it
+# must not throw and `develop` (in every repository's fallback OR real list
+# this suite could run against) must still be denied.
+$fullNullCwd = Test-CmdRawFull 'git push origin develop' $null
+Assert-Eq $fullNullCwd.Code 0 'exit 0: cwd: null nezpůsobí pád procesu'
+Assert-Eq $fullNullCwd.Err '' 'žádný stderr: cwd: null nevyhodí nezachycenou výjimku'
+Assert-Match $fullNullCwd.Out 'permissionDecision.*deny' 'cwd: null nezablokuje ochranu: develop zůstává zamítnutý'
+
+# cwd: a NUMBER — truthy in JS, so it is used as-is; `path.join(42, ...)`
+# throws a TypeError, which must be caught by loadProtected's own try/catch,
+# not escape to the top level.
+$fullNumCwd = Test-CmdRawFull 'git push origin Branches/5.37' 42
+Assert-Eq $fullNumCwd.Code 0 'exit 0: cwd jako číslo nezpůsobí pád procesu'
+Assert-Eq $fullNumCwd.Err '' 'žádný stderr: cwd jako číslo nevyhodí nezachycenou výjimku'
+Assert-Eq $fullNumCwd.Out '' 'povoleno: cwd jako číslo padá na vestavěný seznam (Branches/* v něm chybí)'
+
+# cwd: an OBJECT — same shape of trap as the number, different JS falsy/truthy
+# path (an object is always truthy).
+$fullObjCwd = Test-CmdRawFull 'git push origin Branches/5.37' (@{ x = 1 })
+Assert-Eq $fullObjCwd.Code 0 'exit 0: cwd jako objekt nezpůsobí pád procesu'
+Assert-Eq $fullObjCwd.Err '' 'žádný stderr: cwd jako objekt nevyhodí nezachycenou výjimku'
+Assert-Eq $fullObjCwd.Out '' 'povoleno: cwd jako objekt padá na vestavěný seznam (Branches/* v něm chybí)'
+
+# cwd key ABSENT entirely from the JSON (not merely empty) — the exit-code/
+# stderr half of a shape the suite already exercises via Test-Cmd elsewhere
+$fullMissingCwd = Test-CmdFull 'git push origin develop'
+Assert-Eq $fullMissingCwd.Code 0 'exit 0: chybějící cwd (klíč v JSON vůbec není) nezpůsobí pád procesu'
+Assert-Eq $fullMissingCwd.Err '' 'žádný stderr: chybějící cwd nevyhodí nezachycenou výjimku'
+
+# unparseable stdin — Invoke-Hook (below) already pins the stdout shape;
+# this adds the exit-code/stderr half of "must not block", which stdout
+# alone cannot prove (a crash with no stdout looks identical to a clean
+# allow under Assert-Eq ... '').
+$fullBadStdin = Invoke-HookFull 'not json'
+Assert-Eq $fullBadStdin.Code 0 'exit 0: nerozparsovatelný vstup nezpůsobí pád procesu'
+Assert-Eq $fullBadStdin.Err '' 'žádný stderr: nerozparsovatelný vstup nevyhodí nezachycenou výjimku'
 
 # ---------------------------------------------------------------------------
 # UMS_ALLOW_SHARED_PUSH=1 — the human escape the pre-push hook honours. This

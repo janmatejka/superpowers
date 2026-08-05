@@ -83,8 +83,19 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
             @{ Key = 'projectMarkers'; Field = 'ProjectMarkers' },
             @{ Key = 'sharedRoots'; Field = 'SharedRoots' })) {
         if ($propNames -contains $pair.Key) {
-            # @() so a single-element JSON array still exposes .Count.
-            $values = @($json.($pair.Key)) | Where-Object { $_ } | ForEach-Object { [string]$_ }
+            # @() so a single-element JSON array still exposes .Count. Kept
+            # to entries that ARE strings (post-ConvertFrom-Json, a JSON
+            # string is [string]; a number/bool/object/array is not) with
+            # something left after trimming — not `Where-Object { $_ }`
+            # followed by an unconditional `[string]$_` coercion. That older
+            # shape passed [1,2,3] through as the patterns "1","2","3"
+            # instead of falling back: same class of bug as
+            # guard-git-push.mjs's mirror-image gap, reached via PowerShell's
+            # willingness to stringify anything rather than JS's
+            # typeof-narrowing. If nothing usable remains, the key falls back
+            # to its default exactly as if it were absent.
+            $values = @($json.($pair.Key)) | Where-Object { $_ -is [string] -and $_.Trim() -ne '' } |
+                ForEach-Object { [string]$_ }
             if (@($values).Count -gt 0) { $cfg[$pair.Field] = @($values) }
         }
     }

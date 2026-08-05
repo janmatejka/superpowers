@@ -32,12 +32,25 @@ const globToRe = (glob) =>
 // JSON parser is available). A missing, malformed, or non-object-shaped file
 // falls back to the built-in list: degradation must lead to MORE protection,
 // never less.
+//
+// The array is filtered to USABLE entries (non-empty-after-trim strings)
+// BEFORE the length test, not after. An array can be non-empty while
+// containing nothing usable — [1, null, ["x"], {}] passes `Array.isArray &&
+// length > 0` but every element stringifies into a useless pattern (`1`,
+// `null`, `x`, `[object Object]`), so a config that names no real branch
+// silently replaces the built-in list instead of falling back to it: a
+// fork-round finding, same trap as task 3's PowerShell loader in a different
+// shape. Filtering first means "nothing usable remains" degrades exactly
+// like "the key is absent".
 const loadProtected = (cwd) => {
   try {
     const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
     const parsed = JSON.parse(raw);
     const list = parsed && typeof parsed === 'object' ? parsed.protectedBranches : undefined;
-    if (Array.isArray(list) && list.length > 0) return list.map(globToRe);
+    if (Array.isArray(list)) {
+      const usable = list.filter((v) => typeof v === 'string' && v.trim() !== '');
+      if (usable.length > 0) return usable.map(globToRe);
+    }
   } catch { /* missing or malformed -> built-in list below */ }
   return BUILTIN_PROTECTED.map(globToRe);
 };
@@ -149,8 +162,11 @@ function evaluateFetch(args, patterns) {
     if (isWildcardLocalBranch(dst)) {
       return {
         deny: true,
-        reason: `UMS: refspec '${t}' míří žolíkem na lokální větve — přepsal by i sdílené (sdílené větve dle ` +
-          'konfigurace repozitáře), agent to nesmí udělat (Publication Contract, dvouúrovňová push policy).',
+        // Deliberately does not say WHERE the protected list came from
+        // (config file vs. built-in fallback) — the wording must stay true
+        // in both states, not just the common one.
+        reason: `UMS: refspec '${t}' míří žolíkem na lokální větve — přepsal by i chráněné větve tohoto ` +
+          'repozitáře, agent to nesmí udělat (Publication Contract, dvouúrovňová push policy).',
       };
     }
     if (isProtected(dst, patterns)) {
