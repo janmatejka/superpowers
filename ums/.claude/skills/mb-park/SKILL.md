@@ -53,6 +53,25 @@ needs. Whoever parks may switch afterwards, at a phase boundary, on a clean tree
   promise is that the work is recoverable from `origin`, and there is no branch to
   publish; life-cycle operations run on the work item's own branch (Workspace
   Discipline). Report it and let the user check out the ticket branch first.
+- **The current branch being the base is a STOP too** — `<baseBranch>`, i.e.
+  `baseRef` minus its remote prefix, read from `<CTX_DIR>/ums-repo.json` (contract
+  section "Repository Configuration"). Park leaves `context.md` in the ACTIVE state
+  by design, and the contract's invariant (Cross-Branch Visibility) is that **the
+  base never carries ACTIVE state**: every branch cut from it afterwards would
+  inherit a foreign pin, which is why `mb-state` reports a pinned base as an *error*
+  rather than a warning. Publishing an ACTIVE pin onto the base would create exactly
+  that state, and the base is shared, so the push does not happen either way — park
+  on the base can only ever end in a commit nobody can publish and nothing can move
+  (`git switch -c` leaves it behind, and carrying a commit across branches to repair
+  an ordering mistake is forbidden). **This check belongs HERE, before steps 1–4,
+  and its position is the point:** steps 2 and 3 commit, so the same STOP placed at
+  publication would first create the very state it exists to prevent — a *committed*
+  ACTIVE pin on the local base — and then refuse with no way to undo it. Report it
+  with the base variant of the report below and name the way out: move the work to a
+  ticket branch (the entry gate's intent phase — an uncommitted change travels with
+  `git switch -c` on its own) and park there, or resolve it as finishing /
+  `mb-abort`. Nothing has been committed at this point, which is what makes that way
+  out available.
 - When the pair named by the slug is NOT in `<PLAN_MB>/proposals/active/`, do
   **not** stop: park preserves, and refusing here would push the user toward
   leaving leftovers lying around, which is the one option Workspace Discipline
@@ -154,19 +173,11 @@ from `origin`, which is the whole promise of parking.
   the branch together with the outgoing commits (`git log --oneline @{u}..HEAD`,
   or against `<baseRef>` when the branch has no upstream yet; `baseRef`
   from `<CTX_DIR>/ums-repo.json`, contract section "Repository Configuration").
-- **When the current branch IS the base — `<baseBranch>`, i.e. `baseRef` minus its
-  remote prefix — this is a STOP, not a prepared command.** Park leaves
-  `context.md` in the ACTIVE state by design, and the contract's invariant
-  (Cross-Branch Visibility) is that **the base never carries ACTIVE state**: every
-  branch cut from it afterwards would inherit a foreign pin, which is why `mb-state`
-  reports a pinned base as an *error* rather than a warning. Handing the user a
-  command that publishes an ACTIVE pin onto the base would create exactly that
-  state, so the command is not offered at all. Report it in Czech („aktivní práce je
-  na bázi `<branch>` — park by na bázi publikoval aktivní pin, což je porušení
-  invariantu"), and name the way out: move the work to a ticket branch (the entry
-  gate's intent phase) and park there, or resolve it as finishing / `mb-abort`.
-  Everything already committed by steps 2 and 3 stays committed — park destroys
-  nothing — it is only the push that does not happen.
+- **The base never reaches this step.** Step 0 already stopped on it, before any
+  commit existed — do not re-check it here and do not prepare a push command for it.
+  A base path arriving here at all means step 0 was skipped, and then steps 2 and 3
+  have already put a committed ACTIVE pin on the local base: report that as the
+  finding it is instead of pushing.
 - When the current branch is in `protectedBranches` **without being the base**
   (same section; the built-in fallback is `develop`, `main`, `master`,
   `release/*`) the agent does NOT push.
@@ -194,12 +205,16 @@ from `origin`, which is the whole promise of parking.
 
 ## Report (Czech)
 
+This report is the report of a park that HAPPENED, so it is reachable only from
+steps 1–4. The base path never produces it: step 0 stops there before any commit,
+and its own message is the base variant at the end of this section — nothing may
+claim a park, a push or recoverability from `origin` on that path.
+
 > „🅿️ Práce zaparkována."
 >
 > - Work item: `<slug>`, tiket: `<UMS-XXXX | (žádný tiket)>`, větev: `<branch>`
 > - Publikováno: `<branch>` → `origin`, commity: `<seznam>` (u sdílené větve:
->   „připraven příkaz pro tebe — agent sdílenou větev nepushuje"; u báze:
->   „⛔ nepublikuji — viz STOP níže")
+>   „připraven příkaz pro tebe — agent sdílenou větev nepushuje")
 > - Pár návrh+plán zůstává v `<PLAN_MB>/proposals/active/`; `context.md` zůstává
 >   na této větvi v aktivním stavu (pin se nemaže). Nic se nezahodilo a nic se
 >   nesklízelo.
@@ -213,12 +228,27 @@ from `origin`, which is the whole promise of parking.
 > - Pokračovat lze v kterémkoli workspace: `git fetch origin` a checkout větve
 >   `<branch>`.
 
-Early exits, both without a commit:
+Early exits, all without a commit and without a push:
 
 > „ℹ️ Není co parkovat — `context.md` na této větvi nemá pin (stav IDLE)."
 
 > „ℹ️ Práce je už zaparkovaná — čistý strom, prázdný stash, nic nepushnutého
 > a žádní necommitnutí kandidáti playbooku. Nedělám prázdný commit."
+
+The base variant (step 0), which is a STOP, not a park:
+
+> „⛔ Neparkuji — jsi na bázi `<branch>`."
+>
+> - Aktivní práce (`<slug>`, tiket `<UMS-XXXX | žádný tiket>`) je na bázi. Park
+>   nechává `context.md` v aktivním stavu, a báze nikdy nesmí nést aktivní pin —
+>   každá další větev z ní by zdědila cizí pin (invariant Cross-Branch Visibility,
+>   `mb-state` to hlásí jako chybu, ne varování).
+> - **Nic jsem necommitnul, nic nepushnul a nic nezahodil.** Báze je sdílená větev,
+>   takže push by neproběhl ani po commitu, a commit z báze by se na tiketovou větev
+>   nedostal.
+> - Cesta dál: přesuň práci na tiketovou větev — `git switch -c <TIKET>-<slug>
+>   <baseRef>`, necommitnuté změny jdou s přepnutím samy — a zaparkuj tam. Nebo práci
+>   uzavři přes finishing-a-development-branch, případně zahoď přes `mb-abort`.
 
 ---
 

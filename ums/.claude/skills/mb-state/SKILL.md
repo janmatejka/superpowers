@@ -223,7 +223,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | kombinace nálezů: ⚠️ pre-push hook chybí/neověřený + ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je) + ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
+Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
@@ -254,15 +254,21 @@ Další krok:
 - báze chybí commity → base sync na nejbližší hranici fáze (ne uprostřed tasku)
 ```
 
-Two notes on the template. The `Workspace:` line is **not** an alternation: a
-missing hook, an absolute `core.hooksPath` and a missing configuration are
-independent findings that can hold at once, so list every one that applies (and
-only `✅ způsobilý` when none does). A missing `ums-repo.json` carries `ℹ️`, not
+Two notes on the template. The `Workspace:` line is **not** one alternation over
+all findings: a missing hook, an absolute `core.hooksPath` and a missing
+configuration are independent findings that can hold at once, so list every one
+that applies. Only the FIRST position is an alternation, and `✅ způsobilý` is
+withheld for exactly one class of finding — a **missing guarantee**, today only the
+missing or unmarked `pre-push` hook. Everything that is not a missing guarantee
+rides ALONGSIDE `✅ způsobilý` instead of replacing it: `✅ způsobilý` with no
+further item means no finding at all, `✅ způsobilý` followed by items means the
+workspace is fit AND those items hold. A missing `ums-repo.json` carries `ℹ️`, not
 `⚠️` — its absence is informational and never a defect, the same weight the
 gather step and the contract give it. An absolute `core.hooksPath` is a warning
 about SCOPE, never a claim that the hook is bypassed: the hook was resolved through
 that very path, so a verified marker there is a live guarantee, and `✅ způsobilý`
-plus this one warning is a legitimate combination.
+plus this one warning is the correct line for such a workspace — never a line
+without `✅`.
 
 Everything under „Další krok" is a suggestion addressed to the **user**. mb-state
 performs none of it: it does not park, does not install the hook, does not sync

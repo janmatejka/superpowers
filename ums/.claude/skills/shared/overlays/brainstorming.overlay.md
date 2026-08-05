@@ -25,8 +25,17 @@ Adjustments to the checklist above:
      **Offer park only where park can act:** `mb-park` needs the current branch to
      carry a pin, so on an IDLE branch — typically the base, which is where a new
      ticket starts — it stops with „Není co parkovat" and commits nothing. There the
-     one decision is **commit them on this branch** or **discard**; the leftovers
-     still have to be resolved either way. Within
+     one decision is **commit them** or **discard**, and on the base „commit them"
+     never means onto the base: a commit there is unpublishable (shared branch),
+     `mb-park` refuses it, and step 4's `git switch -c ... <baseRef>` has an explicit
+     start point, so it would not travel — the work would be stranded. Keep them
+     uncommitted, let them ride into step 4's switch (an uncommitted change travels
+     with the switch on its own) and commit them on the ticket branch; with no ticket
+     branch to create, commit them on a scratch branch. That is the one accounted-for
+     exception to step 4's clean tree — it holds only for leftovers this inventory
+     just named and the user consciously kept. On a non-base IDLE branch (a harvested
+     ticket branch) committing on that branch is fine. Either way the leftovers still
+     have to be resolved. Within
      eligibility, an **installed and verified `pre-push` hook is a fail-closed
      precondition**, because hooks do not travel with a clone and a workspace
      missing the hook looks exactly like a working one while carrying no publication
@@ -55,7 +64,8 @@ Adjustments to the checklist above:
      empty local set an undeclared run cannot tell a collision from ordinary
      parallel work.
   4. **Create the ticket branch** — the entry gate's intent phase — with the tree
-     clean, per the rule stated in item 6:
+     clean, or carrying only the leftovers step 1 decided to commit here (nothing
+     else), per the rule stated in item 6:
      `git switch -c <TICKET>-<kebab-slug> <baseRef>` after a
      `git fetch origin`, always with the explicit start point. When step 3 answered
      "none", the kebab slug alone names the branch — the ticket code is part of the

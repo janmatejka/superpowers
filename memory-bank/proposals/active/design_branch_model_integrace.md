@@ -701,3 +701,29 @@ protože mrtvé větve se přestanou procházet.
 | **Heuristika „obnovitelné z `origin`" selže**, když je `origin` nedostupný | Fáze 0 začíná `git fetch origin`; jeho selhání je STOP, protože bez čerstvé znalosti `origin` nelze o obnovitelnosti rozhodnout. |
 | **Detekovaná konfigurace je špatná nebo zastará** (repozitář se přestrukturuje, `sharedRoots` už neodpovídají) | Režim obnovy `mb-init` předloží rozdíl ke schválení; a degradace míří ke štědřejší nabídce verifikace, takže špatná konfigurace vede k nadbytečným buildům, ne k propuštěnému driftu. |
 | **Konfigurace se rozšíří v nekontrolovaný registr nastavení** | Do souboru patří jen to, co má **jmenovaného konzumenta** (tabulka v sekci 3); klíč bez konzumenta se nezavádí — v předchozí revizi byl takový klíč z návrhu odstraněn. |
+
+## Odchylky od finálního stavu
+
+Dvě tvrzení tohoto návrhu byla během implementace — po whole-branch review —
+nahrazena a v odevzdaném kontraktu (verze 2.6) už neplatí. Návrh se kvůli tomu
+nepřepisuje: zůstává záznamem toho, jak se rozhodovalo. Tento seznam je jeho
+oprava, a platí to, co říká kontrakt.
+
+1. **Ověření dosažitelnosti po integraci** — sekce 1, krok 6 integrační sekvence,
+   předepisuje `git branch -r --contains <sha>`. Nahrazeno
+   `git merge-base --is-ancestor <sha> <baseRef>` (nenulový exit = commit není na
+   bázi). Publikační pravidlo totiž týž commit už pushlo na tiketovou větev, takže
+   `--contains` ho na `origin` najde i tehdy, když na bázi vůbec není — kontrola by
+   procházela vždy a neověřovala nic. Kontrakt v sekci Publication Contract,
+   podsekci o integraci, proto výslovně říká, že samotné `git branch -r --contains`
+   tady nestačí.
+
+2. **Požadavek na `core.hooksPath` ve fázi 0 vstupní brány** — sekce 6.3 vyžaduje
+   hodnotu „nenastavenou nebo relativní". Zrušeno: **nastavený** `core.hooksPath`
+   (i globální, běžný u husky nebo pre-commit) není obcházení. Kontrola hooku se
+   resolvuje přes `git rev-parse --git-path hooks/pre-push`, které tuto hodnotu
+   respektuje, instalátor instaluje právě tam a hook tam živě ověří. Absolutní
+   hodnota je proto varování o **rozsahu** (adresář je společný s jinými
+   repozitáři), provenienci řeší kontrola značky `UMS pre-push guard` a fail-closed
+   zůstává jen chybějící nebo neoznačený hook. Kontrakt to takto uvádí ve vstupní
+   bráně (sekce Workspace Discipline) i v sekci Publication Contract.

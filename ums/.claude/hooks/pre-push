@@ -33,8 +33,17 @@
 # Two known, accepted bypasses — both require deliberate, visible intent,
 # unlike every CLI-spelling trick this hook exists to close:
 #   - `git push --no-verify` skips this hook entirely.
-#   - `git -c core.hooksPath=<other>` (or a persistent core.hooksPath
-#     override) points git at a different hooks directory altogether.
+#   - a one-shot `git -c core.hooksPath=<other> push` points git at a hooks
+#     directory this layer never installed into.
+#
+# A CONFIGURED core.hooksPath (local or global, routine with husky or
+# pre-commit) is NOT a bypass and must never be reported as one: the installer
+# detects it, installs where git actually looks and proves the hook live there,
+# and every check in the layer resolves the hook through
+# `git rev-parse --git-path hooks/pre-push`, which honours it. What remains is
+# provenance and scope, settled by the `UMS pre-push guard` marker below — see
+# UMS_MEMORY_BANK_CONTRACT.md, the paragraph on a configured core.hooksPath at
+# the end of the Publication Contract's push-policy discussion.
 #
 # Invocation: $1 = remote name, $2 = remote URL. Stdin lines:
 #   <local ref> SP <local sha1> SP <remote ref> SP <remote sha1> LF

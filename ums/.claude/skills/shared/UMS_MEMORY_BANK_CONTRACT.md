@@ -510,10 +510,29 @@ Leftovers split in two:
    **Park is only offered where park can act:** `mb-park` requires the current
    branch to carry a pin, so on an IDLE branch — the base, or a ticket branch whose
    work item is already harvested — it stops with "nothing to park" and commits
-   nothing. Offer **commit them on this branch** or **discard** there instead; the
-   decision is still exactly one, and the leftovers still have to be resolved,
-   because phase 4's `git switch -c` needs `git status --porcelain` empty and no
-   auto-stash is permitted.
+   nothing. What is offered instead depends on which IDLE branch it is:
+   - **On a non-base IDLE branch** (a harvested ticket branch): **commit them on
+     this branch** or **discard**. Committing is fine there — the branch is the
+     agent's own and publishable.
+   - **On the base — never commit the leftovers onto the base.** A commit made
+     there is stranded by construction: the base is shared, so neither the agent nor
+     `pre-push` will publish it; `mb-park` refuses it twice (IDLE, and its base STOP);
+     and the intent phase's `git switch -c <branch> <baseRef>` has an explicit start
+     point, so the commit does not travel to the ticket branch either, while carrying
+     a commit across branches to repair that is forbidden. The result is work left
+     lying around in the one place nothing in this layer can retrieve it from, which
+     is exactly what this section forbids. Offer instead: **carry the leftovers
+     uncommitted through the intent phase and commit them on the ticket branch**, an
+     uncommitted change travels with `git switch -c` on its own (the same reason
+     `mb-architect-review` commits the design only after the switch); when there is
+     no ticket branch to create, commit them on a scratch branch. **Discard** stays
+     available with the confirmation spelled out.
+   Either way the decision is still exactly one, and the leftovers still have to be
+   resolved: the intent phase's `git switch -c` needs `git status --porcelain` empty
+   and no auto-stash is permitted. Carrying the leftovers to the ticket branch is the
+   single exception to that emptiness, and it is safe only because those leftovers
+   were just enumerated by name in phase 1 and consciously kept — never for content
+   nobody accounted for.
 3. **Intent:** a local branch for the ticket exists → resume; the ticket is
    active on a foreign branch → STOP (cross-clone collision check); a
    preliminary design draft waits in `next/` → activation; otherwise a new
@@ -527,7 +546,10 @@ guarantee (see Publication Contract).
 
 **Switching branches:** only with `git status --porcelain` empty, **no switching
 through `git stash`, no auto-stash** (the same rule as branch sync in
-`mb-architect-review`), and only at phase boundaries.
+`mb-architect-review`), and only at phase boundaries. The single exception is the
+base-IDLE remedy of phase 2 above — leftovers the inventory just named and the user
+chose to keep ride with the branch-creating `switch -c` on purpose, because on the
+base there is nowhere else for them to go.
 
 **Park** (the `mb-park` skill) is the third end of a work item's life cycle,
 alongside completion (harvest) and abandonment (`mb-abort`): commit, push,
