@@ -10,7 +10,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.2.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.2.0`, commit `3dcbd5c4b48e02263fbf4a3c01e3fe4f81d584d9`, vendorováno 2026-07-24 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.6 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.7 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 3 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
@@ -73,8 +73,11 @@ JIRA-less režim nebo se zastaví (fail-closed).
 
 Jira konvence, na které se vrstva spoléhá:
 
-- stavy `Design Review` (chybějící přechod = fail-closed stop), `In Progress`,
-  `Test`,
+- stavy `Design Review`, `In Progress`, `Test`; chybějící přechod do
+  `Design Review` není stop — request spadne na existující stav `Review`
+  a rozliší ho marker `[DESIGN REVIEW]` na první řádce request komentáře
+  (kontrakt, Architect Review Gate, „Design Review" fallback); fail-closed
+  stop nastává až bez přechodu do `Review`,
 - pole `Flagged` s hodnotou Impediment jako signál „práce se ti vrací",
 - `customfield_11248` (AgentSessions, Paragraph) — append jednoho řádku
   o sezení při design review requestu.
