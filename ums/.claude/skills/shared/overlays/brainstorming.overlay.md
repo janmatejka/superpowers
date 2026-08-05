@@ -9,13 +9,19 @@ This repository injects a Memory Bank document layer. Read
 Adjustments to the checklist above:
 
 - **Item 1 (Explore project context)** additionally requires: before any work is
-  pinned, confirm the workspace is eligible per the contract's "Workspace
-  Discipline" section (entry gate, phase 0) — an **installed and verified
-  `pre-push` hook is a fail-closed precondition**, because hooks do not travel
-  with a clone and a workspace missing the hook looks exactly like a working one
-  while carrying no publication guarantee. A failing `git fetch origin` is a hard
-  failure too; a missing `<CTX_DIR>/ums-repo.json` is only reported once
-  ("built-in defaults apply") and never blocks entry. Then: as soon as the
+  pinned, run the **whole entry gate** of the contract's "Workspace Discipline"
+  section — all of its phases, in its order: eligibility, leftover inventory,
+  the single park-or-discard decision, intent, pin write. Running only the
+  eligibility phase is the failure mode to avoid: skipping the inventory and that
+  one decision leads to a `git switch -c` on a dirty tree, which this repository
+  forbids outright (no auto-stash, no switching through `git stash`), and foreign
+  uncommitted changes then ride onto the ticket branch and land in the design
+  commit. Within eligibility, an **installed and verified `pre-push` hook is a
+  fail-closed precondition**, because hooks do not travel with a clone and a
+  workspace missing the hook looks exactly like a working one while carrying no
+  publication guarantee. A failing `git fetch origin` is a hard failure too; a
+  missing `<CTX_DIR>/ums-repo.json` is only reported once ("built-in defaults
+  apply") and never blocks entry. Then: as soon as the
   affected code area is identifiable, run Target-MB discovery per the
   contract's "Target-MB Discovery & Pinning" section (scan active work items,
   run the mb-doc-index skill with `-Json <path>` — the printed table has no
@@ -48,22 +54,32 @@ Adjustments to the checklist above:
 - **Item 6 (Write design doc)**: save to
   `<PLAN_MB>/proposals/active/design_<slug>.md` (Czech content, header per
   the contract's "Superpowers Document Placement" section) instead of the
-  default `docs/superpowers/specs/` path. Before committing, be on the ticket
-  branch, created **always with an explicit starting point**:
-  `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a
+  default `docs/superpowers/specs/` path. **By the time you reach this item the
+  ticket branch already exists** — item 1's entry gate created it, before the pin
+  write — so here you only confirm you are on it and not on the base. **Do not
+  re-create it and do not re-test the creation postcondition below:** your own pin
+  and your own `proposals/active/` entry are expected to be present by now, and
+  ACTIVE state you wrote yourself is not a finding to report and not a reason to
+  delete anything.
+
+  The rule that governed that creation, stated here for reference and for the case
+  where the branch still has to be made: **always with an explicit starting
+  point**, `git switch -c <TICKET>-<kebab-slug> origin/<baseRef>` after a
   `git fetch origin`, where `baseRef` comes from `<CTX_DIR>/ums-repo.json` (the
   contract's "Repository Configuration" section). The implicit form, without a
   starting point, branches off whatever happens to be checked out: run on a
   foreign ticket branch it pulls that branch's pin and its active pair into your
   history. The local base branch is not used in a ticket workspace —
   `origin/<baseRef>` is the only base that counts — and git worktrees are banned
-  in this repository (branch-in-place). **Postcondition right after creating the
-  branch:** `proposals/active/` is empty or absent and `context.md` is IDLE. If it
-  is not, STOP, delete the branch and repeat; an ACTIVE base means a work item was
-  integrated without a harvest, and that is the finding to report (the contract's
-  "Cross-Branch Visibility" section). After committing the design, push the
-  branch — the agent pushes its OWN ticket branch after every commit, always
-  announcing the branch and the outgoing commits (Publication Contract).
+  in this repository (branch-in-place). **Postcondition, tested at creation time
+  and only then:** `proposals/active/` is empty or absent and `context.md` is IDLE.
+  If it is not, STOP, delete the just-created branch and repeat; an ACTIVE base
+  means a work item was integrated without a harvest, and that is the finding to
+  report (the contract's "Cross-Branch Visibility" section).
+
+  After committing the design, push the branch — the agent pushes its OWN ticket
+  branch after every commit, always announcing the branch and the outgoing commits
+  (Publication Contract).
 - **Architect Review Gate (between item 8 and item 9):** when a Jira ticket
   is linked, ALWAYS offer a design review by a human architect after the
   user approves the spec — with your own yes/no recommendation based on

@@ -35,7 +35,11 @@ After the user chooses and BEFORE executing the choice:
   3. `git fetch origin` and `git merge origin/<baseRef>` once more — the base may
      have moved while the harvest ran — and push.
   4. Green verification on the merged tree (build and the targeted tests of the
-     playbook). Red = STOP and report; nothing has left this clone yet.
+     playbook). Red = STOP and report. The ticket branch is already on `origin`
+     (steps 2 and 3 each pushed it), so what is still untouched is **the base
+     ref** — nothing red has reached it. Do not try to un-publish the ticket
+     branch: force push is forbidden, and a red ticket branch on `origin` is
+     normal, visible work in progress. Fix forward with further commits.
   5. Ask (Czech) „Integrovat větev do `<baseRef>` pushem?" and hand the user the
      exact command with the outgoing commits enumerated:
      `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseRef>`. The refspec form
@@ -66,11 +70,31 @@ After the user chooses and BEFORE executing the choice:
   finalization stops at its publication gate and the ticket does NOT move to
   „Test". Options 2 and 3 never change the ticket status.
 - **The discard path** ("If your human partner asks to discard the work") →
-  do NOT harvest. After the typed confirmation, move the active work item
-  pair to `proposals/abandoned/` and reset `memory-bank/context.md` to IDLE
-  before deleting the LOCAL branch; the branch already published on `origin` stays
-  there, because deleting a branch through a push is forbidden with or without the
-  escape variable. If the linked ticket sits in "Design Review",
-  offer the Jira cleanup per the contract's Architect Review Gate (transition
-  back, restore assignee, clear the flag).
+  do NOT harvest. After the typed confirmation, in this order:
+  1. move the active work item pair to `proposals/abandoned/` — BOTH halves,
+     unchanged, nothing deleted (contract, "Active Work Item (Design + Plan
+     Pair)", archival asymmetry) — and reset `memory-bank/context.md` to IDLE,
+  2. **commit** that move on the ticket branch (Czech commit message) and **push**
+     the branch,
+  3. only then delete the LOCAL branch — and since git cannot delete the branch you
+     are standing on, leave it first by checking out `origin/<baseRef>` detached
+     (`git switch --detach origin/<baseRef>`); a ticket workspace has no local base
+     branch to return to.
+
+  The order is the point, twice over. Deleting the branch before the commit would
+  destroy the abandon move itself, which exists nowhere else — uncommitted work is
+  non-recoverable, and the agent never deletes non-recoverable content (contract,
+  "Workspace Discipline"). And because every earlier commit was pushed, `origin`
+  still carries this branch with an ACTIVE pin and the pair still in `active/`
+  until step 2 lands: `mb-doc-index` enumerates with declared intent over `origin`
+  and would keep reporting `KOLIZE AKTIVNÍ PRÁCE` (exit 2) for this ticket
+  indefinitely, blocking any later attempt to pin it. The exemption for an
+  integrated branch does not help here — the index keys by phase, and `abandoned/`
+  is not an active phase, which is exactly why the abandon move must reach
+  `origin`. The branch published on `origin` is left in place: deleting a branch
+  through a push is forbidden with or without the escape variable.
+
+  If the linked ticket sits in "Design Review", offer the Jira cleanup per the
+  contract's Architect Review Gate (transition back, restore assignee, clear the
+  flag).
 <!-- UMS-OVERLAY END -->
