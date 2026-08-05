@@ -33,7 +33,7 @@
 **Interfaces:**
 - Produces: kontraktová definice aliasu „sedí v Design Review" (stav „Design Review", NEBO „Review" + request komentář s první řádkou `[DESIGN REVIEW]`), na kterou se odkazují Tasky 3–5. Marker je VŽDY první řádka request komentáře (ne jen ve fallbacku).
 
-- [ ] **Step 1: Bump verze kontraktu**
+- [x] **Step 1: Bump verze kontraktu**
 
 V hlavičce nahradit:
 
@@ -53,7 +53,7 @@ za:
 - v2.6 superseded v2.5 (integration is a fast-forward push of the ticket branch, so
 ```
 
-- [ ] **Step 2: Přepsat odrážku „Status flow" v Jira conventions (sekce Architect Review Gate)**
+- [x] **Step 2: Přepsat odrážku „Status flow" v Jira conventions (sekce Architect Review Gate)**
 
 Nahradit:
 
@@ -90,12 +90,12 @@ za:
   glyph — a documented imprecision of the bridge, not a defect to fix.
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `grep -n "Design Review" ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`
 Expected: odrážka „Status flow" už neobsahuje „Missing … = fail-closed STOP"; nová odrážka fallbacku existuje; ostatní výskyty („Discard/abort paths…", „While `context.md` carries…") zatím beze změny (řeší Task 5 aliasem u konzumentů — kontraktová věta „Discard/abort paths… in Design Review" alias přebírá z definice, text se nemění).
 
-- [ ] **Step 4: Commit + push**
+- [x] **Step 4: Commit + push**
 
 ```bash
 git add ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md
@@ -114,7 +114,7 @@ git push origin epic-backflow
 - Consumes: alias „sits in Design Review" z Tasku 1 (nezávislé — jen sousedství sekcí).
 - Produces: normativní pravidlo kroku zpětného toku, na které odkazují Task 3 (overlay), Task 4 (resume) a Task 6 (elaborace). Definuje: spouštěcí bod, preconditions, orákulum jako spouštěč, frontu poznámky (dirty-set ledgeru / `notes.md`), nabídku inline okna, fail-open chování.
 
-- [ ] **Step 1: Vložit novou sekci**
+- [x] **Step 1: Vložit novou sekci**
 
 Bezprostředně PŘED řádek `## Dispatch Model Policy` vložit:
 
@@ -186,12 +186,12 @@ both; dirty rows are never deleted, cleaning is recorded (ledger maintenance
 rules).
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `grep -n "^## " ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`
 Expected: `## Epic Backflow (design → epic)` mezi `## Architect Review Gate` a `## Dispatch Model Policy`.
 
-- [ ] **Step 3: Commit + push**
+- [x] **Step 3: Commit + push**
 
 ```bash
 git add ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md
@@ -210,7 +210,7 @@ git push origin epic-backflow
 - Consumes: kontraktová sekce „Epic Backflow (design → epic)" (Task 2).
 - Produces: overlay bod, který krok spouští v bezreviewové větvi a deleguje ho na resume v review větvi.
 
-- [ ] **Step 1: Vložit nový bod za blok Architect Review Gate**
+- [x] **Step 1: Vložit nový bod za blok Architect Review Gate**
 
 Za odstavec končící `writing-plans remains the only *implementation* successor.` (bod „Architect Review Gate (between item 8 and item 9)") a PŘED bod `- While `memory-bank/context.md` contains a` vložit:
 
@@ -227,12 +227,12 @@ Za odstavec končící `writing-plans remains the only *implementation* successo
   skips the step with a one-line announcement.
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `grep -n "Epic Backflow" ums/.claude/skills/shared/overlays/brainstorming.overlay.md`
 Expected: nový bod mezi Architect Review Gate a bodem o `Review:` řádce; overlay markery zůstávají vyvážené (`grep -c "UMS-OVERLAY" …` = 2).
 
-- [ ] **Step 3: Commit + push**
+- [x] **Step 3: Commit + push**
 
 ```bash
 git add ums/.claude/skills/shared/overlays/brainstorming.overlay.md
@@ -251,7 +251,7 @@ git push origin epic-backflow
 - Consumes: alias „sits in Design Review" (Task 1), sekce „Epic Backflow" (Task 2).
 - Produces: detekce režimu funkční i ve fallback stavu; request krok „Transition the ticket…" s fallbackem; resume spouští Epic Backflow check.
 
-- [ ] **Step 1: Alias v Mode Detection**
+- [x] **Step 1: Alias v Mode Detection**
 
 Za číslovaný seznam Mode Detection (za bod 3 „**Undecidable**…Never pick silently.") vložit odstavec:
 
@@ -263,7 +263,7 @@ OR status "Review" AND a request comment whose first line carries the
 ordinary review and never enters respond/resume here.
 ```
 
-- [ ] **Step 2: Marker v request kroku 7 (komentář)**
+- [x] **Step 2: Marker v request kroku 7 (komentář)**
 
 V kroku 7 requestu nahradit začátek věty:
 
@@ -279,7 +279,7 @@ za:
    Architect Review Gate depends on it), followed by: a 10–15 line summary of the design
 ```
 
-- [ ] **Step 3: Fallback v request kroku 9 (přechod stavu)**
+- [x] **Step 3: Fallback v request kroku 9 (přechod stavu)**
 
 Nahradit:
 
@@ -299,12 +299,12 @@ za:
    Review Gate, "Design Review" fallback).
 ```
 
-- [ ] **Step 4: Alias v respond kroku 1 a resume kroku 1**
+- [x] **Step 4: Alias v respond kroku 1 a resume kroku 1**
 
 V respond kroku 1 nahradit `The ticket must be in\n   "Design Review".` za `The ticket must sit in\n   "Design Review" (fallback shape included — see Mode Detection above).`
 V resume kroku 1 nahradit `Expect "Design Review" + flag; missing` za `Expect the ticket to sit in "Design Review" (fallback shape included) + flag; missing`.
 
-- [ ] **Step 5: Epic Backflow v resume**
+- [x] **Step 5: Epic Backflow v resume**
 
 Nahradit resume krok:
 
@@ -325,12 +325,12 @@ za:
    → then invoke writing-plans.
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run: `grep -n "DESIGN REVIEW\|Epic Backflow\|fallback" ums/.claude/skills/mb-architect-review/SKILL.md`
 Expected: alias v Mode Detection, marker v kroku 7, fallback v kroku 9, aliasy v respond/resume krok 1, backflow v resume kroku 6. Bump `version: "1.2"` → `"1.3"` ve frontmatteru.
 
-- [ ] **Step 7: Commit + push**
+- [x] **Step 7: Commit + push**
 
 ```bash
 git add ums/.claude/skills/mb-architect-review/SKILL.md
@@ -351,7 +351,7 @@ git push origin epic-backflow
 - Consumes: alias „sits in Design Review" (Task 1).
 - Produces: všechny zbývající konzumenty testu stavu čtou alias; dokumentovaná nepřesnost glyfu.
 
-- [ ] **Step 1: mb-abort 4b**
+- [x] **Step 1: mb-abort 4b**
 
 Nahradit:
 
@@ -369,7 +369,7 @@ If `context.md` carried a `Review:` line, or the linked ticket sits in
 "Design Review" fallback): offer (Czech, user confirms) the cleanup per the
 ```
 
-- [ ] **Step 2: finishing overlay**
+- [x] **Step 2: finishing overlay**
 
 Nahradit:
 
@@ -389,7 +389,7 @@ za:
   clear the flag).
 ```
 
-- [ ] **Step 3: mb-epic-graph — dokumentovaná nepřesnost glyfu**
+- [x] **Step 3: mb-epic-graph — dokumentovaná nepřesnost glyfu**
 
 Za větu `Design Review deliberately keeps\n  blocking: a design under review is not an implementation.` vložit:
 
@@ -402,12 +402,12 @@ A ticket in the
   the "Design Review" status exists in Jira.
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `grep -rn "DESIGN REVIEW" ums/.claude/skills/mb-abort/ ums/.claude/skills/mb-epic-graph/SKILL.md ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md`
 Expected: po jednom výskytu v každém souboru; overlay markery finishing fragmentu vyvážené.
 
-- [ ] **Step 5: Commit + push**
+- [x] **Step 5: Commit + push**
 
 ```bash
 git add ums/.claude/skills/mb-abort/SKILL.md ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md ums/.claude/skills/mb-epic-graph/SKILL.md
@@ -426,7 +426,7 @@ git push origin epic-backflow
 - Consumes: tvar poznámky a `notes.md` z kontraktové sekce „Epic Backflow" (Task 2).
 - Produces: framing okna čte poznámky zpětného toku; Quick reference řádek.
 
-- [ ] **Step 1: Framing fáze čte backflow poznámky**
+- [x] **Step 1: Framing fáze čte backflow poznámky**
 
 V tabulce „The window lifecycle" nahradit obsah buňky fáze 1:
 
@@ -440,7 +440,7 @@ za:
 | 1 | **Framing handshake** — propose window boundary + agenda (item IDs + open questions), suggest from ledger (dirty first, then leverage; dirty rows stamped `návrh <slug>` and the epic's `notes.md`, both queued by the contract's Epic Backflow step, count as dirty input here — fold `notes.md` lines into the dirty-set and delete the file in this window's closing commit) | Human confirms or narrows BEFORE any design/verification work |
 ```
 
-- [ ] **Step 2: Quick reference řádek**
+- [x] **Step 2: Quick reference řádek**
 
 Do tabulky Quick reference za řádek `| New ledger | …` vložit:
 
@@ -448,12 +448,12 @@ Do tabulky Quick reference za řádek `| New ledger | …` vložit:
 | Backflow note from a design (contract, "Epic Backflow (design → epic)") | dirty-set row stamped `návrh <slug>`, or `memory-bank/epics/<epic>/notes.md` when no ledger existed — read at framing, folded into the dirty-set |
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `grep -n "Backflow\|notes.md" ums/.claude/skills/mb-epic-elaboration/SKILL.md`
 Expected: framing buňka i Quick reference řádek; struktura tabulek nezměněná (sloupce/oddělovače — parsuje je `ledger-status.ps1` jen u ledgeru, SKILL.md neparsuje nic, ale konzistence drží čitelnost). Bump `version: "1.3"` → `"1.4"` ve frontmatteru.
 
-- [ ] **Step 4: Commit + push**
+- [x] **Step 4: Commit + push**
 
 ```bash
 git add ums/.claude/skills/mb-epic-elaboration/SKILL.md
@@ -473,22 +473,22 @@ git push origin epic-backflow
 - Consumes: všechny předchozí tasky.
 - Produces: konzistentní vrstva, zelené testy, aktuální nasazení.
 
-- [ ] **Step 1: Sweep charakteristických tokenů**
+- [x] **Step 1: Sweep charakteristických tokenů**
 
 Run: `grep -rn "Design Review" ums/ --include="*.md" | grep -v tests/` a `grep -rn "Epic Backflow" ums/ --include="*.md"`
 Expected: každý výskyt „Design Review" mimo kontrakt buď cituje alias/fallback, nebo je legitimně jen o primárním stavu (např. glyf 👀 v Jira režimu); žádný restatement pravidla mimo kontrakt. Nálezy opravit v tomto tasku.
 
-- [ ] **Step 2: Kontrola verze kontraktu napříč vrstvou**
+- [x] **Step 2: Kontrola verze kontraktu napříč vrstvou**
 
 Run: `grep -rn "Contract-Version\|kontrakt v2\.6\|contract v2\.6" ums/ memory-bank/ --include="*.md" | grep -v proposals/`
 Expected: `ums/` neodkazuje na 2.6 tam, kde míní aktuální verzi (README/manifest — opravit na 2.7); `memory-bank/*.md` (architecture/tech/brief) se NEOPRAVUJE teď — to je práce harvestu na konci větve.
 
-- [ ] **Step 3: Regresní testy vrstvy**
+- [x] **Step 3: Regresní testy vrstvy**
 
 Run: `for t in $(find ums -name "*.tests.ps1"); do echo "== $t"; pwsh -NoProfile -File "$t" || echo "FAILED: $t"; done`
 Expected: všech 13 sad zelených (564 asercí), žádný řádek FAILED. Textové změny nesmí nic rozbít; červená sada = STOP a analýza.
 
-- [ ] **Step 4: Obnova nasazené kopie**
+- [x] **Step 4: Obnova nasazené kopie**
 
 ```bash
 cp -r ums/.claude/skills/shared .claude/skills/
@@ -497,7 +497,7 @@ cp -r ums/.claude/skills/mb-architect-review ums/.claude/skills/mb-abort ums/.cl
 
 Expected: `Contract-Version: 2.7` v `.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`. Poznámka: vendorované kopie `brainstorming`/`finishing-…` s overlay bloky vyrábí až revendor v monorepu (`-OverlaysOnly`) — ohlásit uživateli jako navazující krok mimo tento repozitář.
 
-- [ ] **Step 5: Commit + push (jen pokud sweep něco opravil)**
+- [x] **Step 5: Commit + push (jen pokud sweep něco opravil)**
 
 ```bash
 git add -A ums/
