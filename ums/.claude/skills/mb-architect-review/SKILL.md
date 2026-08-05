@@ -4,7 +4,7 @@ description: Design review by a human architect via a Jira ticket — hand off a
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.2"
+  version: "1.3"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
@@ -39,6 +39,12 @@ The user never names the mode. Determine it in this order:
    - ticket in "Design Review" AND caller is the original resolver → resume.
 3. **Undecidable** (identity unavailable, contradictory state) → ask ONE
    question offering the three modes. Never pick silently.
+
+"In Design Review" everywhere in this skill means the contract's test
+(Architect Review Gate, "Design Review" fallback): status "Design Review",
+OR status "Review" AND a request comment whose first line carries the
+`[DESIGN REVIEW]` marker. A "Review" ticket without the marker is an
+ordinary review and never enters respond/resume here.
 
 Ticket key: from the user prompt (preferred for respond/resume — enables
 branch sync); without it, read `context.md` on the current branch (typical
@@ -147,16 +153,20 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    Contract; the pinned design commit MUST be reachable on origin before step
    7 writes the link). The single push covers the base merge, the design and the
    `context.md` commit.
-7. Publish a Czech comment to the ticket: a 10–15 line summary of the design
+7. Publish a Czech comment to the ticket, its FIRST line being the
+   `[DESIGN REVIEW]` marker (always — the fallback of the contract's
+   Architect Review Gate depends on it), followed by: a 10–15 line summary of the design
    (Cíl / Scope / klíčová rozhodnutí / rizika), the commit-pinned Bitbucket
    link to the design file (mb-jira-update §7), the **ticket branch name**,
    and the **original resolver** (accountId + displayName). Also refresh the
    `**Návrh (design):**` line in the ticket description (mb-jira-update §7b).
 8. Architect selection: fetch assignable users of the project, offer the
    choice to the user (one question), set the chosen architect as assignee.
-9. Transition the ticket to **"Design Review"**. Missing transition =
-   fail-closed STOP: instruct the user to create the status (contract
-   prerequisite).
+9. Transition the ticket to **"Design Review"**. When that transition does
+   not exist, fall back to **"Review"** and announce the fallback to the
+   user (the step-7 marker already distinguishes it); only a missing
+   "Review" transition too is the fail-closed STOP (contract, Architect
+   Review Gate, "Design Review" fallback).
 10. Append to **AgentSessions** (customfield_11248):
     `YYYY-MM-DD <harness> <session-id> — design review request (<ticket>)`.
     Session id best-effort; undetectable → line without id + tell the user.
@@ -174,8 +184,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 
 ## Mode: respond (architect)
 
-1. Input: ticket key from the opening prompt. The ticket must be in
-   "Design Review".
+1. Input: ticket key from the opening prompt. The ticket must sit in
+   "Design Review" (fallback shape included — see Mode Detection above).
 2. Read the ticket (description, request comment). Missing request comment
    (assigned manually) → fail-closed: ask the user for the return assignee
    and the ticket branch.
@@ -197,7 +207,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 ## Mode: resume (resolver takes back)
 
 1. Input: ticket key from the opening prompt (or from `context.md` when
-   already on the ticket branch). Expect "Design Review" + flag; missing
+   already on the ticket branch). Expect the ticket to sit in "Design Review"
+   (fallback shape included) + flag; missing
    flag → warn ("architekt zřejmě odpověděl ručně") and continue only after
    user confirmation.
 2. **Branch sync** (above) — the architect may have pushed. Then read the
@@ -219,7 +230,10 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    like a handoff, and it too needs only the one push.
 6. Continue per workflow state: fold the notes into the design
    (brainstorming-style dialog over the architect's points, update the design
-   file) → after user approval invoke writing-plans.
+   file) → after user approval run the **Epic Backflow check** per the
+   contract's "Epic Backflow (design → epic)" section (the design is finally
+   approved here, which is that step's trigger point; fail-open, offer only)
+   → then invoke writing-plans.
 
 ## Model Selection
 
