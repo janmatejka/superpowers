@@ -1,10 +1,10 @@
 ---
 name: mb-init
-description: Initialize Memory Bank structure in the current project directory. Use when setting up a new project with Memory Bank workflow or when no memory-bank/ directory exists.
+description: Initialize Memory Bank structure in the current project directory, including the detected per-repository configuration (ums-repo.json). Use when setting up a new project with Memory Bank workflow, when no memory-bank/ directory exists, or when the repository configuration needs re-detecting against the current topology (obnov ums-repo.json, změnily se větve/projekty).
 license: MIT
 metadata:
   author: UMS Project
-  version: "2.0"
+  version: "2.1"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) for MB_ROOT resolution, the work item (design + plan pair) model, and fail-closed rules.
@@ -19,7 +19,7 @@ metadata:
 
 ## ⚠️ CRITICAL
 
-Initialization must be fail-closed and root-scoped. `mb-init` creates the standard `memory-bank/` structure in two modes: **orchestration root** (`CTX_DIR` = `<MB_ROOT>/memory-bank/`, derived from the git root) and **project MB** (`PLAN_MB` = target path provided by the user). In either mode, never create `context.md` — it is created later by the superpowers workflow (Target-MB Discovery & Pinning during brainstorming).
+Initialization must be fail-closed and root-scoped. `mb-init` creates the standard `memory-bank/` structure in two modes: **orchestration root** (`CTX_DIR` = `<MB_ROOT>/memory-bank/`, derived from the git root) and **project MB** (`PLAN_MB` = target path provided by the user). In either mode, never create `context.md` — it is created later by the superpowers workflow (Target-MB Discovery & Pinning during brainstorming). Orchestration-root mode additionally detects and writes `<CTX_DIR>/ums-repo.json` (step 3); the same detection serves the refresh mode over an existing configuration.
 
 ---
 
@@ -41,7 +41,7 @@ Rules:
 - If `git` is missing or the command exits non-zero, stop immediately with: `Git repository not found. Memory Bank requires git.`
 - On success, set `MB_ROOT` to the returned git root and `CTX_DIR` to `<MB_ROOT>/memory-bank/`.
 - Choose the init mode: **orchestration root** — the target is `CTX_DIR` itself (`<MB_ROOT>/memory-bank/`), used when setting up the repo's orchestration root; or **project MB** — ask the user for the target project path and set `PLAN_MB` to the user-provided path. Project-MB mode does not touch `CTX_DIR`.
-- If the target `memory-bank/` already exists, stop instead of overwriting it.
+- If the target `memory-bank/` already exists, stop instead of overwriting it. **One exemption:** the configuration refresh mode (see Refresh mode of the repository configuration below), which is invoked deliberately over an initialized Memory Bank and touches `ums-repo.json` only — never a document, never a proposal.
 
 ### Write Safety Gate (MANDATORY)
 
@@ -172,19 +172,265 @@ Create the target `memory-bank/` (`<CTX_DIR>/` in orchestration-root mode, `<PLA
 
 Do **not** create `context.md`.
 
-### 3. Review output
+### 3. Detect the repository configuration (orchestration root only)
+
+Write `<CTX_DIR>/ums-repo.json` — the per-repository values the layer refuses to
+carry in its own body. Only in **orchestration-root mode**: the configuration is
+per repository, and `CTX_DIR` is the one location guaranteed to exist and to be
+tracked. Project-MB mode never writes it. The keys, their consumers and the
+degradation rules are in the contract, section named Repository Configuration;
+the reader is [Get-UmsRepoConfig.ps1](../shared/scripts/Get-UmsRepoConfig.ps1),
+and what is written here must be exactly what it reads.
+
+Every value comes from **this** repository's topology. Never carry one over from
+another repository and never invent one: what is not detected is filled from the
+built-in default and **reported as a default**, not as a finding.
+
+All detection reads **tracked** files and refs (`git ls-files`,
+`git for-each-ref`), never a filesystem walk — an untracked build file does not
+travel with a clone, so it cannot justify a shared configuration value.
+
+#### `baseRef` — a fully-qualified remote-tracking ref
+
+```bash
+git symbolic-ref --quiet refs/remotes/origin/HEAD
+```
+
+This prints a **full ref path** (`refs/remotes/origin/main`), which is not the
+value to write. Strip the prefix:
+
+```bash
+git symbolic-ref --quiet refs/remotes/origin/HEAD | sed 's#^refs/remotes/##'
+```
+
+The result — `origin/main` — is the qualified form the key requires. Writing a
+bare branch name (`main`) breaks every consumer that hands the value to git
+as-is; `doc-index.ps1` runs `rev-parse --verify` on it directly.
+
+When the symref is absent (non-zero exit, no output — a clone that never had
+`origin/HEAD` set), probe in this order and take the first hit:
+
+```bash
+for r in origin/develop origin/main origin/master; do
+  git rev-parse --verify --quiet "refs/remotes/$r" >/dev/null && echo "$r" && break
+done
+```
+
+When nothing resolves, write `origin/develop` and **say that it is the
+fallback**, not a detected value.
+
+Never write `<baseBranch>` into the file. It is a **derivation** of `baseRef`
+(the ref minus its remote prefix) with exactly one use, a push destination — it
+is not a key, and the loader does not read it.
+
+`origin/HEAD` reports the **remote's** default branch, which is not always the
+branch work integrates into: in a fork that keeps its upstream's default branch
+as a read-only mirror and integrates into a long-lived branch of its own,
+`origin/HEAD` names the mirror. Detection cannot see that distinction, so put the
+detected value and its provenance on its own line in the report — this is the one
+key a repository of that shape usually has to correct (a later change, therefore
+an approved one).
+
+#### `protectedBranches` — proposals, always confirmed
+
+The built-in four (`develop`, `main`, `master`, `release/*`), plus the branch
+behind `baseRef` when it is not already one of them (a repository whose base is
+its own long-lived branch must protect that branch), plus detected release
+series.
+
+Enumerate remote branches as the hook sees them:
+
+```bash
+git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin/ | grep -v '^HEAD$'
+```
+
+`lstrip=3` drops `refs/remotes/origin`, leaving the plain branch name — the same
+shape `pre-push` matches after stripping `refs/heads/`. Do **not** use
+`%(refname:short)` here: it keeps the remote in the name (`origin/main`, which
+matches nothing in the protected list) and it emits a bare `origin` for the
+`origin/HEAD` symref; the `grep -v '^HEAD$'` above is what keeps that entry out.
+
+Group by the first segment and keep prefixes holding more than one branch:
+
+```bash
+git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin/ | grep -v '^HEAD$' |
+  grep '/' | sed 's#/.*##' | sort | uniq -c | sort -rn | awk '$1 > 1'
+```
+
+Then look at what each candidate prefix actually holds:
+
+```bash
+git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin/ | grep '^<prefix>/' | head -5
+```
+
+A **release series** has version-like or date-like children (`Branches/5.33`,
+`release/5.34`). A prefix whose children carry ticket keys or slugs
+(`feature/UMS-1967-…`, `bugfix/…`, `codex/…`) is a **working-branch namespace**
+and must not be protected.
+
+**List the candidates and let the user confirm which belong in.** This key is
+the exception inside the first-write exception below: it is the only one that
+reaches a security boundary, so it is never written on detection alone. Being
+wrong hurts in both directions — a release series left out leaves a live shared
+branch unprotected, and a `feature/*` let in blocks every legitimate ticket
+push.
+
+```
+Navržené chráněné větve — potvrď, které patří dovnitř:
+  vestavěné:  develop, main, master, release/*
+  báze:       develop (z baseRef — už mezi vestavěnými)
+  Branches/*  — 5 větví, řada verzí (Branches/5.33, Branches/5.34)      ✅ doporučeno
+  feature/*   — 68 větví, pracovní jmenný prostor (feature/UMS-1967-…)  ❌ nedoporučeno
+  bugfix/*    — 40 větví, pracovní jmenný prostor (bugfix/UMS-2113-…)   ❌ nedoporučeno
+```
+
+#### `ticketPattern`
+
+```bash
+git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin/ | grep -v '^HEAD$' |
+  sed 's#.*/##' | grep -oE '^[A-Z]+-[0-9]+' | sed 's/-[0-9]*$//' | sort | uniq -c | sort -rn
+```
+
+`sed 's#.*/##'` keeps the last path segment, so a key nested in a namespace
+(`feature/UMS-1967-…`) is still seen. Take the **most frequent** prefix and write
+`^<PREFIX>-[0-9]+`. A long tail of single occurrences (one `SKODASMS` beside 188
+`UMS`) is noise, not a second pattern — the key holds one value.
+
+No match at all → write the generic `^[A-Z][A-Z0-9]+-[0-9]+` and report it as a
+default. This is the normal outcome in a repository whose branches never carry
+ticket keys; detection cannot know a project key that appears nowhere in the
+topology. If the user names the key during this same run, use it — it is still
+the first version.
+
+#### `projectMarkers`
+
+```bash
+git ls-files | grep -Ei '\.(sln|csproj|vcxproj)$|(^|/)(package\.json|pom\.xml|build\.gradle(\.kts)?|Cargo\.toml|pyproject\.toml)$'
+```
+
+Write **only the patterns that actually occur**, in the form the consumer
+matches: `*.csproj`, `*.vcxproj`, `*.sln`, `package.json`, `pom.xml`,
+`build.gradle`, `Cargo.toml`, `pyproject.toml`. A pattern for an ecosystem the
+repository does not use matches nothing and only misleads the next reader about
+what this repository is.
+
+#### `sharedRoots`
+
+Two sources; the union is the proposal.
+
+**(a) Projects referenced from more than one other project.** For .NET/MSVC
+trees:
+
+```bash
+git ls-files -z '*.csproj' '*.vcxproj' |
+  xargs -0 grep -HoE 'Include="[^"]*\.(csproj|vcxproj)"' |
+  sed -E 's#^([^:]+):.*[\\/"]([^\\/"]+)\.(csproj|vcxproj)"$#\2\t\1#' |
+  sort -u | cut -f1 | uniq -c | sort -rn | awk '$1 > 1'
+```
+
+The output is `<count> <referenced project>` — how many **distinct** project
+files reference it. The `sort -u` on the (target, referrer) pair comes first so
+that a `vcxproj` repeating the same reference once per configuration counts once.
+Locate each and roll the path up to its **first or second** segment:
+
+```bash
+git ls-files '*/<Name>.csproj' '*/<Name>.vcxproj' '<Name>.csproj' '<Name>.vcxproj'
+```
+
+`Common/UmsLib/UmsLib/UmsLib.csproj` → `Common/UmsLib/`. Directories are written
+with a trailing slash. The mapping is by project **basename**, so two projects
+sharing a basename in different directories collapse into one candidate — a
+reason to look at the located path before accepting it, not a reason to skip the
+detection.
+
+**(b) Shared build files.**
+
+```bash
+git ls-files | grep -Ei '(^|/)(Directory\.Build\.props|Directory\.Packages\.props|Build\.proj|SharedAssemblyInfo[^/]*)$|^[^/]+\.(sln|targets)$'
+```
+
+Accept a hit only where the file really sits **above more than one project** — a
+root `*.sln`, a root `*.targets`, a `Directory.Build.props` over a project group.
+A `SharedAssemblyInfo.cs` that every project keeps in its own `Properties/`
+folder is per-project boilerplate despite the name, and sixteen of them are
+sixteen private files, not sixteen shared roots.
+
+Source (a) covers .NET/MSVC only. In another ecosystem it yields nothing and
+`sharedRoots` stays at whatever (b) and the user contribute — an empty list is
+legal and degrades safely (contract, Repository Configuration: verification is
+then offered for every incoming diff rather than for none). A directory that is
+shared for reasons no build file records cannot be detected at all; it is human
+knowledge, added by the user.
+
+#### The write, and what needs approval
+
+Write `<CTX_DIR>/ums-repo.json` with exactly these five keys — `baseRef` and
+`ticketPattern` as strings, `protectedBranches`, `projectMarkers` and
+`sharedRoots` as arrays of strings. Nothing else: a key the loader does not read
+is dead weight, and `<baseBranch>` is not a key.
+
+**The first written version needs no approval.** It is the same exception, for
+the same reason, as the first `playbook.md`: there is nothing yet to overwrite,
+and every detected value is verifiable against the repository's own build files
+and refs — unlike the experience the consult regime exists to protect.
+**Every later change does need approval** (contract, Repository Configuration),
+and the boundary is exactly that: first write free, every subsequent one
+approved. `protectedBranches` is confirmed even in the first write, per above.
+
+Report per key what was **detected** and what was **substituted as a default**:
+
+```
+ums-repo.json vytvořen:
+  baseRef:           origin/develop (detekováno z origin/HEAD)
+  protectedBranches: develop, main, master, release/*, Branches/* (potvrzeno uživatelem)
+  ticketPattern:     ^UMS-[0-9]+ (detekováno, 188 z 218 vzdálených větví)
+  projectMarkers:    *.sln, *.csproj, *.vcxproj, package.json, pom.xml (detekováno)
+  sharedRoots:       Common/UmsLib/, Build.proj (detekováno)
+  Další krok: spusť install-git-hooks.ps1 — pre-push čte vygenerovaný seznam, ne tento soubor.
+```
+
+### Refresh mode of the repository configuration
+
+Runs over an **existing** `<CTX_DIR>/ums-repo.json`, on deliberate invocation
+(the user asks to refresh or verify the configuration). It is the exemption from
+the stop-on-existing rule in step 0 and touches that one file only. An
+initialized Memory Bank with **no** configuration file is not this mode: there is
+nothing to compare against, so the first-write path of step 3 applies unchanged.
+
+1. Detect every key again, exactly as in step 3.
+2. Compare against the file and present the difference **per key** — for the two
+   scalars as `old → new`, for the three lists split into: detected and present,
+   detected and missing from the file, present in the file and not detected.
+3. **No difference → write nothing.** Report that the configuration matches the
+   topology and stop. Never rewrite the file to reformat or reorder it.
+4. A difference is **written only after the user approves it** — the rule for
+   later changes is in the contract, section named Repository Configuration.
+5. Entries in the file that detection did not find are **not** proposed for
+   removal by default. They usually carry knowledge no build file records — a
+   shared directory nothing references, a ticket prefix that never reaches a
+   branch name. Name them, propose keeping them, and let the user decide.
+
+After `protectedBranches` changes, **`install-git-hooks.ps1` must run again.**
+`pre-push` is POSIX `sh` with no JSON parser, so it never reads
+`ums-repo.json`: it reads the plain text list the installer generates into
+`<git-common-dir>/ums-protected-branches`. Until the installer runs again the
+hook enforces the **previous** list — the new value is in the file and not in
+force. State this as a required next step in the report, not as a footnote.
+
+### 4. Review output
 
 Present a short summary of the project role, technology stack, and the new Memory Bank root.
 
-### 4. Announce
+### 5. Announce
 
 Always include:
 
 - `Cílová MB: <PLAN_MB>/` (v režimu orchestračního kořene: `<CTX_DIR>/`)
 - `Reason: git-root discovery`
-- `Updated files: brief.md, architecture.md, tech.md, proposals/next/, proposals/active/, proposals/completed/, proposals/abandoned/` (plus `playbook.md` when concrete commands were found)
+- `Updated files: brief.md, architecture.md, tech.md, proposals/next/, proposals/active/, proposals/completed/, proposals/abandoned/` (plus `playbook.md` when concrete commands were found, plus `ums-repo.json` in orchestration-root mode)
+- the per-key detected/default report from step 3, and `install-git-hooks.ps1` as the next step whenever `protectedBranches` was written or changed
 
-### 5. Next step
+### 6. Next step
 
 After initialization:
 
