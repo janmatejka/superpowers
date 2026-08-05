@@ -18,6 +18,30 @@ Prosté textové odkazy na verzi upstreamu jsou na dvou místech vrstvy ještě
 o jednu verzi pozadu (`ums/README.md` a úvod `SKILLS_MANIFEST.md` uvádějí
 v6.1.1) — normativní je pin ve `VENDORED_FROM.md`.
 
+## Konfigurace repozitáře (`ums-repo.json`)
+
+[`ums-repo.json`](ums-repo.json) v `CTX_DIR` nese repozitářově specifické
+hodnoty, které kontrakt zakazuje mít v tělech skillů nebo skriptů (kontrakt,
+Repository Configuration). Tento repozitář:
+
+| Klíč | Hodnota |
+|---|---|
+| `baseRef` | `origin/ums-memory-bank` |
+| `protectedBranches` | `ums-memory-bank`, `main`, `master`, `develop`, `release/*`, `Branches/*` |
+| `ticketPattern` | `^UMS-[0-9]+` |
+| `projectMarkers` | `package.json` |
+| `sharedRoots` | `ums/.claude/skills/shared/`, `ums/.gitattributes` |
+
+Loader [`Get-UmsRepoConfig.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsRepoConfig.ps1)
+nikdy nevyhazuje výjimku: chybějící nebo poškozený soubor degraduje po
+jednotlivých klíčích k vestavěným defaultům (`origin/develop` jako báze,
+vestavěná čtveřice chráněných větví, obecný vzor tiketu, prázdné
+`projectMarkers`/`sharedRoots`) — vždy k bezpečnější straně, nikdy k méně
+ochraně. Bare string u kterékoli seznamové hodnoty se normalizuje na
+jednoprvkový seznam stejně jako v `guard-git-push.mjs`, takže obě vynucovací
+vrstvy (generovaný seznam pro `pre-push` a `guard-git-push.mjs`) dají na
+stejnou konfiguraci vždy stejnou odpověď.
+
 ## Runtime a platforma
 
 - **PowerShell 7** (`#Requires -Version 7`, `$ErrorActionPreference = 'Stop'`) —
@@ -27,6 +51,7 @@ v6.1.1) — normativní je pin ve `VENDORED_FROM.md`.
   [`ledger-status.ps1`](../ums/.claude/skills/mb-epic-elaboration/scripts/ledger-status.ps1),
   [`doc-index.ps1`](../ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1),
   [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1),
+  [`Get-UmsRepoConfig.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsRepoConfig.ps1),
   hook `bpmn-validate.ps1`.
 - **Node.js** (ESM, `"type": "module"`) — hooks
   [`deny-superpowers-docs.mjs`](../ums/.claude/hooks/deny-superpowers-docs.mjs)
@@ -80,16 +105,34 @@ takže by nešlo rozvolnit jen pro vlastní tiketovou větev. Skutečnou hranic�
 dvouúrovňové push policy (kontrakt, Publication Contract) je git `pre-push`
 hook [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (POSIX
 `sh`, scope `refs/heads/*`) — git mu předá už rozparsované čtveřice refů, ne
-shellový text, takže žádné parsování k obejití neexistuje. Zamítá push do
-chráněné větve (`develop`, `main`, `master`, `release/*`) bez
-`UMS_ALLOW_SHARED_PUSH=1`, mazání větve a force push vždy. Git hooky jsou
-netrackované (`.git/hooks/` nebo cíl `core.hooksPath`), takže je do každého
-klonu instaluje samostatný skript
+shellový text, takže žádné parsování k obejití neexistuje.
+
+Chráněné patterny jsou konfigurace, ne tělo hooku: [`ums-repo.json`](ums-repo.json)
+klíčem `protectedBranches` (tento repozitář: `ums-memory-bank`, `main`,
+`master`, `develop`, `release/*`, `Branches/*`). `pre-push` je POSIX `sh` bez
+JSON parseru, takže je nečte přímo —
+[`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) je při
+instalaci materializuje přes loader
+[`Get-UmsRepoConfig.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsRepoConfig.ps1)
+do `<git-common-dir>/ums-protected-branches`, jeden glob na řádek, a hook čte
+jen tento vygenerovaný soubor. **Změna konfigurace se tedy projeví až po
+dalším běhu instalátoru.** Bez konfigurace, bez `ums-repo.json` nebo s
+nedostupným loaderem hook spadá na vestavěnou čtveřici `develop`, `main`,
+`master`, `release/*` — vždy k víc ochraně, nikdy k méně. Zamítá push do
+chráněné větve bez `UMS_ALLOW_SHARED_PUSH=1`, mazání větve a force push
+vždy.
+
+Git hooky jsou netrackované (`.git/hooks/` nebo cíl `core.hooksPath`), takže
+je do každého klonu instaluje samostatný skript
 [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) —
 idempotentní, cizí hook nikdy nepřepíše, cíl řeší `git rev-parse --git-path
-hooks/pre-push` (správně i pro linked worktree). Kdy se spouští a co znamenají
-jeho návratové kódy, je v [playbook.md](playbook.md). Konce řádků hooku hlídá
-[`ums/.gitattributes`](../ums/.gitattributes) pravidlem `text eol=lf`.
+hooks/pre-push` (správně i pro linked worktree). Instalátor vrací exit kód
+**4**, když se seznam chráněných větví nepodařilo obnovit — nešlo ho zapsat,
+nebo chybí loader `Get-UmsRepoConfig.ps1` vedle adresáře s hooky — hook se
+i tak instaluje a vynucuje, co je aktuálně na disku (starší běh, nebo
+vestavěný fallback), nikdy neskončí bez hooku. Kdy se spouští a co znamenají
+ostatní návratové kódy, je v [playbook.md](playbook.md). Konce řádků hooku
+hlídá [`ums/.gitattributes`](../ums/.gitattributes) pravidlem `text eol=lf`.
 
 ## Testy
 
@@ -182,8 +225,11 @@ jeho Python (ruff, ty).
   `core.hooksPath`. **Relativní `core.hooksPath`** se navíc resolvuje
   per-worktree (ne per-repository) — instalace do hlavního klonu nechá
   ostatní linked worktree bez hooku; `install-git-hooks.ps1` na to hlásí
-  varování a potřebuje samostatný běh pro každý worktree. Dvoukolový
-  self-test instalátoru navíc musí porovnávat case-sensitive marker
+  varování a potřebuje samostatný běh pro každý worktree. Self-test
+  instalátoru (dvě povinná kola plus třetí, podmíněné, kdykoli konfigurace
+  jmenuje chráněný vzor nad rámec vestavěné čtveřice — s vlastní kontrolou na
+  neschovaném jméně, aby se nepřehlédlo, že třetí kolo přestalo rozlišovat)
+  navíc musí porovnávat case-sensitive marker
   (`-cmatch 'UMS: '`), ne substring `-match 'UMS'` — ten by broken hook,
   jehož chybová hláška jen cituje vlastní cestu, vyhodnotil jako ověřený
   v každém repozitáři ležícím pod adresářem se jménem obsahujícím „ums".

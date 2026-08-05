@@ -51,6 +51,69 @@ Konvence, které nová sada musí dodržet:
   Proč: fixtura dokazuje, že kód dělá, co jste do fixtury napsali; skutečné
   repo dokazuje, že bug byl reálný a ne artefakt konstrukce fixtury. Tímhle se
   potvrdilo, že migrační skript kořenovou `memory-bank/` vůbec nenašel.
+- **Nový regresní strážce/test ověř jeho vlastní negativitou:** spusť ho i
+  proti neopravenému kódu, nebo dočasně smaž řádek/podmínku, kterou hlídá,
+  a zkontroluj, které asercie zčervenají. Asercie, které zůstanou zelené
+  v obou případech, jsou regresní zámek, ne důkaz opravy — v reportu je
+  odděl. Strážce, kde zčervenají VŠECHNY asercie, obvykle chybí pozitivní
+  kontrola; kde nezčervená ŽÁDNÁ, nic nehlídá. Po ověření smazáním obnov
+  soubor z kopie před úpravou a potvrď prázdný `git diff`.
+  Proč: čtyři nové asercie nad `$activityByBranch` vypadaly adekvátně podle
+  tvaru fixtury; se smazaným řádkem sada nahlásila `3/43 FAILED` a jmenovala
+  dormantní větev. Naopak dva jiné případy (symref `origin/HEAD`,
+  `-BranchGlob`) prošly i proti neopravenému skriptu, protože je řešil jiný,
+  existující mechanismus — takové asercie oddělit jako zámek, ne jako důkaz.
+- **Podmíněný důkazní/kontrolní krok (proběhne jen když to vstup/konfigurace
+  umožní) drž na TŘECH stavech, ne dvou** (`$null` = neproběhlo), a jeho
+  přeskočení VŽDY ohlas vlastní poznámkou odlišenou od potvrzení. Do
+  agregovaného výsledku přidávej podmínku jen pod `if ($null -ne $result)`,
+  nikdy prostým booleovským AND. Ke kroku navíc přidej vlastní kontrolu se
+  STEJNÝM tvarem vstupu, kterou testovaná podmínka nepokrývá, a sdílej mezi
+  oběma proměnnou, jejíž záměna důkaz kazí — jinak mutace zpět na
+  dekorativní podobu kroku projde celou sadou beze zmínky.
+  Proč: naivní `$ok = … -and ($extra.Code -ne 0)` by při přeskočení
+  srovnávalo `$null` a zezelenalo/zčervenalo náhodou; konfigurace jako
+  `ums-*`, která krok sama odebrala, nechala výstup zeleně beze signálu —
+  zmizela tak jediná pojistka proti návratu dekorativního důkazu.
+- **Jméno, které si testovací kód pro pozitivní kontrolu vymyslí (větev,
+  soubor), prověř proti reálné konfiguraci uživatele**, ne proti vlastní
+  představě „neutrálního" jména. Měj víc strukturálně různých kandidátů
+  a vezmi první nekonfliktní; když nezbyde žádný, krok přeskoč a ohlas to —
+  nikdy z toho nedělej chybu uživatelovy konfigurace.
+  Proč: pevné jméno `feature/ums-install-verify` v repozitáři, který chrání
+  `feature/*`, způsobilo, že hook správně zamítl push a instalátor to
+  přečetl jako rozbitý hook.
+- **Tvrzení „stav/počet X je takový" ověřuj strojově v TOMTO běhu**, ne
+  odvozením z briefu, review nebo z toho, že jiné pravidlo to naznačuje — a
+  testuj na případu, kde má detektor NĚCO najít, ne na tom, kde má vrátit
+  prázdno. Negativní běh je jako důkaz bezcenný právě tam, kde je „nic" i
+  legitimní stav (IDLE, čistý strom, žádné nálezy).
+  Proč: brief tvrdil dvě kotvy na jednom řádku; `--` uvnitř slugu se čte
+  jako dvě pomlčky, ale je to jedna kotva — a `grep -c ACTIVE` na bázové
+  `context.md` (IDLE) vrátil `0`, což je i správná odpověď na IDLE; teprve
+  běh proti scratch větvi se skutečným pinem ukázal také `0` — grep je
+  slepý v obou stavech.
+- **Počty asercí v dokumentaci vždy získej spuštěním CELÉ sady ve stejném
+  sezení jako úpravu**, nikdy aritmetikou nad čísly z review nebo staršího
+  zápisu. Nové číslo rekonciliuj proti předchozímu přes delty, které jsi sám
+  zavedl.
+  Proč: všechna čísla byla před vlnou správná, ale vlna přidala 16 asercí;
+  spuštění všech 13 sad dalo 564 a delty (+4/+2/+3/+7) přesně sedly na
+  rozdíl.
+- **Fixture repo pro testy nad stářím/aktivitou commitu nastavuj datem
+  vyjádřeným jako věk ve dnech vůči času vytvoření fixtury**
+  (`GIT_AUTHOR_DATE` i `GIT_COMMITTER_DATE`), ne absolutním datem —
+  proměnné po použití maž.
+  Proč: fixtura, která staré datum nastavovala jen jedné větvi a ostatní
+  nechávala na systémovém čase, by s oknem aktivity 30 dní jednoho dne
+  začala rozhodovat podle toho, kdy se sada spustí.
+- **Než přidáš do zrcadleného adresáře (`Copy-Mirrored` v syncu) nový povinný
+  soubor, dohledej ho v syncovacím skriptu a zjisti, jestli cíl maže
+  a nahrazuje.** Do minimal-but-complete fixtury syncu kopíruj skutečný
+  soubor, ne stub, když ho spotřebitel dot-sourcuje.
+  Proč: fake monorepo ve fixture mělo v `shared/` jen stub; `Copy-Mirrored`
+  ho nahradil za loader z fork copy, instalátor spadl na chybu
+  a nesouvisející test syncu zčervenal o dvě asercie dál.
 
 ## PowerShell v této vrstvě
 
@@ -77,7 +140,129 @@ Konvence, které nová sada musí dodržet:
   v bashové konzoli.** Ta zde nemá kompatibilní code page a zobrazí `hl?s?`
   i tam, kde soubor na disku obsahuje správné UTF-8 (`c4 8d` = `č`, bez BOM).
   Proč: zdánlivě poškozený výstup svede k „opravě" kódování, které je
-  v pořádku. Při podezření sáhni po `xxd`, ne po zobrazeném textu.
+  v pořádku. Při podezření sáhni po `xxd`, ne po zobrazeném textu. Totéž
+  potká diakritiku, kterou skript posílá zpátky do gitu (jméno větve, cesta) —
+  viz [tech.md](tech.md), sekce „Pasti prostředí" — a nativní stderr čtený
+  přes PowerShellovou pipeline (`[Console]::OutputEncoding` dekóduje UTF-8
+  bajty přes cp852/cp1250); u druhého případu přesměruj stderr **na úrovni
+  shellu** do souboru (`& $gitBash -c 'cd "$1" && git push … 2>"$2"' _ $repo
+  $errFile`) a čti ho `Get-Content -Encoding utf8`, ne přes pipeline.
+- **Pod `Set-StrictMode -Version Latest` nevěř tomu, že úspěšný
+  `ConvertFrom-Json` znamená objekt s vlastnostmi.** JSON dovoluje kořenové
+  `null`, skalár i pole a všechny prolezou parserem beze chyby — `try/catch`
+  kolem `ConvertFrom-Json` se tedy nikdy nespustí. Před `.PSObject.Properties`
+  ověř typ (`$json -is [System.Management.Automation.PSCustomObject]`)
+  a vlastnosti materializuj do plochého array
+  (`@(@($json.PSObject.Properties) | ForEach-Object { $_.Name })`), nikdy
+  přímo `.Properties.Name` na živé kolekci. Chování ověř empiricky na čtyřech
+  tvarech (`{}`, `null`, `42`, `[1,2,3]`) předem jedním `pwsh -Command`.
+  Proč: loader konfigurace shodila výjimku „The property 'Name'/'Properties'
+  cannot be found" až při reálném použití — `try/catch` reportoval falešný
+  pocit bezpečí.
+- **`-like` na neobvyklém vzoru (např. `Maint/[0-9`) může hodit výjimku,
+  nebo — v `catch`, který vrací bool — tiše vrátit špatnou odpověď.**
+  Rozšiřuješ-li existující `-like` volání do nové cesty, dohledej, co ho na
+  starém místě chránilo (metaznakový filtr, `if ($extra)`), a rozhodni
+  explicitně, jestli ta ochrana platí i na novém místě. Když funkce vrací
+  `$true` z obou větví (match i catch), rozliš „ano" od „nevím, nemohl jsem
+  to vyhodnotit" jako DRUHOU návratovou hodnotu.
+  Proč: neošetřená výjimka na wildcardu shodila celý souhrn instalátoru na
+  exit 1 u hooku, který byl ve skutečnosti funkční; a `Test-NameIsConfigured`
+  s `["Branches/*", "Maint/[0-9"]` naopak nahlásila „konfigurace pokrývá
+  kontrolní jméno" (nepravda — POSIX `case` čte `Maint/[0-9` jako literál)
+  a tichým `[installed + verified live]` smazala jedinou pojistku proti
+  dekorativnímu důkazu.
+- **Windows cesty vkládané do `PATH` (nebo kamkoli s `:` separátorem)
+  v msys/Cygwin vždy převeď `cygpath -u`.** `C:/…/shim` se na `:` rozpadne na
+  `C` a `/…/shim`, obě neexistující, a shim se nikdy nezavolá bez jediné
+  zmínky v testu. Do harnessu, který přes `PATH` nahrazuje nástroj, přidej
+  explicitní ověření, že náhrada platí
+  (`[ "$(command -v sed)" = "$shimdir/sed" ] || exit 98`).
+  Proč: shim se nikdy nezavolal, test přesto zezelenal, protože se použil
+  skutečný `sed` v textovém režimu a chráněná větev byla zamítnuta „správně"
+  ze špatného důvodu.
+- **`$(command)` v command substitution není průhledný kanál pro CR/CRLF
+  testy — strhne jen trailing byte, a msys bash jinak než skutečný POSIX
+  shell.** Hodnotu pod testem umísti na jiný než poslední řádek souboru;
+  jednoprvkový/poslední-řádkový vstup nic nedokazuje.
+  Proč: jednořádkový CRLF seznam prošel testem i bez opravy CR handlingu —
+  msys bash strhl celé trailing CRLF, takže jediný (a poslední) vzor vyšel
+  čistý bez ohledu na kód.
+- **Manuální spouštění Node/PowerShell hooků z Git Bash na Windows potřebuje
+  Windows-styl cestu (`pwd -W`), ne Unix-styl (`$(pwd)`)** — jinak `node`
+  interpretuje `/c/Users/...` jako drive-relative (`C:\c\Users\...`)
+  a konfigurační soubor se nenajde. Ručně skládané JSON payloady s cestou
+  obsahující zpětná lomítka nejsou platný JSON — použij `cygpath -m`/`pwd -W`,
+  ne raw backslash cestu skládanou stringovou konkatenací. Prázdný výstup
+  z manuální sondy hooku pro případ, který má zamítnout, nejdřív ověř, jestli
+  vstupní JSON vůbec naparsoval — neber to bez dalšího jako potvrzení
+  „povoleno".
+  Proč: guard tiše spadl na vestavěný seznam a chráněná větev prošla jako
+  nechráněná, přestože implementace byla správná; jinde `JSON.parse` selhal
+  na neuvozených zpětných lomítkách a chráněný i nechráněný případ vrátily
+  identický prázdný výstup.
+- **Per-referenci volání externího procesu (`realpath`, obecně cokoli ve
+  `while read` smyčce) nad monorepem drž na konstantní počet procesů.** Spawn
+  procesu je na Windows řádově dražší než na Linuxu — přepiš na jeden
+  `git ls-files` + jeden `xargs … grep` + jeden `sed`/`awk` nad celým
+  streamem, nebo hodnotu získej jinak (např. basename místo resolvování
+  `..`). `while read` s příkazem uvnitř je červený signál.
+  Proč: smyčka s `realpath -m --relative-to=.` nad ~500 projekty a tisíci
+  referencemi neběžela do 300 s; přepis na streamové zpracování to srazil na
+  0,5–2,6 s (100×).
+- **Vzdálené větve pro porovnání se jmény lokálních větví vypisuj
+  `--format='%(refname:lstrip=3)'`, ne `%(refname:short)`, a filtruj
+  `grep -v '^HEAD$'`.**
+  Proč: `%(refname:short)` nad `refs/remotes/origin/` vrátil bare `origin`
+  pro symref `origin/HEAD` a v každém jméně ponechal remote prefix, který
+  v `protectedBranches` nematchne nic — obojí by se dostalo do seznamu
+  chráněných větví jako fantomová položka.
+
+## Git hooky (POSIX sh)
+
+- **Neuvozené vzory v `for`-cyklu POSIX shellu chraň `set -f`.** Když
+  iteruješ přes seznam vzorů uložený v proměnné (`for pat in $patterns`), na
+  začátku hooku/skriptu zapni `set -f` (disable pathname expansion) — jinak
+  neuvozená expanze podléhá i pathname expansion vůči cwd (git spouští hook
+  s cwd = kořen repozitáře) a vzor jako `branches/*` se nahradí jménem
+  existujícího souboru. `case "$x" in $pat)` zůstává funkční i pod `set -f`,
+  protože tam `$pat` slouží jako glob vzor, ne k expanzi. Ověř dvouřádkovým
+  `sh -c` v adresáři, který vzor splňuje, a fixturu testu postav tak, aby ten
+  adresář skutečně obsahovala — jinak je test zelený i pro rozbitou
+  implementaci.
+  Proč: vzor `branches/*` v `is_protected()` vypadl jako `branches/notes.txt`
+  a ochrana pro celý vzor tiše zmizela; push na chráněnou větev prošel beze
+  zmínky v výstupu hooku.
+- **Hook, který čte stdin, ať načte konfiguraci a všechny pomocné hodnoty
+  před hlavní `while read` smyčkou.** Do smyčky nedávej nic, co může čerpat
+  stdin (`read`, `while read`, `ssh`, `git` podpříkaz bez přesměrování) —
+  podřízeným příkazům, u kterých si nejsi jistý, uzavři stdin explicitně
+  (`cmd </dev/null`). Testuj vždy pushem více refů najednou — jednořádkový
+  push past neodhalí. Regresní test na krádež stdin ověř mutací, která stdin
+  SKUTEČNĚ krade — přesun celého bloku čtení konfigurace do smyčky nestačí,
+  pokud ten blok sám nečte stdin (např. čte jen soubor); past spouští teprve
+  `while read` bez přesměrování.
+  Proč: platí pro `pre-push`/`pre-receive`/`post-receive` (ne `update`, ten
+  stdin nedostává) — přehlédnutá past je neviditelná v exit kódu (0), hook
+  prostě přestane kontrolovat zbylé refy.
+- **CR/CRLF chování v POSIX shellu posuzuj empiricky a per platformu, nikdy
+  úsudkem ani jedním testem.** Protrasuj každý stupeň pipeline přes `od -c`,
+  a totéž zopakuj s binárními režimy (`sed --binary`, `grep -U`), které
+  emulují skutečný POSIX shell — msys nástroje na Windows CR zahazují samy
+  v textovém režimu, reálný POSIX shell ne. Robustní řešení je odstranit CR
+  přímo v pipeline (`tr -d '[:blank:]\r'`), ne spoléhat na to, že producent
+  souboru napíše správné řádkování.
+  Proč: „na Windows CRLF nevadí" bylo empiricky obráceně — msys `sed`/`grep`
+  CR zahazují, ale neuvozený POSIX shell (Linux/macOS/WSL) ne, takže tvrzení
+  „musí LF" popisovalo bezpečnou platformu a přehlédlo tu nechráněnou.
+- **Testovací/důkazní běh nad hookem, který si sám dohledává konfigurační
+  soubor podle `cwd` (`git rev-parse --git-common-dir`), spusť z pracovního
+  adresáře cílového repozitáře** (`cd "$root" && …`, spojeno `&&`, aby
+  neúspěšný `cd` důkaz položil). Kontrolní otázka: „projde stejně, když ho
+  pustím v čistém klonu, kde instalátor nikdy neběžel?"
+  Proč: běh spuštěný odjinud četl konfiguraci repozitáře, ze kterého byl
+  instalátor spuštěn, ne fixture repa — nový test tak zelenal podle stavu
+  cizího souboru, ne podle testované logiky.
 
 ## Upgrade upstreamu (revendor)
 
@@ -161,6 +346,21 @@ běhu použije defaulty potichu.
   na monorepo.
 - Vendorované superpowers skilly tento skript nesynchronizuje nikdy — ty
   vznikají revendorem (výše).
+- **`cp -r zdroj cíl/` do existujícího stejnojmenného cílového adresáře
+  SLUČUJE, nevnořuje** — přidá/přepíše soubory ze zdroje a cizí soubor
+  v cíli zachová. Než spustíš plánem předepsané `cp -r` přes živý, sezením
+  čtený netrackovaný adresář se shodným jménem posledního segmentu zdroje
+  a cíle, ověř chování na dvouřádkové fixture ve scratchpadu (existující cíl
+  se svým markerem, zdroj se svým) — ne odvozením z četby příkazu.
+  Proč: ověřeno měřením na throwaway fixture: `dst/shared/keepme.txt`
+  přežil, nové soubory ze zdroje přibyly, `dst/shared/shared` nevzniklo.
+- **Než nasazení postavíš na merge-copy (`cp -r` bez `--delete`), ověř
+  `git diff --name-status <base>..HEAD -- <zdrojový-strom>` na řádky D/R.**
+  Bez mazání/přejmenování je merge-copy dostatečná; s nimi by nasazení
+  uneslo osamocené soubory, které zdroj už nemá, a je potřeba mirror-sync
+  nebo explicitní `rm` cílů.
+  Proč: kontrola nad tímto plánem nenašla žádné D/R (čistě A/M), což
+  potvrdilo, že merge-copy nemůže nechat mrtvý soubor.
 
 ### Instalace git hooků do klonu
 
@@ -199,6 +399,182 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   nevyrobí — po změně overlay fragmentu je musí vygenerovat revendor.
 - `sync-with-monorepo.ps1` na tohle není: cílí na monorepo nebo na profil
   uživatele, ne na kořen tohoto forku.
+
+## Kontrakt a skilly: soudržnost pravidel a dokumentů
+
+- **Pravidlo má jeden domov.** Napiš ho nejdřív do KONTRAKTU (pořadí kroků,
+  aktér, jediný netriviální důvod) a skill smí říct jen „per <jméno sekce>"
+  plus co je čistě lokální (nástroj, pořadí vůči vlastním krokům, co NAOPAK
+  nedělá) — věta, která v skillu parafrázuje důvod, je budoucí rozchod. Když
+  je STEJNÁ chyba objevena rozbitá ve víc než jednom konzumentovi sdíleného
+  kontraktu, nespravuj ji lokálně — nejdřív vypiš VŠECHNY konzumenty té
+  operace; implementuje-li ji víc než jeden, oprava patří do kontraktu.
+  Bezvýjimková zákazová hláška v hlavičce skillu (např. „⛔ ŽÁDNÝ git
+  commit/add/push") potřebuje pro jednu dovolenou operaci JMENOVANOU výjimku
+  přímo v zákazu, omezenou na konkrétní krok, s napsanou hranicí, kterou
+  nepřekračuje — ne tichý rozpor.
+  Proč: stejná chyba v pořadí publikace (`push` po každém commitu) se
+  ukázala i v `mb-abort`, který ji měl celou — dva konzumenti si vymysleli
+  vlastní pořadí pro tutéž operaci a jen jeden byl prověřen; a `git rm -f`
+  vyžadovaný kontraktem pro playbook-candidate soubor by bez jmenované
+  výjimky přímo odporoval hlavičce `mb-harvest`.
+- **Rys, který je git-faktem (tracked/foreign/published), testuj git
+  příkazem nebo porovnáním CESTY — nikdy čtením obsahu souboru.** Derivovaný
+  stav „nic k udělání", který gatuje krok sahající na git-IGNOROVANOU cestu,
+  tu cestu musí probovat explicitně, ne odvozovat ze tří běžných git
+  příkazů (`status`, `stash list`, `log --branches --not --remotes`), které
+  na ni nevidí.
+  Proč: stará podoba `mb-harvest` gate četla „cizí slug" z prvního řádku
+  souboru, přestože s jedním souborem na slug je cizost fakt o cestě; a
+  netrackovaný neprázdný `playbook-candidates/<slug>.md` je pro
+  `.superpowers/` (git-ignored) neviditelný pro všechny tři standardní
+  příkazy, takže odvozené „už zaparkováno" nechalo evidenci v pracovním
+  stromu přesně v scénáři, pro který výjimka `git add -f` vznikla.
+- **Po vložení/odstranění kroku v číslovaném pořadí (kontrakt, skill, overlay
+  fragment) grepni CELÝ soubor na `step [0-9]`/číslo kroku a přečti seznam
+  znovu; odkazuj na sousední krok JMÉNEM fáze, ne pořadovým číslem** — čísla
+  se posouvají, jména ne. Po restrukturaci vícekrokové instrukce ji projdi
+  jako chladný čtenář pro KAŽDÝ podporovaný záměr zvlášť, s proměnným stavem
+  (např. „je strom čistý?") jako sloupcem tabulky. Chování git příkazu,
+  který skript nově použije jako detektor (co vrací na poškozeném/hraničním
+  vstupu), ověř EMPIRICKY (např. zapsat 40 hex znaků do rozbitého refu
+  a přečíst exit kód) PŘED rozhodnutím, kam v kódu patří jeho ošetření.
+  Proč: vložení kroku posunulo dvě interní křížové reference na číslo kroku
+  beze zmínky, protože žádný grep na termín kontraktu by je nenašel;
+  číslovaný odkaz „fáze 4" v kontraktu ukazoval na krok, který dělá fáze 3;
+  tabulkový průchod dvou záměrů hned odhalil defekt pod review i
+  nesouvisející mezeru (krok 3 přijímá „bez tiketu", krok 4 už předpokládá
+  kód tiketu); a `git for-each-ref` na refu s neexistujícím objektem skončil
+  `fatal: missing object` a exit 128 sám o sobě — opak předpokladu „to jen
+  čte metadata, nespadne".
+- **Věta o pořadí NEOPRAVUJE operaci, která sedí ve špatném kroku** — najdi
+  instrukci, která operaci provádí, a přesuň JI. Dvě už existující věty
+  tvrdící stejné pořadí jsou signál, že operace je špatně umístěná, ne že je
+  potřeba třetí. Po přidání explicitního startpointu k vytvoření větve
+  (`switch -c … <baseRef>`) zkontroluj VŠECHNY kroky před ním — pokud
+  některý commituje, přesuň vytvoření větve před něj (nekomitovaná práce
+  jde s `switch -c` samo).
+  Proč: věta „aktivace probíhá na tiketové větvi" nezměnila to, že move byl
+  textově i operačně před vytvořením větve — agent čtoucí pořadí zezdola by
+  dirtnul strom dřív, než větev vznikla; a explicitní startpoint v kroku PO
+  kroku, který komitoval, uvíznul commit na špatné větvi — projevilo se to
+  až o dva kroky dál, na STOPu dosažitelnosti.
+- **Když overlay/refaktor přesune akci DŘÍV, než ji popisuje existující bod
+  checklistu, ten bod musí na začátku říct, jaký stav při čtení PLATÍ
+  („tohle už existuje"), a výslovně pozastavit vlastní kontroly** —
+  jednosměrný forward-reference odkaz nestačí, bod se pořadovým čtením
+  stejně vykoná jako instrukce.
+  Proč: agent, který u nezměněného bodu (kde brief pravidlo popsal) znovu
+  testoval IDLE postcondition proti vlastnímu čerstvě zapsanému pinu,
+  přečetl ACTIVE a vykonal bodovu vlastní instrukci „STOP, smaž větev
+  a opakuj" — se lživým nálezem, že práce byla integrována bez harvestu.
+- **Overlay úpravu vždy verifikuj proti KONTRAKTU, ne proti briefu**, který
+  ho jen parafrázuje — brief je práce k dohledání místa, ne zdroj pravdy.
+  Když overlay NAHRAZUJE upstream krok (ne rozšiřuje), jmenovitě neguj staré
+  příkazy v textu fragmentu, protože zůstávají viditelné vedle přebíjeného
+  textu. Po KAŽDÉ změně pravidla v kontraktu grepni celou vrstvu na jeho
+  charakteristický token VČETNĚ hlaviček hooků, šablon reportů a overlay
+  fragmentů, a oprav každé restatement ve stejném commitu; a re-čti každou
+  cestu, která NĚČÍM konči práci (integrace, abandon, park), a každou větu,
+  která předpokládá, co je/není na `origin` — tvrzení pravdivá pod starým
+  pořadím publikace se pod novým tiše obrátí.
+  Proč: fragment psaný jen z brief formulace by povolil přepis TRACKED
+  playbook-candidate souboru, který kontrakt (užší) zakazuje; fragment
+  „integrace je fast-forward push" bez negace `git checkout`/`pull`/
+  `merge`/`branch -d` nechal oba postupy vypadat platně; po vlně měnící
+  `core.hooksPath` a STOP v `mb-park` zůstalo pět z šesti nálezů v místech,
+  která pravidlo jen RESTATOVALA; a změna „publikuj po každém commitu"
+  nechala nekomitovaný abandon-move zničit jedinou kopii a zapsat trvalou
+  „KOLIZI AKTIVNÍ PRÁCE" na originu.
+- **Report/status hláška, která jmenuje konkrétní stav nebo tvrdí „opraveno
+  X", musí ten stav v TOMTO běhu PŘEČÍST, ne dovodit z jiného pravidla nebo
+  napsat ze cvičné paměti.** Když se cesta v kódu přepočítá, přečti CELÝ
+  report/hlášku od začátku do konce a u KAŽDÉ věty se zeptej, jestli na
+  téhle cestě ještě platí — dej raději samostatnou variantu reportu než
+  hedge vlepený do hlášky o úspěchu. Věta „tato změna navíc opravila X"
+  patří do reportu jen podložená stavem PŘED změnou ve STEJNÉM sezení
+  (`git show <base-sha>:<path>`) — bez něj se vyřazuje.
+  Proč: degradovaná cesta instalátoru tvrdila konkrétní chráněné větve
+  odvozené z toho, že „hook má fallback" — fallback naskočí jen při
+  prázdném seznamu, takže `main` byl ve skutečnosti nechráněný, přestože ho
+  výstup jmenoval jako chráněný; jinde jedna oprava patchla souhrn a
+  hlavička/závěrečná věta téhož reportu dál tvrdily dokončený park
+  a dosažitelnost z originu, která už neplatila; a tvrzení o opraveném
+  duplicitním nadpisu se nekonalo — `git show` základní verze žádný duplicit
+  neukázal.
+- **Dvě hlášení o témže stavu (souhrn × varování, dvě fáze téhož výpočtu)
+  musí čerpat z JEDNOHO zdroje pravdy** — po změně textu na jednom místě
+  vygrepuj VŠECHNA místa, která o tom stavu mluví, a srovnej je v jednom
+  commitu; test piš na CELÝ zploštělý výstup, ne na jednu sekci. Platí i pro
+  autoritu OBSAHU vs. autoritu VÝBĚRU: příkaz, který je fakticky autoritou
+  na to, co commit obsahuje, není zároveň autoritou na to, KTERÉ položky se
+  mají zobrazit — filtr výběru drž jako samostatnou mapu a výstup autority
+  s ní protni.
+  Proč: souhrn hlásil skutečný seznam chráněných větví, varování o pět
+  řádků výš dál jmenovalo vestavěné vzory — kdo se zastavil u (červeně
+  psaného) varování, odešel s dojmem, že `main` je chráněný, i když push
+  projde; a `branch -r --contains` vrátil VŠECHNY vzdálené větve obsahující
+  commit včetně těch, které fáze výběru vyřadila — uspaná větev by se
+  vrátila zadními dvířky přes commit společný s živou.
+- **Přejmenování toho, co fail-closed brána OVĚŘUJE (např. z lokálního merge
+  commitu na pushnutý tip tiketové větve), vyžaduje přepočítat i JEJÍ
+  PŘÍKAZ**, odvozený znovu z otázky, ne ze starého příkazu — a v multi-step
+  skillu vypiš všechny kroky, které mutují (commit, switch, push, write,
+  delete), a VYTÁHNI každý STOP PŘED první z nich, s napsaným důvodem
+  pozice v textu.
+  Proč: `git branch -r --contains <sha>` dál procházel po přejmenování cíle
+  na „pushnutý tip", protože commit byl na originu přes tiketovou větev —
+  brána přestala testovat to, co její vlastní próza tvrdila; a STOP na bázi
+  v `mb-park`, umístěný čitelně v kroku, kde se báze stává relevantní,
+  odpálil AŽ PO tom, co kroky 2–3 před ním už commitovaly — po vzniku
+  přesně toho stavu, který má zabránit.
+- **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej VOLAJÍCÍHO
+  a zjisti, co s ní udělá** — zvol tu z obou konečných cest (výjimka vs.
+  degradovaný provoz), po které zůstane VÍC ochrany. Náprava (remedy), která
+  končí commitem, prověř po celé cestě dál — lze ji pushnout, přenést na
+  větev, která ji převezme, kdo ji později vyzdvihne? Když je odpověď „ne"
+  na všechny tři, náprava práci uvězní; tvar je „nejdřív vytvoř větev, pak
+  commituj", protože nekomitovaná změna jde s `switch -c` samo.
+  Proč: `throw` na chybějícím loaderu konfigurace by v degradované cestě
+  volajícího (syncu, který nenulový kód tlumí na varování) nechal
+  repozitář BEZ hooku a s nechráněným `develop` — méně ochrany než vestavěný
+  fallback samotného hooku; a náprava „commituj leftovers na téhle větvi"
+  na bázi produkovala nepushnutelný, nepřenositelný a nezaparkovatelný
+  commit.
+- **Hodnotu z konfigurace, která už nese svůj prefix** (`baseRef` =
+  `origin/develop`), **nikdy neprefixuj podruhé** v dokumentaci ani
+  v příkazu — u KAŽDÉ takové hodnoty se nejdřív podívej na její default
+  v loaderu a příkaz vyzkoušej s reálnou hodnotou z repa, ne se zástupným
+  symbolem. Zavedeš-li placeholder užívaný na READ místech i na PUSH místě,
+  sweepuj OBĚ špatné hláskování zvlášť (`origin/<placeholder>` a
+  `HEAD:<placeholder>`) — nejde o jednu chybu formulovanou dvakrát.
+  Proč: `git rev-list --count HEAD..origin/<baseRef>` skončil `fatal:
+  ambiguous argument 'HEAD..origin/origin/ums-memory-bank'`; a 25 výskytů
+  placeholderu ve dvou dokumentech se rozpadlo na dva nezávislé defekty —
+  doublovaný prefix na čtecích místech a `HEAD:<baseRef>` na jediném push
+  místě (vytvoří vzdálenou větev `origin/develop`, kterou `protectedBranches`
+  nezachytí).
+- **Rozšíření skillu o schopnost, kvůli které ho má někdo nově VOLAT, uprav
+  ve STEJNÉM commitu i `description` ve frontmatteru** — jazykem otázky,
+  kterou uživatel položí, ne jménem interní sekce těla; triggering řídí
+  výhradně `description`. Tvrzení „(read-only)"/„nic tu nefetchuje" o volání
+  JINÉHO skillu nebo skriptu je tvrzení K OVĚŘENÍ, ne premisa — otevři ten
+  skript a najdi konkrétní příkazy, zvlášť `fetch`, který se nepromítne do
+  `git status`.
+  Proč: `mb-state` dostal celou vrstvu způsobilosti workspace, ale
+  `description` dál slibovala jen starý rozsah — na otázku „je tenhle
+  workspace v pořádku" by se skill nevyvolal; a `doc-index.ps1`, volaný jako
+  „(read-only)", ve skutečnosti pouštěl `git fetch --prune origin`, pokud
+  nedostal `-NoFetch`.
+- **Když detektor musí vybrat jednu větev/hodnotu z několika rovnocenných
+  long-lived kandidátů, přečti DVA nezávislé signály (ne jeden)** a nesouhlas
+  mezi nimi řeš OTÁZKOU na uživatele, ne pravidlem pro tichý tie-break.
+  Signál odvozený z checkoutnuté PRACOVNÍ větve (jejíž upstream je ona sama)
+  zahoď.
+  Proč: `symbolic-ref refs/remotes/origin/HEAD` samotný by ve forku, který
+  nese upstream default branch jako read-only zrcadlo, napsal `origin/main`
+  neopotřebovaně — druhý signál (`@{upstream}` dlouhožijící větve) dal
+  `origin/ums-memory-bank`, shodné se symrefem v monorepu.
 
 ## Psaní plánů, návrhů a commitů
 

@@ -38,7 +38,7 @@ Historie: vrstva v5 je archivovaná v tagu `archive/mb-integrace-v5-era`, větev
 |---|---|
 | [`skills/`](../skills/) | Vendorovatelný upstream skill pack (14 skillů). Na této větvi se needituje. |
 | [`ums/`](../ums/) | UMS vrstva — zrcadlo živé kopie z monorepa, jediné místo pro změny na této větvi. |
-| [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v2.3, manifest, vendor pin, overlay fragmenty. |
+| [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v2.6, manifest, vendor pin, overlay fragmenty. |
 | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | Utility skilly Memory Bank (14 aktivních + 2 deprecated stuby). |
 | [`memory-bank/`](.) | Memory Bank tohoto repozitáře — orchestrační kořen (`CTX_DIR`) i cílová MB (`PLAN_MB`). |
 | `.claude/`, `.agents/` | Netrackovaná **nasazení** vrstvy pro práci v tomto repu (viz [architecture.md](architecture.md), obnova v [playbook.md](playbook.md)). |
@@ -117,11 +117,14 @@ a `kilocode`; parametry, směry a to, co se kam záměrně nenasazuje, popisuje
   `mb-plan` a `mb-act` jsou jen přesměrovací stuby.
 - **Nepoužívá git worktrees.** V monorepu UMS jsou zakázané (velikost repa);
   izolace se řeší větví na místě.
-- **Nikdy netlačí do sdílené větve bez souhlasu.** `develop`, `main`, `master`
-  a `release/*` agent nepushuje nikdy — připraví příkaz a čeká na uživatele
-  (lidská výjimka `UMS_ALLOW_SHARED_PUSH=1`). Vlastní tiketovou větev agent
-  pushuje sám, ale vždy ohlásí branch a commity; force push je zakázaný vždy.
-  Vynucuje to git `pre-push` hook, ne `permissions.deny`.
+- **Nikdy netlačí do sdílené větve bez souhlasu.** Chráněné větve (v tomto
+  repu `ums-memory-bank`, `main`, `master`, `develop`, `release/*`,
+  `Branches/*` — konfigurovatelné v `ums-repo.json`, jinak vestavěný fallback
+  `develop`/`main`/`master`/`release/*`) agent nepushuje nikdy — připraví
+  příkaz a čeká na uživatele (lidská výjimka `UMS_ALLOW_SHARED_PUSH=1`).
+  Vlastní tiketovou větev agent pushuje sám po každém commitu, ale vždy
+  ohlásí branch a commity; force push je zakázaný vždy. Vynucuje to git
+  `pre-push` hook, ne `permissions.deny`.
 
 ## Vztah k monorepu UMS
 
@@ -136,6 +139,6 @@ druhá **produkt, na kterém se vrstva používá**.
 
 ## Stav
 
-Vrstva je v provozu (kontrakt v2.3, vendor pin upstream v6.2.0). Práce na této
+Vrstva je v provozu (kontrakt v2.6, vendor pin upstream v6.2.0). Práce na této
 větvi má přes 100 commitů nad `main`; poslední dokončené položky jsou v
 [proposals/completed/](proposals/completed/).

@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.3, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.6, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -97,9 +97,11 @@ ukotvený na konec souboru. Mění tři body upstream checklistu:
   návrhu.
 - **Bod 6 (Write design doc)** přesměruje uložení z upstream cesty
   `docs/superpowers/specs/` na `<PLAN_MB>/proposals/active/design_<slug>.md`
-  (česky, s hlavičkou dle kontraktu) a vyžaduje větev na místě místo worktree;
-  po commitu návrhu následuje publikace vlastní tiketové větve (publikační bod
-  1, sekce 3).
+  (česky, s hlavičkou dle kontraktu) a vyžaduje větev na místě místo worktree
+  (`git switch -c <TIKET>-<slug> <baseRef>` po `git fetch origin` — tiketový
+  workspace nemá lokální bázi); po commitu návrhu ho agent pushuje —
+  publikace vlastní větve po každém commitu je obecné pravidlo, ne jen tento
+  jeden krok (sekce 3).
 - **Architect Review Gate** mezi body 8 a 9: s navázaným tiketem se VŽDY nabídne
   design review architektem. Přijetí znamená konec workflow v tomto sezení —
   pokračuje se až režimem resume.
@@ -122,32 +124,52 @@ na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
 - **kandidáti playbooku** — report každého implementátora končí sekcí
   `## Playbook candidates` (povinná trojice polí `Tried`/`Happened`/`Procedure`,
   volitelně `Target MB`/`Corrects`); řídicí sezení potvrzené položky beze
-  změny kopíruje do `<MB_ROOT>/.superpowers/playbook-candidates.md`, odkud je
-  na konci větve čte harvestová brána (Overlay 3),
-- **publikace** — před dispatchem prvního tasku se publikuje vlastní větev
-  s commitnutým plánem (publikační bod 2, sekce 3), vedle baseline
-  build/test kontroly.
+  změny kopíruje do `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md`
+  (jeden soubor na slug aktuální práce), odkud je na konci větve čte
+  harvestová brána (Overlay 3); `mb-park` soubor při odkládání práce
+  commitne (`git add -f`) — od té chvíle je to živý zaparkovaný důkaz, který
+  se jen doplňuje, ne přepisuje, a maže ho až harvest,
+- **base sync** — báze se mergne do tiketové větve na hranicích fází, nikdy
+  uprostřed tasku: povinně před dispatchem prvního tasku (`git fetch origin`
+  + `merge <baseRef>`, s posouzením průniku a odstupňovanou verifikací),
+- **publikace** — agent pushuje vlastní větev po každém commitu (obecné
+  pravidlo, sekce 3); před dispatchem prvního tasku je to commit s plánem,
+  vedle povinné baseline build/test kontroly.
 
 ### Overlay 3 — `finishing-a-development-branch`
 
 Fragment [`finishing-a-development-branch.overlay.md`](../ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md),
 vložený **před** řádek `## Step 5: Execute Choice` — jediný fragment s
 kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává krok
-4.5:
+4.5 a přepisuje variantu 1:
 
 - u všech tří variant (merge / PR / ponechat) nejprve `mb-harvest`, pak commit
-  MB změn, teprve potom vlastní varianta,
-- u varianty 1 se místo upstream `git pull` nabídne fetch + fast-forward
-  lokálního `develop`; merge je `--no-ff`,
-- po zeleném merge varianty 1 se nabídne publikace `develop` na `origin`
-  (příkaz s lidskou výjimkou `UMS_ALLOW_SHARED_PUSH=1`, agent nikdy nepushuje
-  sdílenou větev sám ani si výjimku nenastavuje — sekce 3); dokud `develop`
-  není publikovaný, finalizace `mb-jira-update` se zastaví na vlastní bráně
-  dosažitelnosti a tiket nepřejde do „Test",
-- po úspěšné variantě 1 s tiketem `mb-jira-update` ve finalizačním režimu
-  (tiket přechází přímo do „Test", ruší se Flagged),
-- discard cesta neharvestuje: pár jde do `proposals/abandoned/` a `context.md`
-  se resetuje.
+  MB změn a push tiketové větve, teprve potom vlastní varianta,
+- **varianta 1 („Merge back to `<base-branch>` locally") se nahrazuje
+  integrací FF pushem tiketové větve na `<baseRef>`** — žádný lokální
+  `git checkout <base-branch>`, `git pull`, lokální merge ani `git branch -d`;
+  tiketový workspace nemá lokální bázi, a i kdyby existovala, nemergne se.
+  Sekvence: base sync na této hranici fáze (`git fetch origin` + `merge
+  <baseRef>`) PŘED harvestem → harvest, commit a push → znovu `fetch` +
+  `merge <baseRef>` (báze se mohla mezitím pohnout) → zelená verifikace na
+  slouženém stromu → agent připraví lidský příkaz s výčtem odchozích commitů
+  (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`, refspecový
+  tvar, protože integrace pushuje tiketovou větev na bázový ref) → uživatel
+  ho spustí → agent ověří dosažitelnost **z báze**
+  (`git merge-base --is-ancestor <sha> <baseRef>`, ne `git branch -r
+  --contains`, který by nahlásil ticketovou větev, kam už publikační pravidlo
+  commit pushlo, a míjel by tak právě stav, který krok ověřuje),
+- push zamítnutý jako non-fast-forward = báze se pohnula mezitím, opakuje se
+  od fetchi; **strop dvě kola**, potom STOP a report uživateli,
+- po ověřeném FF pushu do báze, s navázaným tiketem, `mb-jira-update` ve
+  finalizačním režimu (tiket přechází přímo do „Test", ruší se Flagged);
+  dokud FF push neproběhne, finalizace se zastaví na vlastní bráně
+  dosažitelnosti,
+- discard cesta neharvestuje: oba soubory páru jdou do `proposals/abandoned/`,
+  `context.md` se resetuje, tento pohyb se commitne a pushne na tiketové
+  větvi (stejně jako každý jiný commit) a teprve pak se lokální větev smaže —
+  `git switch --detach <baseRef>` (nemá se kam vrátit, žádná lokální báze) a
+  `git branch -d`; vzdálená větev se nikdy nemaže.
 
 ### Co Superpowers vlastní bez zásahu UMS
 
@@ -162,19 +184,24 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.3, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.6, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
 
 [`mb-doc-index`](../ums/.claude/skills/mb-doc-index/) (sourozenec
 `mb-epic-graph`, čistě read-only) indexuje dokumenty napříč větvemi na
-`origin`: jeden traversal historie vzdálených větví
-([`doc-index.ps1`](../ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1),
-`git log --remotes=origin`), omezený cestou, časem (`-SinceDays`) i bází
-(`-BaseRef`), sloučený s lokálním working tree (pseudo-větev `local`, jeden
-`git ls-files --cached --others --exclude-standard`, bez rekurzivního
-průchodu adresářů) a s obsahem báze (pseudo-větev `base`) do jednoho indexu.
+`origin`: jedno čtení `for-each-ref` vybere kandidátní větve podle **stáří
+jejich tipu** (`-SinceDays`, ne podle data jednotlivých commitů), survivory
+prochází traversal beze časového omezení
+([`doc-index.ps1`](../ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1);
+jména refů se do `git log` předávají přes `--stdin`, protože stovky refů
+překročí limit příkazové řádky Windows), omezený i cestou a bází
+(`-BaseRef`); deklarovaný záměr (`-Jira`/`-Slug`) enumeruje úplně bez
+časového okna. Výsledek se slučuje s lokálním working tree (pseudo-větev
+`local`, jeden `git ls-files --cached --others --exclude-standard`, bez
+rekurzivního průchodu adresářů) a s obsahem báze (pseudo-větev `base`) do
+jednoho indexu. Změřený výkon je v [tech.md](tech.md).
 Výstup je česká tabulka pro člověka plus `-Json <path>` pro strojové
 konzumenty (Target-MB discovery, `mb-epic-graph -IndexFile`,
 `mb-epic-elaboration` bootstrap). Nálezy jsou rozhodovací kandidáti pro
@@ -190,8 +217,10 @@ Převzetí draftu z cizí větve je **kopie blobu** (`git show <ref>:<path> >
 <path>`), nikdy cherry-pick — elaborační okno se zavírá jedním commitem
 nesoucím ledger i všechny proposaly okna, takže cherry-pick by přitáhl cizí
 ledger. Převzatý dokument nese v hlavičce `**Převzato z:** <branch>@<sha>`.
-Tiketová větev se zakládá vždy z **aktuální** báze (fetch + fast-forward),
-jinak nevidí ani mergnuté plánování. Obživlá fronta (originál draftu zůstane
+Tiketová větev se zakládá vždy explicitním počátečním bodem `<baseRef>`
+(`git switch -c <TIKET>-<slug> <baseRef>` po `git fetch origin`) — lokální
+báze se v tiketovém workspace nepoužívá ani neaktualizuje, jinak by větev
+neviděla ani mergnuté plánování. Obživlá fronta (originál draftu zůstane
 v `next/` na zdrojové větvi a znovu se objeví v bázi po jejím mergi) je
 detekovaná (`mb-doc-index`, `mb-epic-graph -Check`), ne bráněná — úklid je
 jeden `git rm`.
@@ -200,17 +229,27 @@ jeden `git rm`.
 
 **Žádná reference bez dosažitelnosti:** kdykoli vrstva pojmenuje git objekt
 mimo clon (odkaz v popisu/komentáři tiketu, tabulka vln, předávací komentář,
-ledger), pinovaný commit musí být v tu chvíli dosažitelný na `origin`
-(`git fetch origin` + `git branch -r --contains <sha>`); nedosažitelnost je
-fail-closed stop, ne varování. Čtyři publikační body: po commitu návrhu
-(brainstorming), po commitu plánu před dispatchem prvního tasku (SDD), při
-uzávěrce elaboračního okna před zápisem odkazů do Jiry, před každým
-handoffem (design review je referenční implementace).
+ledger), pinovaný commit musí být v tu chvíli dosažitelný na `origin`;
+nedosažitelnost je fail-closed stop, ne varování. Pravidlo publikace je
+kontinuální, ne bodové: **agent pushuje vlastní tiketovou větev po každém
+commitu** a vždy ohlásí větev a odchozí commity — commit, který nejde na
+`origin`, vidí jen tento workspace. Sedm míst kontraktu (po commitu návrhu,
+po commitu plánu před prvním dispatchem, po commitu implementátora za
+zelený task, po mergi báze do tiketové větve, při uzávěrce elaboračního
+okna, před každým handoffem, po harvestu) jsou jen významné případy téhož
+pravidla, ne úplný výčet.
+
+Běžné ověření dosažitelnosti je `git fetch origin` + `git branch -r
+--contains <sha>` (prázdný výsledek = nedosažitelné). **Integrace je
+výjimkou**: publikační pravidlo commit už pushlo na tiketovou větev, takže
+by `--contains` nahlásil dosažitelnost i ve chvíli, kdy se commit do báze
+ještě nedostal — proto se dosažitelnost při integraci ověřuje **z báze**:
+`git merge-base --is-ancestor <sha> <baseRef>`.
 
 | Úroveň | Pravidlo |
 |---|---|
-| Vlastní tiketová větev (nechráněná) | Agent pushuje sám a vždy ohlásí větev a odchozí commity — publikace vlastní větve je oznámení, ne otázka k rozhodnutí. Force push zakázán. |
-| Sdílené větve (`develop`, `main`, `master`, `release/*`) | Agent nepushuje nikdy. Připraví přesný příkaz s výčtem commitů; uživatel ho schválí nebo spustí sám (`! UMS_ALLOW_SHARED_PUSH=1 git push origin develop`). Agent poté znovu ověří dosažitelnost. |
+| Vlastní tiketová větev (nechráněná) | Agent pushuje sám po každém commitu a vždy ohlásí větev a odchozí commity — publikace vlastní větve je oznámení, ne otázka k rozhodnutí. Force push zakázán. |
+| Sdílené větve (efektivní seznam je `protectedBranches` z `ums-repo.json`, vestavěný fallback `develop`, `main`, `master`, `release/*`) | Agent nepushuje nikdy. Připraví přesný příkaz s výčtem commitů; uživatel ho schválí nebo spustí sám — refspecový tvar, protože integrace pushuje tiketovou větev na bázový ref: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` (`<baseBranch>` je `baseRef` bez remote prefixu). Agent poté znovu ověří dosažitelnost. |
 
 `UMS_ALLOW_SHARED_PUSH=1` je lidská úniková cesta: git hook nepozná člověka
 od agenta, takže bez explicitní výjimky by pravidlo o sdílených větvích bylo
@@ -224,15 +263,22 @@ Skutečnou hranicí je git `pre-push` hook
 ([`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push), POSIX `sh`,
 bez přípony) — git mu předá už rozparsované čtveřice `<local-ref> <local-sha>
 <remote-ref> <remote-sha>`, takže neexistuje shellové parsování k obejití.
-Zamítá: chráněný cílový ref (s výjimkou `UMS_ALLOW_SHARED_PUSH=1`), mazání
-větve a non-fast-forward (force) push; scope je `refs/heads/*`, tagy
-procházejí vždy. `--no-verify` ho obchází a `core.hooksPath` ho může
-přesměrovat jinam (relativní hodnota per-worktree) — proto ho instaluje
-per-clone [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1)
-(cíl řeší přes `git rev-parse --git-path hooks/pre-push`, tedy správně i pro
-linked worktree a `core.hooksPath`; dvoukolovým sebetestem ověřuje, že
-nainstalovaný hook skutečně zamítá i propouští, ne jen jedno z toho), volané
-i ze [`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) při `-Scope
+Chráněné patterny čte z vygenerovaného textového seznamu (jeden glob na
+řádek, protože POSIX `sh` neumí JSON) — zdrojem je `protectedBranches`
+z [`ums-repo.json`](ums-repo.json); bez konfigurace nebo seznamu spadá na
+vestavěnou čtveřici `develop`, `main`, `master`, `release/*`, tedy vždy
+k víc ochraně, nikdy k méně (generování a chybové stavy jsou v
+[tech.md](tech.md)). Zamítá: chráněný cílový ref (s výjimkou
+`UMS_ALLOW_SHARED_PUSH=1`), mazání větve a non-fast-forward (force) push;
+scope je `refs/heads/*`, tagy procházejí vždy. `--no-verify` ho obchází a
+`core.hooksPath` ho může přesměrovat jinam (relativní hodnota per-worktree) —
+proto ho instaluje per-clone
+[`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) (cíl
+řeší přes `git rev-parse --git-path hooks/pre-push`, tedy správně i pro
+linked worktree a `core.hooksPath`; vícekolovým sebetestem ověřuje, že
+nainstalovaný hook skutečně zamítá i propouští, ne jen jedno z toho, a že
+skutečně čte vygenerovaný seznam, ne jen vestavěný fallback), volané i ze
+[`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) při `-Scope
 Monorepo` pro libovolného `-Agent`.
 
 Vedle něj běží `guard-git-push.mjs` jako PreToolUse hook — **demotovaný**
@@ -243,16 +289,16 @@ tvary pushe do chráněné větve. Co bezpečně rozparsuje jako push do chrán�
 větve nebo `--no-verify`, zamítne hned a česky; čemu nerozumí, propustí —
 skutečným backstopem zůstává ochrana větví na serveru.
 
-Zapojení do zbytku vrstvy: `mb-jira-update` §6b ověřuje dosažitelnost před
-zápisem odkazu do Jiry a §10 (finalizační režim) před přechodem tiketu do
-„Testu"; overlay `finishing-a-development-branch` nabízí publikaci `develop`
-po Option 1 (výše); overlay `subagent-driven-development` publikuje plán
-před prvním dispatchem; `mb-architect-review` krok 4 (handoff push) odkazuje
-na tento invariant místo vlastního pravidla.
+Zapojení do zbytku vrstvy: `mb-jira-update` finalizace se spouští přímo
+ověřeným FF pushem do báze; overlay `finishing-a-development-branch`
+nahrazuje Option 1 integrací FF pushem (výše) místo publikace lokálního
+`develop`; overlay `subagent-driven-development` pushuje po každém zeleném
+tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
+(handoff push) odkazuje na tento invariant místo vlastního pravidla.
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.3](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.6](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -289,12 +335,19 @@ harvest neprochází automatickým current-state průchodem, protože jeho obsah
 nejde ověřit proti kódu. `mb-sync` navrhuje opravu hned v okamžiku nálezu
 driftu; `mb-harvest` sbírá kandidáty do jedné brány na konci větve — obě cesty
 jsou legitimní, žádná není drift k narovnání vůči druhé. Obě čerpají z
-`<MB_ROOT>/.superpowers/playbook-candidates.md` (git-ignored scratch,
+`<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — jeden soubor na
+slug aktuální práce (git-ignored scratch,
 anglicky), do kterého implementátorské subagenty SDD hlásí zkušenosti v sekci
 reportu `## Playbook candidates` (povinná pole `Tried`/`Happened`/`Procedure`,
 volitelně `Target MB`/`Corrects`) a řídicí sezení je beze změny kopíruje.
-Výjimku má jen první `playbook.md`, který `mb-init` napíše z detekovaných
-build/test příkazů — ten schválení nepotřebuje, další zápisy ano.
+Soubor cizího slugu se nikdy nepřepisuje ani nemaže. Odložení práce
+(`mb-park`) soubor aktuálního slugu commitne (`git add -f`, jmenovaná
+výjimka z git-ignore) — od té chvíle je to živý zaparkovaný důkaz: další
+práce na tomtéž slugu do něj jen přidává, přepsat ho může jen harvest po
+zápisu do `playbook.md`. Netrackovaný soubor cizí nebo dokončené práce naopak
+smí být přepsán, protože v něm nic živého nezůstává. Výjimku má jen první
+`playbook.md`, který `mb-init` napíše z detekovaných build/test příkazů — ten
+schválení nepotřebuje, další zápisy ano.
 
 **Legacy tvar zůstává trvale platný.** Starší `product.md` vedle `brief.md`,
 nebo `tasks.md` místo `playbook.md`, nikdo nemusí migrovat. Skill
@@ -306,9 +359,13 @@ hlásí `KONFLIKT PLAYBOOKU` a migraci pro ně přeskočí, rozhodnutí necháv�
 uživateli.
 
 **Pracovní položka** = pár `design_<slug>.md` (návrh, píše brainstorming) +
-`plan_<slug>.md` (plán, píše writing-plans) v `proposals/active/`. Jedna aktivní
-položka na repozitář; druhý aktivní slug je fail-closed stop. Slug začíná kódem
-tiketu, když je znám (`ums_3361_design_review_workflow`).
+`plan_<slug>.md` (plán, píše writing-plans) v `proposals/active/`. Jedna
+aktivní položka **na větev**, ne na repozitář — každá větev nese svůj pin ve
+vlastním `context.md`. Fail-closed stop nastává jen když je druhý aktivní
+slug na TÉTO větvi neobnovitelný z `origin` (necommitnuté změny nebo
+nepushnuté commity); zaparkovaná práce (`mb-park`) na jiné lokální větvi je
+normální provoz, jen se ohlásí. Slug začíná kódem tiketu, když je znám
+(`ums_3361_design_review_workflow`).
 
 **Archivační asymetrie:** dokončení uchová jen návrh v `proposals/completed/`
 a plán **smaže** (jeho kroky jsou vyčerpané, výsledek nese kód, git historie
@@ -363,16 +420,18 @@ flowchart LR
     NEXT -->|aktivace, i z cizi vetve| BS
     ST["mb-state"] -.->|read-only report| IDLE
     ST -.->|cizi vetve, kolize| DI
+    ST -.->|navrhne pri zbytcich v ceste| PK["mb-park"]
     MIG["mb-migrate-docs"] -->|slouceni product do brief, tasks na playbook| DOCS["brief.md / playbook.md cilove MB"]
     MIG -->|nabidne| GC
 ```
 
 | Skill | Role | Volán odkud |
 |---|---|---|
-| `mb-init` | Vytvoří strukturu `memory-bank/` — režim orchestračního kořene nebo projektové MB. Nikdy netvoří `context.md`. | ručně |
-| `mb-state` | Read-only stav: pin, slug, úplnost páru, SDD ledger, větev, staleness. | ručně |
+| `mb-init` | Vytvoří strukturu `memory-bank/` — režim orchestračního kořene nebo projektové MB, včetně `ums-repo.json` detekovaného z topologie repozitáře (první verze bez schválení, stejná výjimka jako u prvního `playbook.md`). Nikdy netvoří `context.md`. | ručně |
+| `mb-state` | Read-only orákulum stavu i způsobilosti workspace: pin, slug, úplnost páru, SDD ledger, větev, staleness, `pre-push` hook a `ums-repo.json`, zbytky ve workspace (v cestě / jen přítomné), zaparkovaná práce na jiných lokálních větvích, vzdálenost od báze, invariant „báze nesmí nést ACTIVE pin". | ručně |
 | `mb-harvest` | Složí znalost do dotčených MB (current-state faktů i playbookové brány), archivuje návrh, smaže plán, resetuje na IDLE. Zákaz git operací — commit vlastní volající. | Harvest Gate ve finishing, nebo ručně |
-| `mb-abort` | Opuštění práce: pár do `abandoned/`, reset na IDLE. Kód nevrací. | ručně |
+| `mb-abort` | Opuštění práce: oba soubory páru do `abandoned/`, reset `context.md` na IDLE, commit a push tohoto pohybu na tiketové větvi. Mazání lokální větve (detach na `<baseRef>` + smazání) dělá až finishing Discard, ne `mb-abort` samotné. | ručně |
+| `mb-park` | Odloží aktivní práci beze ztráty: commit rozpracovaného, push tiketové větve, commit kandidátů playbooku aktuálního slugu (`git add -f`), ohlášení zbytků. `context.md` zůstává ACTIVE — pár zůstává v `active/`. Třetí konec životního cyklu vedle dokončení a opuštění. | ručně, nebo z entry gate při zbytcích v cestě |
 | `mb-architect-review` | Design review živým architektem přes tiket: request / respond / resume, branch sync dle tiketu, publikace vlastní větve dle Publication Contract (ohlášená, ne na souhlas). | Architect Review Gate, nebo ručně |
 | `mb-jira-update` | České shrnutí implementace do Jira; brána dosažitelnosti (§6b) před zápisem odkazu; finalizační režim posune tiket do „Test" jen po publikaci merge commitu. | z `mb-harvest`, z finishing, nebo ručně |
 | `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest`, z `mb-migrate-docs` |

@@ -14,17 +14,44 @@ reprodukovaný, žádný neblokuje provoz.
    je obhajitelné, ale [design_publikace_a_viditelnost.md](proposals/completed/design_publikace_a_viditelnost.md)
    i komentář ve skriptu tvrdí opak („vlastní už pushnutá větev nekoliduje sama
    se sebou"). Sjednotit chování s textem, nebo text s chováním.
-2. **Úryvek v kontraktu u kroku 8 vynechává `-BaseRef`**, takže by v tomto forku
-   použil výchozí `origin/develop` místo `origin/ums-memory-bank`.
-3. **Úniková proměnná `UMS_ALLOW_SHARED_PUSH` v `guard-git-push.mjs` zkratuje celý
+2. **Úniková proměnná `UMS_ALLOW_SHARED_PUSH` v `guard-git-push.mjs` zkratuje celý
    příkaz**, tedy zvedá i kontrolu wildcard refspecu u `fetch`. Na fail-open
    vrstvě to není díra v záruce, ale je to širší povolení, než pravidlo popisuje.
-4. **Věta „each artifact is wholly one language"** v jazykové sekci kontraktu je
+3. **Věta „each artifact is wholly one language"** v jazykové sekci kontraktu je
    doslova nepravdivá pro soubory, které míchají anglické komentáře s českým
    výstupem. Pravidlo míří na výstup, ne na soubory.
-5. **JIRA-less cestě deklarovaný záměr nepomůže** — bez tiketu a bez slugu nemá
+4. **JIRA-less cestě deklarovaný záměr nepomůže** — bez tiketu a bez slugu nemá
    kolizní kontrola co porovnávat, takže dvě sezení bez tiketu se o sobě
    nedozvědí.
+5. **`doc-index.ps1` v měřítku monorepa nesplňuje návrhový rozpočet.** Na
+   `d:\_datasys\ums` (219 remote refs, `.git` 4,1 GB) trvá běžný běh 32–35 s a
+   běh s deklarovaným záměrem (`-Jira`/`-Slug`) 57 s, proti 2,0 s v tomto
+   forku — rozpočet 15 s tedy nesplněn. Hotspot zůstává touto pracovní
+   položkou nedotčen: `git branch -r --contains` jednou na commit plus
+   `cat-file -e` a `show` jednou na dvojici (větev, cesta); samotné čtení
+   refů stojí jen 0,1 s. Dvoufázový filtr stáří tipu, který tato větev
+   přidala, dělá výběr refů levným — zbylá cena je probírání obsahu po
+   dvojicích. Neřešeno.
+6. **Sdílený blok detekce fáze v pěti skillech se rozchází s kontraktem.**
+   `mb-git-commit`, `mb-git-message`, `mb-jira-update`, `mb-sync` a `mb-scan`
+   nesou stejný zkopírovaný odstavec: čte blok `## Active Work` jako
+   `ACTIVE_WORK`, pokud není prázdný nebo nenese značku IDLE, a výslovně
+   vylučuje slug `Work item` z testu fáze. Test v kontraktu je ale pin v tom
+   bloku, slug je jen jeho polovina — takže blok s prózou, ale bez pinu, čte
+   v těchto pěti skillech ACTIVE_WORK, zatímco všude jinde IDLE. `mb-state`
+   a `mb-park` kontrakt implementují správně. Předchází tuto pracovní
+   položku, je mimo její soupis souborů a je to jedna sdílená formulace
+   použitá pětkrát v pěti neotestovaných tělech skillů. Neřešeno.
+7. **Nasazená vrstva čeká na redeploy.** Kořenové `.claude/` a
+   `.agents/skills/` tohoto repa jsou netrackovaná nasazená kopie a monorepo
+   `d:\_datasys\ums` je samostatná živá kopie — obě jsou po opravě z review
+   za `ums/.claude/`: nasazený `mb-harvest` ještě nese starší tvar
+   `git merge-base <base-branch>`. Nástroj je `pwsh ums/sync-with-monorepo.ps1`.
+   Tři upstream skilly s blokem `<!-- UMS-OVERLAY -->` (`brainstorming`,
+   `subagent-driven-development`, `finishing-a-development-branch`) se navíc
+   nekopírují — generuje je revendor skript v monorepu z overlay fragmentů,
+   které tato větev přepsala, takže jejich vendorované kopie ještě nesou
+   předplánový text overlaye, dokud revendor neproběhne. Neřešeno.
 
 ## Otevřená otázka na člověka
 
@@ -45,6 +72,9 @@ archivovaného návrhu [design_publikace_a_viditelnost.md](proposals/completed/d
 3. **Vrácení z testu** — reopen semantika v kontraktu a protokol návratu.
 4. **Origin jako sdílené médium, dokončení** — normativní název tiketové větve
    a `Base:` pro stacked větve.
-5. **Claim a park** — `mb-claim` a `mb-park` (design review nedrží pin).
+5. **Claim** — `mb-claim` (Jira jako registr vlastnictví). `mb-park` (design
+   review nedrží pin) je dodán —
+   [ums/.claude/skills/mb-park/SKILL.md](../ums/.claude/skills/mb-park/SKILL.md),
+   zapsán v [SKILLS_MANIFEST.md](../ums/.claude/skills/shared/SKILLS_MANIFEST.md).
 6. **Strukturální oprava** — `context.md` mimo kolizní cestu, cestující SDD
    kontext, epická vrstva v kontraktu, mergovatelný dirty-set.
