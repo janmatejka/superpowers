@@ -22,17 +22,19 @@ After the user chooses and BEFORE executing the choice:
   of redirection the document paths get. Do NOT execute the upstream Option 1
   block: no `git checkout <base-branch>`, no `git pull`, no local merge, no
   `git branch -d`. A ticket workspace has no local base branch to merge into; if
-  one exists it is neither updated nor merged, and `<baseRef>` is the only
-  base that counts (`baseRef` from `<CTX_DIR>/ums-repo.json`, contract section
-  "Repository Configuration"). The sequence instead, per the contract's
-  Publication Contract, subsection "Integration":
+  one exists it is neither updated nor merged, and the **effective base** is the
+  only base that counts (contract, "Repository Configuration": the `Báze:` line of
+  `context.md`, else `baseRef` from `<CTX_DIR>/ums-repo.json`; `<baseBranch>` is
+  derived from it by stripping the remote and the single following slash). The
+  sequence instead, per the contract's Publication Contract, subsection
+  "Integration":
   1. BEFORE the harvest, base sync at this phase boundary: `git fetch origin`,
-     then `git merge <baseRef>` on the ticket branch, with the intersection
+     then `git merge <effective base>` on the ticket branch, with the intersection
      assessment and verification of the contract's "Base Sync & Drift Detection"
      section.
   2. Run the harvest above, commit its Memory Bank changes and push the ticket
      branch.
-  3. `git fetch origin` and `git merge <baseRef>` once more — the base may
+  3. `git fetch origin` and `git merge <effective base>` once more — the base may
      have moved while the harvest ran — and push.
   4. Green verification on the merged tree (build and the targeted tests of the
      playbook). Red = STOP and report. The ticket branch is already on `origin`
@@ -45,7 +47,7 @@ After the user chooses and BEFORE executing the choice:
      `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`. The refspec form
      is deliberate: integration pushes the ticket branch onto the base ref.
   6. Re-verify reachability **from the base ref**: `git fetch origin`, then
-     `git merge-base --is-ancestor <sha> <baseRef>` (non-zero exit = the commit is
+     `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the commit is
      NOT on the base). Naming the base is the whole point: steps 2 and 3 already
      pushed this commit to the ticket branch on `origin`, so a bare
      `git branch -r --contains <sha>` reports that ticket branch, comes back
@@ -56,7 +58,7 @@ After the user chooses and BEFORE executing the choice:
      report it in Czech and go back to step 5.
 
   Step 3 is what makes the push a **fast-forward** — the ticket branch is a
-  descendant of `<baseRef>`. The ticket branch left behind on `origin` is
+  descendant of `<effective base>`. The ticket branch left behind on `origin` is
   **not deleted**; deleting a branch through a push stays forbidden, and the
   document index keys by phase, so an integrated ticket no longer counts as
   active work.
@@ -87,8 +89,8 @@ After the user chooses and BEFORE executing the choice:
   2. **commit** that move on the ticket branch (Czech commit message) and **push**
      the branch,
   3. only then delete the LOCAL branch — and since git cannot delete the branch you
-     are standing on, leave it first by checking out `<baseRef>` detached
-     (`git switch --detach <baseRef>`); a ticket workspace has no local base
+     are standing on, leave it first by checking out `<effective base>` detached
+     (`git switch --detach <effective base>`); a ticket workspace has no local base
      branch to return to.
 
   The order is the point, twice over. Deleting the branch before the commit would
