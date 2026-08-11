@@ -290,3 +290,13 @@
   fenced `powershell` blocks that dot-source (as opposed to those that spawn
   `pwsh <script>` as a subprocess, which are a different class and immune).
 
+## Grepovat/Read velký log z Bash tool přes Windows cestu, ne přes /tmp
+- **Tried:** Spuštění celé 16sadové smyčky v Bash tool s `tee /tmp/task7-testrun.log` a následné hledání řádků `passed`/`FAILED:` pomocí nástroje Grep, který potřebuje absolutní cestu.
+- **Happened:** Bash tool výstup nad ~61 KB automaticky zkrátil a uložil celý log do svého vlastního `tool-results` souboru, ne do `/tmp` cesty, kterou jsem zadal; Grep nad `/tmp/task7-testrun.log` by fungoval jen po přepočtu na Windows cestu — `cygpath -w /tmp/task7-testrun.log` vrátil `C:\Users\matejka\AppData\Local\Temp\task7-testrun.log`, a teprve nad touto cestou Grep/Read čtou soubor, který Git Bash zapsal.
+- **Procedure:** Když Bash tool (Git Bash na Windows) výstup přesměruje `tee`/`>` do souboru pod `/tmp/...` a je potřeba ho prohledat nástrojem Grep/Read (které chtějí absolutní Windows cestu), nejdřív zavolej `cygpath -w <posix-cesta>` a použij vrácenou cestu — nespoléhej na to, že zkrácený inline náhled v odpovědi Bash tool obsahuje řádky, které potřebuješ.
+
+## `git status --ignored=matching` jako strojový důkaz „netrackované, ne jen nezařazené"
+- **Tried:** Před vynecháním commitu v kroku 5 jsem chtěl mechanicky, ne odvozením, potvrdit, že `.claude/` a `.agents/skills/` jsou skutečně `.gitignore`-ované, a ne jen náhodou bez `git add`.
+- **Happened:** `git status --short --ignored=matching -- .claude .agents ums` vrátil `!! .claude/` a `!! .agents/skills/` — dvojitý vykřičník je git status kód specificky pro ignorovaný obsah, odlišný od prostého „untracked" (`??`).
+- **Procedure:** Tvrzení „tahle cesta je netrackovaný deployment, commit se jí nedotýká" ověřuj `git status --short --ignored=matching -- <cesta>` a čti kód `!!`, ne jen absenci řádku v prostém `git status` — prostá absence by neodlišila „ignorováno" od „shodou okolností žádná změna v tomto běhu".
+
