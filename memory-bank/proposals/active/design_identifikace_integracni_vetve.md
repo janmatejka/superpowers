@@ -52,7 +52,7 @@ Mimo:
   se dělá jako dvě samostatné práce sekvenčně (první dokončit a sklidit, pak druhá
   cherry-pickem, mergem nebo reimplementací podle povahy změny). Návrh tomu nesmí
   bránit — viz „Dopady", ověření druhého průchodu.
-- **náprava konfigurace v monorepu.** Je to jeden běh `mb-init` a jeden běh
+- **náprava konfigurace v monorepu.** Je to cílený zápis `ums-repo.json` a jeden běh
   instalátoru hooků, ne změna vrstvy; provede se zvlášť.
 - změna klíčů v `ums-repo.json`. Žádný nový klíč nevzniká — kontrakt zakazuje
   zavádět klíč bez pojmenovaného konzumenta a kandidáti báze se odvodí z
@@ -134,8 +134,9 @@ což je přesně stav naměřený výše.
 
 Náprava má **závazné pořadí**:
 
-1. doplnit vzor do `ums-repo.json` (`mb-init` re-detekce, nebo cíleně jeden vzor) —
-   zatím **necommitnuto**,
+1. **cíleně doplnit chybějící vzor** do `ums-repo.json` — jeden řádek v klíči
+   `protectedBranches`, a když soubor neexistuje, minimální soubor s klíči, které jsou
+   v tu chvíli známé; zatím **necommitnuto**,
 2. spustit [install-git-hooks.ps1](../../../ums/.claude/hooks/install-git-hooks.ps1) —
    vygenerovaný `ums-protected-branches` je build produkt konfigurace, ne druhý zdroj
    pravdy, takže bez tohoto kroku se nezmění nic,
@@ -149,6 +150,15 @@ takže commit před vytvořením větve by uvízl na bázi — na sdílené vět
 nepublikuje a odkud ho `switch -c` s explicitním počátečním bodem neodnese.
 Necommitnutá změna naopak se `switch -c` odjede sama; je to tentýž mechanismus, na
 kterém stojí výjimka pro zbytky pojmenované inventurou entry gate.
+
+**Proč cílený zápis, a ne `mb-init`.** Re-detekce celé konfigurace je nepoměrně dražší
+operace než doplnění jednoho vzoru — prochází topologii repozitáře, navrhuje všech pět
+klíčů a nechává si potvrdit celý chráněný seznam. Náprava, kterou tento STOP potřebuje,
+je přitom jednořádková a její správnost stvrzuje krok 3, ne detekce. Minimální soubor
+stačí i tam, kde konfigurace chybí celá: loader degraduje **po jednotlivých klíčích**,
+takže nezapsané klíče prostě zůstanou na vestavěných hodnotách. `mb-init` zůstává
+správnou volbou tam, kde se má konfigurace založit nebo přegenerovat jako celek —
+ne uprostřed zakládání práce.
 
 Když uživatel konfiguraci měnit nechce, zvolí jinou bázi. Třetí cesta neexistuje.
 
