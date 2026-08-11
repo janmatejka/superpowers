@@ -133,17 +133,23 @@ performing one. Reading another branch's state never checks that branch out.
   protected branch):
 
   ```powershell
+  . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
   . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
   . <mb-shared>/scripts/Test-UmsProtectedBranch.ps1
   $base = Get-UmsEffectiveBase (git rev-parse --show-toplevel)
   $prot = Test-UmsProtectedBranch $base.Branch (Get-UmsRepoConfig (git rev-parse --show-toplevel)).ProtectedBranches
   ```
 
-  `<mb-shared>` is this layer's `skills/shared/` directory, the sibling of
-  `mb-state/`. `$base.Ref` is `<effective base>` in the two commands below;
-  `$base.Source` (`context` or `config`) and `$prot.Matched` are what the report's
-  `Báze:` line names as origin and protection — read them here, never guessed from
-  whether a `- **Báze:**` line happens to be visible elsewhere in the report.
+  `Get-UmsRepoConfig.ps1` is dot-sourced explicitly here even though
+  `Get-UmsEffectiveBase.ps1` also loads it internally — do not rely on that
+  transitive load, since `Get-UmsRepoConfig` is called directly on the line
+  below and a reordering or a swapped-out effective-base helper would silently
+  break it. `<mb-shared>` is this layer's `skills/shared/` directory, the
+  sibling of `mb-state/`. `$base.Ref` is `<effective base>` in the two commands
+  below; `$base.Source` (`context` or `config`) and `$prot.Matched` are what the
+  report's `Báze:` line names as origin and protection — read them here, never
+  guessed from whether a `- **Báze:**` line happens to be visible elsewhere in
+  the report.
 - **Distance from the base:**
 
   ```bash
@@ -246,7 +252,7 @@ Review: <žádné | ⏳ čeká na design review u architekta od YYYY-MM-DD>
 Zahájeno: <Started> <(⚠️ starší než 7 dní)>
 Exekuce: [.superpowers/sdd/<plan-basename>/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
-Báze: <effective base> (z context.md | výchozí z ums-repo.json) — chybí <N> commitů <(⚠️ ACTIVE stav na bázi — větev z ní zdědí cizí pin)> <(⛔ není mezi chráněnými větvemi)>
+Báze: <effective base> (z context.md | výchozí z ums-repo.json) — chybí <N> commitů <(⚠️ ACTIVE stav na bázi — větev z ní zdědí cizí pin)> <(⛔ není mezi chráněnými větvemi)> <(⚠️ nevyhodnotitelné vzory v protectedBranches: <výčet>)>
 Zbytky: [žádné | v cestě: <výčet> | pouze přítomné: <výčet>]
 Zaparkováno: <žádné | výčet větev → slug (tiket, datum)>
 Další aktivní proposaly: <žádné | ⚠️ výčet cizích slugů na TÉTO větvi>
@@ -291,7 +297,13 @@ step above, never guessed. `(⛔ není mezi chráněnými větvemi)` is appended
 when `$prot.Matched` is false; per the contract's invariant (Repository
 Configuration, "an integration branch is always a protected branch") this is only
 ever a REPORTED finding here — mb-state does not fail closed on it and performs
-none of the invariant's remedy, which belongs to whoever chose the base.
+none of the invariant's remedy, which belongs to whoever chose the base. A
+fourth, independent clause — `(⚠️ nevyhodnotitelné vzory v protectedBranches:
+<výčet>)` — is appended whenever `$prot.Evaluated` is false, naming
+`$prot.BadPatterns`; per the contract (Repository Configuration) a pattern that
+cannot be evaluated counts as no match and "is reported, because such a
+pattern silently protects nothing there either" — mb-state only names it here,
+it invents no remedy.
 
 Everything under „Další krok" is a suggestion addressed to the **user**. mb-state
 performs none of it: it does not park, does not install the hook, does not sync

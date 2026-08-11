@@ -65,12 +65,20 @@ needs. Whoever parks may switch afterwards, at a phase boundary, on a clean tree
   parked on `develop` either.
 
   ```powershell
+  . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
+  . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
   . <mb-shared>/scripts/Test-UmsProtectedBranch.ps1
-  Test-UmsProtectedBranch (git branch --show-current) (Get-UmsRepoConfig (git rev-parse --show-toplevel)).ProtectedBranches
+  $base = Get-UmsEffectiveBase (git rev-parse --show-toplevel)
+  $prot = Test-UmsProtectedBranch (git branch --show-current) (Get-UmsRepoConfig (git rev-parse --show-toplevel)).ProtectedBranches
   ```
 
   `<mb-shared>` is this layer's `skills/shared/` directory, the sibling of
-  `mb-park/`. **This check belongs HERE, before steps 1–4, and its position is the
+  `mb-park/`. All three scripts are dot-sourced explicitly here — `Test-UmsProtectedBranch.ps1`
+  does not itself load `Get-UmsRepoConfig.ps1`, so calling `Get-UmsRepoConfig`
+  without this line throws `CommandNotFoundException`. `$prot.Matched` true is
+  the STOP; `$base.Ref` is `<effective base>` wherever this skill names it later
+  (step 4, the Czech STOP message below) — resolved here once, not re-derived.
+  **This check belongs HERE, before steps 1–4, and its position is the
   point:** steps 2 and 3 commit, so the same STOP placed at publication would first
   create the very state it exists to prevent — a *committed* ACTIVE pin on a
   protected branch — and then refuse with no way to undo it. Report it with the
@@ -176,17 +184,16 @@ Per the Publication Contract, a commit that is not pushed is work only this
 workspace can see — and parked work whose commits sit locally is not recoverable
 from `origin`, which is the whole promise of parking.
 
-- The current branch is always the actor's OWN, unprotected branch by the time
-  this step runs: step 0's STOP already covers every entry of the effective
-  `protectedBranches`, not only the base, so nothing shared ever reaches here. The
-  agent pushes it and announces the branch together with the outgoing commits
-  (`git log --oneline @{u}..HEAD`, or against `<effective base>` when the branch
-  has no upstream yet — the effective base per the contract's "Repository
-  Configuration" section, resolved the same way as in step 0 above).
-- **A protected branch never reaches this step.** A protected branch arriving
-  here at all means step 0 was skipped, and steps 2 and 3 have already put a
-  committed ACTIVE pin on it: report that as the finding it is instead of
-  pushing.
+- **Push, unless a protected branch got here past a skipped step 0.** By
+  construction the current branch is always the actor's OWN, unprotected branch
+  at this point: step 0's STOP already covers every entry of the effective
+  `protectedBranches`, not only the base, so nothing shared should ever reach
+  this step. A protected branch arriving here anyway means step 0 was skipped,
+  and steps 2 and 3 have already put a committed ACTIVE pin on it — report that
+  as the finding it is, and do NOT push. Otherwise: push it and announce the
+  branch together with the outgoing commits (`git log --oneline @{u}..HEAD`, or
+  against `<effective base>` when the branch has no upstream yet — `$base.Ref`
+  from step 0's resolution above).
 - **Re-verify reachability AFTER the push**, per the contract's Publication
   Contract, subsection "Integration":
 

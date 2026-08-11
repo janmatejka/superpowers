@@ -195,14 +195,12 @@ it and `mb-init`/the next brainstorming recreate it on demand.
 ### 5. Reset context.md (conditional)
 
 **Only if every affected MB update succeeded**, overwrite
-`<CTX_DIR>/context.md` with the IDLE baseline per the contract schema:
-`## Active Work` → `(No active work - IDLE phase)` + keep the `- **Jira:** …`
-line of the finished work item, and — for the same reason, with a sharper edge —
-keep its `- **Báze:** …` line too when it had one: the INTEGRATION that follows
-this harvest still needs it (contract, "`context.md` Schema & Writers"); dropping
-it here would silently send the integration command at the default base instead
-of the one this work item actually targeted. On partial failure, leave
-`context.md` unchanged and report which MBs failed.
+`<CTX_DIR>/context.md` with the IDLE baseline per the contract schema
+(`context.md` Schema & Writers): `## Active Work` →
+`(No active work - IDLE phase)`, keeping the `- **Jira:** …` and
+`- **Báze:** …` lines of the finished work item exactly as that section
+specifies. On partial failure, leave `context.md` unchanged and report which
+MBs failed.
 
 ### 6. Announce (Czech)
 

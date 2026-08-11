@@ -66,9 +66,10 @@ unchanged. Never touch proposals of other Memory Banks.
 ### 4. Reset context.md
 
 Overwrite `<CTX_DIR>/context.md` with the IDLE baseline per the contract
-schema: `## Active Work` → `(No active work - IDLE phase)` + keep the
-`- **Jira:** …` line if it existed. Do not preserve any other section or
-history.
+schema (`context.md` Schema & Writers): `## Active Work` →
+`(No active work - IDLE phase)`, keeping the `- **Jira:** …` and
+`- **Báze:** …` lines of the abandoned work item exactly as that section
+specifies. Do not preserve any other section or history.
 
 ### 4a. Commit and publish the abandon
 
