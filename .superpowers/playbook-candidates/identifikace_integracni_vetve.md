@@ -50,3 +50,37 @@
 - **Tried:** Verified two new suites by their own negativity per the playbook, then characterized which assertions stayed green.
 - **Happened:** In both suites the mutated run did not finish: it aborted on an unguarded index (`@($r.BadPatterns)[0]`, `@($c)[0].Ref`) whose collection the mutation had emptied, raising `IndexOutOfRangeException`/a StrictMode null property access. Six assertions after the abort point in each file never executed, yet were first reported as "regression locks that stayed green". Two further assertions did run and pass, but only because the mutation had collapsed the whole result list to empty — they passed incidentally, not because their own subject held.
 - **Procedure:** Split a negativity run three ways, not two: went red, ran and passed in BOTH runs (regression lock), and NOT EXECUTED (everything after the transcript's abort point). Read the abort line out of the transcript before writing the characterization. And when the mutation empties a collection, an assertion that merely checks something is absent from that collection passes for the wrong reason — say so instead of counting it as a lock.
+
+## Negativita ve třech kategoriích nemusí vždy narazit na abort
+
+- **Tried:** Charakterizace obou mutací (Step 5) do tří kategorií podle
+  instrukce z dispatche (went red / regression lock / not executed),
+  s očekáváním podle nálezu z Tasků 1–2, že mutace pravděpodobně skript
+  přeruší.
+- **Happened:** Ani jedna z obou mutací v tomto tasku neukončila skript
+  předčasně — obě doběhly všech 11 asercí do konce (`1/11 FAILED` a
+  `5/11 FAILED`, ne pád na výjimce). Kategorie „not executed" tedy v
+  tomto tasku zůstala prázdná v obou bězích.
+- **Procedure:** „Not executed" je jedna ze tří platných výsledků, ne
+  povinná — u sady, kde všechny asercie čtou z už naplněných proměnných
+  (žádné pole indexované po mutaci, které by mutace mohla vyprázdnit),
+  je běžné, že sada doběhne celá i po mutaci. Report ať tuto kategorii
+  explicitně uvede jako prázdnou s důvodem („skript nedoběhl na
+  neošetřený index"), místo aby ji vynechal.
+
+## Kaskádové zčervenání za hranicí briefem jmenovaných asercí
+
+- **Tried:** Mutace 2 (odstranění `if (Test-Path …)` větve) s očekáváním
+  podle briefu, že zčervenají „obě asercie o přednosti řádku".
+- **Happened:** Zčervenalo 5 asercí, ne 2 — kromě dvou jmenovaných i
+  `Branch je Ref bez remote...` (kaskáda přes změněné `$e.Ref`) a obě
+  IDLE asercie (IDLE scénář testuje stejnou vlastnost — přednost řádku
+  `Báze` — na jiné fixtuře).
+- **Procedure:** Když brief u negativity jmenuje konkrétní počet/název
+  asercí, které mají zčervenat, ověř PO běhu, jestli mutace nezasáhla
+  i jiné asercie testující STEJNOU vlastnost na jiné fixtuře (zde: IDLE
+  blok opakuje test přednosti `Báze` řádku). Rozdíl proti briefu není
+  chyba implementace ani testu — je to úplnější důkaz, že mutace fakticky
+  zneplatňuje víc, než brief pro stručnost vyjmenoval. Report ať rozdíl
+  explicitně vysvětlí (proč navíc), místo aby buď (a) tvrdil přesnou
+  shodu s briefem, nebo (b) nechal čtenáře hádat, proč čísla nesedí.
