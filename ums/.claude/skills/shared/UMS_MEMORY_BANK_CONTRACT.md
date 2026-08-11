@@ -347,7 +347,7 @@ remote and not a remote-tracking ref: `git push origin HEAD:<baseBranch>`. With
 guard would not catch it, because it strips `refs/heads/` and matches the
 remainder against `protectedBranches`, where `origin/develop` appears nowhere.
 `<baseBranch>` appears at push destinations only; everywhere else the base is
-`baseRef`.
+named in its remote-tracking form.
 
 **A missing file is not an error, and the degradation leans to the safer
 side:** `baseRef` falls back to `origin/develop`; `protectedBranches` falls back
@@ -370,14 +370,24 @@ is derived from it by stripping the remote and the SINGLE following slash. It is
 written only where the base differs from the default, so a repository that always
 integrates into `baseRef` never sees it and behaves exactly as before.
 
+**Binding on the rest of this contract.** Wherever this contract writes `<baseRef>`
+as the base of the CURRENT work item — a merge source, a merge-base, a diff
+endpoint, a `switch -c` start point, a `switch --detach` target, or the
+`<baseBranch>` derivation — the effective base is meant, not necessarily the
+`baseRef` config value. A site that instead needs the config key itself, by name,
+says so.
+
 **Invariant: an integration branch is always a protected branch.** A base that
 matches no pattern in the effective `protectedBranches` is a fail-closed STOP at the
 moment it is chosen — the agent would be free to push into it, which is the whole
 guarantee this layer exists to keep. The remedy is ordered: add the missing pattern
 to `ums-repo.json` (a targeted edit; `mb-init` is for founding or regenerating the
 configuration as a whole, not for one pattern), re-run `install-git-hooks.ps1`
-because the generated list is a build product of the configuration, PROVE with the
-hook's own self-test that this specific branch is now rejected, and only then create
+because the generated list is a build product of the configuration, PROVE it with
+the synthetic-pipe check (Publication Contract) — piping a synthetic ref update
+for THIS branch into the installed hook and confirming the non-zero reject — since
+the installer's own self-test only re-checks its fixed `develop`/ticket-branch pair
+and proves nothing about a newly-added pattern, and only then create
 the ticket branch and commit the configuration change ON it — a commit made before
 the branch exists is stranded on the shared base. Declining the remedy means
 choosing a different base; there is no third path.
@@ -569,10 +579,14 @@ Leftovers split in two:
      available with the confirmation spelled out.
    Either way the decision is still exactly one, and the leftovers still have to be
    resolved: the intent phase's `git switch -c` needs `git status --porcelain` empty
-   and no auto-stash is permitted. Carrying the leftovers to the ticket branch is the
-   single exception to that emptiness, and it is safe only because those leftovers
-   were just enumerated by name in phase 1 and consciously kept — never for content
-   nobody accounted for.
+   and no auto-stash is permitted, with exactly two exceptions. Carrying the
+   leftovers to the ticket branch is the first, and it is safe only because those
+   leftovers were just enumerated by name in phase 1 and consciously kept — never
+   for content nobody accounted for. The `ums-repo.json` edit from the invariant's
+   remedy (Repository Configuration) is the second, and it is safe for a different
+   reason: the edit cannot be committed before the ticket branch exists (a commit
+   made on the base is stranded there), so it rides uncommitted into this same
+   `switch -c` and is committed only once the branch does exist.
 3. **Intent:** a local branch for the ticket exists → resume; the ticket is
    active on a foreign branch → STOP (cross-clone collision check); a
    preliminary design draft waits in `next/` → activation; otherwise a new
@@ -580,7 +594,9 @@ Leftovers split in two:
    **Choosing the base** belongs here, before the branch is created, because
    `git switch -c` needs it as its start point. Offer the candidates — the protected
    branches that exist on `origin`, ordered default first, then the branch the
-   session stands on, then the rest — and let the USER decide; when a Jira ticket is
+   session stands on, then the rest — and let the USER decide; the offer is not a
+   restriction, and a free-form answer outside it is accepted — it is the only way
+   the STOP below can ever fire. When a Jira ticket is
    linked and reachable, a version mentioned in its text is a further ordering
    signal (fail-open: an unreachable Jira skips that signal silently). Write the
    `Báze:` line in phase 4 only when the choice differs from `baseRef`. A base
@@ -595,10 +611,12 @@ guarantee (see Publication Contract).
 
 **Switching branches:** only with `git status --porcelain` empty, **no switching
 through `git stash`, no auto-stash** (the same rule as branch sync in
-`mb-architect-review`), and only at phase boundaries. The single exception is the
-base-IDLE remedy of phase 2 above — leftovers the inventory just named and the user
-chose to keep ride with the branch-creating `switch -c` on purpose, because on the
-base there is nowhere else for them to go.
+`mb-architect-review`), and only at phase boundaries. There are exactly two
+exceptions, both riding the branch-creating `switch -c` on purpose because neither
+has anywhere else to go before the ticket branch exists: the base-IDLE remedy of
+phase 2 above — leftovers the inventory just named and the user chose to keep — and
+the `ums-repo.json` edit from the invariant's remedy (Repository Configuration),
+which cannot be committed on the base it is repairing.
 
 **Park** (the `mb-park` skill) is the third end of a work item's life cycle,
 alongside completion (harvest) and abandonment (`mb-abort`): commit, push,
@@ -869,10 +887,10 @@ the correct continuation is `mb-architect-review` (resume).
 IDLE state: replace the `## Active Work` items with
 `(No active work - IDLE phase)`; keep the `- **Jira:** …` line of the last
 work item if it existed, and keep the `- **Báze:** …` line for the same reason
-with a sharper edge: the harvest resets `context.md` in its step 5, but the
-INTEGRATION that follows still needs `<baseBranch>`. Dropping the line there would
-silently send the integration command at the default base — the one branch the work
-was deliberately not targeting.
+with a sharper edge: the harvest resets `context.md` in its own `context.md`
+reset step, but the INTEGRATION that follows still needs `<baseBranch>`. Dropping
+the line there would silently send the integration command at the default base —
+the one branch the work was deliberately not targeting.
 
 **ACTIVE and IDLE are state NAMES, not tokens in the file.** The word `ACTIVE`
 never appears in `context.md`, so no skill may look for it — a grep for it
@@ -964,7 +982,8 @@ code.
    `<PLAN_MB>/proposals/active/` and matches the slug.
 2. **Affected MBs:** derive from
    `git diff --name-only $(git merge-base <baseRef> HEAD)..HEAD`
-   (`baseRef` per Repository Configuration), mapping each
+   (the effective base per Repository Configuration, not necessarily the
+   `baseRef` config value), mapping each
    changed path to its nearest owning `memory-bank/` directory. Fall back to
    asking the user when the diff is unavailable.
 3. **Harvest style — CURRENT-STATE (MANDATORY):** the current-state documents
@@ -1211,8 +1230,8 @@ Documents are never pushed into a shared branch to make them visible; they are
   `git switch -c <TICKET>-<kebab-slug> <baseRef>` after a `git fetch
   origin` — otherwise it cannot see already-merged planning. The **local** base
   branch is not used in a ticket workspace: if one exists it is neither updated
-  nor merged, and `<baseRef>` is the only base that counts (`baseRef` per
-  Repository Configuration).
+  nor merged, and the effective base is the only base that counts (see Repository
+  Configuration, the effective base).
   **Postcondition of creation:** `proposals/active/` is empty or absent and
   `context.md` is IDLE (state names, tested by the pin — see the `context.md`
   Schema & Writers section). If it is not, STOP, delete the branch and repeat — a
