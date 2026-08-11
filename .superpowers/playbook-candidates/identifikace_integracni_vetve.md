@@ -187,3 +187,59 @@
   sentence explicitly permits an answer outside the offered list — the
   triggering condition and the offer's permissiveness are two separate claims,
   and writing the trigger is not evidence the permission was also written.
+
+## Grep pattern for a numbered-step check must account for plurals
+- **Tried:** Ran the brief's own verification grep,
+  `grep -n "step [0-9]\|item 1 step [0-9]\|kroku [0-9]"`, over
+  `brainstorming.overlay.md` after inserting a new step and renumbering the
+  rest, and treated a clean result as sufficient confirmation.
+- **Happened:** The pattern `step [0-9]` requires "step" immediately followed
+  by a space and a digit. It does not match "steps 4 to 6" or "steps 4 and 6"
+  (the literal characters are `step` + `s` + space + digit — the `s` breaks
+  the match). Both plural forms existed in the file and both referenced
+  step numbers that shifted; a manual re-read of the whole file (not just the
+  grep) found them, and they needed fixing exactly like the singular
+  "step 4" references the grep did catch.
+- **Procedure:** After inserting/removing a step in a numbered sequence, do
+  not rely solely on a `step [0-9]`-shaped grep to find stale cross-references
+  — also grep `steps? [0-9]` (or just `\bstep` case-insensitively without the
+  trailing-digit anchor) to catch plural "steps N and/to M" phrasing, and
+  still re-read the whole file by eye as the playbook already requires.
+
+## A stale step-count word is the same defect class as a stale step-number reference
+- **Tried:** After inserting a new step into a "the six steps below" list and
+  renumbering the following steps, checked only the numbered
+  cross-references (per the brief's explicit instructions) and initially
+  left the intro sentence's word "six" unexamined.
+- **Happened:** The intro sentence "additionally requires the six steps
+  below" became wrong the moment a seventh step was inserted — this is not a
+  numbered ordinal cross-reference (so it doesn't match any "step [0-9]"-style
+  grep), but it is factually stale in exactly the same way, and was only
+  caught by a full re-read for other numeric words, then confirmed absent
+  elsewhere with `grep -n "\bsix\b|\bseven\b"`.
+- **Procedure:** When a checklist/step-list gains or loses an item, grep the
+  containing file for the spelled-out count word (e.g. `\bsix\b`, `\bseven\b`)
+  in addition to numbered ordinals — a list's own "N items" framing sentence
+  is a cross-reference too, just not one a digit-anchored grep will ever
+  find.
+
+## A placeholder in an executable command is not the same as one in a markdown link
+- **Tried:** A review proposed replacing the undefined placeholder in
+  `. <mb-shared>/scripts/Get-UmsBaseCandidates.ps1` with the relative path
+  `../shared/scripts/Get-UmsBaseCandidates.ps1`, citing an existing use of
+  exactly that spelling in `mb-init/SKILL.md`.
+- **Happened:** The cited precedent is a MARKDOWN LINK, resolved by a reader
+  against the file's own directory. The overlay line is a PowerShell command,
+  resolved against the agent's working directory — the repository root — so
+  the same spelling would have pointed outside the repository. Meanwhile the
+  contract itself already runs `pwsh <mb-doc-index>/scripts/doc-index.ps1`,
+  an executable command with an equally undefined skill-directory
+  placeholder, so the placeholder shape was the layer's own style, not an
+  invention.
+- **Procedure:** Before "fixing" a path in an instruction, classify it first:
+  a markdown link resolves against the containing FILE, a shell/PowerShell
+  argument resolves against the agent's WORKING DIRECTORY. A precedent from
+  one class is not evidence for the other. When a skill-directory placeholder
+  must stay, make it resolvable in place with one clause naming the directory
+  it points at — do not promote it to a contract-level definition, which
+  gives the rule a second home.
