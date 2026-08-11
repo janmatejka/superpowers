@@ -1,7 +1,11 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.7
-- Supersedes v2.6 (adds the Epic Backflow section — design-approval check of
+- **Contract-Version:** 2.8
+- Supersedes v2.7 (adds the effective base of a work item — the optional
+  `Báze:` line in `context.md` with a fallback to `baseRef` — the invariant that an
+  integration branch is always a protected branch, and the ordered remedy when it is
+  not).
+- v2.7 superseded v2.6 (adds the Epic Backflow section — design-approval check of
   the epic graph with a queued ledger note and an offered inline elaboration
   window — and the "Design Review" → "Review" status fallback with the
   `[DESIGN REVIEW]` request-comment marker).
@@ -351,6 +355,38 @@ to the built-in list, i.e. to *more* protection, never less; and without
 `projectMarkers` / `sharedRoots` the verification after a base merge is offered
 for **every** non-empty incoming diff rather than for none.
 
+**The effective base of a work item.** A work item may integrate somewhere other
+than the repository's default — a maintenance branch of a release series carries
+the same role as `develop` for the work targeting it. The base of the CURRENT work
+item is therefore read as:
+
+> **Effective base** = the `- **Báze:**` line of the `## Active Work` block in
+> `<CTX_DIR>/context.md`; when that line is absent, `baseRef` from
+> `<CTX_DIR>/ums-repo.json`.
+
+The line carries the same shape and the same rules as `baseRef` — a fully-qualified
+remote-tracking ref, never prefixed with `origin/` a second time, and `<baseBranch>`
+is derived from it by stripping the remote and the SINGLE following slash. It is
+written only where the base differs from the default, so a repository that always
+integrates into `baseRef` never sees it and behaves exactly as before.
+
+**Invariant: an integration branch is always a protected branch.** A base that
+matches no pattern in the effective `protectedBranches` is a fail-closed STOP at the
+moment it is chosen — the agent would be free to push into it, which is the whole
+guarantee this layer exists to keep. The remedy is ordered: add the missing pattern
+to `ums-repo.json` (a targeted edit; `mb-init` is for founding or regenerating the
+configuration as a whole, not for one pattern), re-run `install-git-hooks.ps1`
+because the generated list is a build product of the configuration, PROVE with the
+hook's own self-test that this specific branch is now rejected, and only then create
+the ticket branch and commit the configuration change ON it — a commit made before
+the branch exists is stranded on the shared base. Declining the remedy means
+choosing a different base; there is no third path.
+
+A pattern that cannot be evaluated at all (a malformed glob such as `Maint/[0-9`)
+counts as NO match, which is the same answer the `pre-push` hook's `case` statement
+gives it — and it is reported, because such a pattern silently protects nothing
+there either.
+
 **Every list-valued key accepts a bare string as a single-element list**, and every
 consumer must normalize it the same way: `"protectedBranches": "Branches/*"` means
 exactly `["Branches/*"]`. The rule exists because `protectedBranches` has two
@@ -541,6 +577,15 @@ Leftovers split in two:
    active on a foreign branch → STOP (cross-clone collision check); a
    preliminary design draft waits in `next/` → activation; otherwise a new
    branch.
+   **Choosing the base** belongs here, before the branch is created, because
+   `git switch -c` needs it as its start point. Offer the candidates — the protected
+   branches that exist on `origin`, ordered default first, then the branch the
+   session stands on, then the rest — and let the USER decide; when a Jira ticket is
+   linked and reachable, a version mentioned in its text is a further ordering
+   signal (fail-open: an unreachable Jira skips that signal silently). Write the
+   `Báze:` line in phase 4 only when the choice differs from `baseRef`. A base
+   outside `protectedBranches` triggers the fail-closed STOP and its ordered remedy
+   (Repository Configuration, the invariant).
 4. **Pin write** into `context.md`.
 
 The hook check is the most important agent duty in this model, because the user
@@ -807,9 +852,14 @@ Active state:
 - **Jira:** UMS-XXXX (https://jira.datasys.cz/browse/UMS-XXXX)
 - **Target MB Pin:** <relative path>/memory-bank/
 - **Work item:** <slug>
+- **Báze:** origin/Branches/5.37
 - **Started:** YYYY-MM-DD
 - **Review:** design-review requested YYYY-MM-DD
 ```
+
+The `Báze:` line is OPTIONAL — present only when the work item integrates
+somewhere other than `baseRef` (see Repository Configuration, the effective base).
+Readers MUST tolerate its absence; that is the normal state.
 
 The `Review:` line is OPTIONAL — present only between an architect-review
 request and its resume (see Architect Review Gate). While present, the
@@ -818,7 +868,11 @@ the correct continuation is `mb-architect-review` (resume).
 
 IDLE state: replace the `## Active Work` items with
 `(No active work - IDLE phase)`; keep the `- **Jira:** …` line of the last
-work item if it existed.
+work item if it existed, and keep the `- **Báze:** …` line for the same reason
+with a sharper edge: the harvest resets `context.md` in its step 5, but the
+INTEGRATION that follows still needs `<baseBranch>`. Dropping the line there would
+silently send the integration command at the default base — the one branch the work
+was deliberately not targeting.
 
 **ACTIVE and IDLE are state NAMES, not tokens in the file.** The word `ACTIVE`
 never appears in `context.md`, so no skill may look for it — a grep for it

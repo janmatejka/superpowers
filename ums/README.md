@@ -34,7 +34,7 @@ ums/
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
-        ├── shared/           ← contract v2.7, manifest, VENDORED_FROM.md, overlays/*.overlay.md
+        ├── shared/           ← contract v2.8, manifest, VENDORED_FROM.md, overlays/*.overlay.md
         ├── mb-harvest/ …     ← active mb-* utility skills
         └── mb-plan/ …        ← deprecated v1 stubs (transitional)
 ```
