@@ -300,3 +300,86 @@
 - **Happened:** `git status --short --ignored=matching -- .claude .agents ums` vrátil `!! .claude/` a `!! .agents/skills/` — dvojitý vykřičník je git status kód specificky pro ignorovaný obsah, odlišný od prostého „untracked" (`??`).
 - **Procedure:** Tvrzení „tahle cesta je netrackovaný deployment, commit se jí nedotýká" ověřuj `git status --short --ignored=matching -- <cesta>` a čti kód `!!`, ne jen absenci řádku v prostém `git status` — prostá absence by neodlišila „ignorováno" od „shodou okolností žádná změna v tomto běhu".
 
+## Guarding an index for a `[bool]`-typed assertion helper needs a comparison, not just `Select-Object`
+
+- **Tried:** replacing an unguarded `@($c)[0].IsDefault` with
+  `@($c) | Select-Object -First 1 -ExpandProperty IsDefault`, the same shape that
+  worked for the neighbouring `Assert-Eq` calls.
+- **Happened:** under the prescribed mutation the collection was empty, the empty
+  pipeline bound to `Assert-True`'s `[bool] $cond` parameter as `""`, and the run
+  aborted with `Cannot process argument transformation on parameter 'cond'` — the
+  exact crash the guard existed to remove, merely relocated; every assertion after
+  it still never executed. The `Assert-Eq` guards on the same lines were fine,
+  because their parameters are untyped and accept `$null`.
+- **Procedure:** when the assertion helper's parameter is typed `[bool]`, end the
+  guarded expression in a comparison (`(… | Select-Object -First 1 -ExpandProperty X)
+  -eq $true`), never in the raw pipeline. Untyped parameters need no comparison.
+  Prove each guard by running the suite under the mutation — the two forms look
+  identical in the diff and only one of them holds.
+
+## A mutation usually empties the collection EARLIER than the index a review named
+
+- **Tried:** guarding only the two indexes a review named in
+  `base-candidates.tests.ps1` (lines 53 and 57).
+- **Happened:** the suite's own prescribed mutation (`%(refname:lstrip=3)` →
+  `%(refname:short)`) makes every remote name carry the `origin/` prefix, so NO
+  name matches `protectedBranches` and the candidate list is empty from the very
+  first assertion group — the first crash was seven lines above the named ones, at
+  line 46. Guarding only the named lines would have left the suite unable to report
+  its own failure.
+- **Procedure:** before writing index guards, apply the mutation and read WHICH
+  index fails first. Then guard every index over the collection that mutation
+  affects, not the subset a reviewer sampled — a mutation that empties a collection
+  invalidates all of its indexes at once, and the reviewer saw only the ones their
+  reading path reached.
+
+## Restoring after a mutation when the file already carries the wave's own edits
+
+- **Tried:** the playbook's standard mutation-restore check — restore the file and
+  confirm an empty `git diff` on its path.
+- **Happened:** both mutated scripts already carried an uncommitted docstring
+  rewrite from the same wave, so `git checkout -- <path>` would have thrown that
+  away with the mutation, and an empty `git diff` after restore would have been
+  proof of the WRONG state.
+- **Procedure:** back the file up with `Copy-Item` before mutating and restore with
+  `Move-Item -Force`. Verify with `git diff --numstat` matching the pre-mutation
+  counts (here `9 9` and `13 15`, i.e. docstrings only) AND by grepping the mutated
+  construct back to its original text. The "empty git diff" confirmation only
+  applies when the file was clean before the mutation.
+
+## Write a contract's justification of a manual step as a mechanism, not a verdict
+
+- **Tried:** taking at face value the contract sentence that justified the manual
+  synthetic-pipe check — "the installer's own self-test only re-checks its fixed
+  `develop`/ticket-branch pair and proves nothing about a newly-added pattern".
+- **Happened:** reading `install-git-hooks.ps1` showed a whole third proof run for
+  exactly those patterns (lines 451–514) plus a control run — the verdict was
+  measurably false, while the manual step it justified was still needed for a
+  different, mechanical reason (the run samples `Select-Object -First 1` of the
+  non-builtin patterns and derives the branch name by `-replace '\*', 'x'`).
+- **Procedure:** when a contract justifies a manual step by naming a weakness of an
+  automated one, state the weakness as the MECHANISM (what it samples, what it
+  derives, what it therefore cannot reach) rather than as a verdict ("proves
+  nothing"). A mechanism can be re-checked against the code by anyone and stops
+  matching loudly when the code changes; a verdict just quietly becomes a lie. Same
+  rule for the reviewer: verify such a sentence by opening the script, never by
+  trusting the sentence or the review that quotes it.
+
+## An OPTIONAL state-file line needs BOTH halves of the pattern its preserved sibling uses
+
+- **Tried:** adding an optional `Báze:` line to `context.md` and wiring it into the
+  IDLE reset the way the neighbouring `Jira:` line is wired — preserved across the
+  reset.
+- **Happened:** `Jira:` is preserved AND rewritten unconditionally by the pin write,
+  so it cannot go stale; `Báze:` copied only the preservation half and was written
+  "when the base differs". Nothing ever removed it. Since the integration push
+  carries the IDLE `context.md` onto the base, and every later branch is cut from
+  that base, one work item's maintenance branch would silently become the default
+  for all following work — base sync, harvest diff and the integration command
+  alike.
+- **Procedure:** for every optional line an existing reset step preserves, ask the
+  two questions separately: *what preserves it* and *what rewrites it on EVERY
+  path*. If the second has no answer, the line goes stale exactly where the sibling
+  cannot. Enumerate its writers and readers mechanically first
+  (`grep -rn "<Field>:" ums/.claude/`) — here that found one writer and eight
+  readers, which is what made it obvious the write site was the only place to fix.
