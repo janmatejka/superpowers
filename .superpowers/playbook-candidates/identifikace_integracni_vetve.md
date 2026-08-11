@@ -243,3 +243,50 @@
   must stay, make it resolvable in place with one clause naming the directory
   it points at — do not promote it to a contract-level definition, which
   gives the rule a second home.
+
+## A rule-broadening change can make a sibling section of the SAME skill dead code, not just its own header text
+- **Tried:** Implemented mb-park's brief-mandated Step 2 change (STOP test
+  broadened from "current branch == derived base name" to "current branch
+  matches ANY pattern in the effective `protectedBranches`"), then moved on to
+  the brief's other two named `<baseRef>` sites in the same file.
+- **Happened:** Step 4 (Publication) still contained a bullet for "current
+  branch is in `protectedBranches` without being the base → prepare
+  `UMS_ALLOW_SHARED_PUSH` command", and the reachability re-verify bullet right
+  after it still branched on "own branch vs. shared branch". Both describe a
+  branch state that Step 0's new, broader STOP now intercepts before any
+  commit exists — so by the time execution could ever reach Step 4, the
+  current branch is unconditionally the actor's own unprotected branch. The
+  bullet and the branching became unreachable the moment Step 0 changed, with
+  no `baseRef`/`baseBranch` token anywhere in them to catch with a grep. The
+  same dead branch surfaced a third time in the **successful**-park report
+  template's parenthetical about a shared-branch push command.
+- **Procedure:** When a STOP/gate test in one step of a skill is broadened to
+  cover a strictly larger set of states, re-read every LATER step of the SAME
+  skill (not just other files) for branches/cases that assumed the OLD,
+  narrower set — a case the new gate now intercepts earlier becomes dead code
+  wherever it is still described downstream, including inside report/message
+  templates, and a token-based grep for the changed rule's characteristic
+  string will not find it because the dead text need not mention that string
+  at all.
+
+## A dot-sourced helper does not load the helpers it does not call
+- **Tried:** Wrote a skill snippet that dot-sources
+  `Test-UmsProtectedBranch.ps1` and then calls both `Test-UmsProtectedBranch`
+  and `Get-UmsRepoConfig`, on the assumption that loading one shared script
+  makes the sibling shared functions available too.
+- **Happened:** `Test-UmsProtectedBranch.ps1` dot-sources nothing at all (only
+  `Set-StrictMode` and the function), so `Get-UmsRepoConfig` was undefined and
+  the line would have thrown `CommandNotFoundException` — on the fail-closed
+  STOP that guards the skill's mutating steps, i.e. exactly where an agent
+  would improvise or skip. A second, subtler variant existed in `mb-state`,
+  which called `Get-UmsRepoConfig` directly while relying on
+  `Get-UmsEffectiveBase.ps1` to pull it in transitively; that works today and
+  breaks silently on any reordering or helper swap.
+- **Procedure:** For every snippet a skill tells an agent to RUN, walk it line
+  by line and confirm each function called is loaded by a dot-source ABOVE it
+  in the same snippet — never by a transitive load inside another helper, even
+  when that load exists. This check is not a grep for a token: it is a
+  per-snippet inventory, and the whole layer can be swept by listing the
+  fenced `powershell` blocks that dot-source (as opposed to those that spawn
+  `pwsh <script>` as a subprocess, which are a different class and immune).
+
