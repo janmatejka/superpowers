@@ -146,8 +146,10 @@ performing one. Reading another branch's state never checks that branch out.
   below and a reordering or a swapped-out effective-base helper would silently
   break it. `<mb-shared>` is this layer's `skills/shared/` directory, the
   sibling of `mb-state/`. `$base.Ref` is `<effective base>` in the two commands
-  below; `$base.Source` (`context` or `config`) and `$prot.Matched` are what the
-  report's `Báze:` line names as origin and protection — read them here, never
+  below; `$base.Source` (`context` or `config`), `$base.Malformed` and
+  `$prot.Matched` are what the
+  report's `Báze:` line names as origin, unreadable line and protection — read them
+  here, never
   guessed from whether a `- **Báze:**` line happens to be visible elsewhere in
   the report.
 - **Distance from the base:**
@@ -252,7 +254,7 @@ Review: <žádné | ⏳ čeká na design review u architekta od YYYY-MM-DD>
 Zahájeno: <Started> <(⚠️ starší než 7 dní)>
 Exekuce: [.superpowers/sdd/<plan-basename>/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
-Báze: <effective base> (z context.md | výchozí z ums-repo.json) — chybí <N> commitů <(⚠️ ACTIVE stav na bázi — větev z ní zdědí cizí pin)> <(⛔ není mezi chráněnými větvemi)> <(⚠️ nevyhodnotitelné vzory v protectedBranches: <výčet>)>
+Báze: <effective base> (z context.md | výchozí z ums-repo.json) — chybí <N> commitů <(⚠️ ACTIVE stav na bázi — větev z ní zdědí cizí pin)> <(⛔ není mezi chráněnými větvemi)> <(⚠️ nevyhodnotitelné vzory v protectedBranches: <výčet>)> <(⚠️ nečitelný řádek Báze v context.md: <řádek>)>
 Zbytky: [žádné | v cestě: <výčet> | pouze přítomné: <výčet>]
 Zaparkováno: <žádné | výčet větev → slug (tiket, datum)>
 Další aktivní proposaly: <žádné | ⚠️ výčet cizích slugů na TÉTO větvi>
@@ -303,7 +305,13 @@ fourth, independent clause — `(⚠️ nevyhodnotitelné vzory v protectedBranc
 `$prot.BadPatterns`; per the contract (Repository Configuration) a pattern that
 cannot be evaluated counts as no match and "is reported, because such a
 pattern silently protects nothing there either" — mb-state only names it here,
-it invents no remedy.
+it invents no remedy. A fifth clause — `(⚠️ nečitelný řádek Báze v context.md:
+<řádek>)` — is appended whenever `$base.Malformed` is non-null, quoting that line
+verbatim: `context.md` is hand-edited, and a line the helper cannot read looks from
+the outside exactly like no line at all, so the base reported above is the
+configured default while the file appears to say otherwise. Reporting only,
+like the two clauses before it — mb-state does not repair the line and suggests
+no remedy for it.
 
 Everything under „Další krok" is a suggestion addressed to the **user**. mb-state
 performs none of it: it does not park, does not install the hook, does not sync

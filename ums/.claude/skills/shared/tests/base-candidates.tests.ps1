@@ -42,19 +42,27 @@ Assert-True ($refs -contains 'origin/main') 'main je kandidat'
 Assert-True (-not ($refs -contains 'origin/feature/UMS-1-neco')) 'pracovni vetev neni kandidat'
 Assert-True (-not ($refs -contains 'origin')) 'symref origin/HEAD se nestal kandidatem'
 
+# Select-Object rather than [n] everywhere below: under the mutation this suite's
+# own negativity check prescribes (lstrip=3 swapped for refname:short) no name
+# matches protectedBranches any more, so the candidate list is EMPTY - and
+# indexing it would abort the whole run with IndexOutOfRangeException instead of
+# reporting FAILED assertions, skipping every assertion after the first index.
 Write-Host "== vychozi baze je prvni a je oznacena"
-Assert-Eq (@($c)[0].Ref) 'origin/develop' 'vychozi baze je prvni v poradi'
-Assert-True (@($c)[0].IsDefault) 'vychozi baze nese IsDefault'
+Assert-Eq (@($c) | Select-Object -First 1 -ExpandProperty Ref) 'origin/develop' 'vychozi baze je prvni v poradi'
+# `-eq $true` is not decoration: Assert-True's parameter is typed [bool], and an
+# EMPTY pipeline binds as "" - a binding error that aborts the run exactly like
+# the index it replaced. The comparison turns "nothing" into a plain $false.
+Assert-True ((@($c) | Select-Object -First 1 -ExpandProperty IsDefault) -eq $true) 'vychozi baze nese IsDefault'
 
 Write-Host "== aktualni vetev je oznacena a razena hned za vychozi"
 $c = Get-UmsBaseCandidates $work 'Branches/5.37'
 $cur = @($c | Where-Object { $_.IsCurrent })
 Assert-Eq (@($cur).Count) 1 'prave jedna vetev je oznacena jako aktualni'
-Assert-Eq (@($cur)[0].Ref) 'origin/Branches/5.37' 'aktualni vetev je Branches/5.37'
-Assert-Eq (@($c)[1].Ref) 'origin/Branches/5.37' 'aktualni vetev nasleduje hned za vychozi bazi'
+Assert-Eq (@($cur) | Select-Object -First 1 -ExpandProperty Ref) 'origin/Branches/5.37' 'aktualni vetev je Branches/5.37'
+Assert-Eq (@($c) | Select-Object -Skip 1 -First 1 -ExpandProperty Ref) 'origin/Branches/5.37' 'aktualni vetev nasleduje hned za vychozi bazi'
 
 Write-Host "== Branch je Ref bez remote prefixu, vcetne lomitka ve jmene"
-$b = @($c | Where-Object { $_.Ref -eq 'origin/Branches/5.37' })[0].Branch
+$b = @($c | Where-Object { $_.Ref -eq 'origin/Branches/5.37' }) | Select-Object -First 1 -ExpandProperty Branch
 Assert-Eq $b 'Branches/5.37' 'strip odebira jen remote a jedno lomitko'
 
 Write-Host "== aktualni vetev mimo chranene se kandidatem nestava"

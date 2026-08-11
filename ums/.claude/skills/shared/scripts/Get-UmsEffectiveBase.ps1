@@ -4,21 +4,19 @@
     "Repository Configuration", the effective base).
 
 .DESCRIPTION
-    A work item may integrate somewhere other than the repository default -
-    a maintenance branch of a release series carries the same role as
-    develop for the work targeting it. The `- **Báze:**` line of
-    context.md is therefore read first, and baseRef is the fallback.
+    Reads the `- **Báze:**` line of context.md, falling back to baseRef,
+    per contract, "Repository Configuration" (the effective base) - which
+    also owns the rule that Branch strips the remote and the SINGLE
+    following slash.
 
-    The line is read wherever it stands in the file, including under an
-    IDLE marker: the harvest resets context.md, but the integration that
-    follows still needs the push destination, so the line deliberately
-    survives the reset.
-
-    Branch strips the remote and the SINGLE following slash - never to the
-    last slash. `origin/Branches/5.37` must yield `Branches/5.37`; `5.37`
-    would make `git push origin HEAD:5.37` create a new remote branch
-    instead of updating the base, and pre-push would not flag it because
-    `Branches/*` does not match `5.37`.
+    Local to this function: the line is matched in two stages. The LOOSE
+    shape (`- **B[áa]ze:`) decides that a line was MEANT to be it; the
+    strict value regex decides whether it can be read. A line matching only
+    the loose shape - a trailing comment, an empty value, missing
+    diacritics - is reported in Malformed instead of passing as "no line at
+    all", because context.md is hand-edited and this is its only
+    diacritic-bearing field. The fallback to baseRef still applies then;
+    Malformed is the caller's cue to REPORT, nothing more.
 
     Dot-source this file, then call Get-UmsEffectiveBase.
 #>
@@ -30,16 +28,25 @@ Set-StrictMode -Version Latest
 function Get-UmsEffectiveBase([string] $RepoRoot) {
     $ref = $null
     $source = 'config'
+    $malformed = $null
 
     $contextPath = Join-Path $RepoRoot 'memory-bank/context.md'
     if (Test-Path -LiteralPath $contextPath) {
         # @() so a single-line file still exposes .Count and indexing.
         foreach ($line in @(Get-Content -LiteralPath $contextPath)) {
+            # Loose shape first, so "not the line" and "the line, unreadable"
+            # stop being the same answer. Diacritics optional here on purpose:
+            # a mistyped `Baze:` must be reported, not ignored.
+            if ($line -notmatch '^\s*-\s*\*\*B[áa]ze:') { continue }
             if ($line -match '^\s*-\s*\*\*Báze:\*\*\s*(\S+)\s*$') {
                 $ref = $Matches[1]
                 $source = 'context'
                 break
             }
+            # First offender only - naming one line is enough to send a human
+            # to the file, and the scan continues in case a readable line
+            # follows.
+            if (-not $malformed) { $malformed = $line.Trim() }
         }
     }
 
@@ -48,8 +55,9 @@ function Get-UmsEffectiveBase([string] $RepoRoot) {
     }
 
     return [pscustomobject]@{
-        Ref    = $ref
-        Branch = ($ref -replace '^[^/]+/', '')
-        Source = $source
+        Ref       = $ref
+        Branch    = ($ref -replace '^[^/]+/', '')
+        Source    = $source
+        Malformed = $malformed
     }
 }

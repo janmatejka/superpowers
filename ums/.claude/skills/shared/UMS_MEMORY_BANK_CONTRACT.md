@@ -372,10 +372,17 @@ integrates into `baseRef` never sees it and behaves exactly as before.
 
 **Binding on the rest of this contract.** Wherever this contract writes `<baseRef>`
 as the base of the CURRENT work item — a merge source, a merge-base, a diff
-endpoint, a `switch -c` start point, a `switch --detach` target, or the
-`<baseBranch>` derivation — the effective base is meant, not necessarily the
-`baseRef` config value. A site that instead needs the config key itself, by name,
-says so.
+endpoint, a `switch --detach` target, or the `<baseBranch>` derivation — the
+effective base is meant, not necessarily the `baseRef` config value. A site that
+instead needs the config key itself, by name, says so.
+
+**One site is deliberately NOT the effective base: the start point of the
+`git switch -c` that CREATES the ticket branch.** There the base is the one the
+user picked in the entry gate's Intent phase (Workspace Discipline), because at
+that moment `context.md` still describes the PREVIOUS work item — this one's
+`Báze:` line is written a phase later, by the pin write. Reading the effective
+base there would start the branch from whatever the last work item integrated
+into.
 
 **Invariant: an integration branch is always a protected branch.** A base that
 matches no pattern in the effective `protectedBranches` is a fail-closed STOP at the
@@ -386,8 +393,11 @@ configuration as a whole, not for one pattern), re-run `install-git-hooks.ps1`
 because the generated list is a build product of the configuration, PROVE it with
 the synthetic-pipe check (Publication Contract) — piping a synthetic ref update
 for THIS branch into the installed hook and confirming the non-zero reject — since
-the installer's own self-test only re-checks its fixed `develop`/ticket-branch pair
-and proves nothing about a newly-added pattern, and only then create
+the installer's own self-test does prove that the generated list is consulted, but
+only for ONE sampled pattern beyond its built-in set (the first whose sole glob
+metacharacter is `*`) and for a branch name mechanically derived from that pattern:
+it may therefore exercise an older pattern instead of the one just added, and it
+never tests the branch actually chosen, and only then create
 the ticket branch and commit the configuration change ON it — a commit made before
 the branch exists is stranded on the shared base. Declining the remedy means
 choosing a different base; there is no third path.
@@ -567,7 +577,8 @@ Leftovers split in two:
    - **On the base — never commit the leftovers onto the base.** A commit made
      there is stranded by construction: the base is shared, so neither the agent nor
      `pre-push` will publish it; `mb-park` refuses it twice (IDLE, and its base STOP);
-     and the intent phase's `git switch -c <branch> <baseRef>` has an explicit start
+     and the intent phase's `git switch -c <branch> <chosen base>` — the base chosen
+     in that same Intent phase — has an explicit start
      point, so the commit does not travel to the ticket branch either, while carrying
      a commit across branches to repair that is forbidden. The result is work left
      lying around in the one place nothing in this layer can retrieve it from, which
@@ -598,8 +609,11 @@ Leftovers split in two:
    restriction, and a free-form answer outside it is accepted — it is the only way
    the STOP below can ever fire. When a Jira ticket is
    linked and reachable, a version mentioned in its text is a further ordering
-   signal (fail-open: an unreachable Jira skips that signal silently). Write the
-   `Báze:` line in phase 4 only when the choice differs from `baseRef`. A base
+   signal (fail-open: an unreachable Jira skips that signal silently). Phase 4
+   DECIDES the `Báze:` line from this choice — writes it when the choice differs
+   from `baseRef`, REMOVES any existing one when it does not (`context.md` Schema
+   & Writers) — because the line survives both the IDLE reset and the integration
+   push and would otherwise be inherited by the next work item. A base
    outside `protectedBranches` triggers the fail-closed STOP and its ordered remedy
    (Repository Configuration, the invariant).
 4. **Pin write** into `context.md`.
@@ -878,6 +892,17 @@ Active state:
 The `Báze:` line is OPTIONAL — present only when the work item integrates
 somewhere other than `baseRef` (see Repository Configuration, the effective base).
 Readers MUST tolerate its absence; that is the normal state.
+
+**The pin write DECIDES this line; it never merely adds it.** The pin write of the
+entry gate (Workspace Discipline, phase 4) writes the line when the chosen base
+differs from `baseRef` and **DELETES any line already in the file** when it does
+not — unconditionally, exactly as it rewrites `Jira:`, and for the same reason.
+The line has two ways to outlive the work item that wrote it: the IDLE reset below
+keeps it on purpose, and the integration push carries that IDLE `context.md` onto
+the base itself, from where every later work item's branch is cut. A pin write that
+only ever ADDS the line therefore lets one work item's maintenance branch become
+the silent default for all the work that follows it — base sync, harvest diff and
+the integration command would all name a branch nobody chose.
 
 The `Review:` line is OPTIONAL — present only between an architect-review
 request and its resume (see Architect Review Gate). While present, the
@@ -1227,11 +1252,14 @@ Documents are never pushed into a shared branch to make them visible; they are
   window's proposals, so a cherry-pick would drag in a foreign ledger. The
   taken-over design document records `**Převzato z:** <branch>@<sha>`.
 - **A ticket branch is created with an EXPLICIT starting point, always:**
-  `git switch -c <TICKET>-<kebab-slug> <baseRef>` after a `git fetch
-  origin` — otherwise it cannot see already-merged planning. The **local** base
-  branch is not used in a ticket workspace: if one exists it is neither updated
-  nor merged, and the effective base is the only base that counts (see Repository
-  Configuration, the effective base).
+  `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a `git fetch
+  origin` — otherwise it cannot see already-merged planning. `<chosen base>` is the
+  base the user picked in the entry gate's Intent phase, NOT the effective base:
+  the `Báze:` line that would carry the effective base is written a phase later
+  (see Repository Configuration, the effective base). The **local** base branch is
+  not used in a ticket workspace: if one exists it is neither updated nor merged —
+  every later merge, diff and push of this work item names the remote base, which
+  from the pin write onwards is the effective base.
   **Postcondition of creation:** `proposals/active/` is empty or absent and
   `context.md` is IDLE (state names, tested by the pin — see the `context.md`
   Schema & Writers section). If it is not, STOP, delete the branch and repeat — a

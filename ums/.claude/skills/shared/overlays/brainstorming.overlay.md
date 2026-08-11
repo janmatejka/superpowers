@@ -101,9 +101,13 @@ Adjustments to the checklist above:
      the contract's "Cross-Branch Visibility" section, never a cherry-pick, and
      records `**Převzato z:** <branch>@<sha>` in its header.
   7. **Write the pin** — the entry gate's pin-write phase: `Target MB Pin`, `Jira`,
-     `Work item` slug and `Started` into `memory-bank/context.md` — plus the
-     `Báze:` line when the chosen base differs from `baseRef` (contract,
-     `context.md` Schema & Writers). When the remedy of the **Choose the base**
+     `Work item` slug and `Started` into `memory-bank/context.md` — and **DECIDE**
+     the `Báze:` line from the **Choose the base** step (contract, `context.md`
+     Schema & Writers): write it when the chosen base differs from `baseRef`,
+     **DELETE** any line already in the file when it does not. Local point: a
+     `Báze:` line you find here is one this work item never wrote, so leaving it
+     in place is not tidiness deferred — it is this work item silently adopting a
+     base nobody chose for it. When the remedy of the **Choose the base**
      step changed `ums-repo.json`, that change is still uncommitted and rode here
      with `switch -c`; commit it together with the pin. Then read
      `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and `playbook.md` (those

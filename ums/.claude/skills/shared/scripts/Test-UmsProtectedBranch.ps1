@@ -5,23 +5,21 @@
     computed at all.
 
 .DESCRIPTION
-    The layer already matches globs against branch names in two places -
-    the POSIX `sh` pre-push hook and guard-git-push.mjs - and the contract
-    requires both to give the SAME answer for the same configuration. This
-    is the PowerShell side; it exists so no third hand-written copy of the
-    matching logic appears inside a skill body.
+    The PowerShell side of the glob matching the POSIX `sh` pre-push hook
+    and guard-git-push.mjs also perform; per contract, "Repository
+    Configuration", all three must give the SAME answer for the same
+    configuration, and an unevaluable pattern counts as NO match and is
+    reported.
 
-    Measured difference this function exists to absorb: `-like` throws
-    WildcardPatternException on a malformed pattern (`Maint/[0-9`), while
-    the hook's `case` statement treats the same pattern as a literal and
-    reports no match. Reporting only a bool would therefore either lie
-    ("protected" from a catch returning $true) or hide a configuration
-    defect. Matched answers the question; Evaluated says whether every
-    pattern could be tested; BadPatterns names the ones that could not -
-    those protect nothing in the hook either, silently.
+    Local to this function - the return contract, three fields because a
+    bare bool cannot carry it: Matched answers the question; Evaluated says
+    whether every pattern tested could be evaluated at all (PowerShell
+    `-like` THROWS on `Maint/[0-9` where the hook's `case` reads it as a
+    literal); BadPatterns names the ones that could not.
 
-    A found match short-circuits: it is proof of protection, so later
-    patterns do not need testing and Evaluated stays $true.
+    A found match short-circuits the REST of the list, but patterns already
+    caught as unevaluable stay in BadPatterns - so Matched $true together
+    with Evaluated $false is a normal result, not a contradiction.
 
     Dot-source this file, then call Test-UmsProtectedBranch.
 #>

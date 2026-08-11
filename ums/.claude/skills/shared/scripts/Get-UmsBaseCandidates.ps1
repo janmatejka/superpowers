@@ -4,15 +4,15 @@
     item: the protected branches that actually exist on origin.
 
 .DESCRIPTION
-    Candidates come from the intersection of two facts - what the
-    repository configuration protects, and what really exists on the
-    remote. The contract's invariant is that an integration branch is
-    always a protected branch, so a branch outside protectedBranches is
-    never offered here; choosing one is a fail-closed STOP handled by the
-    caller, together with the remedy.
+    Offers only protected branches, per contract, "Repository
+    Configuration" (the invariant that an integration branch is always a
+    protected branch); choosing an unprotected one is a fail-closed STOP
+    owned by the caller, together with the remedy.
 
-    Ordering encodes the recommendation: the configured default first,
-    then the branch the session stands on, then the rest alphabetically.
+    Local to this function: candidates are the intersection of that
+    configuration with what really exists on origin, and the ordering
+    encodes the recommendation - configured default first, then the branch
+    the session stands on, then the rest alphabetically.
 
     Dot-source this file, then call Get-UmsBaseCandidates.
 #>

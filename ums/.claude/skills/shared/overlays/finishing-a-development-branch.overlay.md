@@ -23,9 +23,19 @@ After the user chooses and BEFORE executing the choice:
   block: no `git checkout <base-branch>`, no `git pull`, no local merge, no
   `git branch -d`. A ticket workspace has no local base branch to merge into; if
   one exists it is neither updated nor merged, and the **effective base** is the
-  only base that counts (contract, "Repository Configuration": the `Báze:` line of
-  `context.md`, else `baseRef` from `<CTX_DIR>/ums-repo.json`; `<baseBranch>` is
-  derived from it by stripping the remote and the single following slash). The
+  only base that counts (contract, "Repository Configuration"). Resolve it
+  mechanically ONCE before the sequence below, never by hand — `<mb-shared>` is
+  this layer's `skills/shared/` directory, the sibling of the skill directory this
+  overlay is injected into:
+
+  ```powershell
+  . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
+  $base = Get-UmsEffectiveBase (git rev-parse --show-toplevel)
+  ```
+
+  `$base.Ref` is `<effective base>` everywhere below, and `$base.Branch` is the
+  push destination of step 5 — take it from the helper, never derive it in your
+  head. The
   sequence instead, per the contract's Publication Contract, subsection
   "Integration":
   1. BEFORE the harvest, base sync at this phase boundary: `git fetch origin`,
@@ -42,9 +52,11 @@ After the user chooses and BEFORE executing the choice:
      ref** — nothing red has reached it. Do not try to un-publish the ticket
      branch: force push is forbidden, and a red ticket branch on `origin` is
      normal, visible work in progress. Fix forward with further commits.
-  5. Ask (Czech) „Integrovat větev do `<baseBranch>` pushem?" and hand the user the
-     exact command with the outgoing commits enumerated:
-     `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`. The refspec form
+  5. Ask (Czech) „Integrovat větev do `$($base.Branch)` pushem?" and hand the user
+     the exact command with the outgoing commits enumerated:
+     `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:$($base.Branch)`, with
+     `$($base.Branch)` expanded to its value in both the question and the command.
+     The refspec form
      is deliberate: integration pushes the ticket branch onto the base ref.
   6. Re-verify reachability **from the base ref**: `git fetch origin`, then
      `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the commit is

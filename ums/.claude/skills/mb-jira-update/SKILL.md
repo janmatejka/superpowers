@@ -259,16 +259,23 @@ commit is already on `origin` regardless of whether the base ever received it.
 
 0. **Publication gate (FIRST, before the comment is published):** verify the tip
    commit of the ticket branch that was pushed onto the base ref is reachable
-   **from the base ref on `origin`**:
+   **from the base ref on `origin`**. Resolve the base mechanically first, never by
+   hand — `<mb-shared>` is this layer's `skills/shared/` directory, the sibling of
+   `mb-jira-update/`:
+
+   ```powershell
+   . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
+   $base = Get-UmsEffectiveBase (git rev-parse --show-toplevel)
+   ```
 
    ```bash
    git fetch origin
    git merge-base --is-ancestor <sha> <effective base>   # non-zero exit = not on the base
    ```
 
-   `<effective base>` is the work item's own CHOSEN base (contract, "Repository
-   Configuration": the `- **Báze:**` line of `<CTX_DIR>/context.md` when present,
-   else `baseRef`) — running this gate against the default `baseRef` instead would,
+   `<effective base>` is `$base.Ref` — the work item's own CHOSEN base (contract,
+   "Repository Configuration", the effective base) — running this gate against the
+   default `baseRef` instead would,
    for work integrating into a maintenance branch, pass or fail for the wrong
    reason: it would be asking the question about a branch this work item was never
    targeting. The base must be named in the check, and `git fetch origin` must
@@ -285,10 +292,11 @@ commit is already on `origin` regardless of whether the base ever received it.
    the base, **STOP** — do not
    publish the comment and do not transition: tell the user in Czech that the work
    has not reached the base and the tester would have nothing to test, and hand over
-   the exact command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the
+   the exact command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:$($base.Branch)`,
+   with `$($base.Branch)` expanded to its value — the
    refspec form, because integration pushes the ticket branch onto the base ref, and
-   `<baseBranch>` is derived from that SAME chosen base minus its remote prefix —
-   never from the default `baseRef` when the two differ; the human's
+   the destination comes from the resolve above, never from a derivation done by
+   hand (contract, "Repository Configuration"); the human's
    deliberate escape from the pre-push guard, which would otherwise reject the
    command handed over; the agent never pushes a shared branch and never sets
    that variable itself, and `--no-verify` is not a substitute — it disables

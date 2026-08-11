@@ -23,7 +23,11 @@ $r = Test-UmsProtectedBranch 'Branches/5.37' @('Maint/[0-9')
 Assert-True (-not $r.Matched) 'vadny vzor nesmi tvrdit shodu'
 Assert-True (-not $r.Evaluated) 'vadny vzor hlasi nevyhodnoceno'
 Assert-Eq (@($r.BadPatterns).Count) 1 'vadny vzor je vyjmenovan'
-Assert-Eq (@($r.BadPatterns)[0]) 'Maint/[0-9' 'BadPatterns nese presne ten vzor'
+# Select-Object rather than [0]: under the mutation this suite's own negativity
+# check prescribes (the catch stops filling BadPatterns) the collection is empty,
+# and indexing it would abort the whole run with IndexOutOfRangeException - no
+# FAILED assertion, and every assertion below would never execute.
+Assert-Eq (@($r.BadPatterns) | Select-Object -First 1) 'Maint/[0-9' 'BadPatterns nese presne ten vzor'
 
 Write-Host "== shoda vyhrava nad vadnym vzorem"
 $r = Test-UmsProtectedBranch 'Branches/5.37' @('Branches/*', 'Maint/[0-9')
