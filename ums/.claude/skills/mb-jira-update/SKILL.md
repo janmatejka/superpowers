@@ -263,25 +263,32 @@ commit is already on `origin` regardless of whether the base ever received it.
 
    ```bash
    git fetch origin
-   git merge-base --is-ancestor <sha> <baseRef>   # non-zero exit = not on the base
+   git merge-base --is-ancestor <sha> <effective base>   # non-zero exit = not on the base
    ```
 
-   The base must be named in the check, and `git fetch origin` must precede it.
+   `<effective base>` is the work item's own CHOSEN base (contract, "Repository
+   Configuration": the `- **Báze:**` line of `<CTX_DIR>/context.md` when present,
+   else `baseRef`) — running this gate against the default `baseRef` instead would,
+   for work integrating into a maintenance branch, pass or fail for the wrong
+   reason: it would be asking the question about a branch this work item was never
+   targeting. The base must be named in the check, and `git fetch origin` must
+   precede it.
    A bare `git branch -r --contains <sha>` is NOT sufficient here: the publication
    rule already pushed that commit to the ticket branch on `origin`, so
    `--contains` reports the ticket branch, the result is non-empty and the gate
    would pass while the base carries none of the code — exactly the state this
    gate exists to catch when the user never runs the base push or it was rejected
    as non-fast-forward and nobody retried. Filtering the `--contains` output for
-   `<baseRef>` is an equally valid spelling; a check that does not name the base is
-   not. Without the fetch, the remote-tracking refs may be stale and a push made
-   from another clone would be reported as missing. If the commit is not on the
-   base, **STOP** — do not
+   `<effective base>` is an equally valid spelling; a check that does not name the
+   base is not. Without the fetch, the remote-tracking refs may be stale and a push
+   made from another clone would be reported as missing. If the commit is not on
+   the base, **STOP** — do not
    publish the comment and do not transition: tell the user in Czech that the work
    has not reached the base and the tester would have nothing to test, and hand over
    the exact command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the
-   refspec form, because integration pushes the ticket branch onto the base ref,
-   and `<baseBranch>` is `baseRef` minus its remote prefix; the human's
+   refspec form, because integration pushes the ticket branch onto the base ref, and
+   `<baseBranch>` is derived from that SAME chosen base minus its remote prefix —
+   never from the default `baseRef` when the two differ; the human's
    deliberate escape from the pre-push guard, which would otherwise reject the
    command handed over; the agent never pushes a shared branch and never sets
    that variable itself, and `--no-verify` is not a substitute — it disables

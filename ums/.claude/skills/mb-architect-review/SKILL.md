@@ -103,13 +103,17 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    the commit exists.
 2. **Be on the ticket branch before anything is committed.** Normally
    brainstorming created it, and then this step only confirms you are on it and
-   not on the base. Otherwise, in this order — the checks come BEFORE any
-   `switch -c`, because a linear reader who creates the branch first can strand the
-   very commit the first check exists to catch:
+   not on `<effective base>` — the work item's effective base throughout this
+   skill (contract, "Repository Configuration": the `- **Báze:**` line of
+   `context.md` when present, else `baseRef` from `<CTX_DIR>/ums-repo.json`).
+   Otherwise, in this order — the checks come BEFORE any `switch -c`, because a
+   linear reader who creates the branch first can strand the very commit the
+   first check exists to catch:
 
    a. **Is the design already committed on a branch that is not the ticket
-      branch?** (`git log --oneline <baseRef>..HEAD -- <design path>`, or the file
-      being tracked and unmodified while the branch carries no ticket code.) If so,
+      branch?** (`git log --oneline <effective base>..HEAD -- <design path>`, or
+      the file being tracked and unmodified while the branch carries no ticket
+      code.) If so,
       **STOP** and report it: the commit sits on a branch it does not belong to, and
       relocating it is the user's decision, not this skill's. This holds for **any**
       non-ticket branch — the base, the default branch, or some other branch
@@ -119,22 +123,27 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
       uncommitted design travels with the switch on its own, which is precisely why
       committing it later costs nothing. Create the branch in place
       (branch-in-place, always with an explicit starting point after a
-      `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <baseRef>`, where
-      `baseRef` comes from `<CTX_DIR>/ums-repo.json` — contract section "Repository
-      Configuration"). Git worktrees are banned. State you carried in yourself is
-      not another work item's inherited state, so it is not a finding to report
-      against the contract's creation postcondition.
+      `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <effective base>`).
+      **`context.md` already exists at this point** — step 1's precondition
+      requires it — so its effective base (if a `- **Báze:**` line was written for
+      this work item) is simply read, not freshly chosen here: this is the
+      resolver's own already-pinned work item, not the entry gate's base-choice
+      dialog that runs when a brand-new ticket branch is created from scratch. Git
+      worktrees are banned. State you carried in yourself is not another work
+      item's inherited state, so it is not a finding to report against the
+      contract's creation postcondition.
 
    **The order matters: the checks first, then the branch, then the design commit.**
-   `switch -c` starts from `<baseRef>`, so a design commit created before the switch
-   stays behind on the branch it was made on and the new ticket branch carries no
-   design document at all — the push in step 6 would publish a branch without it and
-   step 7 would then STOP at reachability with an empty result. Never carry such a
-   commit across branches to repair the order; do the steps in this order instead.
+   `switch -c` starts from `<effective base>`, so a design commit created before
+   the switch stays behind on the branch it was made on and the new ticket branch
+   carries no design document at all — the push in step 6 would publish a branch
+   without it and step 7 would then STOP at reachability with an empty result.
+   Never carry such a commit across branches to repair the order; do the steps in
+   this order instead.
 3. **Stabilize the SHA** per mb-jira-update §5–6, on the ticket branch:
    uncommitted design → user-confirmed local commit, else STOP.
 4. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
-   `git merge <baseRef>` on the ticket branch, then the intersection assessment
+   `git merge <effective base>` on the ticket branch, then the intersection assessment
    and, where it applies, the offered verification, per the contract's "Base Sync
    & Drift Detection" section. In the design phase the role of the own set is
    played by the target areas named in the design document and nothing is built,
@@ -190,7 +199,7 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    (assigned manually) → fail-closed: ask the user for the return assignee
    and the ticket branch.
 3. **Branch sync** (above) — **and no base merge here: respond is the
-   architect's side of the asymmetry, so `git merge <baseRef>` is forbidden in
+   architect's side of the asymmetry, so `git merge <effective base>` is forbidden in
    this mode**, however stale the base looks. Assess the design on the tree the
    resolver handed over. Then read the design document and the target project's
    MB context (`brief.md`, `architecture.md`, `tech.md`, `playbook.md`) from the
@@ -215,7 +224,7 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 2. **Branch sync** (above) — the architect may have pushed. Then read the
    architect's comments and summarize them in Czech.
 3. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
-   `git merge <baseRef>` on the ticket branch, with the intersection assessment
+   `git merge <effective base>` on the ticket branch, with the intersection assessment
    and the offered verification per the contract's "Base Sync & Drift Detection"
    section (same mechanics and same conflict rules as request step 4). Resume
    merges the base because it is the resolver's side; respond never does.

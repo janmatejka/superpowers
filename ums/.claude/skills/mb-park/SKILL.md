@@ -9,9 +9,10 @@ metadata:
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
 > especially "Workspace Discipline", which names park as the third end of a work
-> item's life cycle and owns the recoverability boundary, plus the "Playbook
-> Contract", the "Publication Contract" and "`context.md` Schema & Writers".
-> This skill is the set-aside path beside `mb-harvest` (completion) and
+> item's life cycle and owns the recoverability boundary, plus "Repository
+> Configuration" (the effective base and the protected-branch invariant), the
+> "Playbook Contract", the "Publication Contract" and "`context.md` Schema &
+> Writers". This skill is the set-aside path beside `mb-harvest` (completion) and
 > `mb-abort` (abandonment).
 
 # Command: mb-park
@@ -53,23 +54,29 @@ needs. Whoever parks may switch afterwards, at a phase boundary, on a clean tree
   promise is that the work is recoverable from `origin`, and there is no branch to
   publish; life-cycle operations run on the work item's own branch (Workspace
   Discipline). Report it and let the user check out the ticket branch first.
-- **The current branch being the base is a STOP too** — `<baseBranch>`, i.e.
-  `baseRef` minus its remote prefix, read from `<CTX_DIR>/ums-repo.json` (contract
-  section "Repository Configuration"). Park leaves `context.md` in the ACTIVE state
-  by design, and the contract's invariant (Cross-Branch Visibility) is that **the
-  base never carries ACTIVE state**: every branch cut from it afterwards would
-  inherit a foreign pin, which is why `mb-state` reports a pinned base as an *error*
-  rather than a warning. Publishing an ACTIVE pin onto the base would create exactly
-  that state, and the base is shared, so the push does not happen either way — park
-  on the base can only ever end in a commit nobody can publish and nothing can move
-  (`git switch -c` leaves it behind, and carrying a commit across branches to repair
-  an ordering mistake is forbidden). **This check belongs HERE, before steps 1–4,
-  and its position is the point:** steps 2 and 3 commit, so the same STOP placed at
-  publication would first create the very state it exists to prevent — a *committed*
-  ACTIVE pin on the local base — and then refuse with no way to undo it. Report it
-  with the base variant of the report below and name the way out: move the work to a
-  ticket branch (the entry gate's intent phase — an uncommitted change travels with
-  `git switch -c` on its own) and park there, or resolve it as finishing /
+- **The current branch being ANY protected branch is a STOP** — tested with
+  `Test-UmsProtectedBranch` (shared script) against the effective
+  `protectedBranches`, not against a single derived name. Park leaves `context.md`
+  in the ACTIVE state by design, and the contract's invariant is that a shared
+  branch never carries ACTIVE state; publishing one there is impossible anyway, so
+  park on such a branch can only ever end in a commit nobody can publish and nothing
+  can move. Testing the whole list is both simpler and stricter than deriving one
+  name from the base: a work item whose base is `origin/Branches/5.37` must not be
+  parked on `develop` either.
+
+  ```powershell
+  . <mb-shared>/scripts/Test-UmsProtectedBranch.ps1
+  Test-UmsProtectedBranch (git branch --show-current) (Get-UmsRepoConfig (git rev-parse --show-toplevel)).ProtectedBranches
+  ```
+
+  `<mb-shared>` is this layer's `skills/shared/` directory, the sibling of
+  `mb-park/`. **This check belongs HERE, before steps 1–4, and its position is the
+  point:** steps 2 and 3 commit, so the same STOP placed at publication would first
+  create the very state it exists to prevent — a *committed* ACTIVE pin on a
+  protected branch — and then refuse with no way to undo it. Report it with the
+  protected-branch variant of the report below and name the way out: move the work
+  to a ticket branch (the entry gate's intent phase — an uncommitted change travels
+  with `git switch -c` on its own) and park there, or resolve it as finishing /
   `mb-abort`. Nothing has been committed at this point, which is what makes that way
   out available.
 - When the pair named by the slug is NOT in `<PLAN_MB>/proposals/active/`, do
@@ -169,26 +176,19 @@ Per the Publication Contract, a commit that is not pushed is work only this
 workspace can see — and parked work whose commits sit locally is not recoverable
 from `origin`, which is the whole promise of parking.
 
-- The ticket branch is the actor's OWN branch: the agent pushes it and announces
-  the branch together with the outgoing commits (`git log --oneline @{u}..HEAD`,
-  or against `<baseRef>` when the branch has no upstream yet; `baseRef`
-  from `<CTX_DIR>/ums-repo.json`, contract section "Repository Configuration").
-- **The base never reaches this step.** Step 0 already stopped on it, before any
-  commit existed — do not re-check it here and do not prepare a push command for it.
-  A base path arriving here at all means step 0 was skipped, and then steps 2 and 3
-  have already put a committed ACTIVE pin on the local base: report that as the
-  finding it is instead of pushing.
-- When the current branch is in `protectedBranches` **without being the base**
-  (same section; the built-in fallback is `develop`, `main`, `master`,
-  `release/*`) the agent does NOT push.
-  It prepares the exact command carrying `UMS_ALLOW_SHARED_PUSH=1` with the
-  outgoing commits enumerated and the user runs it. The agent never sets that
-  variable itself, and it never reaches for `--no-verify` — that disables every
-  hook in the repository, so it is a bypass of the guarantee, not a way to
-  publish.
-- **Re-verify reachability AFTER a push has actually happened** — the agent's own
-  on its own branch, the user's on a shared one — in that order, as in the
-  contract's Publication Contract, subsection "Integration":
+- The current branch is always the actor's OWN, unprotected branch by the time
+  this step runs: step 0's STOP already covers every entry of the effective
+  `protectedBranches`, not only the base, so nothing shared ever reaches here. The
+  agent pushes it and announces the branch together with the outgoing commits
+  (`git log --oneline @{u}..HEAD`, or against `<effective base>` when the branch
+  has no upstream yet — the effective base per the contract's "Repository
+  Configuration" section, resolved the same way as in step 0 above).
+- **A protected branch never reaches this step.** A protected branch arriving
+  here at all means step 0 was skipped, and steps 2 and 3 have already put a
+  committed ACTIVE pin on it: report that as the finding it is instead of
+  pushing.
+- **Re-verify reachability AFTER the push**, per the contract's Publication
+  Contract, subsection "Integration":
 
   ```bash
   git fetch origin
@@ -197,24 +197,24 @@ from `origin`, which is the whole promise of parking.
 
   An empty result then means the park is not published, so the claim "recoverable
   from `origin`" is false — a fail-closed STOP with an offer to publish, never a
-  warning. On the shared-branch path the check therefore waits for the user; do
-  not run it against the prepared command and report a STOP whose only remedy is
-  the command the user has not run yet.
+  warning.
 
 ---
 
 ## Report (Czech)
 
 This report is the report of a park that HAPPENED, so it is reachable only from
-steps 1–4. The base path never produces it: step 0 stops there before any commit,
-and its own message is the base variant at the end of this section — nothing may
-claim a park, a push or recoverability from `origin` on that path.
+steps 1–4. The protected-branch path never produces it: step 0 stops there before
+any commit, and its own message is the protected-branch variant at the end of
+this section — nothing may claim a park, a push or recoverability from `origin`
+on that path.
 
 > „🅿️ Práce zaparkována."
 >
 > - Work item: `<slug>`, tiket: `<UMS-XXXX | (žádný tiket)>`, větev: `<branch>`
-> - Publikováno: `<branch>` → `origin`, commity: `<seznam>` (u sdílené větve:
->   „připraven příkaz pro tebe — agent sdílenou větev nepushuje")
+> - Publikováno: `<branch>` → `origin`, commity: `<seznam>` (větev je vždy vlastní
+>   a nechráněná — na chráněnou větev se tahle hláška nikdy nedostane, tam padne
+>   STOP kroku 0)
 > - Pár návrh+plán zůstává v `<PLAN_MB>/proposals/active/`; `context.md` zůstává
 >   na této větvi v aktivním stavu (pin se nemaže). Nic se nezahodilo a nic se
 >   nesklízelo.
@@ -235,20 +235,23 @@ Early exits, all without a commit and without a push:
 > „ℹ️ Práce je už zaparkovaná — čistý strom, prázdný stash, nic nepushnutého
 > a žádní necommitnutí kandidáti playbooku. Nedělám prázdný commit."
 
-The base variant (step 0), which is a STOP, not a park:
+The protected-branch variant (step 0), which is a STOP, not a park:
 
-> „⛔ Neparkuji — jsi na bázi `<branch>`."
+> „⛔ Neparkuji — `<branch>` je chráněná větev."
 >
-> - Aktivní práce (`<slug>`, tiket `<UMS-XXXX | žádný tiket>`) je na bázi. Park
->   nechává `context.md` v aktivním stavu, a báze nikdy nesmí nést aktivní pin —
->   každá další větev z ní by zdědila cizí pin (invariant Cross-Branch Visibility,
->   `mb-state` to hlásí jako chybu, ne varování).
-> - **Nic jsem necommitnul, nic nepushnul a nic nezahodil.** Báze je sdílená větev,
->   takže push by neproběhl ani po commitu, a commit z báze by se na tiketovou větev
->   nedostal.
+> - Aktivní práce (`<slug>`, tiket `<UMS-XXXX | žádný tiket>`) je na chráněné
+>   větvi `<branch>`. Park nechává `context.md` v aktivním stavu, a chráněná
+>   (sdílená) větev nikdy nesmí nést aktivní pin — kdyby se z ní později řezala
+>   další větev (třeba jako báze jiné práce), zdědila by cizí pin (kontrakt,
+>   invariant integrační větve a Cross-Branch Visibility; `mb-state` hlásí
+>   pinovanou bázi jako chybu, ne varování).
+> - **Nic jsem necommitnul, nic nepushnul a nic nezahodil.** `<branch>` je sdílená
+>   větev, takže push by neproběhl ani po commitu, a commit odtud by se na
+>   tiketovou větev nedostal.
 > - Cesta dál: přesuň práci na tiketovou větev — `git switch -c <TIKET>-<slug>
->   <baseRef>`, necommitnuté změny jdou s přepnutím samy — a zaparkuj tam. Nebo práci
->   uzavři přes finishing-a-development-branch, případně zahoď přes `mb-abort`.
+>   <effective base>`, necommitnuté změny jdou s přepnutím samy — a zaparkuj tam.
+>   Nebo práci uzavři přes finishing-a-development-branch, případně zahoď přes
+>   `mb-abort`.
 
 ---
 

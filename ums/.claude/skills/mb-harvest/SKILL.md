@@ -8,10 +8,11 @@ metadata:
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Harvest Contract", "Memory Bank Document Set",
-> "Document Ownership", "Active Work Item (Design + Plan Pair)" and
-> "`context.md` Schema & Writers". This skill is the only IDLE-resetting writer
-> of `context.md` besides `mb-abort`.
+> especially "Harvest Contract", "Repository Configuration" (the effective base),
+> "Memory Bank Document Set", "Document Ownership",
+> "Active Work Item (Design + Plan Pair)" and "`context.md` Schema & Writers".
+> This skill is the only IDLE-resetting writer of `context.md` besides
+> `mb-abort`.
 
 # Command: mb-harvest
 
@@ -61,23 +62,25 @@ Policy).
 
 ```bash
 git fetch origin
-git diff --name-only $(git merge-base <baseRef> HEAD)..HEAD
+git diff --name-only $(git merge-base <effective base> HEAD)..HEAD
 ```
 
-`<baseRef>` is the fully-qualified remote-tracking ref from
-`<CTX_DIR>/ums-repo.json` (contract, "Repository Configuration") — this is a READ
-site, so it is used as-is and never prefixed with `origin/` a second time. A local
-base branch is NOT used: a ticket workspace need not have one, and a stale one
-would silently widen `AFFECTED_MBS` with foreign paths.
+`<effective base>` is the work item's effective base (contract, "Repository
+Configuration": the `- **Báze:**` line of `<CTX_DIR>/context.md` when present,
+else `baseRef` from `<CTX_DIR>/ums-repo.json`) — this is a READ site, so
+whichever of the two resolves it is used as-is and never prefixed with `origin/`
+a second time. A local base branch is NOT used: a ticket workspace need not have
+one, and a stale one would silently widen `AFFECTED_MBS` with foreign paths.
 
 Map each changed path to its nearest owning `memory-bank/` directory
 (walk up from the file; a project MB owns the paths beside it). The result is
 `AFFECTED_MBS` (always includes `PLAN_MB` when its project code changed).
-Only if the diff genuinely cannot be produced — `<baseRef>` does not resolve even
-after the fetch (no such remote-tracking ref) — ask the user to name the affected
-projects. That is a last resort, not the normal path: the derivation is mechanical
-by contract, so an unresolvable base ref is worth reporting as a configuration
-problem rather than quietly asking the user on every harvest.
+Only if the diff genuinely cannot be produced — the effective base does not
+resolve even after the fetch (no such remote-tracking ref) — ask the user to
+name the affected projects. That is a last resort, not the normal path: the
+derivation is mechanical by contract, so an unresolvable base ref is worth
+reporting as a configuration problem rather than quietly asking the user on
+every harvest.
 
 ### 3. Harvest (current-state style — MANDATORY)
 
@@ -194,8 +197,12 @@ it and `mb-init`/the next brainstorming recreate it on demand.
 **Only if every affected MB update succeeded**, overwrite
 `<CTX_DIR>/context.md` with the IDLE baseline per the contract schema:
 `## Active Work` → `(No active work - IDLE phase)` + keep the `- **Jira:** …`
-line of the finished work item. On partial failure, leave `context.md`
-unchanged and report which MBs failed.
+line of the finished work item, and — for the same reason, with a sharper edge —
+keep its `- **Báze:** …` line too when it had one: the INTEGRATION that follows
+this harvest still needs it (contract, "`context.md` Schema & Writers"); dropping
+it here would silently send the integration command at the default base instead
+of the one this work item actually targeted. On partial failure, leave
+`context.md` unchanged and report which MBs failed.
 
 ### 6. Announce (Czech)
 

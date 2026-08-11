@@ -127,22 +127,37 @@ performing one. Reading another branch's state never checks that branch out.
   together with a `Work item` slug (legacy `- **Proposal:**` accepted as its
   alias)? Pin present = ACTIVE; the `(No active work - IDLE phase)` marker, or a
   block with no pin = IDLE.
+- **Resolve the effective base, its origin and its protection** — once, before
+  the two checks below (contract, "Repository Configuration": the effective base
+  of a work item, and the invariant that an integration branch is always a
+  protected branch):
+
+  ```powershell
+  . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
+  . <mb-shared>/scripts/Test-UmsProtectedBranch.ps1
+  $base = Get-UmsEffectiveBase (git rev-parse --show-toplevel)
+  $prot = Test-UmsProtectedBranch $base.Branch (Get-UmsRepoConfig (git rev-parse --show-toplevel)).ProtectedBranches
+  ```
+
+  `<mb-shared>` is this layer's `skills/shared/` directory, the sibling of
+  `mb-state/`. `$base.Ref` is `<effective base>` in the two commands below;
+  `$base.Source` (`context` or `config`) and `$prot.Matched` are what the report's
+  `Báze:` line names as origin and protection — read them here, never guessed from
+  whether a `- **Báze:**` line happens to be visible elsewhere in the report.
 - **Distance from the base:**
 
   ```bash
-  git rev-list --count HEAD..<baseRef>
+  git rev-list --count HEAD..<effective base>
   ```
 
-  `baseRef` comes from `<CTX_DIR>/ums-repo.json` and already carries the remote
-  (`origin/develop` is the fallback value), so it is not prefixed with `origin/`
-  a second time. The count is how many base commits this branch is missing, as of
-  the last fetch — mb-state does not fetch. Above zero, suggest a base sync at the
+  The count is how many base commits this branch is missing, as of the last
+  fetch — mb-state does not fetch. Above zero, suggest a base sync at the
   **nearest phase boundary** (contract, Base Sync & Drift Detection); never in the
   middle of a task, and mb-state never merges anything itself.
 - **Base invariant:** the base must NOT carry an ACTIVE pin.
 
   ```bash
-  git show <baseRef>:memory-bank/context.md
+  git show <effective base>:memory-bank/context.md
   ```
 
   Apply the pin test above. A pinned base is an **error**, not a warning: every
@@ -231,7 +246,7 @@ Review: <žádné | ⏳ čeká na design review u architekta od YYYY-MM-DD>
 Zahájeno: <Started> <(⚠️ starší než 7 dní)>
 Exekuce: [.superpowers/sdd/<plan-basename>/progress.md nalezen — probíhá | nenalezen]
 Větev: <branch> <(⚠️ main/master)>
-Báze: <baseRef> — chybí <N> commitů <(⚠️ ACTIVE stav na bázi — větev z ní zdědí cizí pin)>
+Báze: <effective base> (z context.md | výchozí z ums-repo.json) — chybí <N> commitů <(⚠️ ACTIVE stav na bázi — větev z ní zdědí cizí pin)> <(⛔ není mezi chráněnými větvemi)>
 Zbytky: [žádné | v cestě: <výčet> | pouze přítomné: <výčet>]
 Zaparkováno: <žádné | výčet větev → slug (tiket, datum)>
 Další aktivní proposaly: <žádné | ⚠️ výčet cizích slugů na TÉTO větvi>
@@ -269,6 +284,14 @@ about SCOPE, never a claim that the hook is bypassed: the hook was resolved thro
 that very path, so a verified marker there is a live guarantee, and `✅ způsobilý`
 plus this one warning is the correct line for such a workspace — never a line
 without `✅`.
+
+A third note, on the `Báze:` line: `(z context.md | výchozí z ums-repo.json)` is
+`$base.Source` (`context` / `config`) translated to Czech — read from the resolve
+step above, never guessed. `(⛔ není mezi chráněnými větvemi)` is appended only
+when `$prot.Matched` is false; per the contract's invariant (Repository
+Configuration, "an integration branch is always a protected branch") this is only
+ever a REPORTED finding here — mb-state does not fail closed on it and performs
+none of the invariant's remedy, which belongs to whoever chose the base.
 
 Everything under „Další krok" is a suggestion addressed to the **user**. mb-state
 performs none of it: it does not park, does not install the hook, does not sync
