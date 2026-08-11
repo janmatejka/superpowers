@@ -69,7 +69,9 @@ Adjustments to the checklist above:
   4. **Choose the base** — the entry gate's intent phase decision, per the
      contract's "Repository Configuration" section (the effective base and the
      invariant that an integration branch is always a protected branch). Build the
-     candidate list mechanically, never by hand:
+     candidate list mechanically, never by hand — `<mb-shared>` is this layer's
+     `skills/shared/` directory, the sibling of the skill directory this overlay is
+     injected into, the same directory that holds `UMS_MEMORY_BANK_CONTRACT.md`:
 
      ```powershell
      . <mb-shared>/scripts/Get-UmsBaseCandidates.ps1
