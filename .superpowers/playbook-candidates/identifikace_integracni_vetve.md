@@ -84,3 +84,106 @@
   zneplatňuje víc, než brief pro stručnost vyjmenoval. Report ať rozdíl
   explicitně vysvětlí (proč navíc), místo aby buď (a) tvrdil přesnou
   shodu s briefem, nebo (b) nechal čtenáře hádat, proč čísla nesedí.
+
+## Version-history chain rewording on every bump
+- **Tried:** Followed the brief's Step 5 literally — insert a new
+  `- Supersedes v2.7 (...)` line above the existing `- Supersedes v2.6 (...)`
+  line, without further changes to that older line.
+- **Happened:** The file's own version-history convention (visible across the
+  v2.6/v2.5/v2.4/v2.3 entries already in the file) phrases exactly one entry —
+  the one matching the current `Contract-Version` — as bare `Supersedes vX`;
+  every entry that is no longer current is phrased `vY superseded vX` (naming
+  both endpoints). Leaving the old top entry as bare `Supersedes v2.6` after
+  bumping to v2.8 would have produced two consecutive un-versioned
+  `Supersedes` lines with no way to tell which version transition each one
+  describes.
+- **Procedure:** When a contract/document keeps a running version-history
+  list where only the CURRENT version's entry omits its own version number,
+  bumping the version requires rewording the line that used to be current
+  (`Supersedes vOLD` → `vPREV superseded vOLD`) in the same edit that adds the
+  new current entry — even if the brief/instructions only hand you the text
+  for the new line. Detect the convention by reading at least two historical
+  entries below the insertion point before assuming the brief's snippet is
+  the complete diff.
+
+## Verifying an ordinal cross-reference into another file before writing it
+- **Tried:** The brief's Step 3 text asserted `"the harvest resets
+  context.md in its step 5"` as a hard fact to write into the contract.
+- **Happened:** Grepping `mb-harvest/SKILL.md` for `^### [0-9]\.` confirmed
+  step 5 is indeed titled "Reset context.md (conditional)" — the brief's
+  number was accurate, but this was verified, not assumed.
+- **Procedure:** Before writing a numbered cross-reference into a normative
+  document that points at another file's step/phase number, grep that other
+  file's own heading pattern and confirm the number in THIS run, even when
+  the referencing text is handed to you verbatim by a brief — a brief's
+  claim about a sibling file's structure is a claim to verify, not a
+  premise, same as any other "state X is true" report-writing rule already
+  in the playbook, extended here to cross-file ordinal references specifically.
+
+## A general binding sentence does not neutralize a specific sentence that names its own answer
+- **Tried:** After writing "wherever this contract writes `<baseRef>` as the
+  base of the CURRENT work item... the effective base is meant" (a
+  general rule intended to make every plain-token `<baseRef>` site correct
+  without editing all of them), I assumed this closed every contradiction the
+  review had found, since Important 1's two sentences were reachable from the
+  new definition by inference.
+- **Happened:** The task review rejected that assumption explicitly: both
+  contradicting sentences say "only"/"everywhere else" — an exclusivity claim
+  that a general elsewhere-defined rule does not retract, because the reader
+  hits the exclusive sentence first and has no textual signal that it is
+  superseded. The same distinction resurfaced independently while sorting the
+  eight operative `<baseRef>` sites for Important 2: a bare token (`merge
+  <baseRef>`) is silently correct once the general sentence exists, but a
+  site that additionally *names its own authority* — `` (`baseRef` per
+  Repository Configuration) `` or "is the only base that counts" — asserts
+  something the general sentence cannot override without contradicting itself
+  in the reader's eyes, even though both readings converge on the same value
+  in the end.
+- **Procedure:** When adding one general binding/definitional sentence to
+  subsume many scattered specific mentions of the same value, grep for the
+  specific mentions' OWN exclusivity or authority vocabulary — words like
+  "only", "everywhere else", "the only X that counts", or a parenthetical
+  that names the source key/section by name — not just for the vocabulary of
+  the new general rule. A bare placeholder token is silently covered by a
+  general rule; a sentence making its own claim about sourcing or exclusivity
+  is not, and needs a local edit even after the general rule exists. Add that
+  grep to the verification list alongside the definition-vocabulary grep,
+  because the two catch different classes of defect.
+
+## A second exception must be named in EVERY sentence that counted the first as singular
+- **Tried:** Added a new, independent reason for the working tree to be dirty
+  before `git switch -c` in the entry gate (the `ums-repo.json` remedy edit),
+  reasoning that since the existing "single exception" text was about a
+  *different* scenario (leftover carry-through), the two could coexist without
+  contradiction as long as the new remedy text spelled out its own ordering.
+- **Happened:** The task review found the word "single" itself became false
+  the moment a second scenario existed, in TWO separate sentences that both
+  used "the single exception" as their own count noun, in two different
+  sections (the phase-2 leftover paragraph and the separate "Switching
+  branches" paragraph) — neither sentence needed to be wrong about ITS OWN
+  reason, only about the cardinality claim wrapping it.
+- **Procedure:** After introducing a new instance of something an existing
+  sentence counts as singular ("the single X", "the only Y", "exactly one Z"),
+  grep the whole document for that counting phrase specifically (`"single
+  exception"`, `"the only"`, `"exactly one"`) — separately from grepping for
+  the concept's name — and update EVERY sentence that uses it, keeping each
+  sentence's own distinct rationale attached to its own exception rather than
+  merging both reasons into one shared sentence. Verify by re-running the same
+  grep after the edit and confirming zero hits for the now-stale singular
+  phrasing.
+
+## An offer of curated candidates must say a free-form answer is accepted, or a downstream STOP can never fire
+- **Tried:** Wrote a paragraph offering the user a candidate list built
+  entirely from `protectedBranches`-matching branches (protected by
+  construction), immediately followed by a STOP that fires when the chosen
+  base is OUTSIDE `protectedBranches` — treating the STOP's existence as
+  self-evidently implying the offer permits an out-of-list answer.
+- **Happened:** The task review pointed out the text never actually says a
+  free-form answer is accepted; read literally, the offer describes only
+  in-list candidates, which makes the very case the STOP exists to catch
+  unreachable through the documented process.
+- **Procedure:** When a curated offer is followed by a rule that only
+  triggers on a value outside the offered set, check that the offer's own
+  sentence explicitly permits an answer outside the offered list — the
+  triggering condition and the offer's permissiveness are two separate claims,
+  and writing the trigger is not evidence the permission was also written.
