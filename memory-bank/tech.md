@@ -10,7 +10,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.2.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.2.0`, commit `3dcbd5c4b48e02263fbf4a3c01e3fe4f81d584d9`, vendorováno 2026-07-24 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.7 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.8 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 3 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
@@ -52,6 +52,9 @@ stejnou konfiguraci vždy stejnou odpověď.
   [`doc-index.ps1`](../ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1),
   [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1),
   [`Get-UmsRepoConfig.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsRepoConfig.ps1),
+  [`Test-UmsProtectedBranch.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsProtectedBranch.ps1),
+  [`Get-UmsBaseCandidates.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsBaseCandidates.ps1),
+  [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEffectiveBase.ps1),
   hook `bpmn-validate.ps1`.
 - **Node.js** (ESM, `"type": "module"`) — hooks
   [`deny-superpowers-docs.mjs`](../ums/.claude/hooks/deny-superpowers-docs.mjs)
@@ -142,8 +145,8 @@ hlídá [`ums/.gitattributes`](../ums/.gitattributes) pravidlem `text eol=lf`.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 13 sad, dohromady
-564 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 16 sad, dohromady
+613 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -176,7 +179,19 @@ v [playbook.md](playbook.md).
   `repo-config.tests.ps1` (33; loader `Get-UmsRepoConfig.ps1` — per-key
   defaulty, degradace na bezpečnější stranu u chybějícího i poškozeného
   souboru, normalizace bare stringu na jednoprvkový seznam v paritě
-  s `guard-git-push.mjs`).
+  s `guard-git-push.mjs`), `protected-branch.tests.ps1` (15; `Test-UmsProtectedBranch`
+  — přesná shoda, glob, neshoda, vadný vzor jako NEshoda-a-nevyhodnoceno
+  odlišená od platné neshody, shoda vyhrává nad vadným vzorem dál v seznamu,
+  prázdný seznam i prázdné jméno větve), `base-candidates.tests.ps1` (12;
+  `Get-UmsBaseCandidates` proti lokálnímu bare klonu jako `origin` — kandidáti
+  jsou jen chráněné větve reálně existující na `origin`, symref `origin/HEAD`
+  se nestává kandidátem, výchozí báze první a označená `IsDefault`, aktuální
+  větev označená `IsCurrent` a řazená hned za výchozí, `Branch` strhává jen
+  remote prefix a jedno lomítko), `effective-base.tests.ps1` (22;
+  `Get-UmsEffectiveBase` — přednost řádku `Báze:` před `baseRef`, fallback při
+  jeho absenci i bez `context.md`, tři tvary nesrozumitelného řádku
+  (komentář za hodnotou, prázdná hodnota, chybějící diakritika) hlášené v
+  `Malformed` a odlišené od „řádek chybí úplně", zachování řádku v IDLE stavu).
 - [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (142;
   end-to-end proti skutečnému lokálnímu bare remote: lidská výjimka,
   mazání/force i s ní zamítnuté, `core.hooksPath` lokální/globální/relativní

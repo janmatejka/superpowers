@@ -38,6 +38,15 @@ Konvence, které nová sada musí dodržet:
   bare remote u `pre-push`).
   Proč: sada nesmí sáhnout na síť, na `origin` ani do Jiry — jinak by červená
   sada neznamenala regresi, ale výpadek okolí.
+- **Ad-hoc fixture pro throwaway lokální „origin", která potřebuje
+  `--no-verify` u pushe, piš do skriptu a spusť ho jako soubor
+  (`bash script.sh` / `pwsh -File script.ps1`), ne jako literální text
+  v příkazu Bash/PowerShell toolu.**
+  Proč: bezpečnostní hlídka nástroje blokuje `--no-verify` jen v LITERÁLNÍM
+  textu vlastního parametru příkazu, ne v obsahu skriptu, který nástroj
+  pouze spouští — týž flag uvnitř dot-sourcovaného/spuštěného `.tests.ps1`
+  prošel beze zmínky ve stejném sezení, kde přímý pokus v příkazové řádce
+  byl zamítnut.
 - Testovací Memory Bank dokumenty ukládej pod `tests/fixtures/`.
   Proč: indexace MB dokumentů tuto cestu vylučuje, takže fixtury nespadnou do
   indexu ani do kolizních nálezů.
@@ -63,6 +72,53 @@ Konvence, které nová sada musí dodržet:
   dormantní větev. Naopak dva jiné případy (symref `origin/HEAD`,
   `-BranchGlob`) prošly i proti neopravenému skriptu, protože je řešil jiný,
   existující mechanismus — takové asercie oddělit jako zámek, ne jako důkaz.
+- **Negativní běh rozděl do TŘÍ kategorií, ne dvou: zčervenalo, zůstalo
+  zeleně v obou bězích (regresní zámek), a NEPROVEDENO** (vše za bodem
+  přerušení v transkriptu). Bod přerušení vyčti z transkriptu, než
+  kategorizaci napíšeš, a asercii, která zezelenala jen proto, že mutace
+  vyprázdnila kolekci a testovaná vlastnost je „nic v ní není", neoznačuj
+  za zámek.
+  Proč: šest asercí za bodem `IndexOutOfRangeException`/přístupu na
+  nulovou vlastnost se v obou sadách nikdy nevykonalo, přesto byly zprvu
+  popsány jako „zůstaly zelené" regresní zámky.
+- **Po negativitě, kde brief jmenuje konkrétní počet/název asercí, které
+  mají zčervenat, ověř PO běhu, jestli nezčervenaly i jiné asercie testující
+  STEJNOU vlastnost na jiné fixtuře.** Rozdíl proti briefu není chyba — je
+  to úplnější důkaz; report ho vysvětli, ne zamlč.
+  Proč: mutace „odstranění `if (Test-Path …)` větve" zčervenala 5 asercí
+  místo briefem jmenovaných 2 — kaskáda přes změněné `$e.Ref` a shodný
+  scénář IDLE, který testuje tutéž přednost `Báze` řádku na jiné fixtuře.
+- **Prázdný `git diff` po obnově souboru z negativity-checku nic
+  nedokazuje, pokud je soubor `??` (netrackovaný).** Před spoléháním na
+  tuto kontrolu ověř `git status --short` na dané cestě; je-li netrackovaný,
+  porovnej obnovený soubor přímo s pre-mutační zálohou (diff/checksum).
+  Proč: `git diff` mlčel před i po chybné obnově souboru, který byl v tomto
+  tasku teprve vytvořen a ještě ne `git add`ovaný — prázdný výstup by
+  nerozeznal správnou obnovu od žádné.
+- **Když mutovaný soubor už nese nekomitované úpravy ze stejné vlny,
+  obnovu dělej zálohou (`Copy-Item` před mutací, `Move-Item -Force` zpět),
+  ne `git checkout -- <path>`,** a ověř `git diff --numstat` proti
+  pre-mutačním počtům plus grepem mutovaného konstruktu zpět na původní
+  text. Kontrola „prázdný `git diff`" platí jen tam, kde byl soubor před
+  mutací čistý.
+  Proč: `git checkout` by spolu s mutací zahodil i uncommitnutý docstring
+  rewrite ze stejné vlny; prázdný `git diff` po takové obnově by dokazoval
+  ŠPATNÝ stav.
+- **Když je parametr aserčního helperu typovaný `[bool]`, guardovaný index
+  ukonči SROVNÁNÍM** (`(… | Select-Object -First 1 -ExpandProperty X)
+  -eq $true`), **ne jen `Select-Object -First 1 -ExpandProperty X`.**
+  Netypované parametry (`Assert-Eq`) srovnání nepotřebují.
+  Proč: prázdná pipeline se pod mutací svázala s `[bool] $cond` jako `""` a
+  hodila `Cannot process argument transformation`, tutéž chybu, kterou
+  guard měl odstranit, jen jinde — ověř tvar spuštěním sady pod mutací, obě
+  varianty vypadají v diffu identicky.
+- **Před psaním indexových guardů spusť mutaci a přečti, KTERÝ index selže
+  první — guarduj celou kolekci, kterou mutace zasahuje, ne jen indexy,
+  které review vzorkovalo.**
+  Proč: mutace `%(refname:lstrip=3)` → `%(refname:short)` vyprázdnila
+  seznam kandidátů od první skupiny asercí (řádek 46), sedm řádků před
+  dvěma indexy, které review jmenovalo (53, 57); guard jen jmenovaných
+  řádků by sadě nedovolil ohlásit vlastní selhání.
 - **Podmíněný důkazní/kontrolní krok (proběhne jen když to vstup/konfigurace
   umožní) drž na TŘECH stavech, ne dvou** (`$null` = neproběhlo), a jeho
   přeskočení VŽDY ohlas vlastní poznámkou odlišenou od potvrzení. Do
@@ -171,7 +227,10 @@ Konvence, které nová sada musí dodržet:
   s `["Branches/*", "Maint/[0-9"]` naopak nahlásila „konfigurace pokrývá
   kontrolní jméno" (nepravda — POSIX `case` čte `Maint/[0-9` jako literál)
   a tichým `[installed + verified live]` smazala jedinou pojistku proti
-  dekorativnímu důkazu.
+  dekorativnímu důkazu. Mechanizované řešení dnes existuje jako
+  `Test-UmsProtectedBranch` ve sdílených skriptech vrstvy
+  (`ums/.claude/skills/shared/scripts/`), které vrací právě tento tristate
+  místo tiché špatné odpovědi.
 - **Windows cesty vkládané do `PATH` (nebo kamkoli s `:` separátorem)
   v msys/Cygwin vždy převeď `cygpath -u`.** `C:/…/shim` se na `:` rozpadne na
   `C` a `/…/shim`, obě neexistující, a shim se nikdy nezavolá bez jediné
@@ -217,6 +276,18 @@ Konvence, které nová sada musí dodržet:
   pro symref `origin/HEAD` a v každém jméně ponechal remote prefix, který
   v `protectedBranches` nematchne nic — obojí by se dostalo do seznamu
   chráněných větví jako fantomová položka.
+- **Skill snippet, který dot-sourcuje jeden shared skript a pak volá i
+  funkce z JINÉHO shared skriptu, projdi řádek po řádku a potvrď, že
+  KAŽDÁ volaná funkce je dot-sourcovaná explicitně NAD voláním ve stejném
+  snippetu** — nikdy jen transitivně přes jiný helper, i když taková cesta
+  existuje. Kontrola je inventář per snippet, ne grep na token; listuj
+  fenced `powershell` bloky, které dot-sourcují (na rozdíl od těch, co
+  spouští `pwsh <script>` jako subprocess — ty jsou jiná, imunní třída).
+  Proč: `Test-UmsProtectedBranch.ps1` nedotsourcuje nic, takže volání
+  `Get-UmsRepoConfig` za ním by spadlo na `CommandNotFoundException` přímo
+  na fail-closed STOPu, kde by agent nejspíš improvizoval; `mb-state`
+  dnes funguje jen díky transitivnímu tahu přes `Get-UmsEffectiveBase.ps1`,
+  což se tiše rozbije na první reorganizaci pořadí.
 
 ## Git hooky (POSIX sh)
 
@@ -394,6 +465,17 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   a v `.claude/skills/` musí být všechny adresáře `mb-*`, které jsou
   v `ums/.claude/skills/`. Chybějící skill je nejrychlejší příznak zastaralého
   nasazení.
+- **Tahle kontrola (Contract-Version + přítomnost všech `mb-*` adresářů)
+  odhalí jen CHYBĚJÍCÍ nasazení, ne ZASTARALÉ.** Na staleness (obsah
+  souboru se změnil, ne jen jeho existence) použij `diff -rq ums/.claude
+  .claude` — a pamatuj, že tři vendorované skilly s overlay bloky se musí
+  srovnávat proti monorepo kopii, ne proti `ums/`, kde vůbec neleží (viz
+  bod níž).
+  Proč: deployovaná kopie `finishing-a-development-branch/SKILL.md` nesla
+  16řádkový overlay popisující lokální merge, zatímco zdrojový fragment
+  v `ums/.claude/skills/shared/overlays/` měl 109 řádků popisujících
+  FF-push integraci s playbook gate — `Contract-Version` i přítomnost
+  `mb-*` adresářů přitom obě kontroly prošly beze zmínky.
 - Tři upstream skilly s overlay bloky (`brainstorming`,
   `subagent-driven-development`, `finishing-a-development-branch`) se kopií
   nevyrobí — po změně overlay fragmentu je musí vygenerovat revendor.
@@ -430,10 +512,22 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   `.superpowers/` (git-ignored) neviditelný pro všechny tři standardní
   příkazy, takže odvozené „už zaparkováno" nechalo evidenci v pracovním
   stromu přesně v scénáři, pro který výjimka `git add -f` vznikla.
+- **Tvrzení „tahle cesta je netrackovaný deployment, commit se jí nedotýká"
+  ověřuj `git status --short --ignored=matching -- <cesta>` a čti kód
+  `!!`, ne jen absenci řádku v prostém `git status`.**
+  Proč: `!!` je git status kód specificky pro ignorovaný obsah, odlišný od
+  `??` (untracked); prostá absence řádku by neodlišila „ignorováno" od
+  „shodou okolností žádná změna v tomto běhu" — `git status --short
+  --ignored=matching -- .claude .agents ums` vrátil `!! .claude/` a
+  `!! .agents/skills/` jako strojový důkaz.
 - **Po vložení/odstranění kroku v číslovaném pořadí (kontrakt, skill, overlay
   fragment) grepni CELÝ soubor na `step [0-9]`/číslo kroku a přečti seznam
   znovu; odkazuj na sousední krok JMÉNEM fáze, ne pořadovým číslem** — čísla
-  se posouvají, jména ne. Po restrukturaci vícekrokové instrukce ji projdi
+  se posouvají, jména ne. Grep na `step [0-9]` samotný nechytí plurál
+  („steps 4 to 6", „steps 4 and 6" — písmeno `s` láme match) ani spelled-out
+  počet („the six steps below") — přidej `steps? [0-9]`/case-insensitive
+  `\bstep` a grep na číslovky slovem (`\bšest\b`, `\bsedm\b` apod.), obě
+  navíc k plné ruční četbě. Po restrukturaci vícekrokové instrukce ji projdi
   jako chladný čtenář pro KAŽDÝ podporovaný záměr zvlášť, s proměnným stavem
   (např. „je strom čistý?") jako sloupcem tabulky. Chování git příkazu,
   který skript nově použije jako detektor (co vrací na poškozeném/hraničním
@@ -444,14 +538,18 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   číslovaný odkaz „fáze 4" v kontraktu ukazoval na krok, který dělá fáze 3;
   tabulkový průchod dvou záměrů hned odhalil defekt pod review i
   nesouvisející mezeru (krok 3 přijímá „bez tiketu", krok 4 už předpokládá
-  kód tiketu); a `git for-each-ref` na refu s neexistujícím objektem skončil
+  kód tiketu); `git for-each-ref` na refu s neexistujícím objektem skončil
   `fatal: missing object` a exit 128 sám o sobě — opak předpokladu „to jen
-  čte metadata, nespadne".
+  čte metadata, nespadne"; a plurál „steps 4 and 6"/intro věta „the six
+  steps below" po vložení nového kroku zůstaly stejně stale jako singulární
+  ordinály, jen je nenajde `step [0-9]`-tvarovaný grep.
 - **Věta o pořadí NEOPRAVUJE operaci, která sedí ve špatném kroku** — najdi
   instrukci, která operaci provádí, a přesuň JI. Dvě už existující věty
   tvrdící stejné pořadí jsou signál, že operace je špatně umístěná, ne že je
   potřeba třetí. Po přidání explicitního startpointu k vytvoření větve
-  (`switch -c … <baseRef>`) zkontroluj VŠECHNY kroky před ním — pokud
+  (`switch -c … <báze>` — báze zvolená ve fázi Intent vstupní brány při
+  prvním pinování práce, nebo efektivní báze, je-li práce už pinovaná)
+  zkontroluj VŠECHNY kroky před ním — pokud
   některý commituje, přesuň vytvoření větve před něj (nekomitovaná práce
   jde s `switch -c` samo).
   Proč: věta „aktivace probíhá na tiketové větvi" nezměnila to, že move byl
@@ -459,6 +557,17 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   dirtnul strom dřív, než větev vznikla; a explicitní startpoint v kroku PO
   kroku, který komitoval, uvíznul commit na špatné větvi — projevilo se to
   až o dva kroky dál, na STOPu dosažitelnosti.
+- **Když se STOP/gate test v jednom kroku skillu rozšíří na strukturálně
+  větší množinu stavů, přečti VŠECHNY pozdější kroky TÉHOŽ skillu (ne jen
+  jiné soubory) na větve, které předpokládaly starou, užší množinu.** Případ,
+  který nová brána zachytí dřív, se stává mrtvým kódem i uvnitř
+  report/message šablon, a token-based grep na charakteristickou frázi
+  změněného pravidla ho nenajde — mrtvý text tu frázi nemusí obsahovat.
+  Proč: rozšíření STOPu z „aktuální větev == odvozené jméno báze" na
+  „aktuální větev odpovídá libovolnému vzoru v `protectedBranches`" nechalo
+  v kroku Publikace mb-parku bod pro „větev v `protectedBranches`, ale ne
+  báze" nedosažitelný — stejná mrtvá větev se objevila potřetí v šabloně
+  úspěšného reportu parku.
 - **Když overlay/refaktor přesune akci DŘÍV, než ji popisuje existující bod
   checklistu, ten bod musí na začátku říct, jaký stav při čtení PLATÍ
   („tohle už existuje"), a výslovně pozastavit vlastní kontroly** —
@@ -486,6 +595,34 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   která pravidlo jen RESTATOVALA; a změna „publikuj po každém commitu"
   nechala nekomitovaný abandon-move zničit jedinou kopii a zapsat trvalou
   „KOLIZI AKTIVNÍ PRÁCE" na originu.
+- **Jedna obecná definiční věta („kdekoli tento dokument píše token X, myslí
+  se…") nezneplatní specifickou větu, která svou hodnotu tvrdí jako
+  VÝHRADNÍ** („jen", „všude jinde", „jediná báze, která se počítá") —
+  čtenář narazí na výhradní větu první a nemá signál, že je překonaná. Po
+  zavedení obecné věty grepuj i na vlastní exkluzivní/autoritativní
+  slovník specifických míst, ne jen na slovník nové obecné věty.
+  Proč: holý placeholder token je obecnou větou tiše kryt, ale věta navíc
+  JMENUJÍCÍ svůj zdroj (`baseRef` per Repository Configuration) nebo
+  tvrdící „jediná, která se počítá" zůstává v rozporu, i když obě čtení
+  vedou ke stejné hodnotě.
+- **Po zavedení nové instance něčeho, co existující věta počítá jako
+  jedinou** („the single exception", „jediná výjimka", „přesně jedna"),
+  **grepuj celý dokument na tu POČÍTACÍ frázi samotnou** — samostatně od
+  greppu na jméno konceptu — a oprav KAŽDOU větu, která ji používá, se
+  zachováním vlastního důvodu každé výjimky u své vlastní věty. Zkontroluj
+  po opravě nulový výskyt staré frazování stejným greppem.
+  Proč: slovo „jediná" se stalo nepravdivým ve DVOU nezávislých větách ve
+  dvou různých sekcích v okamžiku, kdy vznikla druhá instance výjimky — ani
+  jedna věta nebyla špatně o svém VLASTNÍM důvodu, jen o kardinalitě, kterou
+  tvrdila.
+- **Nabídka kurátorovaného seznamu kandidátů, po které následuje pravidlo
+  spouštějící se jen na hodnotě MIMO ten seznam, musí explicitně napsat, že
+  odpověď mimo nabídku je přípustná** — existence spouštěče sama o sobě
+  není důkaz, že nabídka to dovoluje.
+  Proč: nabídka postavená výhradně z větví shodných s `protectedBranches`
+  (tedy chráněných konstrukcí) nikdy nenapsala, že volná odpověď je
+  přijata, čímž byl scénář, pro který STOP existuje (báze mimo
+  `protectedBranches`), textově nedosažitelný.
 - **Report/status hláška, která jmenuje konkrétní stav nebo tvrdí „opraveno
   X", musí ten stav v TOMTO běhu PŘEČÍST, ne dovodit z jiného pravidla nebo
   napsat ze cvičné paměti.** Když se cesta v kódu přepočítá, přečti CELÝ
@@ -528,6 +665,18 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   v `mb-park`, umístěný čitelně v kroku, kde se báze stává relevantní,
   odpálil AŽ PO tom, co kroky 2–3 před ním už commitovaly — po vzniku
   přesně toho stavu, který má zabránit.
+- **Když kontrakt zdůvodňuje manuální krok slabinou automatizovaného, napiš
+  tu slabinu jako MECHANISMUS (co automat vzorkuje, co odvozuje, kam
+  nedosáhne), ne jako VERDIKT** („nic neprokazuje"). Mechanismus lze znovu
+  ověřit proti kódu a hlasitě přestane sedět, když se kód změní; verdikt
+  tiše zůstane lží. Stejné pravidlo platí pro reviewera takové věty — ověř
+  ji otevřením skriptu, ne důvěrou ve větu nebo v review, které ji citovalo.
+  Proč: kontraktová věta „instalátorův self-test prověřuje jen svůj fixní
+  pár větví a nic neprokazuje o nově přidaném vzoru" byla měřitelně
+  nepravdivá — `install-git-hooks.ps1` obsahuje třetí ověřovací běh přesně
+  pro tyto vzory (řádky 451–514) — přestože manuální krok samotný byl
+  potřeba z jiného, mechanického důvodu (vzorkuje `Select-Object -First 1`,
+  odvozuje jméno větve substitucí `*`→`x`).
 - **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej VOLAJÍCÍHO
   a zjisti, co s ní udělá** — zvol tu z obou konečných cest (výjimka vs.
   degradovaný provoz), po které zůstane VÍC ochrany. Náprava (remedy), která
@@ -541,6 +690,18 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   fallback samotného hooku; a náprava „commituj leftovers na téhle větvi"
   na bázi produkovala nepushnutelný, nepřenositelný a nezaparkovatelný
   commit.
+- **Než „opravíš" cestu v instrukci, rozliš, čeho je součástí: MARKDOWN
+  odkaz se rozpouští proti adresáři OBSAHUJÍCÍHO souboru, shellový/
+  PowerShellový argument proti PRACOVNÍMU adresáři agenta (kořen
+  repozitáře).** Precedens z jedné třídy není důkaz pro druhou. Musí-li
+  placeholder adresáře skillu na místě zůstat, udělej ho rozpoznatelným
+  jednou větou jmenující adresář, na který ukazuje — nepovyšuj ho na
+  definici na úrovni kontraktu (to je druhý domov pravidla).
+  Proč: návrh nahradit placeholder v PowerShell příkazu (`. <mb-shared>/
+  scripts/Get-UmsBaseCandidates.ps1`) spellingem z markdown odkazu v
+  `mb-init/SKILL.md` by ukázal mimo repozitář, protože příkaz se rozpouští
+  vůči kořeni repa, ne vůči adresáři souboru; kontrakt sám přitom stejný
+  tvar placeholderu už používá (`pwsh <mb-doc-index>/scripts/doc-index.ps1`).
 - **Hodnotu z konfigurace, která už nese svůj prefix** (`baseRef` =
   `origin/develop`), **nikdy neprefixuj podruhé** v dokumentaci ani
   v příkazu — u KAŽDÉ takové hodnoty se nejdřív podívej na její default
@@ -575,6 +736,36 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   nese upstream default branch jako read-only zrcadlo, napsal `origin/main`
   neopotřebovaně — druhý signál (`@{upstream}` dlouhožijící větve) dal
   `origin/ums-memory-bank`, shodné se symrefem v monorepu.
+- **Bump verze v dokumentu, který vede running „Supersedes" historii,
+  přeformuluj i ŘÁDEK, který byl current PŘEDTÍM** (`Supersedes vOLD` →
+  `vPREV superseded vOLD`), ve STEJNÉM editu — i když brief dává jen text
+  nového řádku. Konvenci ověř čtením alespoň dvou historických položek pod
+  místem vkládání, ne jen podle textu, který dostaneš.
+  Proč: bez přeformulování by po bumpu na v2.8 vznikly dvě po sobě jdoucí
+  neverzované „Supersedes" věty, ze kterých nelze poznat, jaký přechod
+  verzí každá popisuje.
+- **Pro každý volitelný řádek stavového souboru (`context.md`), který
+  existující reset zachovává, ověř ZVLÁŠŤ dvě otázky: co ho ZACHOVÁVÁ a co
+  ho PŘEPISUJE na KAŽDÉ cestě.** Nemá-li druhá otázka odpověď, řádek
+  zestárne přesně tam, kde to sesterský řádek nemůže. Zjisti to mechanicky
+  (`grep -rn "<Pole>:" ums/.claude/`) a najdi všechny writery a readery
+  před rozhodnutím, kam opravu umístit.
+  Proč: `Jira:` je zachováván A nepodmínečně přepisován zápisem pinu, takže
+  nemůže zestárnout; nový `Báze:` kopíroval jen zachovávací polovinu vzoru
+  a psal se „když se báze liší" — nic ho neodstraňovalo, takže by jedna
+  maintenance větev tiše určila výchozí bázi pro všechny další (base sync,
+  harvest diff i integrační příkaz).
+- **Nově vytvořenou tiketovou větev publikuj explicitním
+  `git push -u origin <branch>`, nikdy bare `git push`.** `git switch -c
+  <branch> <báze>` nastaví upstream nové větve na BÁZI, ne na ni samu —
+  bare push by tak cílil na (typicky chráněnou) bázi. `-u` upstream
+  přepíše a past platí jen do prvního publikování; při kontrole workspace
+  považuj „upstream tiketové větve je chráněná větev" za nález, ne za
+  normální stav.
+  Proč: `git rev-parse --abbrev-ref '@{upstream}'` po `switch -c` potvrdil
+  upstream nastavený na `origin/ums-memory-bank` — pre-push hook by bare
+  push zachytil, ale jen jako zamítnutí na konci, bez náznaku, že příčinou
+  je tracking nastavený už při vytvoření větve.
 
 ## Psaní plánů, návrhů a commitů
 

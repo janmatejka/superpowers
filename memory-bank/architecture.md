@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.7, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.8, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -89,17 +89,22 @@ ukotvený na konec souboru. Mění tři body upstream checklistu:
   [`mb-doc-index`](../ums/.claude/skills/mb-doc-index/) nad `origin` —
   model tahu, kandidáti napříč větvemi), aktivovat případný předběžný návrh
   z `proposals/next/` (i na cizí větvi — převzetí je kopie blobu, viz sekce
-  3), zeptat se na Jira tiket, poté **znovu spustit index s deklarovaným
-  záměrem** (`-Jira`/`-Slug`) pro meziclonovou kolizní kontrolu — nález
-  `KOLIZE AKTIVNÍ PRÁCE` je fail-closed stop, cizí aktivní práce jiných
-  tiketů je jen informace — zapsat `Target MB Pin`, `Jira`, `Work item`
-  a `Started` do `context.md`, přečíst dokumenty cílové MB jako kontext
-  návrhu.
+  3), zeptat se na Jira tiket, **zvolit bázi integrace** — kandidáti jsou
+  chráněné větve reálně existující na `origin` (`Get-UmsBaseCandidates`),
+  řazené výchozí první, pak větev, na které sezení stojí, pak (fail-open)
+  zmínka verze v textu tiketu; o volbě rozhoduje vždy uživatel — poté
+  **znovu spustit index s deklarovaným záměrem** (`-Jira`/`-Slug`) pro
+  meziclonovou kolizní kontrolu — nález `KOLIZE AKTIVNÍ PRÁCE` je
+  fail-closed stop, cizí aktivní práce jiných tiketů je jen informace —
+  zapsat `Target MB Pin`, `Jira`, `Work item`, `Started` a (jen když
+  zvolená báze není `baseRef`) řádek `Báze:` do `context.md`, přečíst
+  dokumenty cílové MB jako kontext návrhu.
 - **Bod 6 (Write design doc)** přesměruje uložení z upstream cesty
   `docs/superpowers/specs/` na `<PLAN_MB>/proposals/active/design_<slug>.md`
   (česky, s hlavičkou dle kontraktu) a vyžaduje větev na místě místo worktree
-  (`git switch -c <TIKET>-<slug> <baseRef>` po `git fetch origin` — tiketový
-  workspace nemá lokální bázi); po commitu návrhu ho agent pushuje —
+  (`git switch -c <TIKET>-<slug> <zvolená báze>` po `git fetch origin` —
+  tiketový workspace nemá lokální bázi; báze je ta, kterou bod 1 právě
+  zvolil, ne nutně `baseRef`); po commitu návrhu ho agent pushuje —
   publikace vlastní větve po každém commitu je obecné pravidlo, ne jen tento
   jeden krok (sekce 3).
 - **Architect Review Gate** mezi body 8 a 9: s navázaným tiketem se VŽDY nabídne
@@ -192,7 +197,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.7, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.8, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -289,6 +294,34 @@ skutečně čte vygenerovaný seznam, ne jen vestavěný fallback), volané i ze
 [`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) při `-Scope
 Monorepo` pro libovolného `-Agent`.
 
+**Efektivní báze pracovní položky** může být jiná než repozitářová výchozí
+`baseRef` — typicky servisní větev řady `Branches/5.37` místo `develop` —
+a kontrakt vynucuje invariant „integrační větev je vždy chráněná větev":
+efektivní báze musí odpovídat některému vzoru efektivních `protectedBranches`,
+jinak je zvolená báze fail-closed stop s pořadím nápravy (cílený zápis vzoru
+do `ums-repo.json` → nový běh `install-git-hooks.ps1` → strojový self-test na
+té konkrétní větvi → teprve pak založení tiketové větve a commit konfigurace
+na ní). Efektivní bázi čte řádek `- **Báze:**` v `context.md` (zapsaný jen
+když se báze liší od `baseRef`, jinak čtení padá na `baseRef`); zachovává ho
+IDLE reset stejně jako řádek `Jira:`, protože integrace ho potřebuje ještě po
+harvestu. Porovnání jména větve se vzory chráněných větví existuje ve vrstvě
+dvakrát nezávisle na sobě (`pre-push`, `guard-git-push.mjs`), takže třetí,
+instrukční kopie v těle skillu by rozhodnutí „je báze chráněná?" přestala
+dělat strojově — proto sdílené skripty vedle
+[`Get-UmsRepoConfig.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsRepoConfig.ps1):
+[`Test-UmsProtectedBranch.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsProtectedBranch.ps1)
+(jméno větve × vzory, vrací `Matched`/`Evaluated`/`BadPatterns` — vadný glob
+jako `Maint/[0-9` se počítá jako neshoda a je jmenovitě nahlášen, ne jen
+tiše přeskočen), [`Get-UmsBaseCandidates.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsBaseCandidates.ps1)
+(chráněné větve reálně existující na `origin`, řazené výchozí → aktuální →
+ostatní) a [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEffectiveBase.ps1)
+(řádek `Báze:` s fallbackem na `baseRef`; nesrozumitelný řádek — komentář za
+hodnotou, prázdná hodnota, chybějící diakritika — hlásí v `Malformed` a
+nepočítá se jako „řádek chybí"). Tyto tři skripty čtou (nebo zpřísňují STOP)
+`mb-park`, `mb-state`, `mb-jira-update`, `mb-architect-review`, `mb-harvest`
+a všechny tři overlay fragmenty; `Get-UmsRepoConfig.ps1` se neměnil —
+per-položková báze není konfigurace repozitáře.
+
 Vedle něj běží `guard-git-push.mjs` jako PreToolUse hook — **demotovaný**
 z původní role bezpečnostní hranice na fail-open rychlé varování. Dvě kola
 review experimentálně prokázala, že parsování shellového příkazu hranicí být
@@ -306,7 +339,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.7](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.8](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -439,7 +472,7 @@ flowchart LR
 | `mb-state` | Read-only orákulum stavu i způsobilosti workspace: pin, slug, úplnost páru, SDD ledger, větev, staleness, `pre-push` hook a `ums-repo.json`, zbytky ve workspace (v cestě / jen přítomné), zaparkovaná práce na jiných lokálních větvích, vzdálenost od báze, invariant „báze nesmí nést ACTIVE pin". | ručně |
 | `mb-harvest` | Složí znalost do dotčených MB (current-state faktů i playbookové brány), archivuje návrh, smaže plán, resetuje na IDLE. Zákaz git operací — commit vlastní volající. | Harvest Gate ve finishing, nebo ručně |
 | `mb-abort` | Opuštění práce: oba soubory páru do `abandoned/`, reset `context.md` na IDLE, commit a push tohoto pohybu na tiketové větvi. Mazání lokální větve (detach na `<baseRef>` + smazání) dělá až finishing Discard, ne `mb-abort` samotné. | ručně |
-| `mb-park` | Odloží aktivní práci beze ztráty: commit rozpracovaného, push tiketové větve, commit kandidátů playbooku aktuálního slugu (`git add -f`), ohlášení zbytků. `context.md` zůstává ACTIVE — pár zůstává v `active/`. Třetí konec životního cyklu vedle dokončení a opuštění. | ručně, nebo z entry gate při zbytcích v cestě |
+| `mb-park` | Odloží aktivní práci beze ztráty: commit rozpracovaného, push tiketové větve, commit kandidátů playbooku aktuálního slugu (`git add -f`), ohlášení zbytků. `context.md` zůstává ACTIVE — pár zůstává v `active/`. STOP dřív, než cokoli commitne, když aktuální větev odpovídá kterémukoli vzoru efektivních `protectedBranches` (`Test-UmsProtectedBranch`), ne jen odvozené bázi — jednodušší i přísnější než dřívější kontrola jediné hodnoty. Třetí konec životního cyklu vedle dokončení a opuštění. | ručně, nebo z entry gate při zbytcích v cestě |
 | `mb-architect-review` | Design review živým architektem přes tiket: request / respond / resume, branch sync dle tiketu, publikace vlastní větve dle Publication Contract (ohlášená, ne na souhlas). Request komentář vždy začíná markerem `[DESIGN REVIEW]`; chybí-li v Jiře přechod do „Design Review", request spadne na stav „Review" a marker oba stavy rozliší (kontraktový fallback). Resume po schválení návrhu spouští Epic Backflow check. | Architect Review Gate, nebo ručně |
 | `mb-jira-update` | České shrnutí implementace do Jira; brána dosažitelnosti (§6b) před zápisem odkazu; finalizační režim posune tiket do „Test" jen po publikaci merge commitu. | z `mb-harvest`, z finishing, nebo ručně |
 | `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest`, z `mb-migrate-docs` |
