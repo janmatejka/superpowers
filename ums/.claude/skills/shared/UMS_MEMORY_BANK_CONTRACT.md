@@ -329,9 +329,10 @@ introduced:**
 
 **`baseRef` is a fully-qualified remote-tracking ref** (`origin/develop`,
 `origin/ums-memory-bank`) and is used as-is wherever git READS the base: a merge
-source, a merge-base, a diff endpoint, a `switch -c` start point, a
-`switch --detach` target. It is never prefixed with `origin/` a second time —
-`origin/origin/develop` resolves to nothing.
+source, a merge-base, a diff endpoint, a `switch --detach` target — the
+`switch -c` start point that creates a ticket branch is a partial case, covered
+below (the effective-base carve-out). It is never prefixed with `origin/` a
+second time — `origin/origin/develop` resolves to nothing.
 
 **`<baseBranch>` is a derivation, not a config key:** `baseRef` minus its remote
 prefix — strip the remote name and the **single** following slash, and nothing
@@ -366,9 +367,11 @@ item is therefore read as:
 
 The line carries the same shape and the same rules as `baseRef` — a fully-qualified
 remote-tracking ref, never prefixed with `origin/` a second time, and `<baseBranch>`
-is derived from it by stripping the remote and the SINGLE following slash. It is
-written only where the base differs from the default, so a repository that always
-integrates into `baseRef` never sees it and behaves exactly as before.
+is derived from it by stripping the remote and the SINGLE following slash. The pin
+write DECIDES whether the line exists — writing it when the chosen base differs
+from `baseRef` and deleting any existing line otherwise (see `context.md` Schema &
+Writers) — so a repository that always integrates into `baseRef` never carries the
+line and behaves exactly as before.
 
 **Binding on the rest of this contract.** Wherever this contract writes `<baseRef>`
 as the base of the CURRENT work item — a merge source, a merge-base, a diff
@@ -377,30 +380,35 @@ effective base is meant, not necessarily the `baseRef` config value. A site that
 instead needs the config key itself, by name, says so.
 
 **One site is deliberately NOT the effective base: the start point of the
-`git switch -c` that CREATES the ticket branch.** There the base is the one the
-user picked in the entry gate's Intent phase (Workspace Discipline), because at
-that moment `context.md` still describes the PREVIOUS work item — this one's
-`Báze:` line is written a phase later, by the pin write. Reading the effective
-base there would start the branch from whatever the last work item integrated
-into.
+`git switch -c` that CREATES the ticket branch — but only when the work item is
+being pinned for the FIRST time.** There the base is the one the user picked in
+the entry gate's Intent phase (Workspace Discipline), because at that moment
+`context.md` still describes the PREVIOUS work item — this one's `Báze:` line is
+written a phase later, by the pin write. Reading the effective base there would
+start the branch from whatever the last work item integrated into. **Where the
+work item is already pinned** — `context.md` already carries its `Target MB Pin`
+and `Work item` slug for this same work item, so there is no entry-gate
+base-choice dialog left to run — that earlier Intent-phase choice is exactly what
+the effective base now resolves to, so the effective base IS the correct start
+point there.
 
 **Invariant: an integration branch is always a protected branch.** A base that
 matches no pattern in the effective `protectedBranches` is a fail-closed STOP at the
 moment it is chosen — the agent would be free to push into it, which is the whole
 guarantee this layer exists to keep. The remedy is ordered: add the missing pattern
 to `ums-repo.json` (a targeted edit; `mb-init` is for founding or regenerating the
-configuration as a whole, not for one pattern), re-run `install-git-hooks.ps1`
-because the generated list is a build product of the configuration, PROVE it with
-the synthetic-pipe check (Publication Contract) — piping a synthetic ref update
-for THIS branch into the installed hook and confirming the non-zero reject — since
-the installer's own self-test does prove that the generated list is consulted, but
-only for ONE sampled pattern beyond its built-in set (the first whose sole glob
-metacharacter is `*`) and for a branch name mechanically derived from that pattern:
-it may therefore exercise an older pattern instead of the one just added, and it
-never tests the branch actually chosen, and only then create
-the ticket branch and commit the configuration change ON it — a commit made before
-the branch exists is stranded on the shared base. Declining the remedy means
-choosing a different base; there is no third path.
+configuration as a whole, not for one pattern); re-run `install-git-hooks.ps1`
+because the generated list is a build product of the configuration; PROVE it with
+the synthetic-pipe check (Publication Contract) — piping a synthetic ref update for
+THIS branch into the installed hook and confirming the non-zero reject (the
+installer's own self-test proves only that the generated list is consulted, and
+only for ONE sampled pattern beyond its built-in set — the first whose sole glob
+metacharacter is `*` — and for a branch name mechanically derived from that
+pattern, so it may exercise an older pattern instead of the one just added and
+never test the branch actually chosen); and only THEN create the ticket branch and
+commit the configuration change ON it — a commit made before the branch exists is
+stranded on the shared base. Declining the remedy means choosing a different
+base; there is no third path.
 
 A pattern that cannot be evaluated at all (a malformed glob such as `Maint/[0-9`)
 counts as NO match, which is the same answer the `pre-push` hook's `case` statement
@@ -1253,10 +1261,13 @@ Documents are never pushed into a shared branch to make them visible; they are
   taken-over design document records `**Převzato z:** <branch>@<sha>`.
 - **A ticket branch is created with an EXPLICIT starting point, always:**
   `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a `git fetch
-  origin` — otherwise it cannot see already-merged planning. `<chosen base>` is the
-  base the user picked in the entry gate's Intent phase, NOT the effective base:
-  the `Báze:` line that would carry the effective base is written a phase later
-  (see Repository Configuration, the effective base). The **local** base branch is
+  origin` — otherwise it cannot see already-merged planning. When the work item
+  is being pinned for the FIRST time, `<chosen base>` is the base the user picked
+  in the entry gate's Intent phase, NOT the effective base: the `Báze:` line that
+  would carry the effective base is written a phase later. Where the work item is
+  already pinned, `<chosen base>` IS the effective base (see Repository
+  Configuration, the effective base, for the full carve-out and its exception).
+  The **local** base branch is
   not used in a ticket workspace: if one exists it is neither updated nor merged —
   every later merge, diff and push of this work item names the remote base, which
   from the pin write onwards is the effective base.

@@ -19,14 +19,12 @@ After the user chooses and BEFORE executing the choice:
   the integration sequence below, so a base sync precedes it.
 - **Option 1 ("Merge back to <base-branch> locally") is REPLACED in this
   repository by integration through a push of the ticket branch** — the same kind
-  of redirection the document paths get. Do NOT execute the upstream Option 1
-  block: no `git checkout <base-branch>`, no `git pull`, no local merge, no
-  `git branch -d`. A ticket workspace has no local base branch to merge into; if
-  one exists it is neither updated nor merged, and the **effective base** is the
-  only base that counts (contract, "Repository Configuration"). Resolve it
-  mechanically ONCE before the sequence below, never by hand — `<mb-shared>` is
-  this layer's `skills/shared/` directory, the sibling of the skill directory this
-  overlay is injected into:
+  of redirection the document paths get. A ticket workspace has no local base
+  branch to merge into; if one exists it is neither updated nor merged, and the
+  **effective base** is the only base that counts (contract, "Repository
+  Configuration"). Resolve it mechanically ONCE before the sequence below, never
+  by hand — `<mb-shared>` is this layer's `skills/shared/` directory, the sibling
+  of the skill directory this overlay is injected into:
 
   ```powershell
   . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
@@ -35,9 +33,9 @@ After the user chooses and BEFORE executing the choice:
 
   `$base.Ref` is `<effective base>` everywhere below, and `$base.Branch` is the
   push destination of step 5 — take it from the helper, never derive it in your
-  head. The
-  sequence instead, per the contract's Publication Contract, subsection
-  "Integration":
+  head. Do NOT execute the upstream Option 1 block: no `git checkout
+  <base-branch>`, no `git pull`, no local merge, no `git branch -d`. The sequence
+  instead, per the contract's Publication Contract, subsection "Integration":
   1. BEFORE the harvest, base sync at this phase boundary: `git fetch origin`,
      then `git merge <effective base>` on the ticket branch, with the intersection
      assessment and verification of the contract's "Base Sync & Drift Detection"
