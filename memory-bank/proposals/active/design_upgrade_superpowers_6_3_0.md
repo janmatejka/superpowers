@@ -348,3 +348,38 @@ a sezením. Vrstvy:
 | Sezení pracuje se starou nasazenou kopií | obnova nasazení je krok 5 provedení, ne úklid po; staleness kontrola `diff -rq` proti nasazení (playbook) |
 | Agent na bounded cestě uvízne na harvest varování „chybí plán" | jedna věta ve fragmentu finishing (bod 3.3) |
 | ASSERT slabší, než se čeká (chybný match) | negativní ruční ověření (verifikace 5); nejhorší selhání je slabší ochrana, ne škoda |
+
+## Verifikační evidence (2026-08-13, po revendoru na v6.3.0)
+
+Čísla řádků platí pro **vygenerované** soubory v kořenovém `.claude/skills/`
+po revendoru s aplikovanými overlay bloky. Při příštím revendoru přečíst
+tato místa znovu.
+
+### Tabulka uzavření rozporů
+
+| # | Upstream věta (vygenerovaný soubor:řádek) | Věta vrstvy (soubor:řádek) | Mechanismus uzavření |
+|---|---|---|---|
+| 1 | „the spec is the binding authority, the plan is its argument" — `subagent-driven-development/SKILL.md:21` (a `:179`) | overlay tamtéž `:586` + kontrakt, Active Work Item | **jmenovaná precedence:** overlay větu cituje a čte ji subject splitem (WHAT → design, HOW → plán); ASSERT kotva na řádek 21 |
+| 2 | „No spec file, no implementation plan document" (bounded) — `brainstorming/SKILL.md:44` | overlay tamtéž `:430–434` + kontrakt, Brainstorming Paths | **jmenovitá negace poloviny:** overlay větu cituje, přebíjí „no spec file" a potvrzuje „no implementation plan document"; ASSERT kotva na řádek 44 |
+| 3 | „Four things stop you, and only these…" — `subagent-driven-development/SKILL.md:27` | overlay tamtéž `:578` + kontrakt, Fail-Closed Behavior („Rulings and these STOPs") | **mapování dovnitř tříd:** STOPy vrstvy nejsou pátá třída, spadají do čtyř; base merge vlastní větve jmenovitě vyloučen z „side effect"; ASSERT kotva na řádek 27 |
+| 4 | „If the plan names a Spec, read that too" — `subagent-driven-development/SKILL.md:157` | overlay tamtéž `:591` + kontrakt, hlavička plánu | **shoda jména pole:** plán nese `**Spec:**`, alias `**Návrh:**` tolerován pro čtení; ASSERT kotva na řádek 157 |
+| 5 | tři checklisty, každý s vlastními položkami 1–5 — `brainstorming/SKILL.md` | overlay tamtéž `:270` (pravidlo jmen fází) | **odkazy jménem fáze:** overlay blok bez jediného `item N` odkazu (grep = 0); klasifikační řádek a path-bound terminální stavy (`:149`) drží ASSERT kotvy |
+
+### Cold-reader průchod (vygenerovaný brainstorming/SKILL.md)
+
+| Kombinace | Výsledek |
+|---|---|
+| spike, bez tiketu | OK — brána: způsobilost+inventář vždy, větev až při dotyku stromu, pin nikdy; žádný zápis do proposals/ |
+| spike, s tiketem | OK — krok Jira ticket se přeskočí (tiket spike nepinuje) |
+| bounded, bez tiketu, čistý strom | OK — plná brána včetně pinu, návrh schválený v chatu se zapíše bez druhého kola, implementace normálním workflow, konec ve finishing |
+| bounded, s tiketem | OK — gate se nenabízí (architectural only), přání review = upgrade cesty; Epic Backflow pojmenovaně odložen |
+| bounded, zbytky v cestě | OK — fáze inventáře a jednoho rozhodnutí beze změny (park/discard/carry) |
+| architectural, bez tiketu | OK — beze změny chování proti v6.2.0 (gate i backflow se bez tiketu přeskočí) |
+
+Nalezené a opravené defekty: **D1** — bounded zápis návrhu přebíjel upstream
+„No spec file" jen implicitně → doplněna jmenovitá negace + ASSERT;
+**D2** — SDD odrážka autority nejmenovala upstream větu → doplněna citace
+s subject splitem. Oba opraveny ve fragmentech, revendor zopakován
+(`Verification passed.`), commit `37c26c0`. Při opakování revendoru zachycena
+i past zastaralé nasazené kopie fragmentů (revendor četl `.claude/…/overlays`
+před obnovou kopie) — viz playbook, sekce „Obnova nasazené kopie".
