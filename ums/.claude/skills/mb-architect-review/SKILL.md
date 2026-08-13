@@ -1,10 +1,10 @@
 ---
 name: mb-architect-review
-description: Design review by a human architect via a Jira ticket — hand off an approved design (request), assess it as the architect (respond), or take the ticket back and continue (resume). Use for "předej návrh architektovi", "posuď design/návrh v UMS-XXXX", "převezmi UMS-XXXX po design review", "design review tiketu UMS-XXXX", or when the brainstorming Architect Review Gate offers a review. Accepts an optional ticket key and switches the repo to the ticket branch (branch sync).
+description: Design review by a human architect via a Jira ticket — hand off an approved design (request), assess it as the architect (respond), take the ticket back and continue (resume) — or run an independent agentic opposition of a design (oppose). Use for "předej návrh architektovi", "posuď design/návrh v UMS-XXXX", "převezmi UMS-XXXX po design review", "design review tiketu UMS-XXXX", "zoponuj návrh / oponentura návrhu", or when the brainstorming Architect Review Gate offers a review. Accepts an optional ticket key and switches the repo to the ticket branch (branch sync).
 license: MIT
 metadata:
   author: UMS Project
-  version: "1.3"
+  version: "1.4"
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
@@ -18,8 +18,10 @@ metadata:
 # Command: mb-architect-review
 
 **Action:** Mediate a design review by a human architect through a Jira
-ticket. Three modes by role: request (resolver → architect), respond
-(architect), resume (resolver takes the ticket back).
+ticket, or run an independent agentic opposition of a design. Four modes:
+request (resolver → architect), respond (architect), resume (resolver
+takes the ticket back), oppose (standalone agentic opposition — no human
+handoff, no Jira side effects).
 **Language:** all user-facing output, Jira comments and persistent artifacts
 in Czech; this skill body and dispatch prompts are English.
 
@@ -28,7 +30,9 @@ in Czech; this skill body and dispatch prompts are English.
 The user never names the mode. Determine it in this order:
 
 1. **Explicit verb in the prompt:** "posuď / review / assess" → respond;
-   "převezmi / pokračuj / take back" → resume; "předej / hand off" → request.
+   "převezmi / pokračuj / take back" → resume; "předej / hand off" →
+   request; "zoponuj / oponentura / oppose" → oppose. Oppose enters ONLY
+   through this rule — it is never inferred from Jira state.
 2. **Jira state + caller identity:** load the ticket and the caller
    (`atlassianUserInfo`), compare with the assignee and with the original
    resolver recorded in the request comment:
@@ -38,7 +42,8 @@ The user never names the mode. Determine it in this order:
      resolver → respond,
    - ticket in "Design Review" AND caller is the original resolver → resume.
 3. **Undecidable** (identity unavailable, contradictory state) → ask ONE
-   question offering the three modes. Never pick silently.
+   question offering request / respond / resume (oppose is not offered
+   here — it enters only by explicit ask). Never pick silently.
 
 "In Design Review" everywhere in this skill means the contract's test
 (Architect Review Gate, "Design Review" fallback): status "Design Review",
@@ -262,8 +267,47 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    approved here, which is that step's trigger point; fail-open, offer only)
    → then invoke writing-plans.
 
+## Mode: oppose (standalone opposition)
+
+Entered only by an explicit ask (Mode Detection) — never inferred from
+Jira state. No Jira side effects in this mode: no transition, no flag, no
+comment — a linked ticket is context, not a state machine.
+
+1. Input: an optional ticket key. With one, run Branch sync (above) to
+   that ticket's branch; without one, stay on the current branch. Then
+   read `context.md` and take the design half of the active work item from
+   `<PLAN_MB>/proposals/active/` — or the design document the user named
+   explicitly (a queued draft in `proposals/next/` is a valid target too).
+   No design document → report there is nothing to oppose and stop.
+2. **Shared-branch guard.** When the current branch matches any pattern of
+   the effective `protectedBranches` (`Test-UmsProtectedBranch`, contract
+   section "Repository Configuration"), the fold step below is
+   unavailable: offer a read-only run (findings and closing summary only,
+   no edits) or STOP and let the user pick a branch. A design is never
+   edited on a shared branch.
+3. Read the target MB's documents (`brief.md`, `architecture.md`,
+   `tech.md`, `playbook.md` — those that exist; legacy shape per the
+   contract's Memory Bank Document Set).
+4. Dispatch the opponent and run the triage per the contract's "Agentic
+   Design Opposition (oponentura)" section — most capable model, highest
+   exposed reasoning effort, both explicit; findings with evidence only;
+   contested and scope-changing findings go to the user in the batched
+   dialog.
+5. Fold the approved changes into the design document, commit (Czech
+   commit message, `mb-git-commit` conventions) and push (announced, per
+   Push Policy). The changed passages go back to the user for re-approval
+   — the closing summary is its input.
+6. Close with the contract's Czech closing summary (folded in without
+   asking / decided on contested points / rejected with reasons).
+
 ## Model Selection
 
 Composing the request summary is summarization work — when delegated, dispatch
 on the cheapest capable tier (contract, Dispatch Model Policy). Respond and
 resume are interactive; no dispatch by default.
+
+The opposition dispatch (oppose mode, or the respond aide) follows the
+contract's "Agentic Design Opposition (oponentura)" section: the most
+capable available model with the highest reasoning effort the harness
+exposes, both stated explicitly — the one dispatch of this skill that must
+never run on a cheap tier.
