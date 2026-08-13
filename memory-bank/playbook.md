@@ -485,6 +485,15 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
 - Tři upstream skilly s overlay bloky (`brainstorming`,
   `subagent-driven-development`, `finishing-a-development-branch`) se kopií
   nevyrobí — po změně overlay fragmentu je musí vygenerovat revendor.
+- **Po každém revendoru dorovnej vendorované skilly i v `.agents/skills`
+  kopií z `.claude/skills`** — platí pro tento fork i pro monorepo. Revendor
+  cílí jen na `.claude/skills` a sync vendorované skilly nesynchronizuje
+  nikdy, takže Codex kopie tiše zaostane. Ověření: `diff -rq` přes všech 14
+  vendorovaných adresářů musí být prázdný.
+  Proč: po revendoru na kontrakt v2.10 nesl `.agents/skills/brainstorming/`
+  v obou repech starý overlay bez bodu oponentury, zatímco `.claude` kopie
+  už byla nová — `mb-*` skilly přitom sync dorovnal, takže rozdíl nebyl na
+  první pohled vidět.
 - **Po editaci overlay fragmentu v `ums/` nejdřív obnov nasazení (kopie
   `ums/.claude/.` → `.claude/`), teprve pak spusť revendor** — revendor sám
   čte fragmenty z NASAZENÉ kopie (`.claude/skills/shared/overlays/`), takže
