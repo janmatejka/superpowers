@@ -204,15 +204,32 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    resolver handed over. Then read the design document and the target project's
    MB context (`brief.md`, `architecture.md`, `tech.md`, `playbook.md`) from the
    ticket branch.
-4. Guide the architect through a structured assessment: goal and scope
-   adequacy, technical approach, impacts, risks, alternatives. Help phrase
-   the notes.
-5. Publish the notes as a Czech comment, set the assignee back to the
-   original resolver, and **set the flag** (Flagged/Impediment — team
-   convention: "returned, attend to it"). The status stays unchanged
-   ("Design Review", or "Review" in the fallback shape).
-   If commits were made on the ticket branch, push them (announced push per
-   Push Policy — the ticket branch is unprotected, so no approval is needed).
+4. **Summary to the console first.** Print the architect a Czech summary
+   of the design (goal, scope, technical approach, impacts, risks) — no
+   Jira write, no assignee change, no flag: every side effect outside the
+   clone waits for the Publish step below. Offer the agentic opposition as
+   an aide (contract, "Agentic Design Opposition (oponentura)"): on
+   acceptance dispatch the opponent per that section and feed its findings
+   into the assessment below — they inform the notes, they never edit the
+   design (in respond the design belongs to the resolver), and the triage
+   is the architect's, made in the conversation.
+5. **Assessment as a conversation.** Guide the architect through a
+   structured assessment: goal and scope adequacy, technical approach,
+   impacts, risks, alternatives — brainstorming-style, one question at a
+   time; help phrase the notes. The output is the final wording of the
+   review notes.
+6. **Explicit gate.** Present the final wording and ask (Czech): „Zapsat
+   posudek do Jiry a vrátit tiket řešiteli?" Without that explicit consent
+   nothing reaches Jira; the architect may break off the conversation and
+   return to it later — until the gate passes, the notes exist only in
+   this session.
+7. **Publish — only after the gate passes.** The notes as a Czech comment,
+   the assignee back to the original resolver, and **set the flag**
+   (Flagged/Impediment — team convention: "returned, attend to it"). The
+   status stays unchanged ("Design Review", or "Review" in the fallback
+   shape). If commits were made on the ticket branch, push them (announced
+   push per Push Policy — the ticket branch is unprotected, so no approval
+   is needed).
 
 ## Mode: resume (resolver takes back)
 
