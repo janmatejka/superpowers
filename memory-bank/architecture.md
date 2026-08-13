@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.9, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.10, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -115,6 +115,14 @@ položky). Zásahy do architektonické cesty:
   zvolil, ne nutně `baseRef`); po commitu návrhu ho agent pushuje —
   publikace vlastní větve po každém commitu je obecné pravidlo, ne jen tento
   jeden krok (sekce 3).
+- **Nabídka agentické oponentury** (jen architektonická cesta, po schválení
+  zapsaného návrhu, PŘED nabídkou Architect Review Gate): per kontrakt, sekce
+  „Agentic Design Opposition (oponentura)" — nabídka, nikdy automatický běh.
+  Nezávislý subagent s čistým kontextem (nejsilnější model, nejvyšší effort)
+  posoudí návrh proti MB dokumentům i kódu; nálezy s povinnou evidencí projdou
+  triáží (nesporné rovnou do návrhu, sporné dávkovým dialogem s uživatelem,
+  mylné odmítnuty s důvodem) a změněné pasáže se re-approvují — teprve pak je
+  návrh finálně schválen.
 - **Architect Review Gate** (jen architektonická cesta, po schválení zapsaného
   návrhu): s navázaným tiketem se VŽDY nabídne design review architektem.
   Přijetí znamená konec workflow v tomto sezení — pokračuje se až režimem
@@ -207,7 +215,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.9, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.10, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -349,7 +357,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.9](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.10](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -483,7 +491,7 @@ flowchart LR
 | `mb-harvest` | Složí znalost do dotčených MB (current-state faktů i playbookové brány), archivuje návrh, smaže plán, resetuje na IDLE. Zákaz git operací — commit vlastní volající. | Harvest Gate ve finishing, nebo ručně |
 | `mb-abort` | Opuštění práce: oba soubory páru do `abandoned/`, reset `context.md` na IDLE, commit a push tohoto pohybu na tiketové větvi. Mazání lokální větve (detach na `<baseRef>` + smazání) dělá až finishing Discard, ne `mb-abort` samotné. | ručně |
 | `mb-park` | Odloží aktivní práci beze ztráty: commit rozpracovaného, push tiketové větve, commit kandidátů playbooku aktuálního slugu (`git add -f`), ohlášení zbytků. `context.md` zůstává ACTIVE — pár zůstává v `active/`. STOP dřív, než cokoli commitne, když aktuální větev odpovídá kterémukoli vzoru efektivních `protectedBranches` (`Test-UmsProtectedBranch`), ne jen odvozené bázi — jednodušší i přísnější než dřívější kontrola jediné hodnoty. Třetí konec životního cyklu vedle dokončení a opuštění. | ručně, nebo z entry gate při zbytcích v cestě |
-| `mb-architect-review` | Design review živým architektem přes tiket: request / respond / resume, branch sync dle tiketu, publikace vlastní větve dle Publication Contract (ohlášená, ne na souhlas). Request komentář vždy začíná markerem `[DESIGN REVIEW]`; chybí-li v Jiře přechod do „Design Review", request spadne na stav „Review" a marker oba stavy rozliší (kontraktový fallback). Resume po schválení návrhu spouští Epic Backflow check. | Architect Review Gate, nebo ručně |
+| `mb-architect-review` | Design review živým architektem přes tiket (request / respond / resume) plus samostatný režim `oppose` — agentická oponentura návrhu bez Jira side effectů (per kontrakt, sekce „Agentic Design Opposition"). Branch sync dle tiketu, publikace vlastní větve dle Publication Contract (ohlášená, ne na souhlas). Respond zapisuje posudek do Jiry až po explicitní schvalovací bráně (souhrn → konverzace → brána → publikace) a může si vyžádat oponenta jako pomocníka posudku. Request komentář vždy začíná markerem `[DESIGN REVIEW]`; chybí-li v Jiře přechod do „Design Review", request spadne na stav „Review" a marker oba stavy rozliší (kontraktový fallback). Resume po schválení návrhu spouští Epic Backflow check. | Architect Review Gate, nabídka oponentury v brainstormingu, nebo ručně |
 | `mb-jira-update` | České shrnutí implementace do Jira; brána dosažitelnosti (§6b) před zápisem odkazu; finalizační režim posune tiket do „Test" jen po publikaci merge commitu. | z `mb-harvest`, z finishing, nebo ručně |
 | `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest`, z `mb-migrate-docs` |
 | `mb-sync` | Dosynchronizuje MB dokumenty s realitou kódu mimo workflow; drift `playbook.md` jen navrhuje ke schválení, nezapisuje ho sám. | ručně |

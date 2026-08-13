@@ -361,6 +361,12 @@ Ve sloučeném commitu už nejde poznat, co přinesl upstream a co vrstva.
   nematchuje, upstream ten řádek změnil. Skript přitom vypíše přesně ty
   fragmenty, které potřebují lidský zásah — oprav je, synchronizuj zpět do
   forku a spusť revendor znovu; nikdy kotvu neuvolňuj, aby „prošla".
+- **Revendor spouštěj z PowerShellu, ne z Git Bash shellu.** V Git Bashi
+  zdědí skript přes PATH msys `tar`, který windowsovou cestu čte jako
+  vzdálený host; v PowerShellu `tar` resolvuje na
+  `C:\WINDOWS\system32\tar.exe` a vendor krok projde.
+  Proč: běh z Git Bash spadl na `/usr/bin/tar: Cannot connect to C: resolve
+  failed` při rozbalování `skills.tar`.
 - Verifikační pass běží vždy jako poslední a shodí skript na viselých
   relativních odkazech, zbytcích v5 souborů, chybějících v6 souborech,
   nevyvážených overlay markerech, CRLF v bashových skriptech a na funkčním
@@ -487,6 +493,14 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   Proč: revendor spuštěný bez předchozí obnovy kopie tiše aplikoval starou
   verzi fragmentů a verify pass prošel zeleně; chybějící text ve
   vygenerovaném skillu odhalil až cílený grep.
+- **Regenerace nasazených (i monorepo) vendorovaných skillů po změně
+  fragmentu bez upstream bumpu = plný jednoprůchodový revendor s pinovaným
+  tagem (`revendor-superpowers.ps1 -Tag <pin>`), ne `-OverlaysOnly`.**
+  `-OverlaysOnly` funguje jen na čerstvě vendorované (pristine) soubory hned
+  po běhu `-NoOverlays`.
+  Proč: nasazené vendorované soubory už nesou předchozí overlay bloky, takže
+  `-OverlaysOnly` skončil FAIL „'brainstorming/SKILL.md' already contains an
+  overlay block. Re-vendor first (vendored files must be pristine…)".
 - `sync-with-monorepo.ps1` na tohle není: cílí na monorepo nebo na profil
   uživatele, ne na kořen tohoto forku.
 
