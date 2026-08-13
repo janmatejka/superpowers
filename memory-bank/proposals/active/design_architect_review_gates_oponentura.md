@@ -4,8 +4,7 @@
 - **Target MB:** memory-bank/
 - **Vytvořeno:** 2026-08-13
 
-Předběžný návrh (fronta `next/`) — aktivuje se, až na něj dojde řada.
-Kandidát na **architectural** cestu brainstormingu: zásah do více souborů
+**Architectural** cesta brainstormingu: zásah do kontraktu, více souborů
 včetně overlay fragmentu (revendor) a nový režim skillu. Původní užší verze
 (jen schvalovací brána) byla kandidátem na bounded; rozšířením o oponenturu
 bounded klasifikace padá.
@@ -31,18 +30,24 @@ lidského architekta nebo než se začne plánovat implementace.
 
 ## Scope
 
+- `ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md` — část B: nová
+  sekce s normativním popisem oponentury (aktér, pořadí kroků, vstupy,
+  formát nálezů, triáž, model + effort), bump kontraktu na v2.10 včetně
+  přeformulování „Supersedes" historie dle konvence. Důvod: oponenturu
+  konzumují tři místa (brainstorming overlay, respond, režim `oppose`) —
+  pravidlo má jeden domov v kontraktu, skilly říkají jen „per ‹sekce›".
 - `ums/.claude/skills/mb-architect-review/SKILL.md` — část A: sekce
   „Mode: respond (architect)", kroky 4–5 (dnes řádky 207–215); část B: nový
-  režim (pracovní název `oppose`) + zapojení oponenta jako pomocníka
-  architekta v respond.
+  režim `oppose` + zapojení oponenta jako pomocníka
+  architekta v respond; ve stejném commitu úprava `description` ve
+  frontmatteru (triggering nové schopnosti řídí výhradně description).
 - Overlay fragment brainstormingu
   (`ums/.claude/skills/shared/overlays/brainstorming.overlay.md`) — část B:
   bod nabídky oponentury po schválení specu; změna fragmentu = pořadí
   kopie → revendor dle `playbook.md`.
-- Režimy request a resume beze změny. Kontrakt (Architect Review Gate) se
-  nemění — popisuje handoff mezi lidmi, ne vnitřní pořadí respond kroků ani
-  volitelné agentické pomocníky; zda oponentura zaslouží zmínku v kontraktu,
-  rozhodne aktivace návrhu.
+- Režimy request a resume beze změny. Část A kontrakt nemění — vnitřní
+  pořadí kroků jednoho režimu je čistě lokální věc skillu (Architect Review
+  Gate v kontraktu popisuje handoff mezi lidmi).
 
 ## Technický návrh
 
@@ -112,11 +117,11 @@ stopy.
    takže po něm následuje re-approval změněných pasáží uživatelem (souhrn
    výše je jeho podkladem).
 2. **Respond režim** — pomocník architekta: nálezy oponenta krmí strukturované
-   posouzení (krok 4 / kroky 1–2 části A), tedy poznámky posudku, ne přímé
-   úpravy návrhu — návrh v respond patří řešiteli. Triáž bodů 1–3 tu provádí
+   posouzení (fáze souhrnu a konverzace z části A), tedy poznámky posudku, ne
+   přímé úpravy návrhu — návrh v respond patří řešiteli. Triáž tu provádí
    architekt v konverzaci, ne řídící agent sám.
-3. **Samostatně na vyžádání** — nový režim skillu `mb-architect-review`
-   (pracovní název `oppose`): kdykoli nad existujícím design dokumentem,
+3. **Samostatně na vyžádání** — nový režim `oppose` skillu
+   `mb-architect-review`: kdykoli nad existujícím design dokumentem,
    bez vazby na fázi workflow a bez Jira side effectů (žádná transition,
    žádný flag — jen oponentura + triáž + úpravy návrhu na tiketové větvi).
 
@@ -127,10 +132,10 @@ stopy.
 - Návrhy projdou levnější agentickou oponenturou dřív, než stojí čas lidského
   architekta; lidský architekt dostává návrh už zbavený mechanicky
   odhalitelných vad.
-- Žádná změna pro request/resume ani pro kontrakt (Architect Review Gate
-  v kontraktu popisuje handoff, ne vnitřní pořadí respond kroků).
+- Kontrakt roste o sekci oponentury (v2.10); request/resume beze změny.
 - Nový bod nabídky v brainstorming overlay = změna fragmentu a revendor
-  (dopad na monorepo pipeline dle `playbook.md`).
+  (dopad na monorepo pipeline dle `playbook.md`); po změně zdroje v `ums/`
+  je nutné obnovit nasazenou kopii v kořenovém `.claude/` tohoto repa.
 
 ## Rizika
 
