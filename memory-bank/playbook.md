@@ -479,6 +479,14 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
 - Tři upstream skilly s overlay bloky (`brainstorming`,
   `subagent-driven-development`, `finishing-a-development-branch`) se kopií
   nevyrobí — po změně overlay fragmentu je musí vygenerovat revendor.
+- **Po editaci overlay fragmentu v `ums/` nejdřív obnov nasazení (kopie
+  `ums/.claude/.` → `.claude/`), teprve pak spusť revendor** — revendor sám
+  čte fragmenty z NASAZENÉ kopie (`.claude/skills/shared/overlays/`), takže
+  pořadí kopie → revendor je závazné. Výsledek ověř grepem na
+  charakteristický text nové verze fragmentu ve vygenerovaném souboru.
+  Proč: revendor spuštěný bez předchozí obnovy kopie tiše aplikoval starou
+  verzi fragmentů a verify pass prošel zeleně; chybějící text ve
+  vygenerovaném skillu odhalil až cílený grep.
 - `sync-with-monorepo.ps1` na tohle není: cílí na monorepo nebo na profil
   uživatele, ne na kořen tohoto forku.
 
