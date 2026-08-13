@@ -1,17 +1,41 @@
 <!-- TARGET: brainstorming/SKILL.md -->
 <!-- ANCHOR: EOF -->
+<!-- ASSERT: Before your first question, classify the request and say the -->
+<!-- ASSERT: **Terminal states are path-bound.** Architectural: the ONLY skill you -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
 
 This repository injects a Memory Bank document layer. Read
 `../shared/UMS_MEMORY_BANK_CONTRACT.md` before writing the design document.
+
+**Three paths (per the contract's "Brainstorming Paths" subsection).**
+**architectural** and **bounded** both run the entry gate below in full and
+both produce `design_<slug>.md`; they diverge only after approval — bounded
+writes no plan and does not run subagent-driven-development. **spike** runs
+the gate's eligibility, leftover-inventory and decision phases, creates a
+branch only once it is to touch the tree, NEVER writes the pin, and writes
+nothing under `proposals/`; when its answer turns into work to keep, the
+request is reclassified and the gate completes. "This wants an architect's
+review" is itself an architectural signal — upgrade the path (the ratchet
+is one-way); the Architect Review Gate below is never offered on bounded.
+
+Where an adjustment below names an upstream checklist item, it names it
+**by phase name** — all three paths number their own items 1–5, so an
+ordinal alone no longer identifies a step.
+
 Adjustments to the checklist above:
 
-- **Item 1 (Explore project context)** additionally requires the seven steps below,
-  in this order. Create a todo for them. Start as soon as the affected code area is
-  identifiable; if it only becomes clear later in the dialog, run them then — but
-  they MUST all complete before item 6. Each step does only what it can do at its
+- **The "Explore project context" phase (architectural and bounded paths)**
+  additionally requires the seven steps below, in this order. Create a todo
+  for them. Start as soon as the affected code area is identifiable; if it
+  only becomes clear later in the dialog, run them then — but they MUST all
+  complete before the design document is written. On a spike, run the
+  **Entry gate** step always, and the **Choose the base** / **Create the
+  ticket branch** steps only once the spike is to touch the tree; the
+  **Target-MB discovery**, **Jira ticket**, **Activation** and **Write the
+  pin** steps are skipped — a spike pins nothing (contract, "Brainstorming
+  Paths"). Each step does only what it can do at its
   point in the sequence, and only the **Create the ticket branch**, **Activation**
   and **Write the pin** steps touch the working tree.
 
@@ -57,7 +81,8 @@ Adjustments to the checklist above:
      **Activation** step, because it can only happen once the ticket branch
      exists. This whole step writes nothing to the working tree.
   3. **Jira ticket:** ask for it (one question; "none" is a valid answer; skip when
-     a draft matched in step 2 already names it). **Then re-run the index with the
+     a draft matched in the **Target-MB discovery** step already names it).
+     **Then re-run the index with the
      intent declared** (`-Jira <ticket>` and `-Slug <slug>` when known) for the
      cross-clone collision check: a KOLIZE AKTIVNÍ PRÁCE finding — the same slug or
      the same Jira ticket already active on a foreign branch — is a fail-closed STOP
@@ -85,15 +110,18 @@ Adjustments to the checklist above:
      `protectedBranches` is the contract's fail-closed STOP — follow its ordered
      remedy and do NOT continue with an unprotected base.
   5. **Create the ticket branch** — the entry gate's intent phase — with the tree
-     clean, or carrying only the leftovers step 1 decided to commit here (nothing
-     else), per the rule stated in item 6:
+     clean, or carrying only the leftovers the **Entry gate** step decided to
+     commit here (nothing
+     else), per the rule stated in the "Write design doc" adjustment below:
      `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a
-     `git fetch origin`, always with the explicit start point. When step 3 answered
+     `git fetch origin`, always with the explicit start point. When the
+     **Jira ticket** step answered
      "none", the kebab slug alone names the branch — the ticket code is part of the
      name only when there is one (contract, "Active Work Item (Design + Plan Pair)",
      branch name derived from the slug). Test the creation postcondition here and
      only here: `proposals/active/` empty or absent and `context.md` IDLE.
-  6. **Activation**, only when step 2 matched a queued draft: now move ALL files of
+  6. **Activation**, only when the **Target-MB discovery** step matched a
+     queued draft: now move ALL files of
      its slug from `proposals/next/` to `active/` — on the ticket branch, where the
      work item belongs — renaming a legacy `proposal_*` draft to `design_<slug>.md`
      during the move (the only permitted legacy conversion), and reuse its slug and
@@ -114,24 +142,25 @@ Adjustments to the checklist above:
      that exist; legacy shape per Memory Bank Document Set) as design context —
      `playbook.md` is prescriptive and BINDS the work, the rest is current-state
      reference.
-- **Item 6 (Write design doc)**: save to
+- **The "Write design doc" phase (architectural path; on bounded, writing
+  the chat-approved design)**: save to
   `<PLAN_MB>/proposals/active/design_<slug>.md` (Czech content, header per
   the contract's "Superpowers Document Placement" section) instead of the
-  default `docs/superpowers/specs/` path. **By the time you reach this item the
-  ticket branch already exists** — item 1's **Create the ticket branch** step
-  created it — so here you only confirm you are on it and not on the base. **Do
+  default `docs/superpowers/specs/` path. **By the time you reach this phase the
+  ticket branch already exists** — the **Create the ticket branch** step
+  above created it — so here you only confirm you are on it and not on the base. **Do
   not re-create it and do not re-test the creation postcondition below:** your own
   pin and your own `proposals/active/` entry are expected to be present by now,
   and ACTIVE state you wrote yourself is not a finding to report and not a reason
   to delete anything.
 
-  The rule that governed that creation, invoked by item 1's **Create the ticket
-  branch** step and stated here in full: **always with an explicit starting
+  The rule that governed that creation, invoked by the **Create the ticket
+  branch** step above and stated here in full: **always with an explicit starting
   point**, `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a
   `git fetch origin`, where the chosen base defaults to `baseRef` from
   `<CTX_DIR>/ums-repo.json` (the contract's "Repository Configuration" section)
-  unless the user picked a different protected branch in item 1's **Choose the
-  base** step. The implicit form, without a starting point, branches off whatever
+  unless the user picked a different protected branch in the **Choose the
+  base** step above. The implicit form, without a starting point, branches off whatever
   happens to be checked out: run on a foreign ticket branch it pulls that
   branch's pin and its active pair into your history. The local base branch is
   not used in a ticket workspace — the chosen base is the only base that counts —
@@ -144,17 +173,31 @@ Adjustments to the checklist above:
 
   After committing the design, push the branch — the agent pushes its OWN ticket
   branch after every commit, always announcing the branch and the outgoing commits
-  (Publication Contract).
-- **Architect Review Gate (between item 8 and item 9):** when a Jira ticket
+  (Publication Contract). If this is the branch's FIRST publication, push with
+  `git push -u origin <branch>`, never bare — per the contract's first-publication
+  rule (Publication Contract): `switch -c` left the upstream pointing at the base.
+
+  On the **bounded** path the design was approved IN CHAT; after that
+  approval write the same content to
+  `<PLAN_MB>/proposals/active/design_<slug>.md` (same header, body scaled
+  to the change), commit and push — and do NOT wait for a second approval
+  round: the bounded path has no written-spec review phase.
+- **Architect Review Gate (architectural path only — after the user approves the
+  written spec, before the transition to implementation):** when a Jira ticket
   is linked, ALWAYS offer a design review by a human architect after the
   user approves the spec — with your own yes/no recommendation based on
   non-triviality (new component or service, architecture/contract changes,
   cross-project impact, DB migration, security impact). If accepted, invoke
   the `mb-architect-review` skill (request mode) and END the workflow here —
   work resumes later via its resume mode. If declined, or when no ticket is
-  linked, proceed to item 9 as usual. **This amends the terminal-state rule
-  above:** in this repository `mb-architect-review` may follow brainstorming;
-  writing-plans remains the only *implementation* successor.
+  linked, proceed to the transition to implementation as usual. **This amends
+  the path-bound terminal states above:** architectural — in this repository
+  `mb-architect-review` may follow brainstorming; writing-plans remains the
+  only *implementation* successor. Bounded — implementation proceeds directly
+  through the normal development workflow, but the work item still ends in
+  finishing-a-development-branch: it has a pin and a design, so the Harvest
+  Gate and the integration path apply to it exactly as to architectural work.
+  Spike — a reported recommendation, no MB artifact and no finishing.
 - **Epic Backflow check (after the design is finally approved):** per the
   contract's "Epic Backflow (design → epic)" section. When the Architect
   Review Gate above hands the work off, the design is not finally approved
@@ -165,6 +208,10 @@ Adjustments to the checklist above:
   ledger note, then offer the inline elaboration window or deferral — never
   launch elaboration unasked. Fail-open: an oracle failure or missing Jira
   skips the step with a one-line announcement.
+  On the **bounded** path this check does NOT run for now — bounded is by
+  definition a bounded change of an existing flow, so a scope or dependency
+  shift of its ticket is unlikely; `mb-epic-graph -Check` stays available on
+  demand. This is a named deferral, not an omission.
 - While `memory-bank/context.md` contains a
   `- **Review:** design-review requested` line, the workflow is parked: do
   NOT invoke writing-plans; the correct continuation is `mb-architect-review`
