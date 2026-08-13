@@ -1,5 +1,6 @@
 <!-- TARGET: finishing-a-development-branch/SKILL.md -->
 <!-- ANCHOR-BEFORE: ## Step 5: Execute Choice -->
+<!-- ASSERT: 1. Merge back to <base-branch> locally -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## Step 4.5: UMS Harvest Gate (MANDATORY in this repository)
@@ -17,6 +18,10 @@ After the user chooses and BEFORE executing the choice:
   its own ticket branch after every commit, announcing the branch and the outgoing
   commits. Then execute the chosen option. For Option 1 the harvest is step 2 of
   the integration sequence below, so a base sync precedes it.
+  For a **bounded** work item (contract, "Brainstorming Paths") a missing
+  plan half in `active/` is the EXPECTED shape — the harvest reports it and
+  archives the design (its documented warning path); it is not unfinished
+  work and not a reason to stop.
 - **Option 1 ("Merge back to <base-branch> locally") is REPLACED in this
   repository by integration through a push of the ticket branch** — the same kind
   of redirection the document paths get. A ticket workspace has no local base
