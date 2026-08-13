@@ -9,7 +9,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 | Co | Hodnota | Zdroj |
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
-| Vendor pin vrstvy | tag `v6.2.0`, commit `3dcbd5c4b48e02263fbf4a3c01e3fe4f81d584d9`, vendorováno 2026-07-24 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
+| Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
 | Kontrakt Memory Bank | 2.9 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 3 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
