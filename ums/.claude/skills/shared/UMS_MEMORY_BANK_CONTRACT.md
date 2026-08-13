@@ -1,7 +1,12 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.9
-- Supersedes v2.8 (splits the design/plan conflict rule by subject — what
+- **Contract-Version:** 2.10
+- Supersedes v2.9 (adds the Agentic Design Opposition section — an optional
+  independent-subagent review of a design with evidence-bearing findings,
+  driving-session triage and a batched user dialog; consumed by the
+  brainstorming overlay and by the respond and oppose modes of
+  `mb-architect-review`).
+- v2.9 superseded v2.8 (splits the design/plan conflict rule by subject — what
   vs. how; renames the plan-header field `**Návrh:**` to `**Spec:**` with a
   read alias; adds Brainstorming Paths — the document layer's mapping of the
   upstream spike/bounded/architectural router; maps this layer's fail-closed
@@ -1434,6 +1439,78 @@ a diverged local branch = STOP and report. Only after branch sync read
   user for the return assignee and branch; never guess.
 - Resume without the flag (architect answered manually in Jira): warn and
   continue only after user confirmation.
+
+## Agentic Design Opposition (oponentura)
+
+An optional adversarial review of a design document by an INDEPENDENT
+subagent with a clean context — the opponent has seen none of the dialog
+that produced the design, so it reads what the document says, not what its
+author meant. Always an OFFER the user accepts or declines; never an
+automatic run (the dispatch is not free — see Model and effort below).
+
+**Dispatch (by the driving session).** The opponent receives: the design
+document; the target MB's documents (`brief.md`, `architecture.md`,
+`tech.md`, `playbook.md` — those that exist, legacy shape per Memory Bank
+Document Set); and read access to the repository code, so integration
+claims are checked against reality rather than against the design's own
+prose. The dispatch prompt and the findings are AI-facing and therefore
+English (Language Contract). The opponent looks for defects in
+architecture, semantics, integration, security and similar concerns.
+
+**Model and effort.** Opposition is design-assessment work — an
+"architecture and design task" in the driving workflow's Model Selection —
+so it is dispatched on the MOST CAPABLE available model, never the session
+default, and with the highest reasoning effort the harness exposes on a
+dispatch (a harness without such a parameter sets the model alone). State
+both explicitly; an omitted parameter silently inherits the session's
+(Dispatch Model Policy). A cheap tier is a false economy here: weak
+opposition produces noise whose triage and user dialog cost more than the
+dispatch saved.
+
+**Findings format.** A structured list; every finding carries a category
+(architecture / semantics / integration / security / other), a severity, a
+claim, and EVIDENCE — a reference to the place in the design, the MB
+document or the code the claim stands on. A finding without evidence is
+not emitted. As with playbook candidates, the format enforces the ban on
+invention — without evidence there is no finding.
+
+**Triage (by the driving session).** Every finding lands in exactly one
+bucket:
+
+1. **Relevant and uncontested** → folded into the design directly.
+2. **Contested, or scope-changing** → resolved with the user in a BATCHED
+   dialog: several questions per iteration — the harness's structured
+   questions where available, a numbered list in one message otherwise —
+   so the user answers several points at once instead of a
+   one-question-per-turn ping-pong.
+3. **Irrelevant or wrong** → rejected, with the reason recorded for the
+   closing summary.
+
+**Closing summary (Czech).** After triage and dialog the user receives one
+summary: what was folded in without asking (with the offer to revert any
+of it), the decisions taken on contested points, and the rejected findings
+with reasons. Nothing is folded in silently.
+
+**Consumption points** — three, each an offer:
+
+1. **Brainstorming, architectural path** — after the user approves the
+   written spec, BEFORE the Architect Review Gate offer: agentic
+   opposition can pre-filter mechanically findable defects before the
+   design costs a human architect's time. Folding findings into an
+   approved spec changes it, so the changed passages go back for the
+   user's re-approval (the closing summary is its input); the design
+   counts as FINALLY approved — for the Epic Backflow trigger and the
+   Architect Review Gate offer — only after that re-approval.
+2. **`mb-architect-review`, respond mode** — the architect's aide: the
+   findings feed the structured assessment (its summary and conversation
+   phases), never direct design edits — in respond the design belongs to
+   the resolver. Triage is the architect's, made in the conversation, not
+   the driving session's own.
+3. **`mb-architect-review`, oppose mode** — standalone, on demand, over an
+   existing design document; no Jira side effects (no transition, no
+   flag). The one consumption point where the fold lands outside a
+   brainstorming session: the design edits are committed and pushed on the
+   ticket branch like any other commit of the work item.
 
 ## Epic Backflow (design → epic)
 
