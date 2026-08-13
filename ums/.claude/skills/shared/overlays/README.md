@@ -23,3 +23,16 @@ An `ANCHOR-BEFORE` line must match exactly one line of the target file.
 A miss is a hard error — that is the upstream-drift detector: after a
 re-vendor to a new tag, every failing anchor points at an overlay block that
 needs human attention.
+
+Between the anchor line and the body, a fragment may carry any number of
+assertion directives:
+
+```
+<!-- ASSERT: <exact line text> -->
+```
+
+Each must match exactly one line of the target file (same `TrimEnd()`
+comparison as `ANCHOR-BEFORE`). A miss is a hard error — this is how an
+`ANCHOR: EOF` fragment still detects upstream drift: assert the upstream
+sentences the overlay's semantics stand on, and the next upstream change to
+them fails the re-vendor loudly instead of applying cleanly.

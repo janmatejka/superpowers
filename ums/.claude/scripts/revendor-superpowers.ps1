@@ -127,12 +127,23 @@ function Invoke-Overlays {
         if (-not (Test-Path $target)) { Fail "$($frag.Name): target '$targetRel' does not exist." }
 
         $anchorLine = $lines[1]
-        $body = ($lines[2..($lines.Count - 1)] -join "`n").TrimStart("`r", "`n")
+        $bodyStart = 2
+        $asserts = @()
+        while ($bodyStart -lt $lines.Count -and $lines[$bodyStart] -match '^<!-- ASSERT: (.+?) -->$') {
+            $asserts += $Matches[1]
+            $bodyStart++
+        }
+        $body = ($lines[$bodyStart..($lines.Count - 1)] -join "`n").TrimStart("`r", "`n")
         if ($body -notmatch 'UMS-OVERLAY BEGIN' -or $body -notmatch 'UMS-OVERLAY END') {
             Fail "$($frag.Name): body must contain '<!-- UMS-OVERLAY BEGIN ... -->' and '<!-- UMS-OVERLAY END -->' markers."
         }
 
         $content = (Get-Content -Path $target -Raw) -replace "`r`n", "`n"
+        $targetLines = $content -split "`n"
+        foreach ($a in $asserts) {
+            $hits = @($targetLines | Where-Object { $_.TrimEnd() -eq $a }).Count
+            if ($hits -ne 1) { Fail "$($frag.Name): ASSERT '$a' matched $hits lines in target (need exactly 1). Upstream drift - update the fragment." }
+        }
         if ($content -match 'UMS-OVERLAY BEGIN') {
             Fail "$($frag.Name): '$targetRel' already contains an overlay block. Re-vendor first (vendored files must be pristine before overlay application)."
         }
