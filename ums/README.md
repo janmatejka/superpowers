@@ -5,7 +5,7 @@ UMS monorepo (`d:\_datasys\ums`, Bitbucket `datasyscz/ums`). It lives only on
 the `ums-memory-bank` branch of this fork; `main` stays a clean mirror of
 upstream `obra/superpowers`.
 
-**Model:** vendored superpowers skills (v6.2.0) drive the workflow
+**Model:** vendored superpowers skills (v6.3.0) drive the workflow
 (`brainstorming → writing-plans → subagent-driven-development →
 finishing-a-development-branch`); the Memory Bank is the document/knowledge
 layer injected into it. Between brainstorming and writing-plans sits an
@@ -86,7 +86,7 @@ After merging a new upstream release, redeploy to the monorepo:
 
 ```powershell
 # in the monorepo (d:\_datasys\ums), two-commit pattern:
-pwsh .claude/scripts/revendor-superpowers.ps1 -Tag v6.2.0 -NoOverlays   # commit: vanilla sync
+pwsh .claude/scripts/revendor-superpowers.ps1 -Tag v6.3.0 -NoOverlays   # commit: vanilla sync
 pwsh .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly             # commit: UMS overlay
 ```
 
@@ -112,7 +112,7 @@ The UMS layer follows the same split:
 **Portable (any harness that loads skills):** the contract, the mb-* skills,
 the overlay fragments, and the work-item (design+plan pair) document
 conventions are plain markdown — they work wherever superpowers skills load (Claude Code, Codex
-native discovery, Cursor, Copilot CLI, Kimi, OpenCode, pi). The mb-* skills
+native discovery, Cursor, Copilot CLI, Kimi, OpenCode, pi, Devin CLI, Hermes Agent). The mb-* skills
 use only git + filesystem + markdown; `mb-jira-update` needs an Atlassian MCP
 connection configured per harness.
 

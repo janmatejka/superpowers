@@ -2,7 +2,7 @@
 
 ## Přehled
 
-Skill pack MB v2: Superpowers (vendorované, v6.2.0) řídí workflow, Memory Bank
+Skill pack MB v2: Superpowers (vendorované, v6.3.0) řídí workflow, Memory Bank
 je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMORY_BANK_CONTRACT.md).
 
 ## Sdílené prostředky
@@ -13,7 +13,7 @@ je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMOR
 | Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů |
 | Overlay fragmenty | [shared/overlays/](overlays/README.md) | UMS bloky aplikované do vendorovaných skillů |
 
-## Vendorované Superpowers skilly (v6.2.0)
+## Vendorované Superpowers skilly (v6.3.0)
 
 14 skillů vendorovaných z obra/superpowers — viz `VENDORED_FROM.md`.
 UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-development`,

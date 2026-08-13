@@ -8,7 +8,8 @@ projektem Superpowers** (upstream `obra/superpowers`, v tomto repu remote
 `vanila`).
 
 Superpowers je knihovna skillů pro kódovací agenty (Claude Code, Codex, Cursor,
-Gemini CLI, Copilot CLI, Kimi, OpenCode, pi) — řídí pracovní postup
+Gemini CLI, Copilot CLI, Kimi, OpenCode, pi, Devin CLI, Hermes Agent) — řídí
+pracovní postup
 brainstorming → writing-plans → subagent-driven-development → finishing.
 UMS vrstva k tomu přidává **dokumentovou a znalostní vrstvu** (Memory Bank),
 napojení na Jira a pravidla specifická pro monorepo UMS.
@@ -139,6 +140,6 @@ druhá **produkt, na kterém se vrstva používá**.
 
 ## Stav
 
-Vrstva je v provozu (kontrakt v2.8, vendor pin upstream v6.2.0). Práce na této
+Vrstva je v provozu (kontrakt v2.9, vendor pin upstream v6.3.0). Práce na této
 větvi má přes 100 commitů nad `main`; poslední dokončené položky jsou v
 [proposals/completed/](proposals/completed/).

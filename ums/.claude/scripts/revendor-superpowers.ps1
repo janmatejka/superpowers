@@ -236,7 +236,7 @@ function Invoke-Verify {
         }
 
     Step 'Verify: SDD scripts run under Git Bash'
-    # v6.2.0 sdd-workspace is plan-scoped: it requires a PLAN_FILE argument and
+    # Since v6.2.0, sdd-workspace is plan-scoped: it requires a PLAN_FILE argument and
     # creates .superpowers/sdd/<plan-basename>/. Feed it a throwaway plan file.
     $sddWs = '.claude/skills/subagent-driven-development/scripts/sdd-workspace'
     Push-Location $UmsRoot

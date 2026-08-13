@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.8, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.9, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -82,9 +82,16 @@ flowchart TD
 ### Overlay 1 — `brainstorming`
 
 Fragment [`brainstorming.overlay.md`](../ums/.claude/skills/shared/overlays/brainstorming.overlay.md),
-ukotvený na konec souboru. Mění tři body upstream checklistu:
+ukotvený na konec souboru. Upstream v6.3.0 nejdřív klasifikuje request na tři
+cesty (spike / bounded / architectural) a fragment je mapuje na dokumentovou
+vrstvu (kontrakt, podsekce „Brainstorming Paths"): architektonická i bounded
+cesta běží vstupní bránu celou a obě produkují `design_<slug>.md` — bounded
+pak nepíše plán a nepouští SDD; spike nepinuje nic, větev dostane, jen když
+sahá na strom, a do `proposals/` nezapisuje. Na upstream checklist fragment
+odkazuje jmény fází, ne pořadovými čísly (každá cesta čísluje vlastní
+položky). Zásahy do architektonické cesty:
 
-- **Bod 1 (Explore project context)** navíc spouští **Target-MB discovery**:
+- **Fáze „Explore project context"** navíc spouští **Target-MB discovery**:
   najít cílovou Memory Bank (lokální sken sloučený s indexem skillu
   [`mb-doc-index`](../ums/.claude/skills/mb-doc-index/) nad `origin` —
   model tahu, kandidáti napříč větvemi), aktivovat případný předběžný návrh
@@ -99,7 +106,8 @@ ukotvený na konec souboru. Mění tři body upstream checklistu:
   zapsat `Target MB Pin`, `Jira`, `Work item`, `Started` a (jen když
   zvolená báze není `baseRef`) řádek `Báze:` do `context.md`, přečíst
   dokumenty cílové MB jako kontext návrhu.
-- **Bod 6 (Write design doc)** přesměruje uložení z upstream cesty
+- **Fáze „Write design doc"** (u bounded zápis návrhu schváleného v chatu,
+  bez druhého kola review) přesměruje uložení z upstream cesty
   `docs/superpowers/specs/` na `<PLAN_MB>/proposals/active/design_<slug>.md`
   (česky, s hlavičkou dle kontraktu) a vyžaduje větev na místě místo worktree
   (`git switch -c <TIKET>-<slug> <zvolená báze>` po `git fetch origin` —
@@ -107,9 +115,11 @@ ukotvený na konec souboru. Mění tři body upstream checklistu:
   zvolil, ne nutně `baseRef`); po commitu návrhu ho agent pushuje —
   publikace vlastní větve po každém commitu je obecné pravidlo, ne jen tento
   jeden krok (sekce 3).
-- **Architect Review Gate** mezi body 8 a 9: s navázaným tiketem se VŽDY nabídne
-  design review architektem. Přijetí znamená konec workflow v tomto sezení —
-  pokračuje se až režimem resume.
+- **Architect Review Gate** (jen architektonická cesta, po schválení zapsaného
+  návrhu): s navázaným tiketem se VŽDY nabídne design review architektem.
+  Přijetí znamená konec workflow v tomto sezení — pokračuje se až režimem
+  resume. Na bounded cestě se gate nenabízí — přání review je signál pro
+  upgrade cesty.
 - **Epic Backflow check** po finálním schválení návrhu (kontrakt, sekce „Epic
   Backflow (design → epic)"): s tiketem a dostupnou Jirou se spustí
   `mb-epic-graph -Check`; nález k tomuto tiketu vždy zafrontuje poznámku do
@@ -197,7 +207,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.8, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.9, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -339,7 +349,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.8](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.9](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -518,7 +528,10 @@ flowchart TD
 
 Pipeline má dvě fáze. **Vendoring** vyrábí kopie upstream skillů s overlay
 bloky, a to až v cíli nasazení (klíčová hranice, sekce 1); jeho výstup propouští
-až verifikační pass. **Sync vrstvy** (`sync-with-monorepo.ps1`) rozváží vrstvu
+až verifikační pass. Fragment smí vedle kotvy nést direktivy
+`<!-- ASSERT: <přesný řádek> -->` na nosné věty cílového souboru — miss je
+hard error stejně jako u `ANCHOR-BEFORE`, takže i fragmenty ukotvené na `EOF`
+detekují drift upstreamu. **Sync vrstvy** (`sync-with-monorepo.ps1`) rozváží vrstvu
 samotnou; cíle popisuje tabulka `$AgentTargets` — skills dir / config dir /
 instrukční soubor pro `claude`, `codex`, `gemini`, `kilocode` × `Monorepo`,
 `UserProfile`.
