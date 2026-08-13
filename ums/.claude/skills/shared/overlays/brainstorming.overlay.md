@@ -187,6 +187,21 @@ Adjustments to the checklist above:
   in its first half only: the design file IS written here (it is the durable
   Memory Bank record the harvest archives); "no implementation plan
   document" continues to hold.
+- **Agentic opposition offer (architectural path only — after the user
+  approves the written spec, BEFORE the Architect Review Gate offer):**
+  offer an independent agentic opposition of the design per the contract's
+  "Agentic Design Opposition (oponentura)" section — an offer, never an
+  automatic run. On acceptance: dispatch the opponent (most capable model,
+  highest exposed reasoning effort, both explicit), triage the findings
+  per that section (uncontested → fold into the design; contested or
+  scope-changing → one BATCHED dialog with the user; wrong → reject with
+  the reason), then present the Czech closing summary and have the user
+  RE-APPROVE the changed passages. Only after that re-approval is the
+  design finally approved — the Architect Review Gate offer and the Epic
+  Backflow check below follow it. On the **bounded** path the offer does
+  not run (the design was approved in chat; standalone opposition stays
+  available on demand via `mb-architect-review` oppose mode) — a named
+  deferral, like the Epic Backflow one below.
 - **Architect Review Gate (architectural path only — after the user approves the
   written spec, before the transition to implementation):** when a Jira ticket
   is linked, ALWAYS offer a design review by a human architect after the
