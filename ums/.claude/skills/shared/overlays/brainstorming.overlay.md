@@ -2,6 +2,7 @@
 <!-- ANCHOR: EOF -->
 <!-- ASSERT: Before your first question, classify the request and say the -->
 <!-- ASSERT: **Terminal states are path-bound.** Architectural: the ONLY skill you -->
+<!-- ASSERT:   one. No spec file, no implementation plan document. -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
@@ -181,7 +182,11 @@ Adjustments to the checklist above:
   approval write the same content to
   `<PLAN_MB>/proposals/active/design_<slug>.md` (same header, body scaled
   to the change), commit and push — and do NOT wait for a second approval
-  round: the bounded path has no written-spec review phase.
+  round: the bounded path has no written-spec review phase. This OVERRIDES
+  the upstream bounded rule "No spec file, no implementation plan document"
+  in its first half only: the design file IS written here (it is the durable
+  Memory Bank record the harvest archives); "no implementation plan
+  document" continues to hold.
 - **Architect Review Gate (architectural path only — after the user approves the
   written spec, before the transition to implementation):** when a Jira ticket
   is linked, ALWAYS offer a design review by a human architect after the

@@ -19,9 +19,12 @@
   into the agent's OWN ticket branch is NOT the "side effect outside this
   worktree" the four classes mean — it is mandatory at phase boundaries
   (Base sync below) and is never put to the user.
-- **Authority and the Spec field:** a conflict between the design and the
-  plan is resolved per the contract's "Active Work Item (Design + Plan
-  Pair)" section — by subject: WHAT is the design's, HOW is the plan's. The
+- **Authority and the Spec field:** where the upstream text above says "the
+  spec is the binding authority, the plan is its argument", read it with the
+  contract's subject split — a conflict between the design and the plan is
+  resolved per the contract's "Active Work Item (Design + Plan Pair)"
+  section: WHAT should be built is the design's to decide, HOW and in what
+  order is the plan's (the plan was written against the code). The
   plan header carries `**Spec:** [design_<slug>.md](design_<slug>.md)`, so
   the upstream instruction "if the plan names a Spec, read that too" is
   satisfied and rulings are not provisional; tolerate the legacy
