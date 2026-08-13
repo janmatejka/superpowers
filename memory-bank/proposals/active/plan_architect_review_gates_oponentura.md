@@ -34,7 +34,7 @@
 **Interfaces:**
 - Produces: sekce `## Agentic Design Opposition (oponentura)` — Tasks 2–4 na ni odkazují doslovným jménem `"Agentic Design Opposition (oponentura)"`.
 
-- [ ] **Step 1: Bump hlavičky verze**
+- [x] **Step 1: Bump hlavičky verze**
 
 Nahradit řádky 3–4 (současný stav):
 
@@ -57,7 +57,7 @@ za:
 
 Zbytek původní věty v2.8 („vs. how; renames …") zůstává beze změny — jen se z „Supersedes v2.8 (…)" stává „v2.9 superseded v2.8 (…)" dle konvence running historie.
 
-- [ ] **Step 2: Vložit novou sekci**
+- [x] **Step 2: Vložit novou sekci**
 
 Vložit PŘED řádek `## Epic Backflow (design → epic)` (tj. na konec sekce Architect Review Gate) tento text:
 
@@ -135,7 +135,7 @@ with reasons. Nothing is folded in silently.
    ticket branch like any other commit of the work item.
 ```
 
-- [ ] **Step 3: Ověřit grepy**
+- [x] **Step 3: Ověřit grepy**
 
 Spustit a přečíst výsledky:
 
@@ -147,7 +147,7 @@ grep -n "Supersedes v2" ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md
 
 Očekávané: verze `2.10`; nadpis sekce právě jednou + výskyty v hlavičce verzí; právě jedna věta `Supersedes v2.9`, starší přechody ve tvaru `vX superseded vY`.
 
-- [ ] **Step 4: Commit a push**
+- [x] **Step 4: Commit a push**
 
 ```bash
 git add ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md
@@ -168,7 +168,7 @@ git push origin architect-review-gates-oponentura
 - Consumes: kontraktová sekce `"Agentic Design Opposition (oponentura)"` (Task 1) — odkaz jménem v kroku souhrnu.
 - Produces: fáze respond režimu pojmenované **Summary** / **Assessment** / **Explicit gate** / **Publish** — Task 3 na ně odkazuje jménem.
 
-- [ ] **Step 1: Nahradit kroky 4–5 respond režimu**
+- [x] **Step 1: Nahradit kroky 4–5 respond režimu**
 
 Nahradit přesně tento text (současné kroky 4–5):
 
@@ -215,7 +215,7 @@ tímto textem (kroky 4–7):
    is needed).
 ```
 
-- [ ] **Step 2: Sweep na odkazy na čísla kroků**
+- [x] **Step 2: Sweep na odkazy na čísla kroků**
 
 ```bash
 grep -inE "\bsteps? [0-9]" ums/.claude/skills/mb-architect-review/SKILL.md
@@ -224,7 +224,7 @@ grep -inE "\b(one|two|three|four|five|six|seven)\b.*steps?" ums/.claude/skills/m
 
 Přečíst každý nález a ověřit, že žádný neodkazuje na starý respond krok 4 nebo 5 (odkazy na request kroky — „request step 4", „step 3"/„step 6"/„step 7" v request sekci — jsou v pořádku, request se nemění). Nález odkazující na respond kroky opravit jménem fáze (Summary / Assessment / Explicit gate / Publish).
 
-- [ ] **Step 3: Commit a push**
+- [x] **Step 3: Commit a push**
 
 ```bash
 git add ums/.claude/skills/mb-architect-review/SKILL.md
@@ -245,7 +245,7 @@ git push origin architect-review-gates-oponentura
 - Consumes: kontraktová sekce `"Agentic Design Opposition (oponentura)"` (Task 1); fáze respond režimu (Task 2).
 - Produces: režim `oppose` — overlay fragment (Task 4) ho jmenuje jako samostatnou cestu k oponentuře na vyžádání.
 
-- [ ] **Step 1: Aktualizovat frontmatter description a verzi**
+- [x] **Step 1: Aktualizovat frontmatter description a verzi**
 
 Nahradit řádek `description:` (řádek 3) za:
 
@@ -255,7 +255,7 @@ description: Design review by a human architect via a Jira ticket — hand off a
 
 a `version: "1.3"` na `version: "1.4"`.
 
-- [ ] **Step 2: Aktualizovat úvod (Action) a Mode Detection**
+- [x] **Step 2: Aktualizovat úvod (Action) a Mode Detection**
 
 V úvodu nahradit větu:
 
@@ -306,7 +306,7 @@ za:
    here — it enters only by explicit ask). Never pick silently.
 ```
 
-- [ ] **Step 3: Vložit sekci režimu oppose**
+- [x] **Step 3: Vložit sekci režimu oppose**
 
 Vložit za konec sekce `## Mode: resume (resolver takes back)` (před `## Model Selection`):
 
@@ -345,7 +345,7 @@ comment — a linked ticket is context, not a state machine.
    asking / decided on contested points / rejected with reasons).
 ```
 
-- [ ] **Step 4: Doplnit Model Selection**
+- [x] **Step 4: Doplnit Model Selection**
 
 Na konec sekce `## Model Selection` přidat odstavec:
 
@@ -357,7 +357,7 @@ exposes, both stated explicitly — the one dispatch of this skill that must
 never run on a cheap tier.
 ```
 
-- [ ] **Step 5: Sweep na kardinalitu a jména**
+- [x] **Step 5: Sweep na kardinalitu a jména**
 
 ```bash
 grep -in "three modes\|three review modes" ums/.claude/skills/mb-architect-review/SKILL.md
@@ -367,7 +367,7 @@ grep -n "Agentic Design Opposition" ums/.claude/skills/mb-architect-review/SKILL
 
 Očekávané: žádný výskyt „three modes"; `oppose` ve frontmatteru, úvodu, Mode Detection a sekci režimu; odkaz na kontraktovou sekci v respond kroku Summary, v sekci oppose a v Model Selection.
 
-- [ ] **Step 6: Commit a push**
+- [x] **Step 6: Commit a push**
 
 ```bash
 git add ums/.claude/skills/mb-architect-review/SKILL.md
@@ -388,7 +388,7 @@ git push origin architect-review-gates-oponentura
 **Interfaces:**
 - Consumes: kontraktová sekce `"Agentic Design Opposition (oponentura)"` (Task 1); režim `oppose` (Task 3).
 
-- [ ] **Step 1: Vložit bod nabídky**
+- [x] **Step 1: Vložit bod nabídky**
 
 Vložit PŘED řádek začínající `- **Architect Review Gate (architectural path only` tento bod:
 
@@ -410,7 +410,7 @@ Vložit PŘED řádek začínající `- **Architect Review Gate (architectural p
   deferral, like the Epic Backflow one below.
 ```
 
-- [ ] **Step 2: Ověřit strukturu fragmentu**
+- [x] **Step 2: Ověřit strukturu fragmentu**
 
 ```bash
 grep -c "UMS-OVERLAY BEGIN\|UMS-OVERLAY END" ums/.claude/skills/shared/overlays/brainstorming.overlay.md
@@ -419,7 +419,7 @@ grep -n "Agentic opposition offer\|Architect Review Gate (architectural" ums/.cl
 
 Očekávané: počet markerů 2 (jeden BEGIN + jeden END); bod oponentury na nižším čísle řádku než bod Architect Review Gate.
 
-- [ ] **Step 3: Commit a push**
+- [x] **Step 3: Commit a push**
 
 ```bash
 git add ums/.claude/skills/shared/overlays/brainstorming.overlay.md
@@ -439,7 +439,7 @@ git push origin architect-review-gates-oponentura
 **Interfaces:**
 - Consumes: všechny změny Tasků 1–4 v `ums/.claude/`.
 
-- [ ] **Step 1: Ověřit, že merge-copy stačí**
+- [x] **Step 1: Ověřit, že merge-copy stačí**
 
 ```bash
 git diff --name-status origin/ums-memory-bank...HEAD -- ums/
@@ -447,14 +447,14 @@ git diff --name-status origin/ums-memory-bank...HEAD -- ums/
 
 Očekávané: jen řádky `A`/`M` (žádné `D`/`R`) — merge-copy nemůže nechat mrtvý soubor. Kdyby se objevilo `D`/`R`, smazat odpovídající cíle v `.claude/` explicitně.
 
-- [ ] **Step 2: Obnovit nasazené kopie (pořadí závazné: kopie PŘED revendorem)**
+- [x] **Step 2: Obnovit nasazené kopie (pořadí závazné: kopie PŘED revendorem)**
 
 ```bash
 cp -r ums/.claude/. .claude/
 cp -r ums/.claude/skills/. .agents/skills/
 ```
 
-- [ ] **Step 3: Revendor s overlay fragmenty**
+- [x] **Step 3: Revendor s overlay fragmenty**
 
 ```bash
 pwsh -NoProfile -File .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly
@@ -462,7 +462,7 @@ pwsh -NoProfile -File .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly
 
 Očekávané: běh končí `Verification passed.` a exit 0. Miss kotvy/ASSERT = drift detektor, ne chyba k obejití — STOP a report.
 
-- [ ] **Step 4: Grep charakteristického textu ve vygenerovaných a nasazených souborech**
+- [x] **Step 4: Grep charakteristického textu ve vygenerovaných a nasazených souborech**
 
 ```bash
 grep -n "Agentic opposition offer" .claude/skills/brainstorming/SKILL.md
@@ -473,7 +473,7 @@ grep -n "Mode: oppose" .agents/skills/mb-architect-review/SKILL.md
 
 Očekávané: každý grep aspoň jeden nález (revendor bez předchozí kopie tiše aplikuje staré fragmenty — přesně tohle ho odhalí).
 
-- [ ] **Step 5: Ověřit, že nasazení negeneruje commit**
+- [x] **Step 5: Ověřit, že nasazení negeneruje commit**
 
 ```bash
 git status --short --ignored=matching -- .claude .agents | head -5
@@ -482,7 +482,7 @@ git status --short
 
 Očekávané: `.claude/` a `.agents/` s kódem `!!` (ignorováno), pracovní strom jinak čistý.
 
-- [ ] **Step 6: Testovací smyčka vrstvy**
+- [x] **Step 6: Testovací smyčka vrstvy**
 
 ```bash
 for t in $(find ums -name "*.tests.ps1"); do echo "== $t"; pwsh -NoProfile -File "$t" || echo "FAILED: $t"; done
@@ -490,7 +490,7 @@ for t in $(find ums -name "*.tests.ps1"); do echo "== $t"; pwsh -NoProfile -File
 
 Očekávané: žádný řádek `FAILED:` (16 sad; sada `pre-push.tests.ps1` běží přes dvě minuty, což je normální). Změny jsou instrukční Markdown, testy kryjí regresi skriptů a hooků.
 
-- [ ] **Step 7: Commit není — ohlásit výsledek**
+- [x] **Step 7: Commit není — ohlásit výsledek**
 
 Nasazené kopie jsou netrackované; tento task nekomituje nic. Do reportu: výstup verify passu, výsledky grepů, výsledek testovací smyčky.
 
@@ -504,7 +504,7 @@ Nasazené kopie jsou netrackované; tento task nekomituje nic. Do reportu: výst
 **Interfaces:**
 - Consumes: všechny změny Tasků 1–4 v `ums/.claude/`.
 
-- [ ] **Step 1: Sync vrstvy do monorepa**
+- [x] **Step 1: Sync vrstvy do monorepa**
 
 ```bash
 pwsh -NoProfile -File ums/sync-with-monorepo.ps1 -Agent claude -Scope Monorepo -Direction ToMonorepo
@@ -512,7 +512,7 @@ pwsh -NoProfile -File ums/sync-with-monorepo.ps1 -Agent claude -Scope Monorepo -
 
 Očekávané: úspěšný běh; nenulový exit instalátoru hooků neignorovat — vypsat do reportu s kódem (1/2/3/4 dle playbooku).
 
-- [ ] **Step 2: Revendor v monorepu (overlay fragmenty)**
+- [x] **Step 2: Revendor v monorepu (overlay fragmenty)**
 
 ```bash
 pwsh -NoProfile -File 'D:\_datasys\ums\.claude\scripts\revendor-superpowers.ps1' -OverlaysOnly
@@ -520,7 +520,7 @@ pwsh -NoProfile -File 'D:\_datasys\ums\.claude\scripts\revendor-superpowers.ps1'
 
 Očekávané: `Verification passed.`, exit 0.
 
-- [ ] **Step 3: Grep v monorepu**
+- [x] **Step 3: Grep v monorepu**
 
 ```bash
 grep -n "Agentic opposition offer" /d/_datasys/ums/.claude/skills/brainstorming/SKILL.md
@@ -530,7 +530,7 @@ grep -n "2.10" /d/_datasys/ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md
 
 Očekávané: každý grep aspoň jeden nález.
 
-- [ ] **Step 4: Žádné git operace v monorepu — report uživateli**
+- [x] **Step 4: Žádné git operace v monorepu — report uživateli**
 
 Monorepo je cizí repozitář s vlastním workflow: agent v něm nic nekomituje ani nepushuje. Do závěrečného reportu vypsat `git -C 'D:\_datasys\ums' status --short -- .claude CLAUDE.md` a předat uživateli k commitnutí v monorepu.
 
