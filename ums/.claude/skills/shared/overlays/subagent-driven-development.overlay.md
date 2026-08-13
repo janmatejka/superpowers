@@ -1,5 +1,8 @@
 <!-- TARGET: subagent-driven-development/SKILL.md -->
 <!-- ANCHOR: EOF -->
+<!-- ASSERT: Four things stop you, and only these: an irreversible or destructive -->
+<!-- ASSERT: them. The spec is the binding authority, the plan is its argument, and your -->
+<!-- ASSERT: todo per task. If the plan names a Spec, read that too: the spec is the -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
@@ -9,10 +12,38 @@
   Model Policy"): summarization-only dispatches (Czech commit messages, Jira
   comments, harvest notes) use the cheapest capable tier. Always set the model
   explicitly on every dispatch.
+- **Rulings and STOPs:** rule on conflicts per the SKILL text above; this
+  layer's fail-closed STOPs already fall within the four stop classes — see
+  `../shared/UMS_MEMORY_BANK_CONTRACT.md`, section "Fail-Closed Behavior",
+  paragraph "Rulings and these STOPs". Locally: merging the effective base
+  into the agent's OWN ticket branch is NOT the "side effect outside this
+  worktree" the four classes mean — it is mandatory at phase boundaries
+  (Base sync below) and is never put to the user.
+- **Authority and the Spec field:** a conflict between the design and the
+  plan is resolved per the contract's "Active Work Item (Design + Plan
+  Pair)" section — by subject: WHAT is the design's, HOW is the plan's. The
+  plan header carries `**Spec:** [design_<slug>.md](design_<slug>.md)`, so
+  the upstream instruction "if the plan names a Spec, read that too" is
+  satisfied and rulings are not provisional; tolerate the legacy
+  `**Návrh:**` alias in plans written under contract ≤ v2.8.
+- **Batched dispatches:** the resolved procedure document (Playbook below)
+  is attached to a batch dispatch exactly as to a single-task dispatch, and
+  one batch report ends with ONE `## Playbook candidates` section covering
+  the whole batch.
+- **Rulings vs playbook candidates:** a ruling is a decision, a candidate is
+  a procedure — a ruling becomes a candidate only when it carries `Happened`
+  evidence reaching beyond this work item (contract, "Playbook Contract").
+- **Finish:** `rm -rf <workspace>` removes `.superpowers/sdd/<plan-basename>/`
+  only. The playbook-candidate file lives in
+  `.superpowers/playbook-candidates/`, OUTSIDE the plan workspace, and
+  survives the workspace deletion — only the harvest removes it (contract,
+  "Playbook Contract").
 - **Language:** dispatch prompts, task briefs, implementer/reviewer reports
   and the progress ledger stay English. Commit messages produced by
   implementer subagents MUST be Czech — state this in every implementer
   dispatch. User-facing summaries are Czech.
+  `Ruling:` ledger lines stay English; the final "Rulings I made" list is
+  user-facing and therefore Czech (contract, "Language Contract").
 - **Isolation:** git worktrees are banned in this repository (see CLAUDE.md).
   The using-git-worktrees step resolves to branch-in-place: ensure you are on
   a feature branch (never main/master without explicit consent) and continue
@@ -21,6 +52,8 @@
   session runs in the workspace where the work already is and never provisions
   another one (contract, "Workspace Discipline"). One session per workspace: work
   on several tickets is interleaved, not parallel.
+  Where the upstream text above says "outside this worktree", read "outside
+  this clone/workspace" — worktrees are banned here.
 - **Playbook:** resolve the target Memory Bank's procedure document FIRST —
   `<PLAN_MB>/playbook.md` when it exists, otherwise `<PLAN_MB>/tasks.md` when
   THAT exists (legacy shape, contract, Memory Bank Document Set), otherwise
