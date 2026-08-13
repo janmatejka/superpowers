@@ -1,7 +1,14 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.8
-- Supersedes v2.7 (adds the effective base of a work item — the optional
+- **Contract-Version:** 2.9
+- Supersedes v2.8 (splits the design/plan conflict rule by subject — what
+  vs. how; renames the plan-header field `**Návrh:**` to `**Spec:**` with a
+  read alias; adds Brainstorming Paths — the document layer's mapping of the
+  upstream spike/bounded/architectural router; maps this layer's fail-closed
+  STOPs into the upstream ruling model's stop classes; adds the ruling ×
+  playbook-candidate boundary and the ledger/report language split; adds the
+  first-publication rule `git push -u`).
+- v2.8 superseded v2.7 (adds the effective base of a work item — the optional
   `Báze:` line in `context.md` with a fallback to `baseRef` — the invariant that an
   integration branch is always a protected branch, and the ordered remedy when it is
   not).
@@ -238,6 +245,12 @@ Banks, defaults to `PLAN_MB`. A candidate whose `Corrects` names a
 The ban on invention is enforced by the FORMAT, not by a request in a prompt:
 without `Happened` there is no entry.
 
+**A ruling is a decision; a candidate is a procedure.** A `Ruling:` ledger
+line (upstream subagent-driven-development) becomes a playbook candidate
+only when it carries `Happened` evidence that reaches beyond this work
+item; otherwise it stays in the ledger and in the final "Rulings I made"
+list. The format decides, as always — without `Happened` there is no entry.
+
 ## Scope Lock (Memory Bank documents only)
 
 The scope lock governs **Memory Bank document writes only**:
@@ -299,7 +312,7 @@ Other rules:
   the moment the work completes, and it dies inside `proposals/completed/`,
   which is an immutable archive nobody may repair. Cross-references between the
   halves therefore run one way only: the plan links the design
-  (`**Návrh:** [design_<slug>.md](design_<slug>.md)`), never the reverse. Where
+  (`**Spec:** [design_<slug>.md](design_<slug>.md)`), never the reverse. Where
   a document must mention the plan, name it as plain text — the pair is found
   by slug, not by link.
 - Enforced and consolidated by the `mb-link-audit` skill (read-only audit,
@@ -666,8 +679,13 @@ therefore does not block starting a new one (see Workspace Discipline).
 - **`design_<slug>.md`** — the spec, written by `brainstorming`
   (intent source of truth).
 - **`plan_<slug>.md`** — the implementation plan, written by
-  `writing-plans` (execution source of truth). On conflict between the two,
-  the plan governs execution; report the discrepancy to the user.
+  `writing-plans` (execution source of truth). A conflict between the halves
+  is resolved **by its subject**: **what** should be built is the design's to
+  decide — it is the binding authority the upstream ruling model measures
+  against, and the artifact that survives in `completed/`; **how** and in
+  what order is the plan's — it was written against the code, the design was
+  not. Either way the discrepancy is recorded as a ruling and surfaced to the
+  user, never silently absorbed.
 
 Rules:
 
@@ -759,6 +777,31 @@ this default)"*. The preference in this repository is:
 Prohibited locations (mechanically enforced by a PreToolUse hook):
 `docs/superpowers/specs/`, `docs/superpowers/plans/`, `docs/plans/`.
 
+### Brainstorming Paths (spike / bounded / architectural)
+
+Upstream brainstorming (v6.3.0) classifies each request before its first
+question and announces the path. The document layer asks a single question
+of that classification: **will the result integrate?**
+
+- **Anything that will integrate needs a pin and a design — bounded
+  included.** Bounded differs from architectural in exactly two ways: it
+  writes no `plan_<slug>.md` and it does not run
+  subagent-driven-development. Its short in-chat design is, upon approval,
+  WRITTEN to `<PLAN_MB>/proposals/active/design_<slug>.md` (same header,
+  body scaled to the change), so harvest, integration, Jira and the archive
+  work unchanged. A design without a plan sibling is already a valid state
+  (Active Work Item).
+- **A spike pins nothing and writes nothing under `proposals/`.** The entry
+  gate (Workspace Discipline) runs its eligibility, leftover-inventory and
+  decision phases; a branch is created as soon as the spike is to touch the
+  tree — a spike that modifies files never runs on the base; a purely
+  read-only probe needs no branch. The pin-write phase is ALWAYS skipped.
+  When the answer turns into work to keep, the request is reclassified and
+  the gate completes.
+- The ratchet is upstream's and one-way. "This wants an architect's review"
+  is itself an architectural signal — the Architect Review Gate exists on
+  the architectural path only.
+
 Document headers:
 
 - `design_<slug>.md` starts with:
@@ -777,9 +820,15 @@ Document headers:
 - `plan_<slug>.md` keeps the upstream plan header verbatim (the
   "For agentic workers: REQUIRED SUB-SKILL …" block is load-bearing for
   subagent-driven-development), followed by an MB metadata block (`**Jira:**`,
-  `**Návrh:** [design_<slug>.md](design_<slug>.md)`, `**Target MB:**`), then the
+  `**Spec:** [design_<slug>.md](design_<slug>.md)`, `**Target MB:**`), then the
   upstream structure (`## Global Constraints`, tasks with `**Interfaces:**`
   and checkbox steps).
+  Readers MUST accept the legacy field name `**Návrh:**` as an alias of
+  `**Spec:**` (plans written under contract ≤ v2.8); writers write only
+  `Spec`. The English name keeps the plan's AI-facing boilerplate English
+  (Language Contract) and matches the field upstream's
+  subagent-driven-development reads ("if the plan names a Spec, read that
+  too") — a differently-named field would make every ruling provisional.
 
 ## Target-MB Discovery & Pinning
 
@@ -1113,6 +1162,14 @@ whole rule:
 |---|---|
 | The actor's own ticket branch (unprotected) | The agent pushes it itself — publishing its own branch is not a decision it puts to the user — but it ALWAYS announces the branch and the outgoing commits. The harness's own permission prompt still applies (`Bash(git push:*)` is deliberately in neither `allow` nor `deny`, so the tool call is confirmed like any other): "does not ask" means it does not negotiate whether to publish, not that the push is auto-approved. Force push is forbidden. |
 | Shared branches (the effective list is `protectedBranches` — see Repository Configuration; the built-in fallback is `develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the refspec form, because integration pushes the ticket branch onto the base ref; see the human escape below). The agent then re-verifies reachability. |
+
+**The first publication of a freshly created ticket branch is
+`git push -u origin <branch>` — never a bare `git push`.**
+`git switch -c <branch> <chosen base>` sets the new branch's upstream to the
+BASE, so a bare push would target the (typically protected) base branch;
+`-u` rewrites the upstream, and the trap ends with the first publication.
+When inspecting a workspace, a ticket branch whose upstream is a protected
+branch is a finding, not a normal state.
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
 scoped to `refs/heads/*` — tag pushes are out of scope and always pass
@@ -1476,6 +1533,10 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 - `playbook-candidates/<slug>.md` is AI-facing scratch and is therefore English;
   `playbook.md` is a persistent artifact and is therefore Czech. The harvest
   gate translates on persistence.
+- `Ruling:` lines in the `.superpowers/sdd/` ledger are AI-facing and
+  therefore English; the final "Rulings I made" list is user-facing and
+  therefore Czech — the same translate-on-presentation split as playbook
+  candidates.
 - User-facing output and persistent artifacts MUST be in Czech: the proposal
   pair content, Memory Bank documents, commit messages, Jira comments, review
   findings rendered to the user, and status summaries.
@@ -1532,6 +1593,21 @@ When anything important is missing or ambiguous:
   `core.hooksPath` (a scope warning, not a bypass — the hook check resolves
   through it, see Workspace Discipline); a parked active work item on another
   branch; an untracked playbook-candidate file of another slug.
+
+**Rulings and these STOPs.** Upstream subagent-driven-development (v6.3.0)
+rules on conflicts instead of stalling, and stops only for four named
+classes. The fail-closed STOPs of this layer are not a fifth class — they
+FALL WITHIN those four: a push to a shared branch and the integration push
+are "a side effect outside this clone that norms say you ask about first";
+an active-work collision, an unprotected base and an unreachable pinned
+commit are irreversible in the same sense — duplicated work, or a reference
+nobody can resolve, cannot be taken back; a plan too broken to follow is
+upstream's fourth class verbatim. One thing is deliberately NOT such a side
+effect: **merging the effective base into the agent's OWN ticket branch.**
+It is mandatory at phase boundaries (Base Sync & Drift Detection) and is
+never put to the user — reading upstream's word "merge" as covering it
+would turn the mandatory base sync before the first dispatch into a
+question.
 
 ## Resolution Protocol
 
