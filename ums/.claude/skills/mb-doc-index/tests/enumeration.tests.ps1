@@ -42,7 +42,11 @@ $obnAll = @($idx.entries | Where-Object { $_.slug -eq 'ums_10_obnovena' })
 Assert-True (@($obnAll).Count -gt 0) 'záznam větve s čerstvým tipem a starým návrhem je v indexu'
 if (@($obnAll).Count -gt 0) {
     $obn = $obnAll[0]
-    $obnDate = [datetimeoffset]::Parse([string]$obn.date)
+    # ConvertFrom-Json turns the ISO date into a [datetime]; casting it back to
+    # string uses the INVARIANT culture, so parsing it with the CURRENT culture
+    # throws on any locale that does not read MM/dd/yyyy (cs-CZ, de-DE, ...).
+    $obnDate = if ($obn.date -is [datetime]) { [datetimeoffset] $obn.date }
+              else { [datetimeoffset]::Parse([string]$obn.date, [cultureinfo]::InvariantCulture) }
     Assert-True ($obnDate -lt [datetimeoffset]::UtcNow.AddDays(-300)) `
         'nalezený commit návrhu je opravdu starší než okno (traverzace přeživších větví není datově omezená)'
     Assert-True ([int64]$obn.activity -gt [DateTimeOffset]::UtcNow.AddDays(-30).ToUnixTimeSeconds()) `
