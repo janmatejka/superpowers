@@ -60,9 +60,10 @@
       1  installed, but the proof FAILED — treat the guarantee as absent
       2  NOT installed: a foreign pre-push could not be chained - either the
          hooks directory is shared with other repositories (core.hooksPath is
-         absolute or comes from global/system config) or a chained hook was
-         already there. The foreign hook was left untouched and the guarantee
-         is absent here.
+         absolute or comes from global/system config), a chained hook was
+         already there, or the foreign hook is a hand-merged one (contains our
+         own marker deeper in its body, which cannot be untangled mechanically).
+         The foreign hook was left untouched and the guarantee is absent here.
       3  installed, but no shell was available to run the proof
       4  installed and proven live, but the protected-branch list could NOT be
          REFRESHED — either it could not be written, or the configuration
@@ -595,18 +596,20 @@ if ($loaderFound) {
 
 $CHAINED_SUFFIX = '.ums-chained'
 
-# Odsune cizí pre-push stranou, aby ho náš hook mohl volat. NIKDY do
-# sdíleného adresáře hooků: pod absolutním nebo globálním core.hooksPath tam
-# leží hooky jiných repozitářů a přejmenování by je všechny tiše přesměrovalo
-# na tenhle hook. Tam zůstává staré chování - nechat být a exit 2.
+# Moves a foreign pre-push aside so our hook can call it. NEVER into a shared
+# hooks directory: under an absolute or global core.hooksPath that holds
+# other repositories' hooks too, and renaming would silently re-point every
+# one of them. That case keeps the old behaviour - leave it alone, exit 2.
 function Move-ForeignHook([string] $Path, [hashtable] $HooksPathCfg) {
     if ($HooksPathCfg -and ($HooksPathCfg.IsAbsolute -or $HooksPathCfg.Scope -in @('global', 'system'))) {
         return @{ Moved = $false; Path = $null; Refused = 'the hooks directory is shared with other repositories (core.hooksPath), so moving a foreign hook there would silently re-point every one of them' }
     }
-    # Ruční slepenec: cizí hook, do kterého někdo kdysi vlepil náš kód, aby
-    # obešel exit 2. Marker je schválně hledaný jen v prvních pěti řádcích, aby
-    # se cizí hook zmiňující podobnou formulaci nepovažoval za náš - tady ale
-    # potřebujeme opak, hlubší výskyt. Slepence se strojově rozplétat nedají.
+    # Hand-merged hook: a foreign hook that someone once pasted our code into,
+    # to work around exit 2. The marker is deliberately matched only in the
+    # first few lines elsewhere (Test-IsOurHook) so a foreign hook that merely
+    # mentions similar wording is not mistaken for ours - here we need the
+    # opposite, a deeper occurrence. A hand-merged hook cannot be untangled
+    # mechanically.
     if ((Get-Content -LiteralPath $Path -Raw) -match [regex]::Escape($OURS_MARKER)) {
         return @{ Moved = $false; Path = $null; Refused = "this foreign hook contains UMS guard code deeper in its body - a hand-merged hook, which cannot be untangled mechanically; resolve it by hand" }
     }
@@ -614,9 +617,44 @@ function Move-ForeignHook([string] $Path, [hashtable] $HooksPathCfg) {
     if (Test-Path -LiteralPath $dst) {
         return @{ Moved = $false; Path = $dst; Refused = "a chained hook is already present at $dst - not overwriting it" }
     }
-    Move-Item -LiteralPath $Path -Destination $dst
-    $stamp = "# Chained by install-git-hooks.ps1 from $Path"
-    Add-Content -LiteralPath $dst -Value $stamp
+    # Minor 4: a locked/read-only file must not die with a raw PowerShell
+    # exception under $ErrorActionPreference = 'Stop' - that would bypass
+    # `exit $exitCode` below and the caller would read exit 1 ("installed,
+    # proof FAILED") for a run that installed nothing at all.
+    try {
+        # Minor 5b: a symlinked foreign hook - Move-Item relocates the link
+        # itself, but Add-Content -LiteralPath below would write THROUGH a
+        # link, landing the stamp in a file outside the repository. Detect
+        # before moving, since the link property is easiest to read on the
+        # original path.
+        $isLink = $null -ne (Get-Item -LiteralPath $Path -Force).LinkType
+        Move-Item -LiteralPath $Path -Destination $dst
+    }
+    catch {
+        return @{ Moved = $false; Path = $null; Refused = "could not move the foreign hook to $dst`: $($_.Exception.Message)" }
+    }
+    if (-not $isLink) {
+        try {
+            # Minor 5a: if the foreign hook does not end in a newline,
+            # Add-Content would concatenate the stamp onto its last line
+            # ("git lfs pre-push "$@"# Chained by ...") - a broken chained
+            # hook, exactly the silent-LFS failure this task exists to
+            # prevent. Read back and only prepend a newline when needed.
+            # Written with -NoNewline plus an explicit "`n" so the stamp
+            # itself stays LF, not the CRLF Add-Content would use on
+            # Windows inside an otherwise-LF sh script.
+            $existing = Get-Content -LiteralPath $dst -Raw
+            $stamp = "# Chained by install-git-hooks.ps1 from $Path"
+            $needsNewline = $existing.Length -gt 0 -and $existing[-1] -ne "`n"
+            $suffix = $(if ($needsNewline) { "`n" } else { '' }) + $stamp + "`n"
+            [IO.File]::AppendAllText($dst, $suffix)
+        }
+        catch {
+            # The move already happened; a failed stamp write is not worth
+            # undoing it for, but it must not vanish silently either.
+            Write-Host "WARNING: moved $Path to $dst but could not append the provenance stamp: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
     return @{ Moved = $true; Path = $dst; Refused = $null }
 }
 
@@ -639,11 +677,23 @@ foreach ($name in $HOOK_NAMES) {
         Write-Host "chained: foreign $name -> $($chain.Path) (our hook will call it)" -ForegroundColor Cyan
         # run_chained (Task 2) gates on `[ -x "$chained" ]` and SILENTLY skips a
         # chained hook that is not executable - Git LFS would then quietly stop
-        # uploading objects with no error anywhere. Move-Item preserves whatever
-        # bit the foreign hook had; this makes sure it survives the move.
+        # uploading objects with no error anywhere. Unconditionally +x, rather
+        # than trying to detect and preserve the source hook's own bit: on
+        # Git for Windows `test -x` is largely shebang-sniffed, so "was it
+        # executable" is unreliable exactly on the platform this script runs
+        # on, and guessing wrong here would leave the chained hook silently
+        # skipped - the very failure mode this task exists to close. Erring
+        # toward LFS continuing to work means telling the user we did this,
+        # in case they had deliberately disabled the hook.
         if ($shell) {
             $unixChain = $chain.Path -replace '\\', '/'
-            try { & $shell -c 'chmod +x "$1"' _ $unixChain 2>$null | Out-Null } catch { }
+            $chmodOut = & $shell -c 'chmod +x "$1"' _ $unixChain 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "WARNING: could not make $($chain.Path) executable ($chmodOut) - the chained hook will be silently skipped by ours until this is fixed by hand." -ForegroundColor Red
+            }
+            else {
+                Write-Host "         made executable (unconditionally - if it was intentionally disabled, re-disable it by hand)." -ForegroundColor DarkGray
+            }
         }
     }
 

@@ -1169,7 +1169,69 @@ $res = Invoke-Installer $rChain $null
 $chainedAfter = Get-Content -LiteralPath (Join-Path $rChain '.git/hooks/pre-push.ums-chained') -Raw
 Assert-Eq $chainedAfter $chainedBefore 'cizí hook: opakovaná instalace řetězený soubor nemění'
 Assert-NotMatch $chainedAfter 'UMS pre-push guard' 'cizí hook: náš hook se nikdy nezřetězí sám se sebou'
+
+# Minor 6 (review, kolo 1): reálný scénář - `git lfs install --local` spuštěné
+# znovu obnoví cizí pre-push vedle už existujícího .ums-chained z dřívějšího
+# běhu instalátoru. Odmítací větev ":614-618" (chained soubor už existuje) na
+# to dosud nesahal - tenhle případ ho poprvé cvičí.
+Remove-Item -LiteralPath (Join-Path $rChain '.git/hooks/pre-push') -Force
+Set-Content -LiteralPath $foreign -Encoding ascii -Value "#!/bin/sh`nexit 0`n"
+$res = Invoke-Installer $rChain $null
+Assert-Eq $res.Code 2 'cizí hook obnovený vedle existujícího .ums-chained: instalace odmítnuta, exit 2'
+Assert-Match $res.Flat 'already present' 'cizí hook obnovený vedle existujícího .ums-chained: instalátor pojmenuje důvod (chained soubor už existuje)'
+$chainedStillAfter = Get-Content -LiteralPath (Join-Path $rChain '.git/hooks/pre-push.ums-chained') -Raw
+Assert-Eq $chainedStillAfter $chainedBefore 'cizí hook obnovený vedle existujícího .ums-chained: existující .ums-chained zůstal nedotčený'
+$foreignStill = Get-Content -LiteralPath $foreign -Raw
+Assert-NotMatch $foreignStill 'UMS pre-push guard' 'cizí hook obnovený vedle existujícího .ums-chained: nově obnovený cizí hook zůstal na místě, nepřepsán'
+
 Remove-Item -Recurse -Force $rChain
+
+# ---------------------------------------------------------------------------
+# Important 1 (review, kolo 1): Ruling R16b tvrdí, že instalátor musí odsunutý
+# cizí hook učinit spustitelným. Fixtura je vlastní kanárek (jako blok 22),
+# ale ZÁMĚRNĚ BEZ chmod +x před instalací - jestli po instalaci a skutečném
+# pushi kanárek nezapíše soubor, `chmod` v Move-ForeignHook je rozbitý nebo se
+# vůbec nezavolal, a run_chained (`[ -x "$chained" ] || return 0`) by cizí
+# hook tiše přeskočil. Tohle testuje INSTALÁTOR, ne vlastní setup testu.
+# ---------------------------------------------------------------------------
+$rxOrigin = Join-Path ([IO.Path]::GetTempPath()) ("mbexecbito-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$rxWork = Join-Path ([IO.Path]::GetTempPath()) ("mbexecbitw-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $rxOrigin, $rxWork | Out-Null
+& git init --bare -q -b develop $rxOrigin | Out-Null
+& git init -q -b develop $rxWork | Out-Null
+Invoke-GitOk $rxWork @('remote', 'add', 'origin', $rxOrigin) | Out-Null
+'base' | Out-File -FilePath (Join-Path $rxWork 'f.txt') -Encoding utf8
+Invoke-GitOk $rxWork @('add', '-A') | Out-Null
+Invoke-GitOk $rxWork @('commit', '-m', 'base') | Out-Null
+Invoke-GitOk $rxWork @('push', '-u', 'origin', 'develop') | Out-Null
+Invoke-GitOk $rxWork @('checkout', '-b', 'feature/execbit') | Out-Null
+'feature' | Out-File -FilePath (Join-Path $rxWork 'g.txt') -Encoding utf8
+Invoke-GitOk $rxWork @('add', '-A') | Out-Null
+Invoke-GitOk $rxWork @('commit', '-m', 'feature') | Out-Null
+Invoke-GitOk $rxWork @('push', '-u', 'origin', 'feature/execbit') | Out-Null
+
+$rxForeign = Join-Path $rxWork '.git/hooks/pre-push'
+New-Item -ItemType Directory -Force -Path (Split-Path $rxForeign) | Out-Null
+$rxCanaryOut = (Join-Path $rxWork 'canary-execbit.txt') -replace '\\', '/'
+Set-Content -LiteralPath $rxForeign -Encoding ascii -Value @"
+#!/bin/sh
+wc -l < /dev/stdin > "$rxCanaryOut"
+exit 0
+"@
+# Žádný chmod +x tady - to je celý bod: kanárek začíná NEspustitelný, a jestli
+# přesto zapíše výstup (ať už během vlastního self-testu instalátoru, nebo
+# při skutečném pushi níže), spustitelnost mu dal instalátor.
+$res = Invoke-Installer $rxWork $null
+Assert-Eq $res.Code 0 'exec bit: instalace nezpustitelného cizího hooku uspěje řetězením'
+
+Add-Content -Path (Join-Path $rxWork 'g.txt') -Value 'exec bit test'
+Invoke-GitOk $rxWork @('commit', '-am', 'exec bit test') | Out-Null
+$rExecPush = Invoke-GitTry $rxWork @('push', 'origin', 'feature/execbit')
+Assert-Eq $rExecPush.Code 0 'exec bit: push na tiketovou větev projde (řetězený kanárek nic nezamítá)'
+Assert-True (Test-Path $rxCanaryOut) 'exec bit: kanárek byl skutečně zavolán - instalátor odsunutý cizí hook učinil spustitelným'
+
+Remove-Item -Recurse -Force $rxOrigin
+Remove-Item -Recurse -Force $rxWork
 
 # Sdílený core.hooksPath: řetězení se odmítne, exit 2 zůstává.
 $rShared = Join-Path ([IO.Path]::GetTempPath()) ("mbshared-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
