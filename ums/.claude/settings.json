@@ -1,4 +1,7 @@
 {
+  "env": {
+    "MB_AGENT_SESSION": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(grep:*)",

@@ -377,7 +377,7 @@ function Find-Shell {
 function Invoke-HookLine([string] $Shell, [string] $HookPath, [string] $Line) {
     $unixHook = $HookPath -replace '\\', '/'
     $unixRoot = (Resolve-Path -LiteralPath $RepoRoot).Path -replace '\\', '/'
-    $script = 'cd "$3" && printf "%s\n" "$1" | "$2" origin ums-install-verify'
+    $script = 'cd "$3" && printf "%s\n" "$1" | MB_AGENT_SESSION=1 "$2" origin ums-install-verify'
     $out = & $Shell -c $script _ $Line $unixHook $unixRoot 2>&1 | Out-String
     return @{ Out = $out; Code = $LASTEXITCODE }
 }

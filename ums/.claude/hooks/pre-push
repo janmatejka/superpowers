@@ -9,6 +9,17 @@
 # adjacency, config overrides) collapses to the same four fields below, so
 # there is no shell syntax left to bypass.
 #
+# GATED ON AN AGENT-SESSION MARKER: everything below only fires when
+# is_agent_session() finds MB_AGENT_SESSION=1 (injected by this layer's own
+# settings.json into every harness it configures), or — Claude Code only —
+# a non-empty AI_AGENT or CLAUDECODE=1 as a fallback. Without the marker this
+# hook enforces NOTHING of its own: it delegates straight to the chained
+# foreign hook (run_chained) and exits with its result. The actor rule ("the
+# moment of integration belongs to a human") lives in the harness-side
+# PreToolUse guard, not here — a git hook cannot itself tell a human from an
+# agent, so this file's job is narrower: refuse to run its own checks outside
+# an agent session, so a human pushing from a terminal or IDE never sees it.
+#
 # Scope: refs/heads/* (branches) only. The two-tier policy is branch-scoped;
 # tag pushes and anything else are out of scope and always pass through
 # untouched (a tag delete or a tag force-move is not a "branch push").
@@ -82,6 +93,24 @@ run_chained() {
     [ -x "$chained" ] || return 0
     "$chained" "$@" < "$stdin_buf"
 }
+
+# Vrstva si značku injektuje sama do konfigurace každého harnesse. Proměnné
+# AI_AGENT/CLAUDECODE jsou fallback jen pro Claude Code - vlastní je někdo
+# jiný a v jiných harnessech nejsou vůbec.
+is_agent_session() {
+    [ "$MB_AGENT_SESSION" = "1" ] && return 0
+    [ -n "$AI_AGENT" ] && return 0
+    [ "$CLAUDECODE" = "1" ] && return 0
+    return 1
+}
+
+# Člověk v terminálu ani v IDE nemá poznat, že tenhle hook existuje. NENÍ to
+# `exit 0`: řetězený cizí hook (LFS) musí doběhnout, jinak by instalace téhle
+# vrstvy vypnula LFS všem lidem v týmu.
+if ! is_agent_session; then
+    run_chained "$@"
+    exit $?
+fi
 
 branch_name() {
     # Prefix stripped case-insensitively, so the name printed in the message

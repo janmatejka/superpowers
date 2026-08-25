@@ -1272,4 +1272,92 @@ Assert-Match $res.Flat 'hand-merged' 'ruční slepenec: instalátor pojmenuje, o
 Assert-True (-not (Test-Path (Join-Path $rMerged '.git/hooks/pre-push.ums-chained'))) 'ruční slepenec: nic se neodsunulo'
 Remove-Item -Recurse -Force $rMerged
 
+# ---------------------------------------------------------------------------
+# Brána na značku. Sada běží běžně UVNITŘ agentního sezení, takže značku zdědí
+# z prostředí - no-marker případy by pak tiše testovaly opak. Odstraníme ji
+# stejně, jako se výš izoluje GIT_CONFIG_GLOBAL, a nepřítomnost ověříme.
+# ---------------------------------------------------------------------------
+function Invoke-WithoutMarker([scriptblock] $Body) {
+    $saved = @{}
+    foreach ($n in @('MB_AGENT_SESSION', 'AI_AGENT', 'CLAUDECODE')) {
+        $saved[$n] = [Environment]::GetEnvironmentVariable($n)
+        Remove-Item "Env:$n" -ErrorAction SilentlyContinue
+    }
+    try { & $Body }
+    finally {
+        foreach ($n in $saved.Keys) {
+            if ($null -ne $saved[$n]) { Set-Item "Env:$n" $saved[$n] }
+        }
+    }
+}
+
+# NEdeleguje na Invoke-WithoutMarker s vnořeným scriptblockem: PowerShell
+# scriptblock invokovaný přes `&` běží v novém scope, jehož rodič je scope
+# VOLAJÍCÍ funkce (dynamické rozlišení jména), ne lexikální scope místa,
+# kde byl scriptblock zapsán - kdyby obě funkce měly parametr `$Body`,
+# `& $Body` uvnitř vnořeného bloku by se dynamicky svázal s `$Body`
+# OBALUJÍCÍ funkce (tím vnořeným blokem samotným) a rekurzí do sebe
+# přetekl zásobník. Ověřeno empiricky (Stack overflow po ~1300 asercích).
+function Invoke-WithMarker([scriptblock] $Body) {
+    $saved = @{}
+    foreach ($n in @('MB_AGENT_SESSION', 'AI_AGENT', 'CLAUDECODE')) {
+        $saved[$n] = [Environment]::GetEnvironmentVariable($n)
+        Remove-Item "Env:$n" -ErrorAction SilentlyContinue
+    }
+    $env:MB_AGENT_SESSION = '1'
+    try { & $Body }
+    finally {
+        foreach ($n in $saved.Keys) {
+            if ($null -ne $saved[$n]) { Set-Item "Env:$n" $saved[$n] }
+        }
+    }
+}
+
+Invoke-WithoutMarker {
+    Assert-Eq $env:MB_AGENT_SESSION $null 'izolace: značka je pro no-marker případy skutečně pryč'
+}
+
+# Vlastní fixtura (primární $root/$work/$origin byly výše uklizeny) - bare
+# origin + work klon s nainstalovaným hookem, stejný tvar jako fixtura na
+# začátku sady.
+$rootMarker = Join-Path ([IO.Path]::GetTempPath()) ("mbprepushmark-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$originMarker = Join-Path $rootMarker 'origin.git'
+$workMarker = Join-Path $rootMarker 'work'
+New-Item -ItemType Directory -Force -Path $originMarker, $workMarker | Out-Null
+& git init --bare -q -b develop $originMarker | Out-Null
+& git init -q -b develop $workMarker | Out-Null
+Invoke-GitOk $workMarker @('remote', 'add', 'origin', $originMarker) | Out-Null
+'base' | Out-File -FilePath (Join-Path $workMarker 'f.txt') -Encoding utf8
+Invoke-GitOk $workMarker @('add', '-A') | Out-Null
+Invoke-GitOk $workMarker @('commit', '-m', 'base') | Out-Null
+Invoke-GitOk $workMarker @('push', '-u', 'origin', 'develop') | Out-Null
+Invoke-Installer $workMarker $null | Out-Null
+
+Add-Content -Path (Join-Path $workMarker 'f.txt') -Value 'marker pair'
+Invoke-GitOk $workMarker @('commit', '-am', 'marker pair') | Out-Null
+$developBeforePair = Get-Sha $originMarker 'refs/heads/develop'
+
+# TÁŽ řádka refu dvakrát, liší se jen značka.
+$withMarker = Invoke-WithMarker { Invoke-GitTry $workMarker @('push', 'origin', 'develop') }
+Assert-True ($withMarker.Code -ne 0) 'značka je: push na chráněnou větev zamítnut'
+Assert-Eq (Get-Sha $originMarker 'refs/heads/develop') $developBeforePair 'značka je: remote se nepohnul'
+
+$withoutMarker = Invoke-WithoutMarker { Invoke-GitTry $workMarker @('push', 'origin', 'develop') }
+Assert-Eq $withoutMarker.Code 0 'značka chybí: hook nevynucuje nic, push člověka projde'
+Assert-Eq (Get-Sha $originMarker 'refs/heads/develop') (Get-Sha $workMarker 'develop') 'značka chybí: remote se posunul'
+
+Remove-Item -Recurse -Force $rootMarker
+
+# ---------------------------------------------------------------------------
+# Ruční instalace člověkem z terminálu - prostředí značku nemá. Instalátor si
+# ji pro důkazní běhy nastavuje sám, jinak by o funkčním hooku hlásil, že
+# záruka není potvrzená.
+# ---------------------------------------------------------------------------
+$rProof = Join-Path ([IO.Path]::GetTempPath()) ("mbproof-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+& git init -q -b develop $rProof | Out-Null
+$res = Invoke-WithoutMarker { Invoke-Installer $rProof $null }
+Assert-Eq $res.Code 0 'self-test: instalace z prostředí bez značky končí kódem 0'
+Assert-Match $res.Flat 'installed \+ verified live' 'self-test: hook je ověřený i bez značky v prostředí instalátoru'
+Remove-Item -Recurse -Force $rProof
+
 Complete-Tests
