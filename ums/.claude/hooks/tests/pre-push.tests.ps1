@@ -1112,6 +1112,38 @@ $canary = @(Get-Content -LiteralPath $canaryOut)
 Assert-Eq $canary[0].Trim() '1' 'řetězení: cizí hook dostal přehraný stdin (1 ref)'
 Assert-Match $canary[1] 'args=origin' 'řetězení: cizí hook dostal i argumenty gitu'
 
+# ---------------------------------------------------------------------------
+# 23. FAIL-CLOSED REGRESSION. The stdin buffer (`cat > "$stdin_buf"`) has no
+# error handling of its own further up in the hook; without a guard, an
+# unwritable/unresolvable TMPDIR would make `cat` fail, the main loop would
+# then read from a MISSING file, process zero refs, leave `reject` at 0 and
+# fall straight through to an ALLOWED push - this is the layer's enforcement
+# boundary, so a plumbing failure here must reject, not silently pass every
+# policy check. Simulated by pointing TMPDIR at a directory that does not
+# exist (and is never created by anything in this test): `cat` cannot open
+# a file inside a non-existent parent directory, which is a portable way to
+# force the failure without relying on filesystem permission bits (those do
+# not behave uniformly under msys/Windows).
+# ---------------------------------------------------------------------------
+$badTmpDir = Join-Path $root 'no-such-tmp'
+Invoke-GitOk $work @('checkout', 'develop') | Out-Null
+$developBeforeBadTmp = Get-Sha $origin 'refs/heads/develop'
+Add-Content -Path (Join-Path $work 'f.txt') -Value 'bad tmpdir test'
+Invoke-GitOk $work @('commit', '-am', 'bad tmpdir test') | Out-Null
+$prevTmpDir = $env:TMPDIR
+$env:TMPDIR = $badTmpDir
+try {
+    $r = Invoke-GitTry $work @('push', 'origin', 'develop')
+}
+finally {
+    if ($null -eq $prevTmpDir) { Remove-Item Env:TMPDIR -ErrorAction SilentlyContinue }
+    else { $env:TMPDIR = $prevTmpDir }
+}
+Assert-True ($r.Code -ne 0) 'fail-closed: push selže, i když stdin buffer nejde vytvořit (nezapsatelné TMPDIR)'
+Assert-Match $r.Out 'UMS' 'fail-closed: zamítnutí nese UMS vysvětlení, ne jen holou chybu shellu'
+Assert-Eq (Get-Sha $origin 'refs/heads/develop') $developBeforeBadTmp 'fail-closed: remote develop se nepohnulo (žádná kontrola neproběhla, ale push je přesto zamítnutý)'
+Assert-True (-not (Test-Path $badTmpDir)) 'fail-closed: adresář pro buffer se sám nevytvořil (skutečně nezapsatelný scénář)'
+
 Remove-Item -Recurse -Force $root
 
 Complete-Tests

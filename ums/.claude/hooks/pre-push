@@ -52,22 +52,32 @@ remote_name="$1"
 zero='0000000000000000000000000000000000000000'
 reject=0
 
-# Adresář, ze kterého git tenhle hook spustil - i pod core.hooksPath a
-# v linked worktree. Resolvován absolutně, protože cwd hooku je kořen
-# repozitáře, ne adresář hooku.
+# Git hands the hook exactly ONE stdin. To also pass it to a chained hook
+# (typically `git lfs pre-push`, which reads the same ref list), it has to be
+# set aside first. A temp FILE, not command substitution: per the playbook
+# that is not a transparent channel and behaves differently under msys than
+# under a real POSIX shell. This is the ONLY thing on this file's own raw
+# stdin - every other subcommand below runs after the buffer exists, so
+# nothing else here can ever swallow ref lines by accident.
+#
+# Fail CLOSED, not open: if the buffer cannot be created (unwritable/
+# unresolvable TMPDIR), the main loop below would read from a missing file,
+# process no refs, leave `reject` at 0 and fall through to an allowed push -
+# this is the layer's enforcement boundary, so a plumbing failure here must
+# reject the push, not silently skip every check.
+stdin_buf="${TMPDIR:-/tmp}/ums-prepush-$$"
+cat > "$stdin_buf" || {
+    echo "UMS: nelze odložit stdin do $stdin_buf - push zamítnut (Publication Contract)." >&2
+    exit 1
+}
+trap 'rm -f "$stdin_buf"' EXIT INT TERM
+
+# Directory this hook was actually run from - also correct under
+# core.hooksPath and in a linked worktree. Resolved absolutely, because the
+# hook's cwd is the repository root, not the hook's own directory.
 hooks_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 chained="$hooks_dir/pre-push.ums-chained"
 
-# Git dává hooku JEDEN stdin. Chceme-li ho předat i řetězenému hooku
-# (typicky `git lfs pre-push`, který čte tentýž seznam refů), musíme ho
-# napřed odložit stranou. Dočasný SOUBOR, ne command substitution: ta podle
-# playbooku není průhledný kanál a na msys se chová jinak než POSIX shell.
-stdin_buf="${TMPDIR:-/tmp}/ums-prepush-$$"
-cat > "$stdin_buf"
-trap 'rm -f "$stdin_buf"' EXIT INT TERM
-
-# Nespouští se, když tenhle hook push zamítá: k pushi nedojde, takže cizí
-# hook nemá co dělat (LFS by zbytečně nahrávalo objekty).
 run_chained() {
     [ -x "$chained" ] || return 0
     "$chained" "$@" < "$stdin_buf"
@@ -203,6 +213,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 done < "$stdin_buf"
 
+# Does not run when this hook is rejecting the push: the push will not
+# happen anyway, so a chained hook has nothing to do (LFS would upload
+# objects for nothing).
 if [ "$reject" -ne 0 ]; then
     exit "$reject"
 fi
