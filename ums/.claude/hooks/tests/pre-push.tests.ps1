@@ -2,6 +2,15 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '_assert.ps1')
 $ErrorActionPreference = 'Stop'
 
+# The hook only enforces inside an agent session (Task 4) - this suite's own
+# assertions about REJECTED pushes need the marker set at suite scope, not
+# borrowed from whatever ambient CLAUDECODE/AI_AGENT the runner happens to
+# export. Run by a human from a plain terminal or by CI this would otherwise
+# be absent and every "push is rejected" assertion below would go red for an
+# environmental reason, not a hook regression. The two marker-gate helpers
+# further down save/clear/restore around themselves, so they are unaffected.
+$env:MB_AGENT_SESSION = '1'
+
 # End-to-end proof of the real Publication Contract enforcement boundary:
 # the git `pre-push` hook. Everything here is a REAL git push against a
 # local bare "origin" — no network. Own fixture (per-directory convention),
@@ -1291,30 +1300,23 @@ function Invoke-WithoutMarker([scriptblock] $Body) {
     }
 }
 
-# NEdeleguje na Invoke-WithoutMarker s vnořeným scriptblockem: PowerShell
-# scriptblock invokovaný přes `&` běží v novém scope, jehož rodič je scope
-# VOLAJÍCÍ funkce (dynamické rozlišení jména), ne lexikální scope místa,
-# kde byl scriptblock zapsán - kdyby obě funkce měly parametr `$Body`,
-# `& $Body` uvnitř vnořeného bloku by se dynamicky svázal s `$Body`
-# OBALUJÍCÍ funkce (tím vnořeným blokem samotným) a rekurzí do sebe
-# přetekl zásobník. Ověřeno empiricky (Stack overflow po ~1300 asercích).
-function Invoke-WithMarker([scriptblock] $Body) {
-    $saved = @{}
-    foreach ($n in @('MB_AGENT_SESSION', 'AI_AGENT', 'CLAUDECODE')) {
-        $saved[$n] = [Environment]::GetEnvironmentVariable($n)
-        Remove-Item "Env:$n" -ErrorAction SilentlyContinue
-    }
-    $env:MB_AGENT_SESSION = '1'
-    try { & $Body }
-    finally {
-        foreach ($n in $saved.Keys) {
-            if ($null -ne $saved[$n]) { Set-Item "Env:$n" $saved[$n] }
-        }
-    }
+# Deleguje na Invoke-WithoutMarker, ale s parametrem POJMENOVANÝM JINAK
+# (`$MarkerBody`, ne `$Body`): scriptblock invokovaný přes `&` běží v novém
+# scope, jehož rodič je scope VOLAJÍCÍ funkce (dynamické rozlišení jména), ne
+# lexikální scope místa, kde byl scriptblock zapsán - kdyby obě funkce měly
+# parametr `$Body`, `& $Body` uvnitř vnořeného bloku by se dynamicky svázal
+# s `$Body` funkce Invoke-WithoutMarker (tím vnořeným blokem samotným)
+# a rekurzí do sebe přetekl zásobník (ověřeno empiricky - Stack overflow).
+# S různými jmény dynamické hledání `$MarkerBody` nenajde kolizi ve
+# volané funkci a doputuje až do tohoto volajícího frame.
+function Invoke-WithMarker([scriptblock] $MarkerBody) {
+    Invoke-WithoutMarker { $env:MB_AGENT_SESSION = '1'; try { & $MarkerBody } finally { Remove-Item Env:MB_AGENT_SESSION -ErrorAction SilentlyContinue } }
 }
 
 Invoke-WithoutMarker {
-    Assert-Eq $env:MB_AGENT_SESSION $null 'izolace: značka je pro no-marker případy skutečně pryč'
+    Assert-Eq $env:MB_AGENT_SESSION $null 'izolace: MB_AGENT_SESSION je pro no-marker případy skutečně pryč'
+    Assert-Eq $env:AI_AGENT $null 'izolace: AI_AGENT je pro no-marker případy skutečně pryč'
+    Assert-Eq $env:CLAUDECODE $null 'izolace: CLAUDECODE je pro no-marker případy skutečně pryč'
 }
 
 # Vlastní fixtura (primární $root/$work/$origin byly výše uklizeny) - bare
@@ -1345,6 +1347,32 @@ Assert-Eq (Get-Sha $originMarker 'refs/heads/develop') $developBeforePair 'znač
 $withoutMarker = Invoke-WithoutMarker { Invoke-GitTry $workMarker @('push', 'origin', 'develop') }
 Assert-Eq $withoutMarker.Code 0 'značka chybí: hook nevynucuje nic, push člověka projde'
 Assert-Eq (Get-Sha $originMarker 'refs/heads/develop') (Get-Sha $workMarker 'develop') 'značka chybí: remote se posunul'
+
+# ---------------------------------------------------------------------------
+# Oba Claude Code fallbacky (AI_AGENT neprázdný, CLAUDECODE=1) - dosud
+# pokrytá jen samotná MB_AGENT_SESSION větev. Nový commit + push pro každý
+# fallback, aby remote SHA před testem odpovídalo skutečnosti.
+# ---------------------------------------------------------------------------
+function Invoke-WithAiAgent([scriptblock] $FallbackBody) {
+    Invoke-WithoutMarker { $env:AI_AGENT = 'anything-non-empty'; try { & $FallbackBody } finally { Remove-Item Env:AI_AGENT -ErrorAction SilentlyContinue } }
+}
+function Invoke-WithClaudecode([scriptblock] $FallbackBody) {
+    Invoke-WithoutMarker { $env:CLAUDECODE = '1'; try { & $FallbackBody } finally { Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue } }
+}
+
+Add-Content -Path (Join-Path $workMarker 'f.txt') -Value 'ai_agent fallback'
+Invoke-GitOk $workMarker @('commit', '-am', 'ai_agent fallback') | Out-Null
+$developBeforeAiAgent = Get-Sha $originMarker 'refs/heads/develop'
+$rAiAgent = Invoke-WithAiAgent { Invoke-GitTry $workMarker @('push', 'origin', 'develop') }
+Assert-True ($rAiAgent.Code -ne 0) 'fallback AI_AGENT: push na chráněnou větev zamítnut'
+Assert-Eq (Get-Sha $originMarker 'refs/heads/develop') $developBeforeAiAgent 'fallback AI_AGENT: remote se nepohnul'
+
+Add-Content -Path (Join-Path $workMarker 'f.txt') -Value 'claudecode fallback'
+Invoke-GitOk $workMarker @('commit', '-am', 'claudecode fallback') | Out-Null
+$developBeforeClaudecode = Get-Sha $originMarker 'refs/heads/develop'
+$rClaudecode = Invoke-WithClaudecode { Invoke-GitTry $workMarker @('push', 'origin', 'develop') }
+Assert-True ($rClaudecode.Code -ne 0) 'fallback CLAUDECODE=1: push na chráněnou větev zamítnut'
+Assert-Eq (Get-Sha $originMarker 'refs/heads/develop') $developBeforeClaudecode 'fallback CLAUDECODE=1: remote se nepohnul'
 
 Remove-Item -Recurse -Force $rootMarker
 

@@ -374,6 +374,12 @@ function Find-Shell {
 # and could report "verified" about a file that has nothing to do with
 # $RepoRoot. `cd` failing short-circuits the pipeline, so a bad root fails the
 # proof loudly instead of quietly proving nothing.
+#
+# MB_AGENT_SESSION=1 is prefixed onto the command running the hook (not onto
+# `printf`) so every proof run below counts as an agent session: the hook
+# itself now only enforces inside one (Task 4), so without this the proof
+# would run ungated when this script is invoked by hand from a plain
+# terminal, which has no marker of its own.
 function Invoke-HookLine([string] $Shell, [string] $HookPath, [string] $Line) {
     $unixHook = $HookPath -replace '\\', '/'
     $unixRoot = (Resolve-Path -LiteralPath $RepoRoot).Path -replace '\\', '/'
