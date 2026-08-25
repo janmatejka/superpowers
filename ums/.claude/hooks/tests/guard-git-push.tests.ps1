@@ -355,4 +355,20 @@ Remove-Item -Recurse -Force $tmp2
 # ---------------------------------------------------------------------------
 Assert-Eq (Invoke-Hook 'not json') '' 'nerozparsovatelný vstup neblokuje'
 
+# ---------------------------------------------------------------------------
+# hook registration must cover every tool a session can push through
+# ---------------------------------------------------------------------------
+# Registrace hooku je konfigurace, ne kód - ale díra v ní znamená, že guard
+# na polovinu volání vůbec nevystřelí. Sezení s CLAUDE_CODE_USE_POWERSHELL_TOOL=1
+# jede přes PowerShell tool; s matcherem jen na Bash by push tudy prošel bez
+# jediné kontroly.
+$settingsPath = Join-Path $PSScriptRoot '..\..\settings.json'
+$settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+$bashMatchers = @($settings.hooks.PreToolUse | Where-Object {
+    ($_.hooks | Where-Object { $_.command -match 'guard-git-push' })
+} | ForEach-Object { $_.matcher })
+Assert-Eq @($bashMatchers).Count 1 'guard-git-push je registrovaný právě jednou'
+Assert-Match $bashMatchers[0] 'Bash' 'matcher guardu pokrývá Bash tool'
+Assert-Match $bashMatchers[0] 'PowerShell' 'matcher guardu pokrývá i PowerShell tool'
+
 Complete-Tests
