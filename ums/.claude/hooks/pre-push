@@ -52,6 +52,27 @@ remote_name="$1"
 zero='0000000000000000000000000000000000000000'
 reject=0
 
+# Adresář, ze kterého git tenhle hook spustil - i pod core.hooksPath a
+# v linked worktree. Resolvován absolutně, protože cwd hooku je kořen
+# repozitáře, ne adresář hooku.
+hooks_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+chained="$hooks_dir/pre-push.ums-chained"
+
+# Git dává hooku JEDEN stdin. Chceme-li ho předat i řetězenému hooku
+# (typicky `git lfs pre-push`, který čte tentýž seznam refů), musíme ho
+# napřed odložit stranou. Dočasný SOUBOR, ne command substitution: ta podle
+# playbooku není průhledný kanál a na msys se chová jinak než POSIX shell.
+stdin_buf="${TMPDIR:-/tmp}/ums-prepush-$$"
+cat > "$stdin_buf"
+trap 'rm -f "$stdin_buf"' EXIT INT TERM
+
+# Nespouští se, když tenhle hook push zamítá: k pushi nedojde, takže cizí
+# hook nemá co dělat (LFS by zbytečně nahrávalo objekty).
+run_chained() {
+    [ -x "$chained" ] || return 0
+    "$chained" "$@" < "$stdin_buf"
+}
+
 branch_name() {
     # Prefix stripped case-insensitively, so the name printed in the message
     # is right for any spelling the scope gate below let through.
@@ -180,6 +201,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             continue
         fi
     fi
-done
+done < "$stdin_buf"
 
-exit $reject
+if [ "$reject" -ne 0 ]; then
+    exit "$reject"
+fi
+
+run_chained "$@"
+exit $?

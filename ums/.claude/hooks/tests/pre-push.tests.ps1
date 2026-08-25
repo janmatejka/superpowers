@@ -1082,6 +1082,36 @@ Assert-NotMatch $res.Flat 'the configuration covers the control name' 'kontrola 
 Assert-Match $res.Flat 'the only run that would notice if the run above stopped discriminating' 'kontrola 3. běhu: hlásí se i důsledek — chybí jediná pojistka proti dekorativnímu třetímu běhu'
 Remove-Item -Recurse -Force $fx18.Root
 
+# ---------------------------------------------------------------------------
+# 22. Řetězení cizího hooku. Kanárek zapisuje počet přijatých řádků stdinu do
+# souboru: kdyby ho hook zavolal bez přehrání stdinu, napíše 0 a LFS by tiše
+# přestalo posílat objekty - selhání, které vypadá jako funkční stav.
+# ---------------------------------------------------------------------------
+$chainDir = Join-Path $work '.git/hooks'
+$canaryOut = (Join-Path $root 'canary.txt') -replace '\\', '/'
+$chainPath = Join-Path $chainDir 'pre-push.ums-chained'
+Set-Content -LiteralPath $chainPath -Encoding ascii -Value @"
+#!/bin/sh
+wc -l < /dev/stdin > "$canaryOut"
+echo "args=$*" >> "$canaryOut"
+exit 0
+"@
+& $gitBash -c 'chmod +x "$1"' _ ($chainPath -replace '\\', '/') | Out-Null
+
+# feature/x's local pointer was left diverged from origin by the rejected
+# force-push case above (case 4) - resync to origin's tip first, so this
+# case tests chaining, not an unrelated non-fast-forward from an earlier case.
+Invoke-GitOk $work @('fetch', 'origin', 'feature/x') | Out-Null
+Invoke-GitOk $work @('checkout', '-B', 'feature/x', 'origin/feature/x') | Out-Null
+Add-Content -Path (Join-Path $work 'g.txt') -Value 'chain test'
+Invoke-GitOk $work @('commit', '-am', 'chain test') | Out-Null
+$r = Invoke-GitTry $work @('push', 'origin', 'feature/x')
+Assert-Eq $r.Code 0 'řetězení: povolený push projde'
+Assert-True (Test-Path $canaryOut) 'řetězení: cizí hook byl skutečně zavolán'
+$canary = @(Get-Content -LiteralPath $canaryOut)
+Assert-Eq $canary[0].Trim() '1' 'řetězení: cizí hook dostal přehraný stdin (1 ref)'
+Assert-Match $canary[1] 'args=origin' 'řetězení: cizí hook dostal i argumenty gitu'
+
 Remove-Item -Recurse -Force $root
 
 Complete-Tests
