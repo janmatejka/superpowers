@@ -1146,4 +1146,68 @@ Assert-True (-not (Test-Path $badTmpDir)) 'fail-closed: adresář pro buffer se 
 
 Remove-Item -Recurse -Force $root
 
+# ---------------------------------------------------------------------------
+# 24. Cizí hook (typicky Git LFS) se neodmítá, ale odsouvá a řetězí. Do sdíleného
+# adresáře hooků se ale řetězit NESMÍ - přejmenování by tiše přesměrovalo
+# každý repozitář, který tu cestu používá.
+# ---------------------------------------------------------------------------
+$rChain = Join-Path ([IO.Path]::GetTempPath()) ("mbchain-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+& git init -q -b develop $rChain | Out-Null
+$foreign = Join-Path $rChain '.git/hooks/pre-push'
+New-Item -ItemType Directory -Force -Path (Split-Path $foreign) | Out-Null
+Set-Content -LiteralPath $foreign -Encoding ascii -Value "#!/bin/sh`nexit 0`n"
+$res = Invoke-Installer $rChain $null
+Assert-Eq $res.Code 0 'cizí hook: instalace uspěje řetězením, ne exitem 2'
+Assert-True (Test-Path (Join-Path $rChain '.git/hooks/pre-push.ums-chained')) 'cizí hook: odsunut na .ums-chained'
+Assert-Match $res.Flat 'chained' 'cizí hook: instalátor řetězení pojmenuje'
+$ours = Get-Content -LiteralPath $foreign -TotalCount 5
+Assert-Match ($ours -join "`n") 'UMS pre-push guard' 'cizí hook: na jeho místě je náš hook'
+
+# Opakovaný běh nesmí přepsat už odsunutý cizí hook vlastním hookem.
+$chainedBefore = Get-Content -LiteralPath (Join-Path $rChain '.git/hooks/pre-push.ums-chained') -Raw
+$res = Invoke-Installer $rChain $null
+$chainedAfter = Get-Content -LiteralPath (Join-Path $rChain '.git/hooks/pre-push.ums-chained') -Raw
+Assert-Eq $chainedAfter $chainedBefore 'cizí hook: opakovaná instalace řetězený soubor nemění'
+Assert-NotMatch $chainedAfter 'UMS pre-push guard' 'cizí hook: náš hook se nikdy nezřetězí sám se sebou'
+Remove-Item -Recurse -Force $rChain
+
+# Sdílený core.hooksPath: řetězení se odmítne, exit 2 zůstává.
+$rShared = Join-Path ([IO.Path]::GetTempPath()) ("mbshared-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$sharedHooks = Join-Path $rShared 'shared-hooks'
+New-Item -ItemType Directory -Force -Path $rShared, $sharedHooks | Out-Null
+& git init -q -b develop $rShared | Out-Null
+Set-Content -LiteralPath (Join-Path $sharedHooks 'pre-push') -Encoding ascii -Value "#!/bin/sh`nexit 0`n"
+& git -C $rShared config core.hooksPath ($sharedHooks -replace '\\', '/') | Out-Null
+$res = Invoke-Installer $rShared $null
+Assert-Eq $res.Code 2 'sdílený core.hooksPath: řetězení odmítnuto, exit 2'
+Assert-Match $res.Flat 'shared' 'sdílený core.hooksPath: instalátor pojmenuje důvod odmítnutí'
+Assert-True (-not (Test-Path (Join-Path $sharedHooks 'pre-push.ums-chained'))) 'sdílený core.hooksPath: cizí hook zůstal nedotčený'
+Remove-Item -Recurse -Force $rShared
+
+# Ruční slepenec z dřívějšího ad-hoc obcházení exitu 2: náš kód je v těle
+# cizího hooku hlouběji, než kam sahá kontrola identity. Rozplétat se nesmí.
+#
+# Ruling R2 (controller): marker musí ležet AŽ POD pátým řádkem, jinak by ho
+# Test-IsOurHook (MARKER_LINES_CHECKED=5) sám rozpoznal jako "náš hook" a
+# Move-ForeignHook by se nikdy nezavolal - proto tu jsou navíc dva odstavce
+# před markerem, aby padl na řádek 6.
+$rMerged = Join-Path ([IO.Path]::GetTempPath()) ("mbmerged-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+& git init -q -b develop $rMerged | Out-Null
+$mergedHook = Join-Path $rMerged '.git/hooks/pre-push'
+New-Item -ItemType Directory -Force -Path (Split-Path $mergedHook) | Out-Null
+Set-Content -LiteralPath $mergedHook -Encoding ascii -Value @"
+#!/bin/sh
+git lfs pre-push "`$@"
+# ručně vlepeno kdysi dávno:
+# (poznámka navíc, aby marker padl mimo prvních pět řádků)
+# (ještě jedna poznámka)
+# UMS pre-push guard (Publication Contract)
+exit 0
+"@
+$res = Invoke-Installer $rMerged $null
+Assert-Eq $res.Code 2 'ruční slepenec: instalace se nepokouší rozplétat, exit 2'
+Assert-Match $res.Flat 'hand-merged' 'ruční slepenec: instalátor pojmenuje, o co jde'
+Assert-True (-not (Test-Path (Join-Path $rMerged '.git/hooks/pre-push.ums-chained'))) 'ruční slepenec: nic se neodsunulo'
+Remove-Item -Recurse -Force $rMerged
+
 Complete-Tests

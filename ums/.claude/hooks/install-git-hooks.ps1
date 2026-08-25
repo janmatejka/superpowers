@@ -58,8 +58,11 @@
     installed guarantee from an absent one:
       0  installed and proven live
       1  installed, but the proof FAILED — treat the guarantee as absent
-      2  NOT installed: a foreign pre-push was already there and was left
-         untouched — the guarantee is absent here
+      2  NOT installed: a foreign pre-push could not be chained - either the
+         hooks directory is shared with other repositories (core.hooksPath is
+         absolute or comes from global/system config) or a chained hook was
+         already there. The foreign hook was left untouched and the guarantee
+         is absent here.
       3  installed, but no shell was available to run the proof
       4  installed and proven live, but the protected-branch list could NOT be
          REFRESHED — either it could not be written, or the configuration
@@ -93,8 +96,11 @@
     identified by a marker comment on one of the file's first few lines
     (matched only near the top, not anywhere in the file, so a foreign hook
     that merely mentions similar wording deeper in its body is never treated
-    as ours). Never overwrites a pre-existing hook that is NOT ours — it
-    reports the conflict, leaves the file untouched and exits 2.
+    as ours). A pre-existing hook that is NOT ours is never overwritten in
+    place — it is moved aside to `<name>.ums-chained` (unless the hooks
+    directory is shared via core.hooksPath, or a chained hook is already
+    there — see exit code 2 below) so our hook can call it, and it is never
+    edited by hand.
 
     CROSS-PLATFORM. The shell used for `chmod +x` and for the proof is, on
     Windows, Git for Windows' own bash.exe located from git.exe — NOT
@@ -587,6 +593,33 @@ if ($loaderFound) {
     }
 }
 
+$CHAINED_SUFFIX = '.ums-chained'
+
+# Odsune cizí pre-push stranou, aby ho náš hook mohl volat. NIKDY do
+# sdíleného adresáře hooků: pod absolutním nebo globálním core.hooksPath tam
+# leží hooky jiných repozitářů a přejmenování by je všechny tiše přesměrovalo
+# na tenhle hook. Tam zůstává staré chování - nechat být a exit 2.
+function Move-ForeignHook([string] $Path, [hashtable] $HooksPathCfg) {
+    if ($HooksPathCfg -and ($HooksPathCfg.IsAbsolute -or $HooksPathCfg.Scope -in @('global', 'system'))) {
+        return @{ Moved = $false; Path = $null; Refused = 'the hooks directory is shared with other repositories (core.hooksPath), so moving a foreign hook there would silently re-point every one of them' }
+    }
+    # Ruční slepenec: cizí hook, do kterého někdo kdysi vlepil náš kód, aby
+    # obešel exit 2. Marker je schválně hledaný jen v prvních pěti řádcích, aby
+    # se cizí hook zmiňující podobnou formulaci nepovažoval za náš - tady ale
+    # potřebujeme opak, hlubší výskyt. Slepence se strojově rozplétat nedají.
+    if ((Get-Content -LiteralPath $Path -Raw) -match [regex]::Escape($OURS_MARKER)) {
+        return @{ Moved = $false; Path = $null; Refused = "this foreign hook contains UMS guard code deeper in its body - a hand-merged hook, which cannot be untangled mechanically; resolve it by hand" }
+    }
+    $dst = $Path + $CHAINED_SUFFIX
+    if (Test-Path -LiteralPath $dst) {
+        return @{ Moved = $false; Path = $dst; Refused = "a chained hook is already present at $dst - not overwriting it" }
+    }
+    Move-Item -LiteralPath $Path -Destination $dst
+    $stamp = "# Chained by install-git-hooks.ps1 from $Path"
+    Add-Content -LiteralPath $dst -Value $stamp
+    return @{ Moved = $true; Path = $dst; Refused = $null }
+}
+
 $installed = @()
 $skipped = @()
 foreach ($name in $HOOK_NAMES) {
@@ -596,10 +629,22 @@ foreach ($name in $HOOK_NAMES) {
     New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
 
     if ((Test-Path $dst) -and -not (Test-IsOurHook $dst)) {
-        Write-Host "SKIP: $dst already exists and is not the UMS hook - leaving it alone." -ForegroundColor Yellow
-        Write-Host '      Merge the UMS pre-push logic into it by hand if you want both enforced.' -ForegroundColor Yellow
-        $skipped += @{ Name = $name; Path = $dst }
-        continue
+        $chain = Move-ForeignHook $dst $hooksPathCfg
+        if (-not $chain.Moved) {
+            Write-Host "SKIP: $dst already exists and is not the UMS hook - leaving it alone." -ForegroundColor Yellow
+            Write-Host "      $($chain.Refused)" -ForegroundColor Yellow
+            $skipped += @{ Name = $name; Path = $dst }
+            continue
+        }
+        Write-Host "chained: foreign $name -> $($chain.Path) (our hook will call it)" -ForegroundColor Cyan
+        # run_chained (Task 2) gates on `[ -x "$chained" ]` and SILENTLY skips a
+        # chained hook that is not executable - Git LFS would then quietly stop
+        # uploading objects with no error anywhere. Move-Item preserves whatever
+        # bit the foreign hook had; this makes sure it survives the move.
+        if ($shell) {
+            $unixChain = $chain.Path -replace '\\', '/'
+            try { & $shell -c 'chmod +x "$1"' _ $unixChain 2>$null | Out-Null } catch { }
+        }
     }
 
     Copy-Item -Force -LiteralPath $src -Destination $dst
