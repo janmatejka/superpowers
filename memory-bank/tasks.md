@@ -14,16 +14,13 @@ reprodukovaný, žádný neblokuje provoz.
    je obhajitelné, ale [design_publikace_a_viditelnost.md](proposals/completed/design_publikace_a_viditelnost.md)
    i komentář ve skriptu tvrdí opak („vlastní už pushnutá větev nekoliduje sama
    se sebou"). Sjednotit chování s textem, nebo text s chováním.
-2. **Úniková proměnná `UMS_ALLOW_SHARED_PUSH` v `guard-git-push.mjs` zkratuje celý
-   příkaz**, tedy zvedá i kontrolu wildcard refspecu u `fetch`. Na fail-open
-   vrstvě to není díra v záruce, ale je to širší povolení, než pravidlo popisuje.
-3. **Věta „each artifact is wholly one language"** v jazykové sekci kontraktu je
+2. **Věta „each artifact is wholly one language"** v jazykové sekci kontraktu je
    doslova nepravdivá pro soubory, které míchají anglické komentáře s českým
    výstupem. Pravidlo míří na výstup, ne na soubory.
-4. **JIRA-less cestě deklarovaný záměr nepomůže** — bez tiketu a bez slugu nemá
+3. **JIRA-less cestě deklarovaný záměr nepomůže** — bez tiketu a bez slugu nemá
    kolizní kontrola co porovnávat, takže dvě sezení bez tiketu se o sobě
    nedozvědí.
-5. **`doc-index.ps1` v měřítku monorepa nesplňuje návrhový rozpočet.** Na
+4. **`doc-index.ps1` v měřítku monorepa nesplňuje návrhový rozpočet.** Na
    `d:\_datasys\ums` (219 remote refs, `.git` 4,1 GB) trvá běžný běh 32–35 s a
    běh s deklarovaným záměrem (`-Jira`/`-Slug`) 57 s, proti 2,0 s v tomto
    forku — rozpočet 15 s tedy nesplněn. Hotspot zůstává touto pracovní
@@ -32,7 +29,7 @@ reprodukovaný, žádný neblokuje provoz.
    refů stojí jen 0,1 s. Dvoufázový filtr stáří tipu, který tato větev
    přidala, dělá výběr refů levným — zbylá cena je probírání obsahu po
    dvojicích. Neřešeno.
-6. **Sdílený blok detekce fáze v pěti skillech se rozchází s kontraktem.**
+5. **Sdílený blok detekce fáze v pěti skillech se rozchází s kontraktem.**
    `mb-git-commit`, `mb-git-message`, `mb-jira-update`, `mb-sync` a `mb-scan`
    nesou stejný zkopírovaný odstavec: čte blok `## Active Work` jako
    `ACTIVE_WORK`, pokud není prázdný nebo nenese značku IDLE, a výslovně
@@ -42,16 +39,30 @@ reprodukovaný, žádný neblokuje provoz.
    a `mb-park` kontrakt implementují správně. Předchází tuto pracovní
    položku, je mimo její soupis souborů a je to jedna sdílená formulace
    použitá pětkrát v pěti neotestovaných tělech skillů. Neřešeno.
-7. **Nasazená vrstva čeká na redeploy.** Kořenové `.claude/` a
-   `.agents/skills/` tohoto repa jsou netrackovaná nasazená kopie a monorepo
-   `d:\_datasys\ums` je samostatná živá kopie — obě jsou po opravě z review
-   za `ums/.claude/`: nasazený `mb-harvest` ještě nese starší tvar
-   `git merge-base <base-branch>`. Nástroj je `pwsh ums/sync-with-monorepo.ps1`.
-   Tři upstream skilly s blokem `<!-- UMS-OVERLAY -->` (`brainstorming`,
-   `subagent-driven-development`, `finishing-a-development-branch`) se navíc
-   nekopírují — generuje je revendor skript v monorepu z overlay fragmentů,
-   které tato větev přepsala, takže jejich vendorované kopie ještě nesou
-   předplánový text overlaye, dokud revendor neproběhne. Neřešeno.
+6. **Monorepo `d:\_datasys\ums` čeká na redeploy vrstvy.** Nasazená kopie
+   tohoto forku (kořenové `.claude/`, `.agents/skills/`, vendorované skilly
+   s overlay bloky) je s `ums/.claude/` v souladu — obnovuje ji poslední
+   úloha každého plánu. Monorepo je samostatná živá kopie a za `ums/.claude/`
+   zaostává o celou publikační vrstvu (marker gate, pravidlo obsahu,
+   `MB_HUMAN_PUSH`, chaining cizího hooku, kontrakt v2.11): nástroj je
+   `pwsh ums/sync-with-monorepo.ps1` a poté revendor v monorepu
+   (`-NoOverlays` → `-OverlaysOnly`, postup v [playbook.md](playbook.md),
+   sekce „Upgrade upstreamu"). Po nasazení znovu spustit
+   `install-git-hooks.ps1`, protože hook je nyní `v2`. Neřešeno.
+7. **Sebekontrola hooku čte průchod syntetické chráněné řádky jako chybějící
+   značku, ale od pravidla obsahu má průchod dva důvody.** Kontrakt (Workspace
+   Discipline, fáze 0) i finishing overlay (Step 4.5) říkají „řádka chráněné
+   větve, která PROJDE, znamená, že značka agentní session chybí". Po zavedení
+   `is_integration_push` ale projde i řádka, jejíž vrchol je už dosažitelný
+   z `refs/remotes/<remote>/*` — hook to ohlásí jako „fast-forward na commity
+   už publikované, push povolen" s exit 0, se značkou přítomnou. Naměřeno při
+   dokončování `push_guard_jen_pro_agenty`: HEAD tiketové větve byl publikován,
+   takže reject půlka sebekontroly „prošla" z pravidla obsahu, ne z chybějící
+   značky; pravou negativu dal až syntetický nepublikovaný commit
+   (`git commit-tree`). Oprava: sebekontrola má zamítací půlku stavět na
+   NEPUBLIKOVANÉM vrcholu (nebo číst hlášku, ne jen exit kód), a věta
+   „PROJDE = chybí značka" se má zúžit. Dvě místa: overlay řádek ~22, kontrakt
+   řádek ~589. Neřešeno.
 
 ## Otevřená otázka na člověka
 

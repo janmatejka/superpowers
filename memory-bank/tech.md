@@ -10,7 +10,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.10 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.11 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 3 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
@@ -55,8 +55,8 @@ stejnou konfiguraci vždy stejnou odpověď.
 - **Node.js** (ESM, `"type": "module"`) — hooks
   [`deny-superpowers-docs.mjs`](../ums/.claude/hooks/deny-superpowers-docs.mjs)
   (čte JSON ze stdin, vrací `permissionDecision: deny`) a
-  [`guard-git-push.mjs`](../ums/.claude/hooks/guard-git-push.mjs) (fail-open
-  early-warning nad `Bash` voláními, viz níže).
+  [`guard-git-push.mjs`](../ums/.claude/hooks/guard-git-push.mjs) (pravidlo
+  podle aktéra nad `Bash`/`PowerShell` voláními, viz níže).
 - **Git Bash / POSIX sh** — upstream skripty SDD (`sdd-workspace`, `task-brief`,
   `review-package`) jsou bashové soubory bez přípony; totéž platí pro
   [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (`#!/bin/sh`),
@@ -92,10 +92,11 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 
 | Klíč | Obsah |
 |---|---|
-| `hooks.SessionStart` | `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md` |
+| `env` | `MB_AGENT_SESSION: "1"` — vstupní marker agentní relace; bez něj `pre-push` hook nevynucuje nic vlastního (viz níže) |
+| `hooks.SessionStart` | `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md`; entry gate stejného kroku navíc fail-closed ověří verzi `pre-push` hooku (`UMS pre-push guard (Publication Contract) v2`) a spustí synteticky obě poloviny jeho self-checku (zamítnutí i propuštění) — postup je v [playbook.md](playbook.md) |
 | `hooks.PostCompact` | `systemMessage`: po kompaktaci znovu načíst kontrakt, `context.md` a při exekuci plánu i `.superpowers/sdd/<plan-basename>/progress.md` |
 | `hooks.PreToolUse` (`Write|Edit`) | `deny-superpowers-docs.mjs` — blokuje zápis do `docs/superpowers/**` a `docs/plans/**` |
-| `hooks.PreToolUse` (`Bash`) | `guard-git-push.mjs` — fail-open rychlé varování před pushem do chráněné větve nebo s `--no-verify`; NENÍ záruka, tou je git `pre-push` hook (níže) |
+| `hooks.PreToolUse` (`Bash|PowerShell`) | `guard-git-push.mjs` — nese pravidlo podle AKTÉRA (jen vlastní tool-cally agenta, ne příkazy uživatele psané přes `!`): na rozpoznaný `git push` leans fail-CLOSED (nečitelný cíl zamítá, nečeká na vyjasnění), zamítá push agenta na chráněnou větev včetně integračního fast-forwardu, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a `--no-verify` bez kontextu; NENÍ záruka publikace — tou zůstává git `pre-push` hook (níže), který navíc vynucuje jen uvnitř agentní relace |
 | `hooks.PostToolUse` (`Write|Edit`) | `bpmn-validate.ps1` — validace BPMN v monorepu |
 | `permissions.allow` | read-only nástroje (grep, rg, cat, head, tail, ls, wc, diff, sed, find, test, echo; git status/diff/log/show/ls-files/rev-parse/branch/check-ignore/stash list/fetch/ls-remote/for-each-ref/ls-tree/cat-file/merge-base; PowerShell Get-Content/Get-ChildItem/Test-Path/Select-String) |
 | `permissions.deny` | `EnterWorktree`, `ExitWorktree`, `Bash(rm -rf:*)`, `Bash(git reset --hard:*)` |
@@ -104,10 +105,28 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 
 `git push` už není v `permissions.deny` — je binární a deny vyhrává nad allow,
 takže by nešlo rozvolnit jen pro vlastní tiketovou větev. Skutečnou hranicí
-dvouúrovňové push policy (kontrakt, Publication Contract) je git `pre-push`
-hook [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (POSIX
+publikačního pravidla (kontrakt, Publication Contract) je git `pre-push` hook
+(`v2`) [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (POSIX
 `sh`, scope `refs/heads/*`) — git mu předá už rozparsované čtveřice refů, ne
-shellový text, takže žádné parsování k obejití neexistuje.
+shellový text, takže žádné parsování k obejití neexistuje. Vynucuje jen
+uvnitř agentní relace: vstupní brána je marker `MB_AGENT_SESSION=1` (u
+Claude Code fallback na neprázdný `AI_AGENT` nebo `CLAUDECODE=1`, viz níže
+tabulka doručení markeru per harness); mimo relaci hook nic vlastního
+nevynucuje a jen deleguje na zřetězený cizí hook. Nad touto branou stojí
+jedno rameno platné pro každého bez ohledu na marker: neúspěch bufferovat
+gitem předaný seznam refů do dočasného souboru zamítne push úplně, tagy
+nevyjímaje.
+
+Uvnitř agentní relace na chráněné větvi hook pustí jen **fast-forward, jehož
+tip je už dosažitelný z remote-tracking refů tohoto klonu** pro pushovaný
+remote (`is_integration_push`) — lokální, zapisovatelný stav, který
+`git update-ref` splní i bez skutečné publikace; hook nikdy nekontaktuje
+`origin`. Mazání větve a force push zamítá vždy, s výjimkou
+`MB_HUMAN_PUSH=1` (přechodně přijímané i pod starším jménem
+`UMS_ALLOW_SHARED_PUSH=1`, s hláškou o zastaralosti) — ta zvedá celou
+ochranu hooku najednou, ne jen pravidlo o chráněné větvi. Detailní rozpad
+je v [architecture.md](architecture.md), sekce Publikace a viditelnost
+napříč větvemi.
 
 Chráněné patterny jsou konfigurace, ne tělo hooku: [`ums-repo.json`](ums-repo.json)
 klíčem `protectedBranches` (tento repozitář: `ums-memory-bank`, `main`,
@@ -120,29 +139,53 @@ do `<git-common-dir>/ums-protected-branches`, jeden glob na řádek, a hook čte
 jen tento vygenerovaný soubor. **Změna konfigurace se tedy projeví až po
 dalším běhu instalátoru.** Bez konfigurace, bez `ums-repo.json` nebo s
 nedostupným loaderem hook spadá na vestavěnou čtveřici `develop`, `main`,
-`master`, `release/*` — vždy k víc ochraně, nikdy k méně. Zamítá push do
-chráněné větve bez `UMS_ALLOW_SHARED_PUSH=1`, mazání větve a force push
-vždy.
+`master`, `release/*` — vždy k víc ochraně, nikdy k méně.
+
+Cizí `pre-push`, který instalace v cíli najde, se nevyřazuje z provozu:
+instalátor ho přesune na `<jméno>.ums-chained`, nastaví mu spustitelnost a
+hook mu po sobě přehraje bufferovaný stdin (`run_chained`), i ve větvi, kdy
+sám zamítá — nenulový exit zřetězeného hooku je jeho veto a hook ho
+propaguje. Instalace chaining odmítne (a hook se do klonu vůbec
+nenainstaluje, exit kód **2**) ve čtyřech případech: sdílený adresář
+`core.hooksPath`, `.ums-chained` už existuje, ručně sloučený hook nesoucí náš
+marker hluboko v těle místo v hlavičce, nebo selhání samotného přesunu.
 
 Git hooky jsou netrackované (`.git/hooks/` nebo cíl `core.hooksPath`), takže
 je do každého klonu instaluje samostatný skript
 [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) —
-idempotentní, cizí hook nikdy nepřepíše, cíl řeší `git rev-parse --git-path
-hooks/pre-push` (správně i pro linked worktree). Instalátor vrací exit kód
-**4**, když se seznam chráněných větví nepodařilo obnovit — nešlo ho zapsat,
-nebo chybí loader `Get-UmsRepoConfig.ps1` vedle adresáře s hooky — hook se
-i tak instaluje a vynucuje, co je aktuálně na disku (starší běh, nebo
-vestavěný fallback), nikdy neskončí bez hooku. Kdy se spouští a co znamenají
-ostatní návratové kódy, je v [playbook.md](playbook.md). Konce řádků hooku
-hlídá [`ums/.gitattributes`](../ums/.gitattributes) pravidlem `text eol=lf`.
+idempotentní, cizí hook zřetězí (viz výše, exit kód 2), cíl řeší
+`git rev-parse --git-path hooks/pre-push` (správně i pro linked worktree).
+Instalátor vrací exit kód **4**, když se seznam chráněných větví nepodařilo
+obnovit — nešlo ho zapsat, nebo chybí loader `Get-UmsRepoConfig.ps1` vedle
+adresáře s hooky — hook se i tak instaluje a vynucuje, co je aktuálně na
+disku (starší běh, nebo vestavěný fallback), nikdy neskončí bez hooku (na
+rozdíl od exit kódu 2, kde se v klonu vůbec nenainstaluje). Kdy se spouští a
+co znamenají ostatní návratové kódy, je v [playbook.md](playbook.md). Konce
+řádků hooku hlídá [`ums/.gitattributes`](../ums/.gitattributes) pravidlem
+`text eol=lf`.
+
+**Doručení markeru `MB_AGENT_SESSION` mimo Claude Code** dělá
+[`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) do dokumentovaného
+mechanismu každého harnessu:
+
+| Harness | Mechanismus |
+|---|---|
+| Claude Code | `env` blok [`ums/.claude/settings.json`](../ums/.claude/settings.json) — `-Scope UserProfile` tento soubor záměrně nenasazuje, takže tam zůstává jen fallback `CLAUDECODE=1`/neprázdný `AI_AGENT` |
+| Codex | `config.toml`, `[shell_environment_policy].set` (merguje se do existující tabulky) |
+| Gemini | `.env` soubor v `.gemini/` |
+| Kilo Code | žádný zdokumentovaný mechanismus nalezen — skript vyhodí `NotSupportedException`, vypíše varování a nic nezapíše; na tomto harnessu marker nikdy nedorazí a `pre-push` hook tam nevynucuje nic vlastního |
+
+Tvrzení „git hook je harness-agnostický" proto platí jen pro samotné
+spuštění hooku (je to prostý git mechanismus, ne funkce Claude Code) — jeho
+vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 
 ## Testy
 
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 16 sad, dohromady
-613 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 17 sad, dohromady
+954 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -188,13 +231,22 @@ v [playbook.md](playbook.md).
   jeho absenci i bez `context.md`, tři tvary nesrozumitelného řádku
   (komentář za hodnotou, prázdná hodnota, chybějící diakritika) hlášené v
   `Malformed` a odlišené od „řádek chybí úplně", zachování řádku v IDLE stavu).
-- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (142;
-  end-to-end proti skutečnému lokálnímu bare remote: lidská výjimka,
-  mazání/force i s ní zamítnuté, `core.hooksPath` lokální/globální/relativní
-  per worktree, generovaný seznam chráněných větví a self-test instalátoru
-  včetně důvodů přeskočení; běží přes dvě minuty, což je normální) a
-  `guard-git-push.tests.ps1` (97; JSON na stdin → rozhodnutí:
-  chráněné větve, force, `--no-verify`, lidská výjimka).
+- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (230;
+  end-to-end proti skutečnému lokálnímu bare remote: marker `MB_AGENT_SESSION`
+  jako vstupní brána, obsahové pravidlo fast-forwardu na už dosažitelný tip,
+  lidská výjimka `MB_HUMAN_PUSH`/zastaralé `UMS_ALLOW_SHARED_PUSH`,
+  mazání/force i s ní zamítnuté, bufferovací rameno nad markerem, chaining
+  cizího hooku (`run_chained`) i jeho čtyři odmítnuté případy,
+  `core.hooksPath` lokální/globální/relativní per worktree, generovaný
+  seznam chráněných větví a self-test instalátoru včetně důvodů přeskočení;
+  běží přes dvě minuty, což je normální), `guard-git-push.tests.ps1` (332;
+  JSON na stdin → rozhodnutí podle aktéra a fail-closed čtení cíle: chráněné
+  větve včetně integračního fast-forwardu, force, `--no-verify`, obě jména
+  únikové proměnné v POSIX i PowerShellovém zápisu, přesměrování krokovaná
+  jako v reálném shellu, pojmenované mezery jako `bash -c` nebo git alias) a
+  `sync-marker.tests.ps1` (18; `Set-AgentMarker` per harness — Codex
+  `config.toml`, Gemini `.env`, Kilo Code hlásí `NotSupportedException` a
+  nezapisuje nic).
 
 **Upstream** — [`tests/`](../tests/) obsahuje shellové a Node.js testy
 infrastruktury pluginu po harnessech (`claude-code`, `codex`, `kimi`,

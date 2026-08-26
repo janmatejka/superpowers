@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.10, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.11, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -184,9 +184,11 @@ kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává kro
   <baseRef>`) PŘED harvestem → harvest, commit a push → znovu `fetch` +
   `merge <baseRef>` (báze se mohla mezitím pohnout) → zelená verifikace na
   slouženém stromu → agent připraví lidský příkaz s výčtem odchozích commitů
-  (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>`, refspecový
-  tvar, protože integrace pushuje tiketovou větev na bázový ref) → uživatel
-  ho spustí → agent ověří dosažitelnost **z báze**
+  — prostý `! git push origin HEAD:<baseBranch>`, refspecový tvar (integrace
+  pushuje tiketovou větev na bázový ref) a bez úniku, protože jde o
+  fast-forward na commity, které tato tiketová větev na `origin` už
+  zveřejnila a obsahové pravidlo `pre-push` hooku (sekce 3) takový push pustí
+  samo — → uživatel ho spustí → agent ověří dosažitelnost **z báze**
   (`git merge-base --is-ancestor <sha> <baseRef>`, ne `git branch -r
   --contains`, který by nahlásil ticketovou větev, kam už publikační pravidlo
   commit pushlo, a míjel by tak právě stav, který krok ověřuje),
@@ -215,7 +217,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.10, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.11, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -256,7 +258,7 @@ v `next/` na zdrojové větvi a znovu se objeví v bázi po jejím mergi) je
 detekovaná (`mb-doc-index`, `mb-epic-graph -Check`), ne bráněná — úklid je
 jeden `git rm`.
 
-### Publikační invariant a dvouúrovňová push policy
+### Publikační invariant a prosazení podle aktéra a obsahu
 
 **Žádná reference bez dosažitelnosti:** kdykoli vrstva pojmenuje git objekt
 mimo clon (odkaz v popisu/komentáři tiketu, tabulka vln, předávací komentář,
@@ -277,40 +279,84 @@ by `--contains` nahlásil dosažitelnost i ve chvíli, kdy se commit do báze
 ještě nedostal — proto se dosažitelnost při integraci ověřuje **z báze**:
 `git merge-base --is-ancestor <sha> <baseRef>`.
 
-| Úroveň | Pravidlo |
-|---|---|
-| Vlastní tiketová větev (nechráněná) | Agent pushuje sám po každém commitu a vždy ohlásí větev a odchozí commity — publikace vlastní větve je oznámení, ne otázka k rozhodnutí. Force push zakázán. |
-| Sdílené větve (efektivní seznam je `protectedBranches` z `ums-repo.json`, vestavěný fallback `develop`, `main`, `master`, `release/*`) | Agent nepushuje nikdy. Připraví přesný příkaz s výčtem commitů; uživatel ho schválí nebo spustí sám — refspecový tvar, protože integrace pushuje tiketovou větev na bázový ref: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` (`<baseBranch>` je `baseRef` bez remote prefixu). Agent poté znovu ověří dosažitelnost. |
+Vynucení publikace stojí na dvou vrstvách, každá odpovídá na jinou otázku:
 
-`UMS_ALLOW_SHARED_PUSH=1` je lidská úniková cesta: git hook nepozná člověka
-od agenta, takže bez explicitní výjimky by pravidlo o sdílených větvích bylo
-neproveditelné (vrstva podá uživateli příkaz a její vlastní hook by ho
-zamítl). Zvedá jen tohle jedno pravidlo — mazání větve a force push zůstávají
-zakázané i s ní. Výjimka patří **člověku; agent ji nikdy nenastavuje**.
+| Vrstva | Otázka | Dosah |
+|---|---|---|
+| Git `pre-push` hook | **CO** se pushuje | Cokoli běžící v agentní relaci (marker `MB_AGENT_SESSION=1`; u Claude Code fallback na neprázdný `AI_AGENT` nebo `CLAUDECODE=1`), včetně příkazů, které do repa napíše přes `!` sám uživatel |
+| `guard-git-push.mjs` (PreToolUse) | **KDO** pushuje | Jen vlastní tool-cally agenta; příkazy, které uživatel napíše přes `!`, sem nikdy nedorazí |
+
+Uvnitř agentní relace hook na chráněné větvi pustí jen **fast-forward, jehož
+tip je už dosažitelný z remote-tracking refů TOHOTO klonu** pro pushovaný
+remote (`is_integration_push`: `merge-base --is-ancestor` + `for-each-ref
+--contains`). To je lokální, zapisovatelný stav — `git update-ref` tuto
+podmínku splní, aniž by cokoli bylo skutečně zveřejněné — a návrh to
+vědomě přijímá: dokument o tomto pravidlu netvrdí důkaz vůči `origin`, jen
+auditovatelnost. Mazání větve a force push zůstávají zakázané na každé větvi,
+kterou hook hlídá (scope `refs/heads/*`), chráněné i nechráněné.
+
+**Lidská úniková cesta `MB_HUMAN_PUSH=1`** (dřívější jméno
+`UMS_ALLOW_SHARED_PUSH=1` se přechodně dál přijímá, s hláškou o
+zastaralosti) zvedá na straně hooku **celou ochranu najednou** — pravidlo o
+chráněné větvi, zákaz mazání i zákaz force pushe. Z hookových zamítnutí ji
+jmenuje jen to o sdílené větvi; zamítnutí mazání a force pushe ji nejmenují.
+Výjimka patří **člověku; agent ji nikdy nenastavuje** — mechanicky to hlídá
+`guard-git-push.mjs`, který zamítne jakýkoli push nesoucí kterékoli z obou
+jmen, ať v POSIX shellovém, nebo v PowerShellovém zápisu.
+
+**Dvě odlišná zaklínadla schválně.** Integrační příkaz, který agent připraví
+uživateli, je prostý `! git push origin HEAD:<baseBranch>` (refspecový tvar,
+`<baseBranch>` je `baseRef` bez remote prefixu) — bez úniku, protože jde o
+fast-forward na tiketovou větev, kterou obsahové pravidlo výše pustí samo.
+Zápis s únikem, `! MB_HUMAN_PUSH=1 git push <remote> HEAD:<branch>`, se
+objevuje v OPAČNÉM směru — je to tvar, který nabízí hookovo zamítnutí, a to
+jen tam, kde obsahové pravidlo použít nejde (non-fast-forward nebo
+nezveřejněný tip). Stejný zápis s únikem používají skilly, které publikují
+commit, jenž samy právě vytvořily (`mb-abort`, `mb-jira-update` §6b) — tyto
+dva tvary se nezaměňují.
 
 ### Dvouvrstvá mechanika vynucení
 
-Skutečnou hranicí je git `pre-push` hook
-([`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push), POSIX `sh`,
+Skutečnou hranicí je git `pre-push` hook (`v2`,
+[`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push), POSIX `sh`,
 bez přípony) — git mu předá už rozparsované čtveřice `<local-ref> <local-sha>
 <remote-ref> <remote-sha>`, takže neexistuje shellové parsování k obejití.
-Chráněné patterny čte z vygenerovaného textového seznamu (jeden glob na
-řádek, protože POSIX `sh` neumí JSON) — zdrojem je `protectedBranches`
-z [`ums-repo.json`](ums-repo.json); bez konfigurace nebo seznamu spadá na
-vestavěnou čtveřici `develop`, `main`, `master`, `release/*`, tedy vždy
-k víc ochraně, nikdy k méně (generování a chybové stavy jsou v
-[tech.md](tech.md)). Zamítá: chráněný cílový ref (s výjimkou
-`UMS_ALLOW_SHARED_PUSH=1`), mazání větve a non-fast-forward (force) push;
-scope je `refs/heads/*`, tagy procházejí vždy. `--no-verify` ho obchází a
-`core.hooksPath` ho může přesměrovat jinam (relativní hodnota per-worktree) —
-proto ho instaluje per-clone
+Vynucuje jen uvnitř agentní relace (vstupní brána je marker
+`MB_AGENT_SESSION=1`, popsaný v sekci výše); mimo relaci nevynucuje nic
+vlastního a jen deleguje na zřetězený cizí hook (viz níže). Nad touto branou
+stojí jedno rameno platné pro každého bez ohledu na marker: neúspěch
+bufferovat gitem předaný seznam refů do dočasného souboru zamítne push
+úplně, tagy nevyjímaje. Uvnitř relace na chráněné větvi platí obsahové
+pravidlo z předchozí sekce; mazání větve a non-fast-forward (force) push
+zamítá vždy, s výjimkou `MB_HUMAN_PUSH=1`. Chráněné patterny čte z
+vygenerovaného textového seznamu (jeden glob na řádek, protože POSIX `sh`
+neumí JSON) — zdrojem je `protectedBranches` z [`ums-repo.json`](ums-repo.json);
+bez konfigurace nebo seznamu spadá na vestavěnou čtveřici `develop`, `main`,
+`master`, `release/*`, tedy vždy k víc ochraně, nikdy k méně (generování a
+chybové stavy jsou v [tech.md](tech.md)).
+
+Cizí `pre-push`, který instalace v cíli najde, nezůstává vyřazený z provozu:
+instalátor ho přesune stranou na `<jméno>.ums-chained`, nastaví mu
+spustitelnost a hook mu po sobě přehraje bufferovaný stdin (`run_chained`) —
+i ve větvi, kdy sám zamítá; nenulový exit zřetězeného hooku je jeho veto a
+hook ho propaguje. Instalace chaining odmítne ve čtyřech případech (adresář
+`core.hooksPath` sdílený s jiným repozitářem, `.ums-chained` už existuje,
+ručně sloučený hook nesoucí náš marker hluboko v těle místo v hlavičce,
+selhání samotného přesunu) — v tom případě se hook do klonu vůbec
+nenainstaluje a běh instalátoru skončí exit kódem 2.
+
+`--no-verify` hook obchází a `core.hooksPath` ho může přesměrovat jinam
+(relativní hodnota per-worktree) — proto ho instaluje per-clone
 [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) (cíl
 řeší přes `git rev-parse --git-path hooks/pre-push`, tedy správně i pro
-linked worktree a `core.hooksPath`; vícekolovým sebetestem ověřuje, že
-nainstalovaný hook skutečně zamítá i propouští, ne jen jedno z toho, a že
-skutečně čte vygenerovaný seznam, ne jen vestavěný fallback), volané i ze
+linked worktree a `core.hooksPath`; vícekolovým sebetestem s nastaveným
+markerem ověřuje, že nainstalovaný hook skutečně zamítá i propouští, ne jen
+jedno z toho, a že skutečně čte vygenerovaný seznam, ne jen vestavěný
+fallback), volané i ze
 [`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) při `-Scope
-Monorepo` pro libovolného `-Agent`.
+Monorepo` pro libovolného `-Agent` — ten marker do relace daného harnessu
+doručuje sám (viz [tech.md](tech.md)); instalátor ho pro vlastní ověřovací
+běhy nastavuje rovnou.
 
 **Efektivní báze pracovní položky** může být jiná než repozitářová výchozí
 `baseRef` — typicky servisní větev řady `Branches/5.37` místo `develop` —
@@ -340,13 +386,24 @@ nepočítá se jako „řádek chybí"). Tyto tři skripty čtou (nebo zpřísň
 a všechny tři overlay fragmenty; `Get-UmsRepoConfig.ps1` se neměnil —
 per-položková báze není konfigurace repozitáře.
 
-Vedle něj běží `guard-git-push.mjs` jako PreToolUse hook — **demotovaný**
-z původní role bezpečnostní hranice na fail-open rychlé varování. Dvě kola
-review experimentálně prokázala, že parsování shellového příkazu hranicí být
-nemůže: deny-listem i allowlistem s vlastním tokenizerem šly obejít reálné
-tvary pushe do chráněné větve. Co bezpečně rozparsuje jako push do chráněné
-větve nebo `--no-verify`, zamítne hned a česky; čemu nerozumí, propustí —
-skutečným backstopem zůstává ochrana větví na serveru.
+Vedle něj běží `guard-git-push.mjs` jako PreToolUse hook (`Bash|PowerShell`)
+— nenese publikační záruku (tou zůstává git `pre-push` hook výše), ale nese
+**pravidlo podle aktéra**: vidí jen vlastní tool-cally agenta, nikdy příkazy,
+které do repa napíše přes `!` uživatel. Na to, co bezpečně rozpozná jako
+`git push`, leans **fail-closed**: cíl, který nedokáže s jistotou přečíst
+(neznámý přepínač, nečitelný remote, poškozené refspecy), zamítne, místo aby
+ho propustil — s výjimkou, že nečitelnost způsobená shellovou expanzí v
+tokenu tento důvod zamítnutí omlouvá. Zamítá agentův vlastní push na
+chráněnou větev VČETNĚ integračního fast-forwardu, který by `pre-push` hook
+pustil, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a
+`--no-verify` bez ohledu na kontext; shellové přesměrování (`2>&1`, `>`,
+PowerShellové `*>` apod.) krokuje stejně jako reálný shell, mezi `git` a
+subpříkazem i v argumentech. Pojmenované mezery, které nechytí: `bash -c
+'…'` (token `git` je uvnitř uvozovek), git alias zastupující `push`
+(`git -c alias.zz=push zz …`), a `git` token na pozici příkazu za novým
+řádkem, slepeným oddělovačem nebo klíčovým slovem (`then`). Text mimo push a
+ostatní subpříkazy zůstávají fail-open. Skutečným backstopem proti
+odhodlanému obejití zůstává ochrana větví na serveru.
 
 Zapojení do zbytku vrstvy: `mb-jira-update` finalizace se spouští přímo
 ověřeným FF pushem do báze; overlay `finishing-a-development-branch`
@@ -357,7 +414,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.10](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.11](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -558,11 +615,14 @@ v [playbook.md](playbook.md).
    slug — vždy zastavit, nikdy neuhádnout.
 4. **Superpowers řídí, MB dokumentuje.** UMS nepřebírá exekuci ani volbu modelu.
 5. **Bez worktrees.** Izolace = větev na místě.
-6. **Dvouúrovňová publikace, žádná tichá sdílená větev.** Vlastní tiketovou
-   větev agent pushuje sám a vždy ohlásí; sdílené větve (`develop`, `main`,
-   `master`, `release/*`) nepushuje nikdy — připraví příkaz a čeká na
-   uživatele (lidská výjimka `UMS_ALLOW_SHARED_PUSH=1`). Vynucuje git
-   `pre-push` hook, viz sekce 3.
+6. **Publikace podle aktéra a obsahu, žádná tichá sdílená větev.** Vlastní
+   tiketovou větev agent pushuje sám a vždy ohlásí; na chráněnou větev
+   (`develop`, `main`, `master`, `release/*`) svým vlastním tool-callem
+   nepushuje nikdy — to hlídá `guard-git-push.mjs` podle aktéra. Git
+   `pre-push` hook navíc uvnitř agentní relace posuzuje OBSAH pushe: na
+   chráněné větvi pustí jen fast-forward, jehož tip tento klon už vidí
+   zveřejněný. Lidská úniková cesta `MB_HUMAN_PUSH=1` zvedá celou ochranu
+   hooku najednou. Viz sekce 3.
 7. **Jazykový kontrakt.** Trvalé a uživatelské texty česky, AI-facing anglicky
    (vývojářské nástroje vrstvy — `install-git-hooks.ps1`,
    `sync-with-monorepo.ps1`, `revendor-superpowers.ps1` — jsou výjimkou a
