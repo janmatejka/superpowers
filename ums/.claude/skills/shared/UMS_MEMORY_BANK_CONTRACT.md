@@ -583,7 +583,10 @@ Leftovers split in two:
    applies to THIS session** — the resolved `pre-push` exists, carries
    `UMS pre-push guard (Publication Contract) v2` within its first five lines,
    and rejects a synthetic protected-branch line **run in this session's own
-   environment**. A synthetic line that PASSES means the agent-session marker
+   environment** — together with the mirror-image accept case the Publication
+   Contract prescribes beside it, because a hook that cannot execute at all
+   "rejects" everything while still carrying its marker line.
+   A protected-branch line that PASSES means the agent-session marker
    is absent in this harness, so the hook disables itself here: that is a
    missing guarantee, reported as such. An older-than-v2 hook is repaired by
    re-running `install-git-hooks.ps1` and re-checking, not by proceeding.
@@ -1202,9 +1205,11 @@ The hook enforces NOTHING outside an agent session (marker `MB_AGENT_SESSION`;
 from a terminal or an IDE is untouched. Inside an agent session it allows, on a
 protected branch, only a **fast-forward push whose tip is already reachable on
 the remote being pushed to** — a pointer move onto commits that remote already
-has. One thing it still does for everyone, marker or not: it fails CLOSED when
-it cannot buffer git's ref list into a temp file, because a plumbing failure
-there would otherwise make every check below it pass silently.
+has. What it still does for everyone, marker or not: it fails CLOSED when it
+cannot buffer git's ref list into a temp file, because a plumbing failure there
+would otherwise make every check below it pass silently; and it runs the
+chained foreign hook and exits with ITS result, so a chained hook can reject a
+push here even where this one enforces nothing of its own.
 
 **That is a guarantee of auditability, not of review.** The publication rule
 lets the agent publish its own ticket branch unassisted, so it can make any
@@ -1241,8 +1246,9 @@ When inspecting a workspace, a ticket branch whose upstream is a protected
 branch is a finding, not a normal state.
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
-scoped to `refs/heads/*` — none of the checks below look at a tag push, which
-passes through untouched), installed into each workspace by
+scoped to `refs/heads/*` — none of the checks below look at a tag push, though
+the fail-closed buffer arm above them rejects the whole push, tags included,
+whenever it fires), installed into each workspace by
 `install-git-hooks.ps1` — hooks do
 not travel with a clone, which is why the entry gate verifies them (Workspace
 Discipline). Verify it
@@ -1294,10 +1300,11 @@ layer, which DENIES any push carrying the variable — only the agent's own tool
 calls reach that layer, and the agent must never set it. `UMS_ALLOW_SHARED_PUSH`
 is accepted during the transition and answered with a deprecation line.
 
-The hook announces the escape on stderr whenever it honours it, and its own
-rejection message names it, so whoever hits the wall learns the way through at
-that moment. That the agent never sets it is contract text, like every other
-rule of this layer that no mechanism can enforce — which is why the escape is a
+The hook announces the escape on stderr whenever it honours it. Of its
+rejections only the shared-branch one names the escape; the deletion and
+force-push rejections do not, so a human who hits either of those two walls has
+to know the escape already. That the agent never sets it is contract text, like
+every other rule of this layer that no mechanism can enforce — which is why the escape is a
 named variable rather than a flag the agent could plausibly have typed by
 accident.
 
@@ -1311,8 +1318,8 @@ That is the spelling `guard-git-push.mjs` hands over when it denies the agent's
 own push to a protected branch. The escape appears in the OTHER spelling,
 `! MB_HUMAN_PUSH=1 git push <remote> HEAD:<branch>`, which the `pre-push` hook's
 rejection message hands over — that message fires only where the content rule
-cannot apply, the one case where the escape is genuinely needed. Do not
-collapse the two into one.
+cannot apply, and it is the only rejection that hands the escape over at all.
+Do not collapse the two into one.
 
 Two known, accepted bypasses — both require deliberate,
 visible intent, unlike the CLI-spelling tricks this hook exists to close:
@@ -1336,23 +1343,35 @@ therefore reported as a scope warning rather than a missing guarantee (a relativ
 value is resolved per working tree instead, so each linked worktree needs its own
 install). A missing or unmarked hook stays fail-closed either way.
 
-A **foreign `pre-push`** already in that directory is not a reason to leave the
-workspace unguarded: the installer moves it aside to `pre-push.ums-chained`,
+A **foreign `pre-push`** already in the hooks directory is not a reason to
+leave the workspace unguarded: the installer moves it aside to `pre-push.ums-chained`,
 sets its executable bit and this hook then runs it with the same ref list, so
 installing the layer cannot silently turn someone's LFS or lint hook off (a
 chained hook without that bit is skipped without a word, which is why the
-installer sets it and warns loudly when it cannot). It REFUSES to chain — and
-says so, non-zero — in three cases it cannot make safe: a hooks
-directory shared with other repositories through `core.hooksPath`, a
-`.ums-chained` file already sitting there, and a hand-merged hook carrying our
-marker deep in its body rather than in its header.
+installer sets it and warns loudly when it cannot — both that `chmod` and that
+warning need a POSIX shell, so where none is found the bit is left unset and
+nothing says so). It REFUSES to chain where it cannot make the move safe: a
+hooks directory shared with other repositories through `core.hooksPath`, a
+`.ums-chained` file already sitting there, a hand-merged hook carrying our
+marker deep in its body rather than in its header, and a move that simply fails
+(a locked or read-only file). **A refusal is not a fallback:** our hook is then
+not installed in that workspace at all, the run exits 2, and the publication
+guarantee is absent there until someone resolves the foreign hook by hand.
 
 The PreToolUse hook (`.claude/hooks/guard-git-push.mjs`) is not a guarantee —
 it does not see shell syntax the way git itself does. What it carries is the
 actor rule, so on what it DOES recognize as a `git push` it leans
 fail-CLOSED: a push whose destination it cannot read is denied rather than
-waved through — the named exception being an unreadable token carrying a shell
-expansion, which names something that is genuinely not in the string at all. A
+waved through. Two conditions bound that arm, both named in the file itself: an
+unreadable token carrying a shell EXPANSION excuses the problem it caused,
+because such a token names something that is genuinely not in the string at
+all; and the arm fires only where the `git` token is visibly at a COMMAND
+POSITION, which a newline separator or a separator glued to the previous token
+(`cd /repo; git push …`) hides — an accepted gap, because promoting those to
+separators would re-open the heredoc case this rule exists to protect. What
+that gap does NOT cost is the deny on a target the guard can read in plain
+text: a cleanly-written invocation naming a protected branch is judged whether
+or not command position holds. A
 `git` token it cannot recognize as one at all (`bash -c 'git push …'`, whose
 token is `'git`, quote and all) never reaches that judgement; subcommands other
 than `push` are not its concern, and `git fetch` keeps its own narrower,
