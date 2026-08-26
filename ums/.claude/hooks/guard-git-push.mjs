@@ -33,6 +33,18 @@
 // the real boundary, and widening the scan here is what produced false
 // positives on ordinary document text in earlier rounds.
 //
+// COMMAND POSITION IS READ FROM WHITESPACE-SPLIT TOKENS, so any separator the
+// split does not leave standing alone hides it and the invocation falls back
+// to fail-open. Two known carriers, same root cause and same accepted class:
+// a NEWLINE (`git status` newline `git push --mirror origin`) and a separator
+// GLUED to the previous token (`cd /repo; git push --mirror origin`, where
+// `/repo;` is neither a CONTROL token nor a NAME=value assignment). Promoting
+// either to a separator would immediately re-open the heredoc case, which is
+// precisely what this rule exists to protect — so the gap is accepted. Note
+// what it does NOT cost: a target the guard can read is still judged on both
+// of those shapes, because the protected-target deny does not need command
+// position for a cleanly-written invocation (see evaluatePush).
+//
 // TWO CHECKS ARE CONTEXT-FREE and knowingly pay that price, because both
 // guard something a parsed-invocation check could not:
 //   - `--no-verify` near `push`, which would skip the real guarantee;
@@ -174,73 +186,104 @@ const ENV_ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 // scripted work while catching nobody: an agent that wanted the bypass has
 // the far easier `bash -c` one, named and accepted in the design.
 //
+// Applied PER TOKEN, never to the whole invocation. Round 1 tested
+// `args.some(...)` and that was a real weakening: one `$` anywhere bought
+// silence about a destination spelled out in plain text, so `git push $r
+// develop` and `git push --mirror $r` both went from deny to allow. Expansion
+// excuses the problem IT caused, and nothing else.
+//
 // QUOTING alone is deliberately NOT expansion. `git push origin "develop"`
 // still names a literal branch, so it stays judged and the obvious evasion
 // ("just put quotes round it") stays closed.
 const EXPANSION_RE = /[$`]/;
 
-// FAIL-CLOSED, and only for a push this file is entitled to judge: "I cannot
-// read this" then means "I cannot rule out a push into a protected branch",
-// and this layer now carries the actor rule, so it must not wave that through.
+// Surrounding quotes come off before a token is read AS A REF, for the same
+// reason: `"develop"` still names develop. The RAW token is what decides
+// whether the invocation is cleanly WRITTEN, so a quoted branch is still
+// reported as unreadable when nothing protected turned up — two different
+// questions about the same token, deliberately answered differently.
+const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
+
+// Reads an invocation TWICE over, because the two answers are independent:
 //
-// `strict` is what "entitled to judge" means, and it is TWO conditions, both
-// load-bearing:
+//   targets — every destination this push can be read to name. An unreadable
+//             token blinds the guard to THAT destination, not to the others.
+//   problem — what could not be read, and WHICH tokens made it unreadable.
+//
+// A protected target that IS readable is denied whatever else on the line is
+// not (Important A, round 2: the old code returned out of the unreadable path
+// before ever looking, so `git push $r develop` was allowed). A problem is
+// denied only where this file is entitled to be strict about it:
 //
 //   1. atCommandPosition — the `git` token starts an invocation (index 0,
 //      after a shell control operator, or after a NAME=value assignment).
 //      Without this, fail-closed fires on any string CONTAINING the words
 //      `git push`: a heredoc being written to a file, a commit message
-//      quoting a command, an `echo`. Those are document text, and denying
-//      them is the exact failure mode this layer was demoted for.
-//   2. no shell expansion in the arguments (EXPANSION_RE) — see its comment.
+//      quoting a command, an `echo`. That is document text, and denying it is
+//      the exact failure mode this layer was demoted for.
+//   2. none of the tokens that CAUSED that problem carry shell expansion —
+//      see EXPANSION_RE. Per token, not per line.
 //
-// The parameter DEFAULTS TO STRICT so that a stale call site omitting it
+// `atCommandPosition` DEFAULTS TO TRUE so a stale call site omitting it
 // degrades toward more protection, the same rule loadProtected follows.
 //
-// One fail-open path survives inside strict mode: an unresolvable current
-// branch. An unguessable branch is not a recognized protected target, and
-// denying there would block legitimate work from a detached HEAD. It keeps
-// returning { deny: false }, exactly as before.
+// Reading targets out of a MESSY invocation is itself gated on command
+// position: in `cat <<EOF … git push --force origin develop … EOF` the word
+// `develop` is document text, and only the command position tells the two
+// apart. A CLEAN invocation needs no such permission — `git status` newline
+// `git push origin develop` names develop with no guessing at all.
 //
-// Note what strict does NOT gate: the confident protected-branch deny at the
-// bottom still fires either way. Reading `git status; git push origin develop`
-// as a push to `develop` needs no guessing, so nothing is gained by holding
-// back there.
+// One fail-open path survives everything above: an unresolvable current
+// branch contributes no target. An unguessable branch is not a recognized
+// protected target, and denying there would block legitimate work from a
+// detached HEAD.
 function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
-  const strict = atCommandPosition && !args.some((t) => EXPANSION_RE.test(t));
+  let problem = null;
+  const note = (what, tokens) => { if (!problem) problem = { what, tokens }; };
 
-  const unparseable = (what) => (strict
-    ? {
-      deny: true,
-      reason:
-        `UMS: tenhle push neumím spolehlivě přečíst (${what}), a protože nesu pravidlo o tom, ` +
-        'kdo smí pushovat do sdílené větve, radši ho zamítám (Publication Contract). ' +
-        'Napiš ho srozumitelně: `git push [-u] <remote> <ref>[:<ref>]`.',
-    }
-    : { deny: false });
+  const targets = [];
+  const addCurrent = () => { const c = currentBranch(cwd); if (c) targets.push(c); };
 
-  if (flags.some((f) => !PUSH_ALLOWED_FLAGS.has(f))) return unparseable('neznámý přepínač');
+  const badFlags = flags.filter((f) => !PUSH_ALLOWED_FLAGS.has(f));
+  if (badFlags.length > 0) note('neznámý přepínač', badFlags);
 
-  let target = null;
   if (positionals.length === 0) {
-    target = currentBranch(cwd) || null;
+    addCurrent();
   } else {
     const [remote, ...refspecs] = positionals;
-    if (!REMOTE_RE.test(remote)) return unparseable('nesrozumitelné jméno remote');
+    if (!REMOTE_RE.test(remote)) note('nesrozumitelné jméno remote', [remote]);
     if (refspecs.length === 0) {
-      target = currentBranch(cwd) || null;
-    } else if (refspecs.length === 1 && REFSPEC_RE.test(refspecs[0])) {
-      target = refspecs[0].includes(':') ? refspecs[0].split(':').pop() : refspecs[0];
+      addCurrent();
     } else {
-      return unparseable('víc nebo poškozené refspecy');
+      for (const r of refspecs) {
+        const bare = unquote(r);
+        if (REFSPEC_RE.test(bare)) targets.push(bare.includes(':') ? bare.split(':').pop() : bare);
+      }
+      // The RAW token decides "cleanly written", the unquoted one decided
+      // "names a destination" above - so `git push origin "develop"` yields a
+      // readable target AND stays reported as not plainly written.
+      const notPlain = refspecs.filter((r) => !REFSPEC_RE.test(r));
+      if (notPlain.length > 0) note('víc nebo poškozené refspecy', notPlain);
+      else if (refspecs.length > 1) note('víc nebo poškozené refspecy', refspecs);
     }
   }
 
-  if (target && isProtected(target, patterns)) {
-    return { deny: true, reason: sharedBranchMessage(stripRef(target)) };
+  if (problem === null || atCommandPosition) {
+    const hit = targets.find((t) => isProtected(t, patterns));
+    if (hit) return { deny: true, reason: sharedBranchMessage(stripRef(hit)) };
+  }
+
+  if (problem && atCommandPosition && !problem.tokens.some((t) => EXPANSION_RE.test(t))) {
+    return {
+      deny: true,
+      reason:
+        `UMS: tenhle push neumím spolehlivě přečíst (${problem.what}), a protože nesu pravidlo o tom, ` +
+        'kdo smí pushovat do sdílené větve, radši ho zamítám (Publication Contract). ' +
+        'Napiš ho srozumitelně: `git push [-u] <remote> <ref>[:<ref>]`.',
+    };
   }
   return { deny: false };
 }
@@ -324,8 +367,15 @@ process.stdin.on('end', () => {
     // spellings and needs to know which one is the problem. And it hands over
     // the command with the assignment stripped, the way sharedBranchMessage
     // does: a deny that only scolds leaves the agent to improvise the way out.
+    // Stripping the assignment is textual surgery, so what comes out is only
+    // handed over when it is a CLEAN `git push …` and carries no second
+    // escape. `\bgit\b` was not enough: `export MB_HUMAN_PUSH=1 && git push …`
+    // leaves the fragment `export && git push …`, a line continuation leaves a
+    // stray backslash, and a command carrying BOTH names keeps the deprecated
+    // one — all three still contain the word `git`, and none of them runs.
     const plain = command.replace(HUMAN_ESCAPE_RE, '$1').replace(/^[\s;&]+/, '').trim();
-    const advice = /\bgit\b/.test(plain)
+    const runnable = /^git\s+push\s+\S/.test(plain) && !HUMAN_ESCAPE_RE.test(plain);
+    const advice = runnable
       ? `Připrav příkaz a nech ho uživateli: \`! ${plain}\``
       : 'Připrav příkaz a nech ho uživateli.';
     deny(

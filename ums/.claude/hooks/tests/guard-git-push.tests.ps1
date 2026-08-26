@@ -1,13 +1,23 @@
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '_assert.ps1')
 
-# guard-git-push.mjs is NOT the enforcement boundary (fix round 2 demoted it
-# after two rounds of adversarial review — see the real guarantee's own
-# fixture-driven suite in pre-push.tests.ps1). This file only pins its
-# reduced, best-effort, FAIL-OPEN responsibility: a friendly early warning
-# for the common accident (a plainly-typed push that resolves to a protected
-# branch), plus the one context-free `--no-verify` substring check, plus the
-# fetch protected-destination check. Everything else must ALLOW.
+# guard-git-push.mjs is NOT the enforcement boundary — the git `pre-push` hook
+# is, and its own fixture-driven suite is pre-push.tests.ps1. What this file
+# pins is the rule this layer DOES carry alone: the ACTOR rule, that the
+# moment of integration belongs to a human. Only the agent's own tool calls
+# reach a PreToolUse hook, so a push arriving here is the agent's, and a
+# protected branch is off limits to it even as a fast-forward the hook would
+# accept.
+#
+# Two postures live side by side and the boundary between them is the point of
+# half these assertions:
+#   - a RECOGNIZED push (a `git` token at a command position, arguments free of
+#     shell expansion) is FAIL-CLOSED: what cannot be read is denied;
+#   - everything else stays FAIL-OPEN on purpose — `fetch`, other subcommands,
+#     an unresolvable current branch, and any shape whose `git` token is not
+#     recognized as a command at all (`bash -c '…'`, a heredoc, an `echo`).
+# Plus the two context-free checks (the `--no-verify` substring and the human
+# escape), which knowingly fire on text as well as on commands.
 
 function Test-Cmd([string] $Command, [string] $Cwd = '') {
     $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $Command } }
@@ -358,7 +368,40 @@ foreach ($c in @(
     'MB_HUMAN_PUSH="1"; git push origin feature/ums-1-alfa',
     'export MB_HUMAN_PUSH=1 && git push origin feature/ums-1-alfa',
     'UMS_ALLOW_SHARED_PUSH="1" git push origin develop'
-)) { Assert-Match (Test-Cmd $c) 'MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH' "výjimka rozpoznaná i v tomto zápisu: $c" }
+)) {
+    $rSpelling = Test-Cmd $c
+    Assert-Match $rSpelling 'permissionDecision.*deny' "výjimka rozpoznaná i v tomto zápisu: $c"
+    # ... and the deny must be the ESCAPE's, not the shared-branch one that
+    # would fire anyway for a `develop` target - otherwise half these cases
+    # would pass without the pattern recognizing the spelling at all
+    Assert-Match $rSpelling 'MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH' "zamítnutí patří výjimce, ne sdílené větvi: $c"
+}
+
+# ---------------------------------------------------------------------------
+# Fix round 2, Minor C: the handed command has to be RUNNABLE. It is built by
+# stripping the assignment out of the agent's own command, and that is textual
+# surgery — a fragment, a stray line continuation or a SECOND escape left in
+# place would all still contain the word `git`. Where the remainder is not a
+# clean `git push …`, the message must fall back to the generic sentence
+# rather than hand over something that would fail on paste. The colon after
+# `uživateli` is the discriminator: with a command it reads `uživateli: …`,
+# without one it reads `uživateli.`.
+# ---------------------------------------------------------------------------
+$rFragment = Test-Cmd 'export MB_HUMAN_PUSH=1 && git push origin develop'
+Assert-Match $rFragment 'permissionDecision.*deny' 'zbytek po odstranění výjimky: zamítnutí platí dál'
+Assert-NotMatch $rFragment 'uživateli: ' 'zbytek po odstranění výjimky: nespustitelný fragment se nepodává'
+
+$rBothNames = Test-Cmd 'MB_HUMAN_PUSH=1 UMS_ALLOW_SHARED_PUSH=1 git push origin develop'
+Assert-Match $rBothNames 'permissionDecision.*deny' 'obě jména naráz: zamítnutí platí dál'
+Assert-NotMatch $rBothNames 'uživateli: ' 'obě jména naráz: nepodává se příkaz, ve kterém zbyla druhá výjimka'
+
+$rContinuation = Test-Cmd "MB_HUMAN_PUSH=1 \`ngit push origin develop"
+Assert-Match $rContinuation 'permissionDecision.*deny' 'pokračovací lomítko: zamítnutí platí dál'
+Assert-NotMatch $rContinuation 'uživateli: ' 'pokračovací lomítko: nepodává se příkaz se zbylým lomítkem'
+
+# LOAD-BEARING POSITIVE: the clean case must still hand a command over, or the
+# three assertions above would be satisfied by never handing one at all.
+Assert-Match (Test-Cmd 'MB_HUMAN_PUSH=1 git push origin develop') 'uživateli: ' 'čistý případ příkaz podá'
 
 # LOAD-BEARING NEGATIVES for the widened pattern: it must still key on the
 # VALUE 1, and must not fire on a different variable that merely ends in the
@@ -474,6 +517,11 @@ Assert-Eq $r '' 'zbytkový průchod: nerozpoznaný tvar guard nezamítá'
 # ---------------------------------------------------------------------------
 Assert-Eq (Test-Cmd 'echo git push --mirror') '' 'command position: `git` po `echo` není příkaz, fail-closed nevystřelí'
 Assert-Eq (Test-Cmd "cat <<'EOF'`ngit push --force origin develop`nEOF") '' 'command position: řádek uvnitř heredocu není příkaz'
+# ACCEPTED COST, pinned so it is visible rather than folklore: the tokenizer
+# splits on whitespace only, so a separator GLUED to the previous token hides
+# the command position just as a newline does. Promoting either to a separator
+# would re-open the heredoc case above, which is the one this rule exists for.
+Assert-Eq (Test-Cmd 'cd /repo; git push --mirror origin') '' 'přiznaná mezera: přilepený oddělovač skryje command position'
 # ... and the three shapes that DO sit at a command position still deny
 Assert-Match (Test-Cmd 'git push --mirror origin') 'permissionDecision.*deny' 'command position: index 0 je příkaz'
 Assert-Match (Test-Cmd 'cd /repo && git push --mirror origin') 'permissionDecision.*deny' 'command position: po řídicím operátoru je příkaz'
@@ -490,6 +538,24 @@ Assert-Eq (Test-Cmd 'git push "$remote" "$branch"') '' 'expanze: skutečný push
 Assert-Eq (Test-Cmd 'git push $remote $branch') '' 'expanze: totéž bez uvozovek'
 Assert-Match (Test-Cmd 'git push origin "develop"') 'permissionDecision.*deny' 'úniková cesta zavřená: uvozovky kolem jména větve expanze nejsou'
 Assert-Match (Test-Cmd 'git push "origin" "release/2026.1"') 'permissionDecision.*deny' 'úniková cesta zavřená: uvozovky kolem obojího expanze nejsou'
+
+# ---------------------------------------------------------------------------
+# Fix round 2, Important A. Expansion excuses the token it actually made
+# unreadable — NOT the whole invocation. One `$` anywhere on the line must not
+# buy silence about a destination that is written out in plain text; before
+# this fix all three of these were ALLOW.
+# ---------------------------------------------------------------------------
+Assert-Match (Test-Cmd 'git push $r develop') 'permissionDecision.*deny' 'expanze: nečitelný remote nemaže čitelný chráněný cíl'
+Assert-Match (Test-Cmd 'git push --mirror $r') 'permissionDecision.*deny' 'expanze: nečitelný remote neomlouvá --mirror'
+Assert-Match (Test-Cmd 'git push origin "develop" $x') 'permissionDecision.*deny' 'expanze: refspec navíc, který přečíst nejde, nemaže čitelný chráněný cíl'
+# controls: the same shapes without any expansion must keep denying, so the
+# three above cannot be passing for a reason unrelated to the fix
+Assert-Match (Test-Cmd 'git push --mirror origin') 'permissionDecision.*deny' 'kontrola: --mirror bez expanze zůstává zamítnutý'
+Assert-Match (Test-Cmd 'git push origin develop') 'permissionDecision.*deny' 'kontrola: prostý push na chráněnou větev zůstává zamítnutý'
+# ... and THE BOUNDARY: where the destination genuinely cannot be read, the
+# guard stays silent. Same epistemic state as `bash -c '…'`, which the design
+# names and accepts, and the pre-push hook still resolves the real refs.
+Assert-Eq (Test-Cmd 'R=origin; B=develop; git push $R $B') '' 'expanze: když cíl opravdu přečíst nejde, guard mlčí'
 
 # The exit-code/stderr half: a deny must be a CLEAN deny, not a crash that
 # merely happens to print JSON (or, worse, nothing).
