@@ -1,11 +1,10 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.10
-- Supersedes v2.9 (adds the Agentic Design Opposition section — an optional
-  independent-subagent review of a design with evidence-bearing findings,
-  driving-session triage and a batched user dialog; consumed by the
-  brainstorming overlay and by the respond and oppose modes of
-  `mb-architect-review`).
+- **Contract-Version:** 2.11
+- Supersedes v2.10 (rewrites the Publication Contract's two-tier push policy
+  into an actor/content split, renames the human escape to `MB_HUMAN_PUSH`
+  and widens it, and makes the workspace hook check session-scoped).
+- v2.10 superseded v2.9 (added the Agentic Design Opposition section).
 - v2.9 superseded v2.8 (splits the design/plan conflict rule by subject — what
   vs. how; renames the plan-header field `**Návrh:**` to `**Spec:**` with a
   read alias; adds Brainstorming Paths — the document layer's mapping of the
@@ -417,7 +416,10 @@ guarantee this layer exists to keep. The remedy is ordered: add the missing patt
 to `ums-repo.json` (a targeted edit; `mb-init` is for founding or regenerating the
 configuration as a whole, not for one pattern); re-run `install-git-hooks.ps1`
 because the generated list is a build product of the configuration; PROVE it with
-the synthetic-pipe check (Publication Contract) — piping a synthetic ref update for
+the synthetic-pipe check (Publication Contract), **with
+`MB_AGENT_SESSION=1` set** — outside an agent session the hook deliberately
+enforces nothing, so an unmarked pipe proves only that the gate works — piping
+a synthetic ref update for
 THIS branch into the installed hook and confirming the non-zero reject (the
 installer's own self-test proves only that the generated list is consulted, and
 only for ONE sampled pattern beyond its built-in set — the first whose sole glob
@@ -437,9 +439,11 @@ there either.
 consumer must normalize it the same way: `"protectedBranches": "Branches/*"` means
 exactly `["Branches/*"]`. The rule exists because `protectedBranches` has two
 independent enforcement layers — the generated list the `pre-push` hook reads, and
-`guard-git-push.mjs` — and **they must never give different answers for the same
-configuration**, which a shape one layer accepts and the other rejects guarantees
-they would.
+`guard-git-push.mjs` — and **they must never disagree about WHICH branches the
+same configuration protects**, which a shape one layer accepts and the other
+rejects guarantees they would. The two layers do give different VERDICTS on the
+same push, and that is by design (Publication Contract, the actor/content
+split); what they may not disagree about is the membership question underneath.
 
 `pre-push` is POSIX `sh` with no JSON parser available, so it does not read the
 configuration at all: `install-git-hooks.ps1` generates a plain text list from
@@ -574,8 +578,18 @@ Leftovers split in two:
 
 **Entry gate**, in four phases:
 
-0. **Eligibility**, fail-closed except where stated: `MB_ROOT`, `memory-bank/`, a
-   **fail-closed check of the git hooks**, and `git fetch origin`.
+0. **Eligibility**, fail-closed except where stated: `MB_ROOT`, `memory-bank/`,
+   `git fetch origin`, and a **fail-closed check that the publication guarantee
+   applies to THIS session** — the resolved `pre-push` exists, carries
+   `UMS pre-push guard (Publication Contract) v2` within its first five lines,
+   and rejects a synthetic protected-branch line **run in this session's own
+   environment**. A synthetic line that PASSES means the agent-session marker
+   is absent in this harness, so the hook disables itself here: that is a
+   missing guarantee, reported as such. An older-than-v2 hook is repaired by
+   re-running `install-git-hooks.ps1` and re-checking, not by proceeding.
+   The same check runs at session start and again at the beginning of
+   `finishing-a-development-branch`, because the session that integrates never
+   passes this gate.
    `core.hooksPath` is inspected but is **informational**: the hook check resolves
    through `git rev-parse --git-path hooks/pre-push`, which honours
    `core.hooksPath`, so a marked hook found there is the hook git will actually
@@ -647,7 +661,10 @@ Leftovers split in two:
 The hook check is the most important agent duty in this model, because the user
 creates the workspace and **git hooks do not travel with a clone** — a workspace
 that looks exactly like a working one can be missing the whole publication
-guarantee (see Publication Contract).
+guarantee (see Publication Contract) — or hold a hook that is installed and
+current, yet disarmed here because the agent-session marker never reaches this
+harness. Only a check run in this session's own environment tells the two
+apart from a workspace that is genuinely guarded.
 
 **Switching branches:** only with `git status --porcelain` empty, **no switching
 through `git stash`, no auto-stash** (the same rule as branch sync in
@@ -1161,12 +1178,59 @@ whole rule:
    implementation),
 7. after the Memory Bank changes of a harvest are committed.
 
-**Two-tier push policy:**
+Publishing its own branch is not a decision the agent puts to the user, so it
+does not negotiate WHETHER to publish — but the harness's own permission prompt
+still applies (`Bash(git push:*)` is deliberately in neither `allow` nor `deny`
+in this layer's `settings.json`, so the tool call is confirmed like any other):
+"does not ask" is not "the push is auto-approved".
 
-| Tier | Rule |
-|---|---|
-| The actor's own ticket branch (unprotected) | The agent pushes it itself — publishing its own branch is not a decision it puts to the user — but it ALWAYS announces the branch and the outgoing commits. The harness's own permission prompt still applies (`Bash(git push:*)` is deliberately in neither `allow` nor `deny`, so the tool call is confirmed like any other): "does not ask" means it does not negotiate whether to publish, not that the push is auto-approved. Force push is forbidden. |
-| Shared branches (the effective list is `protectedBranches` — see Repository Configuration; the built-in fallback is `develop`, `main`, `master`, `release/*`) | The agent NEVER pushes. It prepares the exact command with the outgoing commits and the user approves or runs it (in-session: `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:<baseBranch>` — the refspec form, because integration pushes the ticket branch onto the base ref; see the human escape below). The agent then re-verifies reachability. |
+The effective list of protected branches is `protectedBranches` (see Repository
+Configuration; the built-in fallback is `develop`, `main`, `master`,
+`release/*`). Both layers below resolve protection from it, by different
+routes: the hook through the plain-text list the installer generates,
+`guard-git-push.mjs` by reading `ums-repo.json` itself.
+
+**Two enforcement questions, two layers:**
+
+| Layer | Question | Reach |
+|---|---|---|
+| The git `pre-push` hook | **What** is pushed | Anything running in an agent session, including commands the user types with a leading `!` |
+| `guard-git-push.mjs` (PreToolUse) | **Who** pushes | The agent's own tool calls only; commands the user types with `!` never reach it |
+
+The hook enforces NOTHING outside an agent session (marker `MB_AGENT_SESSION`;
+`AI_AGENT` / `CLAUDECODE` are a Claude-Code-only fallback), so a human pushing
+from a terminal or an IDE is untouched. Inside an agent session it allows, on a
+protected branch, only a **fast-forward push whose tip is already reachable on
+the remote being pushed to** — a pointer move onto commits that remote already
+has. One thing it still does for everyone, marker or not: it fails CLOSED when
+it cannot buffer git's ref list into a temp file, because a plumbing failure
+there would otherwise make every check below it pass silently.
+
+**That is a guarantee of auditability, not of review.** The publication rule
+lets the agent publish its own ticket branch unassisted, so it can make any
+commit reachable on `origin` and then fast-forward the base onto it. The rule
+that the MOMENT of integration belongs to the human is carried by the
+PreToolUse layer alone — therefore only in harnesses that have one, and only
+for command shapes it can parse. Elsewhere it is a contract obligation like
+every other rule of this layer, and server-side branch permissions remain the
+real backstop.
+
+Read the reachability claim narrowly: the hook never contacts the remote. It
+asks whether the pushed tip is reachable from THIS CLONE's own
+`refs/remotes/<remote>/*` for the remote being pushed to. Those refs are local,
+writable artifacts — a `git update-ref` satisfies the test with nothing
+published, and a stale tracking ref left behind by an earlier fetch answers
+just as confidently. That is accepted, and it is why the paragraph above calls
+the result auditability rather than proof of publication: what keeps an agent
+away from the push that would exploit it is the actor rule, in the harnesses
+that carry one.
+
+**Two bans hold on every branch the hook polices** — its scope is
+`refs/heads/*` — not only on protected ones: deleting a branch through a push,
+and a non-fast-forward (force) push. Inside an agent session the hook rejects
+both; the human escape below lifts them along with the rest of the guard, and
+the two accepted bypasses named further down evade them as they evade
+everything else in this hook.
 
 **The first publication of a freshly created ticket branch is
 `git push -u origin <branch>` — never a bare `git push`.**
@@ -1177,8 +1241,9 @@ When inspecting a workspace, a ticket branch whose upstream is a protected
 branch is a finding, not a normal state.
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
-scoped to `refs/heads/*` — tag pushes are out of scope and always pass
-through), installed into each workspace by `install-git-hooks.ps1` — hooks do
+scoped to `refs/heads/*` — none of the checks below look at a tag push, which
+passes through untouched), installed into each workspace by
+`install-git-hooks.ps1` — hooks do
 not travel with a clone, which is why the entry gate verifies them (Workspace
 Discipline). Verify it
 non-destructively — never with a real `git push origin develop`, which
@@ -1186,32 +1251,68 @@ either publishes real commits if the hook turns out to be inert (this is
 exactly how a linked-worktree installation gap was first confirmed) or
 prints a misleading "Everything up-to-date" when there is nothing to push:
 resolve the installed path with `git rev-parse --git-path hooks/pre-push`,
-confirm it exists and carries the `UMS pre-push guard` marker near the top,
+confirm it exists and carries
+`UMS pre-push guard (Publication Contract) v2` within its first five lines,
 then pipe a synthetic line straight into it (`printf 'refs/heads/develop
-<sha> refs/heads/develop <sha>\n' | <hook path> origin verify`), expecting a
-non-zero exit and the `UMS:` message, AND the mirror-image accept case (a
-synthetic ticket-branch creation must exit 0, silently) — without that
-second half a hook that cannot execute at all also "rejects" everything and
-passes as verified. `install-git-hooks.ps1` runs both checks itself after
-installing, reports the result and exits non-zero whenever the guarantee is
-not in place.
+<sha> refs/heads/develop <sha>\n' | MB_AGENT_SESSION=1 <hook path> origin
+verify`), expecting a non-zero exit and the `UMS:` message, AND the
+mirror-image accept case (a synthetic ticket-branch creation must exit 0,
+silently) — without that second half a hook that cannot execute at all also
+"rejects" everything and passes as verified. **The marker on that pipe is
+load-bearing**: outside an agent session the hook deliberately enforces
+nothing, so an unmarked pipe proves only that the gate works.
+`install-git-hooks.ps1` runs these checks itself after installing — with the
+marker set on each run — reports the result and exits non-zero whenever the
+guarantee is not in place. The substring
+`UMS pre-push guard (Publication Contract)` is what the installer recognizes
+its OWN hook by, so a pre-v2 hook is still recognized as ours and overwritten
+rather than treated as a foreign hook; the ` v2` suffix is what distinguishes a
+current hook from the one a stale workspace still carries, and an older one is
+repaired by re-running the installer.
 
-**The human escape: `UMS_ALLOW_SHARED_PUSH=1`.** A git hook cannot tell a
-human from an agent, so the rule above — which asks the USER to publish a
-shared branch — would otherwise be blocked by the layer's own guard, with no
-way through it that is not also a way around every other hook. The escape
-closes that: with `UMS_ALLOW_SHARED_PUSH=1` in the environment the `pre-push`
-hook lets a push to a shared branch through (announcing that it did), and
-`guard-git-push.mjs` does not stand in front of a command carrying it. It
-lifts THAT ONE RULE and nothing else — branch deletion and force push stay
-forbidden with it set. The hook's own rejection message names the escape, so
-whoever hits the wall learns the way through it at that moment. **The escape
-belongs to the human. An agent MUST NEVER set it** — not in a command, not in
-its environment, not "just to unblock the merge": doing so silently converts
-the two-tier policy into a one-tier one. Like every other rule of this layer
-that no mechanism can enforce, that is a contract obligation, and it is the
-reason the escape is a named variable rather than a flag the agent could
-plausibly have typed by accident.
+**The hook is plain git; the marker is not.** The guarantee therefore reaches a
+harness only once `MB_AGENT_SESSION` is in the environment the push runs in,
+and `sync-with-monorepo.ps1` writes it into each harness's own documented
+mechanism: Claude Code through the `env` block of this layer's `settings.json`,
+Codex through `config.toml` `[shell_environment_policy].set`, Gemini through a
+`.env` file in its config directory. For **Kilo Code no documented mechanism to
+inject an environment variable was found**, so there the marker never arrives,
+the gate never opens, and the hook enforces nothing of its own — on that
+harness the publication guarantee rests on contract text alone. The entry
+gate's check is what surfaces this per session: a synthetic protected-branch
+line that PASSES is exactly this state, and is reported as a missing
+guarantee.
+
+**The human escape: `MB_HUMAN_PUSH=1`.** It means "a human takes
+responsibility for THIS push" and lifts the whole guard — the protected-branch
+rule, the deletion ban and the force-push ban alike. The wide scope is
+deliberate: once the hook enforces only inside an agent session, a human
+rebasing their OWN ticket branch in-session carries the marker too, and a
+narrow escape would leave them nothing but disabling hooks entirely. The
+mechanical containment against an agent abusing it lives in the PreToolUse
+layer, which DENIES any push carrying the variable — only the agent's own tool
+calls reach that layer, and the agent must never set it. `UMS_ALLOW_SHARED_PUSH`
+is accepted during the transition and answered with a deprecation line.
+
+The hook announces the escape on stderr whenever it honours it, and its own
+rejection message names it, so whoever hits the wall learns the way through at
+that moment. That the agent never sets it is contract text, like every other
+rule of this layer that no mechanism can enforce — which is why the escape is a
+named variable rather than a flag the agent could plausibly have typed by
+accident.
+
+**Two spellings, deliberately different.** The command handed to the user for
+an integration is the PLAIN `! git push origin HEAD:<baseBranch>` — the refspec
+form, because integration pushes the ticket branch onto the base ref, and no
+escape, because a fast-forward onto commits the tracking refs already carry is
+exactly what the content rule lets through; prefixing the escape there would
+teach the user to lift the whole guard for a push that needs nothing lifted.
+That is the spelling `guard-git-push.mjs` hands over when it denies the agent's
+own push to a protected branch. The escape appears in the OTHER spelling,
+`! MB_HUMAN_PUSH=1 git push <remote> HEAD:<branch>`, which the `pre-push` hook's
+rejection message hands over — that message fires only where the content rule
+cannot apply, the one case where the escape is genuinely needed. Do not
+collapse the two into one.
 
 Two known, accepted bypasses — both require deliberate,
 visible intent, unlike the CLI-spelling tricks this hook exists to close:
@@ -1233,15 +1334,39 @@ install or a removal in it reaches every repository using that config. The
 `UMS pre-push guard` marker check settles provenance, and an absolute value is
 therefore reported as a scope warning rather than a missing guarantee (a relative
 value is resolved per working tree instead, so each linked worktree needs its own
-install). A missing or unmarked hook stays fail-closed either way. The PreToolUse hook
-(`.claude/hooks/guard-git-push.mjs`) is only a best-effort, fail-open early
-warning for the common accident, not a guarantee — it does not see shell
-syntax the way git itself does, so it allows anything it cannot parse with
-confidence. Neither hook stops a determined adversary; server-side branch
-permissions on `origin` remain the real backstop for that. Other harnesses
-follow this rule by contract text only, as with every other rule of this
-layer. `mb-git-commit` never pushes — publication is a workflow step governed by
-the publication rule above, not a job of the commit tool.
+install). A missing or unmarked hook stays fail-closed either way.
+
+A **foreign `pre-push`** already in that directory is not a reason to leave the
+workspace unguarded: the installer moves it aside to `pre-push.ums-chained`,
+sets its executable bit and this hook then runs it with the same ref list, so
+installing the layer cannot silently turn someone's LFS or lint hook off (a
+chained hook without that bit is skipped without a word, which is why the
+installer sets it and warns loudly when it cannot). It REFUSES to chain — and
+says so, non-zero — in three cases it cannot make safe: a hooks
+directory shared with other repositories through `core.hooksPath`, a
+`.ums-chained` file already sitting there, and a hand-merged hook carrying our
+marker deep in its body rather than in its header.
+
+The PreToolUse hook (`.claude/hooks/guard-git-push.mjs`) is not a guarantee —
+it does not see shell syntax the way git itself does. What it carries is the
+actor rule, so on what it DOES recognize as a `git push` it leans
+fail-CLOSED: a push whose destination it cannot read is denied rather than
+waved through — the named exception being an unreadable token carrying a shell
+expansion, which names something that is genuinely not in the string at all. A
+`git` token it cannot recognize as one at all (`bash -c 'git push …'`, whose
+token is `'git`, quote and all) never reaches that judgement; subcommands other
+than `push` are not its concern, and `git fetch` keeps its own narrower,
+best-effort refspec rule. Two checks deliberately read the raw command TEXT
+rather than a parsed invocation — the escape variable's name, and
+`--no-verify` — and the accepted price is that an agent merely WRITING either
+one from a shell tool is denied as well. Read the verdict from `evaluatePush`
+itself; this contract deliberately does not restate its branches, because every
+earlier summary of them went stale. Neither hook stops a determined adversary; server-side
+branch permissions on `origin` remain the real backstop for that. A harness without a
+PreToolUse layer follows the actor rule by contract text only, as with every
+other rule of this layer. `mb-git-commit` never pushes — publication is a
+workflow step governed by the publication rule above, not a job of the commit
+tool.
 
 ### Integration
 
@@ -1254,9 +1379,11 @@ push is a fast-forward. Sequence:
 1. `git fetch origin`,
 2. `git merge <baseRef>` on the ticket branch,
 3. green verification (build and targeted tests),
-4. the agent prepares the human command with the outgoing commits enumerated,
-5. the user runs it — the base ref is a shared branch, so the agent never pushes
-   it itself,
+4. the agent prepares the human command with the outgoing commits enumerated —
+   the PLAIN spelling, per the two spellings above,
+5. the user runs it — the base ref is a protected branch and the moment of
+   integration belongs to the human, so the agent never pushes it itself, not
+   even as the fast-forward the `pre-push` hook would accept,
 6. the agent re-verifies reachability **from the base ref**: `git fetch origin`,
    then `git merge-base --is-ancestor <sha> <baseRef>` (non-zero exit = not on the
    base). A bare `git branch -r --contains <sha>` is NOT sufficient here — the
@@ -1662,8 +1789,10 @@ When anything important is missing or ambiguous:
   mixed-language rule surfaces; an unreachable pinned commit at
   publication time; the same slug or ticket active on a foreign branch; a base
   sync that cannot be performed at a phase boundary (divergence or a dirty tree);
-  the ceiling of two integration rounds; a missing or unverified `pre-push` hook
-  in the workspace; a failing `git fetch origin` in phase 0 of the entry gate.
+  the ceiling of two integration rounds; a `pre-push` hook that is missing,
+  older than v2, or does not reject a synthetic protected-branch line run in
+  this session's own environment (Workspace Discipline); a failing
+  `git fetch origin` in phase 0 of the entry gate.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
   `.superpowers/sdd/<plan-basename>/progress.md` ledger; an absolute
