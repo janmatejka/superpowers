@@ -124,7 +124,14 @@ Vše ostatní na chráněné větvi (lokální commit, non-fast-forward, mazán�
 zůstává zamítnuté.
 
 **Co tohle pravidlo NEzaručuje.** Dosažitelnost na remote dokazuje publikaci,
-nikdy ne prohlédnutí. Kontrakt agentovi výslovně dovoluje pushovat vlastní
+nikdy ne prohlédnutí. A dokazuje ji jen potud, pokud jsou remote-tracking refy
+v tomhle klonu poctivé: `for-each-ref` čte `refs/remotes/<remote>/*`, což je
+lokální a zapisovatelný stav — `git update-ref refs/remotes/origin/x <sha>` ho
+splní, aniž by cokoli odešlo, a zastaralý tracking ref po smazané či přepsané
+vzdálené větvi lže stejně i bez úmyslu. Autoritativní ověření proti remote
+(`ls-remote`) se sem záměrně nedává: přidalo by síťové kolo ke každému
+integračnímu pushi a hranice, kterou by uzavřelo, je stejně ta, kterou další
+odstavec připouští. Kontrakt agentovi výslovně dovoluje pushovat vlastní
 tiketovou větev bez ptaní, takže posloupnost dvou jednotlivě povolených
 příkazů — push vlastní větve, pak FF push do báze — dostane na sdílenou větev
 libovolný agentem napsaný obsah. Pravidlo obsahu tedy **nenahrazuje** pravidlo
