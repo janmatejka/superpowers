@@ -47,7 +47,14 @@
 // integration FAST-FORWARD, precisely what the actor rule reserves for the
 // human, goes through in one ordinary tool call. Closing it would mean asking
 // git what a token means, which is the class of parsing this layer was demoted
-// for, so it is named rather than closed. `git fetch` (outside its own refspec
+// for, so it is named rather than closed. THE COUNT IS TWO AND NOT THREE
+// because a REDIRECTION standing between `git` and the subcommand used to
+// belong to the same class and no longer does: `git 2>&1 push origin develop`
+// was ALLOW with this file silent, because `2>&1` became the "subcommand" and
+// the real `push` became an argument. That one closed cheaply — a redirection
+// is shell syntax this file already reads, so the pre-subcommand loop steps
+// over it exactly as the argument scan does (see REDIR_RE), with no question
+// about what git makes of a token involved. `git fetch` (outside its own refspec
 // rule) and every other subcommand do not reach evaluatePush either. The
 // pre-push hook is still the real boundary, and widening the scan here is what
 // produced false positives on ordinary document text in earlier rounds. Note
@@ -78,7 +85,11 @@
 // become a DENY on document text. So the gap is accepted. Note what it does
 // NOT cost: a target the guard can read is still judged on those shapes,
 // because the protected-target deny does not need command position for a
-// cleanly-written invocation (see evaluatePush).
+// cleanly-written invocation (see evaluatePush). Measured on all of them with
+// `git push origin develop`: newline, `cd /repo;`, `then`, `do` and `{` DENY.
+// The glued-to-`git` bullet is the exception and not a counter-example — its
+// token is `X=1|git`, so that shape is the FIRST residual route above, not a
+// command-position one, and it is ALLOW.
 //
 // CONTROL IS NOT THE ONLY SHELL SYNTAX INSIDE AN INVOCATION. A CONTROL token
 // ENDS the argument list; a REDIRECTION is STEPPED OVER and the scan carries
@@ -88,6 +99,13 @@
 // heredoc is excluded from them, and for the defect this closed: ordinary
 // plumbing (`2>&1 | tail -3`, `> /tmp/out.txt`) used to be read as a broken
 // refspec and denied the agent's own ticket-branch push.
+//
+// A redirection may also stand BEFORE the command's own arguments — a shell
+// accepts and removes one between `git` and its subcommand too — so the
+// pre-subcommand loop steps over redirections by the same arity rule. Both
+// places, one regex, and the two loops must not drift apart: a redirection
+// skipped in one and not the other is exactly how `git 2>&1 push origin
+// develop` was a silent ALLOW.
 //
 // CONTEXT-FREE CHECKS knowingly pay a price for reading the raw command TEXT
 // without asking whether it is an invocation at all, because what they guard
@@ -306,11 +324,24 @@ const CONTROL = new Set(['&&', '||', ';', '|', '&']);
 // arm is why `git push origin feature/x > develop` is not read as a push to
 // `develop` — the word is a FILE NAME, and a real shell never hands it to git.
 //
-// HEREDOC IS DELIBERATELY EXCLUDED (`<(?!<)`): `<<'EOF'` is not stepped over,
-// so nothing about the heredoc case moves. That case is ALLOW because the
-// trailing `EOF` token makes a problem off command position, and it must stay
-// exactly that.
-const REDIR_RE = /^(?:&>>?|[0-9]*>>?&?|[0-9]*<(?!<))(.*)$/;
+// POWERSHELL'S ALL-STREAMS FAMILY (`*>`, `*>>`, `*>&1`) IS HERE TOO, and it is
+// not cosmetic: this fork's sessions run on the PowerShell tool, the guard is
+// registered on it, and before this line covered them `git push origin
+// feature/x *>&1` was DENY under the reason "víc nebo poškozené refspecy" for
+// a single clean refspec — the very defect the paragraph above describes,
+// surviving on the tool actually in use. In bash `*>&1` is not a redirection
+// at all (measured: an unmatched glob, handed to git as a literal word), so
+// stepping over it there costs nothing a protected target rides on: bash never
+// hands the operator's own file name to git either.
+//
+// BASH'S HERE-STRING `<<<` is stepped over on the same ground — the word after
+// it is the string, which a real shell removes from the argument list.
+//
+// HEREDOC IS DELIBERATELY EXCLUDED (`<(?!<)`, and `<<<` needs all three
+// characters): `<<'EOF'` is not stepped over, so nothing about the heredoc
+// case moves. That case is ALLOW because the trailing `EOF` token makes a
+// problem off command position, and it must stay exactly that.
+const REDIR_RE = /^(?:&>>?|\*>>?&?|[0-9]*>>?&?|<<<|[0-9]*<(?!<))(.*)$/;
 
 // Flags considered "boring" enough that we still trust our own read of the
 // remote/refspec around them. Any other flag is recorded as a problem for
@@ -644,10 +675,31 @@ process.stdin.on('end', () => {
       || ENV_ASSIGN_RE.test(tokens[i - 1]);
     i++; // past the `git` token itself
 
-    // Consume pre-subcommand options: `-C <path>` / `-c <k=v>` (two-token
-    // form) skip both tokens; any attached form or other global flag skips
-    // just the one token it occupies.
-    while (i < tokens.length && tokens[i].startsWith('-')) {
+    // Consume everything that can stand between `git` and its SUBCOMMAND:
+    //
+    //   - global options: `-C <path>` / `-c <k=v>` (two-token form) skip both
+    //     tokens; any attached form or other global flag skips just the one
+    //     token it occupies;
+    //   - a REDIRECTION, by the same arity rule the argument scan uses — a
+    //     shell accepts one before the command word too, and REMOVES it.
+    //
+    // The redirection arm is why this loop is not just `startsWith('-')` any
+    // more. Measured on the shape without it, on both tool names: `git 2>&1
+    // push origin develop` was ALLOW with the guard silent, because `2>&1`
+    // became the "subcommand", the real `push` became an argument, and no push
+    // was ever evaluated — while bash hands git exactly `push origin develop`
+    // (measured with a fake `git` printing its argv). That is the same
+    // "subcommand token is not `push`" class as the git ALIAS route named in
+    // the header, but unlike the alias it needs no knowledge of what git makes
+    // of a token: a redirection is shell syntax this file already reads.
+    //
+    // The two arms are ordered redirection-first, and they cannot collide: no
+    // redirection spelling starts with `-`, and no git global option is a
+    // redirection.
+    while (i < tokens.length) {
+      const preRedir = REDIR_RE.exec(tokens[i]);
+      if (preRedir) { i += preRedir[1] === '' ? 2 : 1; continue; }
+      if (!tokens[i].startsWith('-')) break;
       i += (tokens[i] === '-C' || tokens[i] === '-c') ? 2 : 1;
     }
     if (i >= tokens.length) break; // no subcommand found

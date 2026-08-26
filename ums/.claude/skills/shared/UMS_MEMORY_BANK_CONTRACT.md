@@ -1380,7 +1380,13 @@ the invocation's arguments (with its target, whether that sits in the next token
 or glued to the operator) and the scan carries on past it, so `git push origin
 <branch> 2>&1 | tail -3` is read as the push it is and `… > develop` writes a
 file rather than pushing a branch — while a protected branch written AFTER a
-redirection is still judged, because in a shell it is still an argument.
+redirection is still judged, because in a shell it is still an argument. That
+holds for a redirection standing between `git` and its SUBCOMMAND as well
+(`git 2>&1 push origin develop`, which a shell hands to git as plain `push
+origin develop`); until the pre-subcommand scan stepped over redirections the
+same way, that shape made the `push` token invisible and was a silent ALLOW.
+PowerShell's all-streams spellings (`*>`, `*>>`, `*>&1`) count as redirections
+here too, because this fork's sessions run on the PowerShell tool.
 **Two routes reach past the guard's judgement altogether, both
 named and neither closed.** A
 `git` token it cannot recognize as one at all (`bash -c 'git push …'`, whose
@@ -1392,7 +1398,18 @@ is simply not `push`). The alias route costs more than the first one: `pre-push`
 still stops a non-fast-forward, but the integration FAST-FORWARD — precisely what
 the actor rule reserves for the human — goes through in a single ordinary tool
 call. Closing it would mean asking git what a token means, the class of parsing
-this layer was deliberately demoted for, so it is named here instead. Subcommands
+this layer was deliberately demoted for, so it is named here instead. The count
+is TWO and not three because the redirection-before-subcommand shape, which
+belonged to the alias's own class (a recognized `git` whose subcommand token is
+not `push`), is closed — it needed no knowledge of what git makes of a token,
+only shell syntax this file already reads. The command-position carriers listed
+further up are a weaker, separate class and are deliberately not counted among
+these two: they blunt the fail-closed arm, but a protected target the guard can
+read in plain text is still denied through them — measured on a newline, on
+`cd /repo;`, and on the keywords `then`, `do` and `{`, all five DENY. The one
+entry in that list which is NOT merely weaker is `X=1|git push …`: there the
+token IS `X=1|git`, so it is the first route above wearing a command-position
+disguise, and nothing about the push is judged at all. Subcommands
 other than `push` are not its concern either, and `git fetch` keeps its own
 narrower, best-effort refspec rule. Two checks deliberately read the raw command TEXT
 rather than a parsed invocation — the escape variable's name, and

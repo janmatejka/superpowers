@@ -975,5 +975,130 @@ Assert-Match (Test-Cmd 'git push 2>&1 | tail -3' $tmpRedir) 'sdílená větev' '
 Assert-Eq (Test-Cmd 'git push 2>&1 | tail -3' $tmpRedir) '' 'přesměrování hned za push: na tiketové větvi projde'
 Remove-Item -Recurse -Force $tmpRedir
 
+# ---------------------------------------------------------------------------
+# A REDIRECTION BETWEEN `git` AND ITS SUBCOMMAND. A shell accepts one there and
+# REMOVES it, so `git 2>&1 push origin develop` hands git exactly `push origin
+# develop` — measured with a fake `git` printing its argv. Until the
+# pre-subcommand loop stepped over redirections the same way the argument scan
+# does, `2>&1` BECAME the subcommand, the real `push` became an argument, and no
+# push was evaluated at all. Measured ALLOW with the guard silent before the
+# fix, on BOTH tool names:
+#   git 2>&1 push origin develop
+#   git > /tmp/x push origin develop
+#   git 2>/dev/null push --force origin HEAD:develop
+#   git -C /repo 2>&1 push origin develop
+#   git 2>&1 -c x=y push origin develop
+# ---------------------------------------------------------------------------
+foreach ($c in @(
+    'git 2>&1 push origin develop',
+    'git > /tmp/x push origin develop',
+    'git 2>/dev/null push --force origin HEAD:develop'
+)) {
+    Assert-Match (Test-Cmd $c) 'sdílená větev' "přesměrování před podpříkazem neschovává push: $c"
+    Assert-Match (Test-CmdPs $c) 'sdílená větev' "totéž na PowerShell toolu: $c"
+}
+
+# INTERLEAVED WITH THE GLOBAL OPTIONS, both orders — the two arms of the
+# pre-subcommand loop have to hand over to each other, and `-C`/`-c` must keep
+# eating their own argument while they do.
+Assert-Match (Test-Cmd 'git -C /repo 2>&1 push origin develop') 'sdílená větev' 'přesměrování za -C: podpříkaz se pořád najde'
+Assert-Match (Test-CmdPs 'git -C /repo 2>&1 push origin develop') 'sdílená větev' 'přesměrování za -C: totéž na PowerShell toolu'
+Assert-Match (Test-Cmd 'git 2>&1 -c x=y push origin develop') 'sdílená větev' 'přesměrování před -c: podpříkaz se pořád najde'
+Assert-Match (Test-CmdPs 'git 2>&1 -c x=y push origin develop') 'sdílená větev' 'přesměrování před -c: totéž na PowerShell toolu'
+
+# THE POSITIVE HALF: an ordinary ticket-branch push with a leading redirection
+# is a push the layer's own publication rule asks for, and must stay ALLOW —
+# otherwise the four assertions above would be green merely because the guard
+# started denying everything with a `>` in it.
+Assert-Eq (Test-Cmd 'git 2>&1 push origin feature/ums-1-alfa') '' 'přesměrování před podpříkazem: tiketový push projde'
+Assert-Eq (Test-CmdPs 'git 2>&1 push origin feature/ums-1-alfa') '' 'přesměrování před podpříkazem: tiketový push projde i na PowerShell toolu'
+
+# `git > push origin develop` IS NOT A PUSH, and the guard says so because the
+# shell does. Measured in real bash with a fake `git`: `>` takes the NEXT word
+# as its target, so a file called `push` is created and git is handed `origin
+# develop`. The empty-group arm of REDIR_RE steps over both tokens, `origin`
+# becomes the subcommand, and nothing is evaluated — the same answer the shell
+# gives. ALLOW here is therefore not a gap; it is the file-name arm working.
+Assert-Eq (Test-Cmd 'git > push origin develop') '' 'cíl přesměrování jménem push není podpříkaz (shoda se shellem)'
+Assert-Eq (Test-CmdPs 'git > push origin develop') '' 'totéž na PowerShell toolu'
+
+# ---------------------------------------------------------------------------
+# POWERSHELL'S ALL-STREAMS REDIRECTION (`*>`, `*>>`, `*>&1`). This fork's
+# sessions run on the PowerShell tool, so these are the spellings that actually
+# turn up. Measured DENY before the fix under the reason "víc nebo poškozené
+# refspecy" for a single clean refspec — the same defect ordinary `2>&1`
+# plumbing had, surviving on the tool in use:
+#   git push origin feature/ums-1-alfa *>&1
+#   git push origin feature/ums-1-alfa *> out.txt
+#   git push origin feature/ums-1-alfa *>> out.txt
+# In bash `*>&1` is not a redirection at all (an unmatched glob handed to git as
+# a word), so stepping over it there costs nothing: bash does not hand the
+# operator's own file name to git either.
+# ---------------------------------------------------------------------------
+foreach ($c in @(
+    'git push origin feature/ums-1-alfa *>&1',
+    'git push origin feature/ums-1-alfa *> out.txt',
+    'git push origin feature/ums-1-alfa *>> out.txt'
+)) {
+    Assert-Eq (Test-CmdPs $c) '' "PowerShellové přesměrování všech streamů projde: $c"
+    Assert-Eq (Test-Cmd $c) '' "totéž na Bash toolu: $c"
+}
+# ... and it must not hide a protected target behind itself either.
+Assert-Match (Test-CmdPs 'git push origin develop *>&1') 'sdílená větev' 'PowerShellové *>&1 neschovává chráněný cíl'
+Assert-Match (Test-CmdPs 'git push origin develop *> out.txt') 'sdílená větev' 'PowerShellové *> neschovává chráněný cíl'
+
+# BASH HERE-STRING `<<<`, stepped over on the same ground: the word after it is
+# the string, which the shell removes from the argument list. Measured DENY
+# before the fix ("víc nebo poškozené refspecy").
+Assert-Eq (Test-Cmd 'git push origin feature/ums-1-alfa <<< done') '' 'here-string se přeskakuje jako přesměrování'
+Assert-Match (Test-Cmd 'git push origin develop <<< done') 'sdílená větev' 'here-string neschovává chráněný cíl'
+
+# AND THE HEREDOC EXCLUSION STILL HOLDS after `<<<` joined the shapes: `<<` is
+# two characters, `<<<` is three, and `<(?!<)` still refuses the first. Pinned
+# on a shape where stepping over `<<` would CHANGE the verdict — were `<<`
+# treated as a bare operator, its empty-group arm would swallow `develop` as a
+# file name and the push would go silent. It denies, so `<<` is not stepped
+# over. (The heredoc BODY case is pinned in the block above; this is the
+# operator itself.)
+Assert-Match (Test-Cmd 'git push origin << develop') 'sdílená větev' 'heredoc: samotné << se nepřeskakuje jako přesměrování'
+
+# THE ALIAS ROUTE STAYS NAMED, NOT CLOSED — the header and the contract both
+# say so, and this pins that they keep telling the truth. `zz` is not `push`,
+# and closing it would mean asking git what a token means.
+Assert-Eq (Test-Cmd 'git -c alias.zz=push zz origin HEAD:develop') '' 'aliasová cesta zůstává pojmenovaná, ne uzavřená'
+
+# CONTROLS once more, after the pre-subcommand loop changed shape: the plain
+# forms must not have moved.
+foreach ($c in @(
+    'git push origin develop',
+    'git push origin 2>&1 develop',
+    'git push --force origin HEAD:develop',
+    'git push --mirror origin'
+)) { Assert-Match (Test-Cmd $c) 'permissionDecision.*deny' "kontrola po změně smyčky před podpříkazem: $c" }
+Assert-Eq (Test-Cmd 'git -C /repo push origin feature/ums-1-alfa') '' 'kontrola: -C bez přesměrování se pořád chová stejně'
+
+
+# ---------------------------------------------------------------------------
+# THE COMMAND-POSITION CARRIERS, pinned because the guard header and the
+# contract both now COUNT them: they are the weaker class, not a route past the
+# guard, precisely because a readable protected target is still denied through
+# every one of them. The count of residual routes ("two, both named and neither
+# closed") is only honest while this stays true.
+# ---------------------------------------------------------------------------
+foreach ($c in @(
+    "git status`ngit push origin develop",
+    'cd /repo; git push origin develop',
+    'if true ; then git push origin develop ; fi',
+    'do git push origin develop',
+    '{ git push origin develop ; }'
+)) { Assert-Match (Test-Cmd $c) 'sdílená větev' "nosič command position neschová čitelný chráněný cíl: $c" }
+
+# THE ONE ENTRY THAT IS NOT MERELY WEAKER: a separator glued to the `git` token
+# itself makes the token `X=1|git`, which isGitToken does not recognize — so
+# this is the FIRST residual route (an unrecognized `git`) in command-position
+# clothing, and nothing about the push is judged. ALLOW, named in both the
+# header and the contract, not closed.
+Assert-Eq (Test-Cmd 'X=1|git push origin develop') '' 'oddělovač přilepený k `git` je první zbytková cesta, ne nosič command position'
+
 
 Complete-Tests
