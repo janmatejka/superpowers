@@ -83,8 +83,8 @@ this workspace:
 - Then publish: the agent pushes its OWN ticket branch, announcing the branch and the
   outgoing commits. If the current branch is shared (`protectedBranches`, see the
   contract's Repository Configuration section), the agent does NOT push — it prepares
-  the exact command carrying `UMS_ALLOW_SHARED_PUSH=1` together with the outgoing
-  commits and the user runs it; the agent never sets that variable itself.
+  the exact command `! git push origin HEAD:<baseBranch>` together with the outgoing
+  commits and the user runs it; the agent never pushes a shared branch itself.
 
 This skill deletes no branches — step 4 of the contract's sequence belongs to the
 finishing Discard path.

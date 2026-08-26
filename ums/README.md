@@ -29,7 +29,8 @@ ums/
     │   ├── deny-superpowers-docs.mjs  ← PreToolUse write-guard (Claude Code)
     │   ├── guard-git-push.mjs         ← PreToolUse best-effort push warning (Claude Code; NOT the guarantee)
     │   ├── pre-push                   ← git pre-push hook — the actual Publication Contract enforcement
-    │   │                                 boundary (harness-agnostic: plain git, works regardless of agent)
+    │   │                                 boundary (plain git, so it runs in every harness — but its own
+    │   │                                 enforcement only activates once the agent-session marker reaches it)
     │   ├── install-git-hooks.ps1      ← installs pre-push per clone (git hooks are untracked; required — see below)
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
@@ -122,7 +123,8 @@ connection configured per harness.
 |---|---|---|
 | Contract/context injection at session start | SessionStart + PostCompact hooks (`additionalContext`) | Cursor: `hooks-cursor.json` `sessionStart` (schema differs); Codex: no session-start injection — put the "load the contract" rule into the instructions file (`AGENTS.md`); Kimi: manifest `sessionStart`; OpenCode/pi: in-process injection |
 | Write-guard for `docs/superpowers/**`, `docs/plans/**` | PreToolUse hook with `permissionDecision: deny` (`deny-superpowers-docs.mjs`) | No shown equivalent — degrade to the contract's Document Placement rule + CLAUDE.md/AGENTS.md preference text (upstream skills honor declared location preferences) |
-| Push-policy early warning (best-effort, NOT the guarantee) | PreToolUse hook (`guard-git-push.mjs`) — fail-open, only catches a plainly-typed push to a protected branch | No shown equivalent for the early warning; the actual guarantee (`hooks/pre-push`, a plain git hook) is harness-agnostic and applies the same way regardless — see the per-clone install note above |
+| Push-policy early warning (best-effort, NOT the guarantee) | PreToolUse hook (`guard-git-push.mjs`) — fail-open, only catches a plainly-typed push to a protected branch, and denies an agent's own push to a protected branch (including the integration fast-forward) | No shown equivalent for the early warning or the actor rule — an agent on Codex, Gemini or Kilo Code can run the integration fast-forward itself |
+| Publication guarantee (`hooks/pre-push`, a plain git hook — see the per-clone install note above) | Enforces once `sync-with-monorepo.ps1` writes the agent-session marker (`MB_AGENT_SESSION`), with a Claude-Code-only fallback (`CLAUDECODE=1`/non-empty `AI_AGENT`); one arm — the ref-list buffer check — sits above that gate and rejects the whole push, tags included, for everyone regardless of the marker | Codex: marker set via `config.toml [shell_environment_policy].set`; Gemini: marker set via a `.env` file in `.gemini/`; **Kilo Code has no documented mechanism to set it**, so the marker never arrives, the gate never opens, and the hook enforces NOTHING there |
 | Worktree ban | `permissions.deny: EnterWorktree/ExitWorktree` + `skillOverrides: using-git-worktrees: off` | No shown equivalent — degrade to the ban text in the instructions file; `using-git-worktrees` itself honors a declared preference ("work in place") |
 | Model selection for subagents | Owned by superpowers (SDD Model Selection); UMS only adds the cheapest-tier guard for summarization/read-only dispatches (contract, Dispatch Model Policy) | Portable text; the cheapest-tier guard is effective only where the harness exposes a model parameter on subagent dispatch |
 

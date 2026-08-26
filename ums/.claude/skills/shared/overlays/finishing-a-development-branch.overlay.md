@@ -67,7 +67,7 @@ After the user chooses and BEFORE executing the choice:
      normal, visible work in progress. Fix forward with further commits.
   5. Ask (Czech) „Integrovat větev do `$($base.Branch)` pushem?" and hand the user
      the exact command with the outgoing commits enumerated:
-     `! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:$($base.Branch)`, with
+     `! git push origin HEAD:$($base.Branch)`, with
      `$($base.Branch)` expanded to its value in both the question and the command.
      The refspec form
      is deliberate: integration pushes the ticket branch onto the base ref.
@@ -87,13 +87,14 @@ After the user chooses and BEFORE executing the choice:
   **not deleted**; deleting a branch through a push stays forbidden, and the
   document index keys by phase, so an integrated ticket no longer counts as
   active work.
-- **The agent never pushes a shared branch and never sets
-  `UMS_ALLOW_SHARED_PUSH` itself** — it is the human's deliberate escape from the
-  `pre-push` guard (Publication Contract), which would otherwise reject the very
-  command handed over, and setting it as an agent silently converts the two-tier
-  push policy into a one-tier one. Do NOT substitute `--no-verify`: it is a bypass
-  of the guarantee, not a way to publish, and it disables every hook in the
-  repository.
+- **The agent never pushes a shared branch and never sets `MB_HUMAN_PUSH`
+  itself** — the command handed over is the plain `! git push origin
+  HEAD:<baseBranch>` because a fast-forward whose tip is already reachable
+  from this clone's `refs/remotes/<remote>/*` is allowed by the `pre-push`
+  guard without any escape; if that push is instead rejected as non-fast-forward,
+  it is the human, not the agent, who decides whether to set `MB_HUMAN_PUSH=1`
+  and rerun it. Do NOT substitute `--no-verify`: it is a bypass of the guarantee,
+  not a way to publish, and it disables every hook in the repository.
 - **A push rejected as non-fast-forward** means the base moved while the sequence
   ran: repeat from step 3 (`fetch`). **At most two failed rounds** — after the
   second, STOP and report to the user instead of racing the base indefinitely.

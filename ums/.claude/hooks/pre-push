@@ -31,9 +31,12 @@
 # this file's job is narrower: stay out of a human's way in the ordinary
 # case of a terminal or IDE push outside an agent session.
 #
-# Scope: refs/heads/* (branches) only. The content rule is branch-scoped;
-# tag pushes and anything else are out of scope and always pass through
-# untouched (a tag delete or a tag force-move is not a "branch push").
+# Scope: refs/heads/* (branches) only. The content rule is branch-scoped; tag
+# pushes and anything else are out of scope of it (a tag delete or a tag
+# force-move is not a "branch push") and reach no check below this comment.
+# They are NOT untouched, though: the fail-closed stdin-buffer arm above this
+# scope gate still applies to them, so a push that includes a tag ref rejects
+# for everyone, marker or not, if that arm cannot buffer the ref list.
 #
 # Installed per clone by ums/.claude/hooks/install-git-hooks.ps1, resolved
 # via `git rev-parse --git-path hooks/pre-push` so this lands where git

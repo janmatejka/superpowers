@@ -63,11 +63,12 @@ Adjustments to the checklist above:
      exception to the **Create the ticket branch** step's clean tree — it holds only
      for leftovers this inventory just named and the user consciously kept. On a
      non-base IDLE branch (a harvested ticket branch) committing on that branch is
-     fine. Either way the leftovers still have to be resolved. Within
-     eligibility, an **installed and verified `pre-push` hook is a fail-closed
-     precondition**, because hooks do not travel with a clone and a workspace
-     missing the hook looks exactly like a working one while carrying no publication
-     guarantee. A failing `git fetch origin` is a hard failure too; a missing
+     fine. Either way the leftovers still have to be resolved. Within eligibility, a
+     **verified publication guarantee for THIS session is a fail-closed
+     precondition** — the hook must exist, be at least v2, and reject a synthetic
+     protected-branch line run in this session's own environment; a line that
+     passes means the agent-session marker is absent and the hook disables itself
+     here. A failing `git fetch origin` is a hard failure too; a missing
      `<CTX_DIR>/ums-repo.json` is only reported once ("built-in defaults apply") and
      never blocks entry.
   2. **Target-MB discovery — READ-ONLY.** Per the contract's "Target-MB Discovery &

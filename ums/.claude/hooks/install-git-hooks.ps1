@@ -61,9 +61,11 @@
       2  NOT installed: a foreign pre-push could not be chained - either the
          hooks directory is shared with other repositories (core.hooksPath is
          absolute or comes from global/system config), a chained hook was
-         already there, or the foreign hook is a hand-merged one (contains our
-         own marker deeper in its body, which cannot be untangled mechanically).
-         The foreign hook was left untouched and the guarantee is absent here.
+         already there, a foreign hook is a hand-merged one (contains our
+         own marker deeper in its body, which cannot be untangled mechanically),
+         or moving the foreign hook aside to chain it simply failed. In every
+         one of these four cases the foreign hook is left untouched, the UMS
+         hook is NOT installed at all, and the guarantee is absent here.
       3  installed, but no shell was available to run the proof
       4  installed and proven live, but the protected-branch list could NOT be
          REFRESHED — either it could not be written, or the configuration

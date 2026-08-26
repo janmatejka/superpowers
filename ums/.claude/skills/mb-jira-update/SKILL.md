@@ -190,9 +190,9 @@ Scope lock remains active until command completion.
   result = **STOP** before publishing anything.
 - Report the branch to publish and let the actor push it (own ticket branch,
   announced) or hand the command to the user for a shared branch
-  (`! UMS_ALLOW_SHARED_PUSH=1 git push origin <branch>` — the human's escape
-  from the pre-push guard; never set that variable yourself, never substitute
-  `--no-verify`). Re-verify after the push.
+  (`! git push origin HEAD:<baseBranch>` — the integration fast-forward is the
+  user's own command; the agent never runs it, never sets `MB_HUMAN_PUSH`, and
+  never substitutes `--no-verify`). Re-verify after the push.
 - A published link to an unreachable commit is the failure this gate exists to
   prevent.
 
@@ -292,15 +292,14 @@ commit is already on `origin` regardless of whether the base ever received it.
    the base, **STOP** — do not
    publish the comment and do not transition: tell the user in Czech that the work
    has not reached the base and the tester would have nothing to test, and hand over
-   the exact command (`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:$($base.Branch)`,
+   the exact command (`! git push origin HEAD:$($base.Branch)`,
    with `$($base.Branch)` expanded to its value — the
    refspec form, because integration pushes the ticket branch onto the base ref, and
    the destination comes from the resolve above, never from a derivation done by
-   hand (contract, "Repository Configuration"); the human's
-   deliberate escape from the pre-push guard, which would otherwise reject the
-   command handed over; the agent never pushes a shared branch and never sets
-   that variable itself, and `--no-verify` is not a substitute — it disables
-   every hook). Re-verify after the user's push with the same two commands — the
+   hand (contract, "Repository Configuration"); this is the user's own command —
+   the agent never runs it and never sets `MB_HUMAN_PUSH`, and `--no-verify` is
+   not a substitute — it disables every hook). Re-verify after the user's push
+   with the same two commands — the
    fetch included, since the push may well have happened in another clone — then
    continue. If the server
    refuses a direct push to the base branch, report it and offer the fallback

@@ -380,14 +380,14 @@ function evaluateFetch(args, patterns) {
         // (config file vs. built-in fallback) — the wording must stay true
         // in both states, not just the common one.
         reason: `UMS: refspec '${t}' míří žolíkem na lokální větve — přepsal by i chráněné větve tohoto ` +
-          'repozitáře, agent to nesmí udělat (Publication Contract, dvouúrovňová push policy).',
+          'repozitáře, agent to nesmí udělat (Publication Contract, vrstva aktéra).',
       };
     }
     if (isProtected(dst, patterns)) {
       return {
         deny: true,
         reason: `UMS: '${stripRef(dst)}' je sdílená větev — tenhle fetch by přepsal její lokální ref, agent to ` +
-          'nesmí udělat (Publication Contract, dvouúrovňová push policy).',
+          'nesmí udělat (Publication Contract, vrstva aktéra).',
       };
     }
   }
