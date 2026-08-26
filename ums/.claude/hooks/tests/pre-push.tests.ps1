@@ -1535,4 +1535,42 @@ Assert-Eq (Get-Sha $originHuman 'refs/heads/develop') (Get-Sha $workHuman 'devel
 
 Remove-Item -Recurse -Force $fxHuman.Root
 
+# ---------------------------------------------------------------------------
+# 27. The escape path still CHAINS (fix round 1, Minor 8). Lifting the guard
+# must not turn a foreign hook off: the escape exits through run_chained for
+# the same reason the marker gate does, and a future refactor to a bare
+# `exit 0` would otherwise be caught by nothing. Same canary shape as the
+# exec-bit case above — the chained hook writes a file, and its absence is the
+# whole finding.
+# ---------------------------------------------------------------------------
+$fxChainEsc = New-PushFixture 'mbhumanchain'
+$workChainEsc = $fxChainEsc.Work
+$originChainEsc = $fxChainEsc.Origin
+$foreignChainEsc = Join-Path $workChainEsc '.git/hooks/pre-push'
+New-Item -ItemType Directory -Force -Path (Split-Path $foreignChainEsc) | Out-Null
+$canaryChainEsc = (Join-Path $workChainEsc 'canary-escape.txt') -replace '\\', '/'
+Set-Content -LiteralPath $foreignChainEsc -Encoding ascii -Value @"
+#!/bin/sh
+wc -l < /dev/stdin > "$canaryChainEsc"
+exit 0
+"@
+Invoke-Installer $workChainEsc $null | Out-Null
+Assert-True (Test-Path (Join-Path $workChainEsc '.git/hooks/pre-push.ums-chained')) 'řetězení s výjimkou: cizí hook je odsunutý a zřetězený'
+
+# a push the guard would REJECT without the escape, so the escape is what
+# carries this run all the way to the chained hook
+Add-Content -Path (Join-Path $workChainEsc 'f.txt') -Value 'nepublikovana zmena'
+Invoke-GitOk $workChainEsc @('commit', '-am', 'nepublikovana zmena') | Out-Null
+Remove-Item -LiteralPath $canaryChainEsc -Force -ErrorAction SilentlyContinue
+$r = Invoke-GitTry $workChainEsc @('push', 'origin', 'HEAD:develop')
+Assert-True ($r.Code -ne 0) 'řetězení s výjimkou: kontrola - bez výjimky je push zamítnutý'
+Assert-True (-not (Test-Path $canaryChainEsc)) 'řetězení s výjimkou: kontrola - zamítnutý push řetězený hook vůbec nespouští'
+
+$r = Invoke-WithHumanPush 'MB_HUMAN_PUSH' { Invoke-GitTry $workChainEsc @('push', 'origin', 'HEAD:develop') }
+Assert-Eq $r.Code 0 'řetězení s výjimkou: s MB_HUMAN_PUSH push projde'
+Assert-True (Test-Path $canaryChainEsc) 'řetězení s výjimkou: výjimka NEVYPÍNÁ cizí hook - kanárek se spustil'
+Assert-Eq (Get-Sha $originChainEsc 'refs/heads/develop') (Get-Sha $workChainEsc 'develop') 'řetězení s výjimkou: develop se posunul'
+
+Remove-Item -Recurse -Force $fxChainEsc.Root
+
 Complete-Tests

