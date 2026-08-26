@@ -200,17 +200,37 @@ const HUMAN_ESCAPE_RE = /(^|\s)(MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH)=("1"|'1'|1)
 //     $env:NAME`), so this one must carry the value, exactly like the POSIX
 //     shape: the accepted values are PowerShell's own (`1`, `'1'`, `"1"`), and
 //     the lookahead is the TERMINATOR half, so `=10` and `='1'x` are not it.
-//   `Set-Item [-Path] Env:NAME` and `[Environment]::SetEnvironmentVariable(
-//     'NAME'` — these carry no read spelling at all (the reads are `Get-Item`
-//     and `GetEnvironmentVariable`), so writing the construct at the escape's
-//     name IS the violation and no value is required. The asymmetry is
-//     deliberate, not an oversight.
+//   `Set-Item [-Path] Env:NAME`, `New-Item [-Path] Env:NAME` and
+//     `[Environment]::SetEnvironmentVariable('NAME'` (with or without the
+//     `System.` qualifier) — these carry no read spelling at all (the reads
+//     are `Get-Item` and `GetEnvironmentVariable`), so writing the construct
+//     at the escape's name IS the violation and no value is required. The
+//     asymmetry is deliberate, not an oversight, and it is what keeps
+//     `New-Item -Path Env:NAME -Value $x` — an expanded value this tokenizer
+//     cannot read at all — inside the containment; a value-carrying pattern
+//     would wave it through. Measured, and asserted in the suite.
+//
+// THE `System.` QUALIFIER IS OPTIONAL because PowerShell resolves
+// `[System.Environment]` and `[Environment]` to the same type, and the
+// fully-qualified spelling is if anything the more common one. It was measured
+// ALLOW while only the short form was matched.
+//
+// NEW-ITEM READS AS A GAP UP TO `Env:NAME`, not as a fixed argument order:
+// `-Path` is positional, the value may be positional or `-Value`, and the name
+// may be split off into `-Name`, so all of `New-Item Env:NAME 1`, `New-Item
+// -Path Env:\NAME -Value 1`, `New-Item -Value 1 -Path Env:NAME` and `New-Item
+// -Path Env: -Name NAME -Value 1` are one construct. The gap is whole
+// whitespace-separated tokens on ONE line and stops at `;`, `|` and `&`, so it
+// cannot reach across into a following statement — `New-Item -Path C:\tmp\a.txt;
+// Get-Content Env:NAME` stays allowed, and so does the same pair split across
+// two lines. Both are asserted in the suite.
 //
 // Case-insensitive: PowerShell resolves `$Env:`/`$ENV:` and cmdlet names
 // without regard to case, and Windows environment variable names are
 // case-insensitive too, so a case-sensitive pattern would miss a spelling that
-// really does set the variable. The `env:`/`Set-Item`/`SetEnvironmentVariable`
-// prefix is what keeps that from widening into a bare name match.
+// really does set the variable. The `env:`/`Set-Item`/`New-Item`/
+// `SetEnvironmentVariable` prefix is what keeps that from widening into a bare
+// name match.
 //
 // Every alternative captures the NAME in a group of its own, so the matched
 // name is `match.slice(1).find(defined)` — the deny message has to name the
@@ -219,7 +239,8 @@ const PS_ESCAPE_NAMES = 'MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH';
 const PS_ESCAPE_RE = new RegExp(
   `\\$\\{?env:(${PS_ESCAPE_NAMES})\\}?\\s*=\\s*(?:'1'|"1"|1)(?![\\w.'"])`
   + `|Set-Item\\s+(?:-Path\\s+)?Env:\\\\?(${PS_ESCAPE_NAMES})\\b`
-  + `|\\[Environment\\]::SetEnvironmentVariable\\(\\s*['"](${PS_ESCAPE_NAMES})['"]`,
+  + `|New-Item(?:[ \\t]+[^\\s;|&]+)*?[ \\t]+Env:(?:\\\\|[ \\t]*-Name[ \\t]+)?(${PS_ESCAPE_NAMES})\\b`
+  + `|\\[(?:System\\.)?Environment\\]::SetEnvironmentVariable\\(\\s*['"](${PS_ESCAPE_NAMES})['"]`,
   'i',
 );
 

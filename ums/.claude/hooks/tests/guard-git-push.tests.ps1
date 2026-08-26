@@ -674,11 +674,16 @@ Assert-Eq $rFull.Err '' 'žádný stderr: fail-closed zamítnutí nevyhodí neza
 #                                                              by the escape one
 #   $env:<escape>='1'; git push --force origin HEAD:develop -> ALLOW
 #   $env:<escape>='1'; git push --force origin feature/x    -> ALLOW
-# The two ALLOWs are an agent force-pushing a protected branch through BOTH
-# layers in ordinary syntax: the bad flag makes a `problem`, and the assignment
-# statement is neither a CONTROL token nor a NAME=value assignment, so command
-# position is false — which suppresses the protected-target deny and the
-# fail-closed arm at once.
+# Both ALLOWs share one mechanism and cost two different things. The mechanism:
+# the bad flag makes a `problem`, and the assignment statement is neither a
+# CONTROL token nor a NAME=value assignment, so command position is false —
+# which suppresses the fail-closed arm. The cost differs with the target. The
+# `HEAD:develop` one is an agent force-pushing a PROTECTED branch through both
+# layers in ordinary syntax; there the same false command position suppresses
+# the protected-target deny as well. The `feature/x` one targets a branch that
+# is NOT protected, so there is no protected-target deny to suppress: it is a
+# history rewrite of the agent's own published branch, which the pre-push hook's
+# force-push ban would have refused had the escape not lifted its whole guard.
 # ---------------------------------------------------------------------------
 foreach ($c in @(
     "`$env:MB_HUMAN_PUSH='1'; git push origin develop",
@@ -716,6 +721,114 @@ foreach ($c in @(
     Assert-Match $rMeasured 'permissionDecision.*deny' "měřený obchvat je zamítnutý: $c"
     Assert-Match $rMeasured 'vědomá výjimka ČLOVĚKA' "měřený obchvat padá na výjimce, ne na cíli: $c"
 }
+
+# ---------------------------------------------------------------------------
+# THE POWERSHELL RESIDUAL, closed after the final whole-branch review. Two more
+# spellings reached a child process's environment and were measured ALLOW
+# against the guard as it stood at 312737b — after which the hook would have
+# lifted its WHOLE guard on the push riding behind them:
+#
+#   [System.Environment]::SetEnvironmentVariable('<escape>','1'); git push --force origin feature/x
+#   New-Item -Path Env:<escape> -Value 1;                         git push --force origin feature/x
+#
+# The first slipped past because the pattern read `[Environment]::` only, while
+# the fully-qualified spelling is if anything the more common one; the second
+# construct was not covered at all. NEITHER IS A NEW CONSTRUCT CLASS, and that
+# is why both inherit the value-free rule stated in guard-git-push.mjs rather
+# than a rule of their own: `[System.Environment]` and `[Environment]` are the
+# same type, and `New-Item` is `Set-Item`'s sibling on the Env: drive. Writing
+# the construct at the escape's name IS the violation — see the `-Value 0`
+# rows in the negatives below, which deny for exactly that reason, on both
+# verbs.
+#
+# `New-Item` is read as a GAP up to `Env:NAME` because its argument order is
+# free: `-Path` is positional, the value may be positional or `-Value`, and the
+# name may be split off into `-Name`. The gap is whole tokens on one line and
+# stops at `;`, `|` and `&`; the negatives below pin that at `;` and at a line
+# break, the two shapes an agent would actually write.
+# ---------------------------------------------------------------------------
+foreach ($c in @(
+    "[System.Environment]::SetEnvironmentVariable('MB_HUMAN_PUSH','1'); git push --force origin feature/x",
+    '[System.Environment]::SetEnvironmentVariable("MB_HUMAN_PUSH","1"); git push --force origin feature/x',
+    "[system.environment]::SetEnvironmentVariable('MB_HUMAN_PUSH','1'); git push --force origin feature/x",
+    "[System.Environment]::SetEnvironmentVariable('UMS_ALLOW_SHARED_PUSH','1'); git push --force origin feature/x",
+    'New-Item -Path Env:MB_HUMAN_PUSH -Value 1; git push --force origin feature/x',
+    'New-Item -Path Env:\MB_HUMAN_PUSH -Value 1; git push --force origin feature/x',
+    'New-Item Env:MB_HUMAN_PUSH 1; git push --force origin feature/x',
+    'New-Item -Path Env:MB_HUMAN_PUSH 1; git push --force origin feature/x',
+    'New-Item -Value 1 -Path Env:MB_HUMAN_PUSH; git push --force origin feature/x',
+    'New-Item -Path Env: -Name MB_HUMAN_PUSH -Value 1; git push --force origin feature/x',
+    'New-Item -Path Env:UMS_ALLOW_SHARED_PUSH -Value 1; git push --force origin feature/x'
+)) {
+    $rNew = Test-CmdPs $c
+    Assert-Match $rNew 'permissionDecision.*deny' "zbytkové PowerShellové hláskování je zamítnuté: $c"
+    # `feature/x` is deliberately NOT protected in any of these, so nothing but
+    # the escape rule can produce the deny — without this line the table could
+    # pass on the shared-branch rule instead.
+    Assert-Match $rNew 'vědomá výjimka ČLOVĚKA' "zamítnutí patří výjimce, ne cíli ani nečitelnosti: $c"
+}
+# ... and the deny names the variable that ACTUALLY matched, the deprecated one
+# included — the new alternatives capture the name in a group of their own for
+# exactly this.
+Assert-Match (Test-CmdPs "[System.Environment]::SetEnvironmentVariable('UMS_ALLOW_SHARED_PUSH','1'); git push --force origin feature/x") 'UMS_ALLOW_SHARED_PUSH' 'System.Environment: zamítnutí jmenuje staré jméno, které ho spustilo'
+Assert-Match (Test-CmdPs 'New-Item -Path Env:UMS_ALLOW_SHARED_PUSH -Value 1; git push --force origin feature/x') 'UMS_ALLOW_SHARED_PUSH' 'New-Item: zamítnutí jmenuje staré jméno, které ho spustilo'
+Assert-Match (Test-CmdPs 'New-Item -Path Env:MB_HUMAN_PUSH -Value 1; git push --force origin feature/x') 'MB_HUMAN_PUSH' 'New-Item: zamítnutí jmenuje proměnnou, kvůli které padlo'
+
+# LOAD-BEARING NEGATIVES for the two constructs above, on the same three axes
+# the table further down uses — and they are what separates a real widening
+# from an alternation that matches almost anything, which positive rows alone
+# would never catch.
+#
+# NAME PREFIX / SUFFIX and the name boundary: the pattern keys on the escape's
+# name, not on a substring of it.
+foreach ($c in @(
+    'New-Item -Path Env:NOT_MB_HUMAN_PUSH -Value 1; git push origin feature/ums-1-alfa',
+    'New-Item -Path Env:MB_HUMAN_PUSH_TOO -Value 1; git push origin feature/ums-1-alfa',
+    'New-Item -Path Env:MB_HUMAN_PUSHX -Value 1; git push origin feature/ums-1-alfa',
+    'New-Item -Path Env: -Name MB_HUMAN_PUSH_TOO -Value 1; git push origin feature/ums-1-alfa',
+    "[System.Environment]::SetEnvironmentVariable('NOT_MB_HUMAN_PUSH','1'); git push origin feature/ums-1-alfa",
+    "[System.Environment]::SetEnvironmentVariable('MB_HUMAN_PUSH_TOO','1'); git push origin feature/ums-1-alfa",
+    "[System.Environment]::SetEnvironmentVariable('MB_HUMAN_PUSHX','1'); git push origin feature/ums-1-alfa"
+)) { Assert-Eq (Test-CmdPs $c) '' "jiné jméno není výjimka: $c" }
+# TERMINATOR — what has to stand around the name for the construct to be a
+# write of THIS variable at all: the `Env:` drive for the cmdlet, the quoted
+# NAME argument (first, not second) for the method, and the statement separator
+# the New-Item gap must not cross.
+foreach ($c in @(
+    'New-Item -Path Foo:MB_HUMAN_PUSH -Value 1; git push origin feature/ums-1-alfa',
+    'New-Item -Path C:\tmp\MB_HUMAN_PUSH.txt -Value 1; git push origin feature/ums-1-alfa',
+    'New-Item -Path C:\tmp\a.txt; Get-Content Env:MB_HUMAN_PUSH',
+    "New-Item -Path C:\tmp\a.txt`nGet-Content Env:MB_HUMAN_PUSH",
+    'Get-Item Env:MB_HUMAN_PUSH; git push origin feature/ums-1-alfa',
+    "[System.Environment]::GetEnvironmentVariable('MB_HUMAN_PUSH'); git push origin feature/ums-1-alfa",
+    "[System.Environment]::SetEnvironmentVariable('OTHER','MB_HUMAN_PUSH'); git push origin feature/ums-1-alfa",
+    "[System.Foo]::SetEnvironmentVariable('MB_HUMAN_PUSH','1'); git push origin feature/ums-1-alfa"
+)) { Assert-Eq (Test-CmdPs $c) '' "konstrukce nezapisuje tuhle proměnnou: $c" }
+# VALUE — and here the answer is DENY, not allow, which is the ONE axis where
+# these two constructs part company with `$env:NAME=`. That one has a READ
+# spelling (`echo $env:NAME`), so it has to carry the value to tell a write
+# from a read; `Set-Item`/`New-Item`/`SetEnvironmentVariable` have none, so the
+# construct at the escape's name is the write. Asserted on both verbs and both
+# type spellings side by side, because the value-free rule is inherited, not
+# newly invented — and because a value-carrying pattern would have waved
+# through `-Value $x`, a value this tokenizer cannot read at all.
+foreach ($c in @(
+    'New-Item -Path Env:MB_HUMAN_PUSH -Value 0; git push origin feature/ums-1-alfa',
+    'New-Item -Path Env:MB_HUMAN_PUSH -Value "0"; git push origin feature/ums-1-alfa',
+    'New-Item -Path Env:MB_HUMAN_PUSH -Value 10; git push origin feature/ums-1-alfa',
+    # the value the value-free rule is actually FOR: an expansion this
+    # tokenizer cannot read, which a value-carrying pattern would wave through
+    'New-Item -Path Env:MB_HUMAN_PUSH -Value $x; git push --force origin feature/x',
+    'Set-Item -Path Env:MB_HUMAN_PUSH -Value 0; git push origin feature/ums-1-alfa',
+    "[System.Environment]::SetEnvironmentVariable('MB_HUMAN_PUSH','0'); git push origin feature/ums-1-alfa",
+    '[System.Environment]::SetEnvironmentVariable("MB_HUMAN_PUSH","0"); git push origin feature/ums-1-alfa',
+    "[System.Environment]::SetEnvironmentVariable('MB_HUMAN_PUSH',10); git push origin feature/ums-1-alfa",
+    "[Environment]::SetEnvironmentVariable('MB_HUMAN_PUSH','0'); git push origin feature/ums-1-alfa"
+)) { Assert-Match (Test-CmdPs $c) 'vědomá výjimka ČLOVĚKA' "u konstrukce bez čtecího tvaru nerozhoduje hodnota: $c" }
+# CONTROL for the whole New-Item group: an ordinary environment variable written
+# the same way is not the escape, so these rows cannot be green because every
+# New-Item is denied.
+Assert-Eq (Test-CmdPs 'New-Item -Path Env:FOO -Value 1; git push origin feature/ums-1-alfa') '' 'kontrola: New-Item na cizí proměnnou prochází'
 
 # LOAD-BEARING NEGATIVES for the PowerShell pattern, on the same three axes the
 # POSIX table uses. Without them the pattern could have been widened into a bare
