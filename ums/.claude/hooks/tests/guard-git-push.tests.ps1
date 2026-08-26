@@ -11,13 +11,16 @@ Set-StrictMode -Version Latest
 #
 # A RECOGNIZED push — a `git` token at a command position — leans FAIL-CLOSED
 # here: the guard's default answer to an invocation it cannot read is deny, not
-# wave-through. A shape it does not recognize as a command at all (`bash -c
-# '…'`, a heredoc, an `echo`) keeps the old FAIL-OPEN answer, and so does
-# `fetch` outside its own refspec rule. Where a given case sits on that
-# boundary is said at the case; what the verdict IS is decided in
-# guard-git-push.mjs's evaluatePush, and comments here point there instead of
-# restating the shape of the whole decision — that restatement is what has gone
-# stale in this file repeatedly.
+# wave-through. Where the `git` token is not recognized as one at all (`bash -c
+# '…'`, whose token is `'git`), the command never reaches evaluatePush and no
+# opinion about a push comes out of it; `fetch` outside its own refspec rule
+# and every other subcommand do not reach it either. A recognized `git` that is
+# merely not at a command position is a different thing and is NOT in that
+# group — `echo git push origin develop` denies, and cases below pin it. Where
+# a given case sits on that boundary is said at the case; what the verdict IS
+# is decided in guard-git-push.mjs's evaluatePush, and comments here point
+# there instead of restating the shape of the whole decision — that restatement
+# is what has gone stale in this file repeatedly.
 
 function Test-Cmd([string] $Command, [string] $Cwd = '') {
     $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $Command } }
@@ -541,6 +544,12 @@ Assert-Eq $r '' 'zbytkový průchod: nerozpoznaný tvar guard nezamítá'
 # ---------------------------------------------------------------------------
 Assert-Eq (Test-Cmd 'echo git push --mirror') '' 'command position: `git` po `echo` není příkaz, fail-closed nevystřelí'
 Assert-Eq (Test-Cmd "cat <<'EOF'`ngit push --force origin develop`nEOF") '' 'command position: řádek uvnitř heredocu není příkaz'
+# ... and THE LIMIT of what command position buys, pinned because two rounds of
+# header prose in these files put `echo` in the fail-open group and no
+# assertion contradicted them: command position gates the FAIL-CLOSED arm, not
+# the reading of a destination. The same `echo` with a readable protected
+# destination is denied, on the protected-target path.
+Assert-Match (Test-Cmd 'echo git push origin develop') 'permissionDecision.*deny' 'command position drží jen fail-closed větev: čitelný chráněný cíl se posuzuje i v echu'
 # ACCEPTED COST, pinned so it is visible rather than folklore: the tokenizer
 # splits on whitespace only, so a separator GLUED to the previous token hides
 # the command position just as a newline does. Promoting either to a separator
@@ -598,6 +607,34 @@ Assert-Eq (Test-Cmd 'R=origin; B=develop; git push $R $B') '' 'expanze: když c�
 # ---------------------------------------------------------------------------
 Assert-Match (Test-Cmd 'git push $r a:b c:d') 'permissionDecision.*deny' 'expanze: omluvený problém nezakrývá neomluvený (víc refspeců)'
 Assert-Match (Test-Cmd 'git push $r refs/heads/*:refs/heads/*') 'permissionDecision.*deny' 'expanze: omluvený problém nezakrývá neomluvený (žolík do všech větví)'
+
+# ---------------------------------------------------------------------------
+# Fix round 5, Important C. Round 3 stopped an excused problem from shadowing
+# an unexcused one; the masking that survived was INSIDE a single problem and
+# in the arm that recorded it. Every not-plain refspec went into ONE problem
+# carrying all of those tokens, and the excuse test is `some`, so appending a
+# single expanded token bought silence about the rest of the list — a wildcard
+# push into every branch of the remote among them. The arity defect ("more
+# than one refspec") sat in an `else` arm behind that same list, so any
+# not-plain token suppressed it outright. Both shapes below were ALLOW.
+#
+# Neither is covered by the assertions above: the protected-target path cannot
+# reach them (no readable protected destination) and the round-3 pair carries
+# its expansion in the REMOTE, a different token from a different problem.
+# ---------------------------------------------------------------------------
+Assert-Match (Test-Cmd 'git push origin refs/heads/*:refs/heads/* $x') 'permissionDecision.*deny' 'expanze: přilepený $x neomlouvá žolíka do všech větví'
+Assert-Match (Test-Cmd 'git push origin a:b c:d $x') 'permissionDecision.*deny' 'expanze: přilepený $x neomlouvá víc refspeců vedle sebe'
+# controls: the same shapes without the appended expansion denied before this
+# fix and must keep denying after it, or the two above prove nothing
+Assert-Match (Test-Cmd 'git push origin refs/heads/*:refs/heads/*') 'permissionDecision.*deny' 'kontrola: žolík do všech větví zůstává zamítnutý i bez expanze'
+Assert-Match (Test-Cmd 'git push origin a:b c:d') 'permissionDecision.*deny' 'kontrola: víc refspeců zůstává zamítnutých i bez expanze'
+# ... and THE BOUNDARY this fix must not disturb. Where not one destination can
+# be read, the guard still says nothing — including when there are several such
+# tokens, which is the case that separates "I can see two refspecs" from
+# "I can see nothing and there happen to be two tokens".
+Assert-Eq (Test-Cmd 'git push $r $a $b') '' 'hranice: víc refspeců, ze kterých ani jeden přečíst nejde, guard nezamítá'
+Assert-Eq (Test-Cmd 'R=origin; B=develop; git push $R $B') '' 'hranice: cíl, který přečíst nejde, guard dál nezamítá'
+Assert-Eq (Test-Cmd 'git push "$remote" "$branch"') '' 'hranice: push s proměnnými dál prochází'
 
 # The exit-code/stderr half: a deny must be a CLEAN deny, not a crash that
 # merely happens to print JSON (or, worse, nothing).

@@ -30,12 +30,17 @@
 // attempt to summarise them up here was falsified by the next change to the
 // function, and a summary that has gone quietly stale is worse than no summary.
 //
-// A shape this file does not recognize as a command at all (`bash -c 'git push
-// …'`) keeps the old FAIL-OPEN answer, as does `git fetch` outside its own
-// refspec rule, as does every other subcommand. That residual pass-through is
-// named and accepted, not closed: the pre-push hook is still the real
-// boundary, and widening the scan here is what produced false positives on
-// ordinary document text in earlier rounds.
+// A `git` token this file does not recognize as one at all — `bash -c 'git
+// push …'`, whose token is `'git`, quote and all (see isGitToken) — never
+// reaches evaluatePush, so this file forms no opinion about the push inside
+// it. `git fetch` (outside its own refspec rule) and every other subcommand
+// do not reach it either. That residual pass-through is named and accepted,
+// not closed: the pre-push hook is still the real boundary, and widening the
+// scan here is what produced false positives on ordinary document text in
+// earlier rounds. Note the predicate: this is about the TOKEN, not about
+// command position. A recognized `git` sitting where a command cannot start
+// is still judged where the destination can be read — `echo git push origin
+// develop` denies.
 //
 // COMMAND POSITION IS READ FROM WHITESPACE-SPLIT TOKENS, so any separator the
 // split does not leave standing alone hides it, and the fail-closed arm then
@@ -274,11 +279,30 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
         if (REFSPEC_RE.test(bare)) targets.push(bare.includes(':') ? bare.split(':').pop() : bare);
       }
       // The RAW token decides "cleanly written", the unquoted one decided
-      // "names a destination" above - so `git push origin "develop"` yields a
-      // readable target AND stays reported as not plainly written.
-      const notPlain = refspecs.filter((r) => !REFSPEC_RE.test(r));
-      if (notPlain.length > 0) note('víc nebo poškozené refspecy', notPlain);
-      else if (refspecs.length > 1) note('víc nebo poškozené refspecy', refspecs);
+      // "names a destination" above - so a quoted branch yields a readable
+      // target AND stays reported as not plainly written.
+      //
+      // ONE PROBLEM PER OFFENDING TOKEN. Recording them together made the
+      // whole list share one excuse: `blocking` below tests `some`, so a
+      // single expanded token spoke for every other token filed with it, and
+      // appending `$x` bought silence about a wildcard refspec standing next
+      // to it. A problem may only be recorded on tokens that all bear on it.
+      for (const r of refspecs.filter((t) => !REFSPEC_RE.test(t))) {
+        note('víc nebo poškozené refspecy', [r]);
+      }
+
+      // Recorded on its own, NOT in an `else` arm behind the loop above: a
+      // token this file cannot read does not stop it from seeing that more
+      // than one destination is being pushed, and while this sat in that arm
+      // one unreadable token dropped the arity defect on the floor.
+      //
+      // Attributed to the refspecs whose presence is CERTAIN. An expanded
+      // token may stand for nothing or for several things, so it cannot be
+      // counted towards "more than one" — and it cannot hide the ones that
+      // are written out either. Where nothing is certain, nothing is
+      // recorded, which is what keeps `git push $r $a $b` silent.
+      const certain = refspecs.filter((r) => !EXPANSION_RE.test(r));
+      if (certain.length > 1) note('víc nebo poškozené refspecy', certain);
     }
   }
 
@@ -296,15 +320,22 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   //
   // Command position — the `git` token starts an invocation (index 0, after a
   // shell control operator, or after a NAME=value assignment). Without it,
-  // fail-closed would fire on any string CONTAINING the words `git push`: a
+  // this arm would fire on any string CONTAINING the words `git push`: a
   // heredoc being written to a file, a commit message quoting a command, an
   // `echo`. That is document text, and denying it is the exact failure mode
-  // this layer was demoted for.
+  // this layer was demoted for. It gates THIS arm only: a destination read out
+  // of an invocation with no problem at all is judged above whether or not
+  // command position holds, which is why `echo git push origin develop`
+  // denies while `echo git push --mirror` does not.
   //
   // And no shell expansion in the tokens that CAUSED that problem (see
-  // EXPANSION_RE) — per problem and per token, never on another problem's
-  // behalf, which is why this is a `find` over the list and not a test of the
-  // whole invocation.
+  // EXPANSION_RE). Read the test as it is written: `some`, so ONE expanded
+  // token excuses the WHOLE problem it was recorded on, siblings included.
+  // That is a constraint on the `note(...)` calls above, not a property of
+  // this line — record a problem only on tokens that all bear on it, or an
+  // expanded one will excuse a defect that has nothing to do with it. The
+  // `find` is the other half: an excused problem is stepped over rather than
+  // returned out of, so the next problem still gets its turn.
   const blocking = atCommandPosition
     ? problems.find((p) => !p.tokens.some((t) => EXPANSION_RE.test(t)))
     : undefined;
