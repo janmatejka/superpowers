@@ -66,7 +66,10 @@ Adjustments to the checklist above:
      fine. Either way the leftovers still have to be resolved. Within eligibility, a
      **verified publication guarantee for THIS session is a fail-closed
      precondition** — the hook must exist, be at least v2, and reject a synthetic
-     protected-branch line run in this session's own environment; a line that
+     protected-branch line run in this session's own environment, together
+     with the mirror-image accept case: a hook that cannot execute at all
+     "rejects" everything while still carrying its marker line, so the reject
+     half alone proves nothing without it. A line that
      passes means the agent-session marker is absent and the hook disables itself
      here. A failing `git fetch origin` is a hard failure too; a missing
      `<CTX_DIR>/ums-repo.json` is only reported once ("built-in defaults apply") and

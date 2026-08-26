@@ -83,8 +83,12 @@ this workspace:
 - Then publish: the agent pushes its OWN ticket branch, announcing the branch and the
   outgoing commits. If the current branch is shared (`protectedBranches`, see the
   contract's Repository Configuration section), the agent does NOT push — it prepares
-  the exact command `! git push origin HEAD:<baseBranch>` together with the outgoing
-  commits and the user runs it; the agent never pushes a shared branch itself.
+  the exact command `! MB_HUMAN_PUSH=1 git push origin HEAD:<the current shared
+  branch>` together with the outgoing commits and the user runs it. The commit
+  the archive move just made is local only, so the content rule cannot apply here
+  (it is not yet reachable from any `refs/remotes/<remote>/*`) and the escape is
+  the only form that gets it through; the agent never pushes a shared branch and
+  never sets that variable itself.
 
 This skill deletes no branches — step 4 of the contract's sequence belongs to the
 finishing Discard path.

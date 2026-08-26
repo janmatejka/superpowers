@@ -190,9 +190,11 @@ Scope lock remains active until command completion.
   result = **STOP** before publishing anything.
 - Report the branch to publish and let the actor push it (own ticket branch,
   announced) or hand the command to the user for a shared branch
-  (`! git push origin HEAD:<baseBranch>` — the integration fast-forward is the
-  user's own command; the agent never runs it, never sets `MB_HUMAN_PUSH`, and
-  never substitutes `--no-verify`). Re-verify after the push.
+  (`! MB_HUMAN_PUSH=1 git push origin HEAD:<the current shared branch>` — this
+  commit is local only per §6b's own opening line, so the content rule cannot
+  apply yet and the escape is the only form that gets it through; the agent
+  never runs it and never sets `MB_HUMAN_PUSH` itself, and never substitutes
+  `--no-verify`). Re-verify after the push.
 - A published link to an unreachable commit is the failure this gate exists to
   prevent.
 

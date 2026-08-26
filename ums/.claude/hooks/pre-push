@@ -33,8 +33,8 @@
 #
 # Scope: refs/heads/* (branches) only. The content rule is branch-scoped; tag
 # pushes and anything else are out of scope of it (a tag delete or a tag
-# force-move is not a "branch push") and reach no check below this comment.
-# They are NOT untouched, though: the fail-closed stdin-buffer arm above this
+# force-move is not a "branch push") and reach no check below the scope gate.
+# They are NOT untouched, though: the fail-closed stdin-buffer arm above that
 # scope gate still applies to them, so a push that includes a tag ref rejects
 # for everyone, marker or not, if that arm cannot buffer the ref list.
 #
@@ -262,8 +262,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # disagree either.)
     remote_ref_lc=$(to_lower "$remote_ref")
 
-    # Out of scope: only refs/heads/* (branches) are policed here. Tags and
-    # anything else pass through untouched.
+    # Out of scope: only refs/heads/* (branches) are policed by this loop's
+    # own checks. Tags and anything else skip straight to the next ref.
     case "$remote_ref_lc" in
         refs/heads/*) ;;
         *) continue ;;
