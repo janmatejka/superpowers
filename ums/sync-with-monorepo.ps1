@@ -67,33 +67,96 @@ $AGENT_MARKER_NAME = 'MB_AGENT_SESSION'
 # The agent-session marker must reach EVERY harness, or the pre-push hook
 # disables itself there and the agent runs unsupervised. settings.json is
 # Claude Code's registration format and is deliberately not deployed to the
-# other targets, so the marker is written into each harness's own
-# configuration instead. The write is idempotent - a repeated deploy must
-# not grow the file.
+# other targets, so the marker is written into each harness's own,
+# documented environment-injection mechanism instead:
+#   codex    - config.toml [shell_environment_policy] "set" inline table.
+#              Confirmed at https://learn.chatgpt.com/docs/config-file/config-advanced
+#              ("set" injects custom env vars into spawned subprocesses,
+#              including git). A bare top-level [env] table - what an
+#              earlier round of this function wrote - is NOT read by Codex.
+#   gemini   - .env file in the agent's own config dir (~/.gemini/.env or
+#              ./.gemini/.env). Confirmed at
+#              https://google-gemini.github.io/gemini-cli/docs/get-started/configuration.html
+#              and https://geminicli.com/docs/reference/configuration/ :
+#              settings.json has NO env-injection key at all (an earlier
+#              round wrote "env" into settings.json, which Gemini CLI never
+#              reads); .env loading is the only documented mechanism.
+#   kilocode - NO documented mechanism found. kilo.jsonc only lets config
+#              VALUES read existing env vars via {env:VAR} - it has no
+#              analog of "set"/.env to inject new ones for the terminal/
+#              subprocess Kilo Code shells out to. Checked
+#              https://kilo.ai/docs/automate/extending/shell-integration and
+#              https://kilo.ai/docs/getting-started/settings ; neither
+#              documents env injection. This is a genuine, currently
+#              unclosed gap for this harness - see the harness matrix.
+# Each write is idempotent - a repeated deploy must not grow the file or
+# duplicate a key.
 function Set-AgentMarker([string] $ConfigDir, [string] $Agent) {
-    $file = switch ($Agent) {
-        'codex'    { Join-Path $ConfigDir 'config.toml' }
-        'gemini'   { Join-Path $ConfigDir 'settings.json' }
-        'kilocode' { Join-Path $ConfigDir 'settings.json' }
+    switch ($Agent) {
+        'codex'    { Set-CodexEnvMarker $ConfigDir; return }
+        'gemini'   { Set-DotEnvMarker (Join-Path $ConfigDir '.env'); return }
+        'kilocode' { throw [System.NotSupportedException]::new("Set-AgentMarker: no documented environment-injection mechanism for 'kilocode' - marker NOT written, gap is open (see harness matrix).") }
         default    { throw "Set-AgentMarker: unsupported agent '$Agent'" }
     }
-    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
-    if ((Test-Path -LiteralPath $file) -and ((Get-Content -LiteralPath $file -Raw) -match $AGENT_MARKER_NAME)) {
+}
+
+# Merges `set = { $AGENT_MARKER_NAME = "1" }` into config.toml's
+# [shell_environment_policy] table, preserving any other keys already in
+# that table and any other sections in the file. Handles all four shapes:
+# no file, file without the section, section without a `set` line, and
+# section with an existing `set = { ... }` that has unrelated keys.
+function Set-CodexEnvMarker([string] $ConfigDir) {
+    $file = Join-Path $ConfigDir 'config.toml'
+    New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+    $text = if (Test-Path -LiteralPath $file) { (Get-Content -LiteralPath $file -Raw) -replace "`r`n", "`n" } else { '' }
+    if ($text -match [regex]::Escape($AGENT_MARKER_NAME)) { return }
+
+    $lines = @(if ($text) { $text -split "`n" } else { @() })
+    $sectionIdx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*\[shell_environment_policy\]\s*$') { $sectionIdx = $i; break }
+    }
+    if ($sectionIdx -lt 0) {
+        # No [shell_environment_policy] section anywhere - append a fresh one.
+        $newLines = $lines + @('', '[shell_environment_policy]', "set = { $AGENT_MARKER_NAME = `"1`" }")
+        Set-Content -LiteralPath $file -Value ($newLines -join "`n") -Encoding utf8
         return
     }
-    if ([IO.Path]::GetExtension($file) -eq '.toml') {
-        Add-Content -LiteralPath $file -Value "`n[env]`n$AGENT_MARKER_NAME = `"1`""
+
+    $endIdx = $lines.Count
+    for ($i = $sectionIdx + 1; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*\[') { $endIdx = $i; break }
+    }
+    $setIdx = -1
+    for ($i = $sectionIdx + 1; $i -lt $endIdx; $i++) {
+        if ($lines[$i] -match '^\s*set\s*=\s*\{(.*)\}\s*$') { $setIdx = $i; break }
+    }
+    if ($setIdx -lt 0) {
+        # Section exists but has no `set` line yet - add one right after the header.
+        $before = $lines[0..$sectionIdx]
+        $after = if ($sectionIdx + 1 -le $lines.Count - 1) { $lines[($sectionIdx + 1)..($lines.Count - 1)] } else { @() }
+        $newLines = $before + @("set = { $AGENT_MARKER_NAME = `"1`" }") + $after
+        Set-Content -LiteralPath $file -Value ($newLines -join "`n") -Encoding utf8
         return
     }
-    $json = if (Test-Path -LiteralPath $file) { Get-Content -LiteralPath $file -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
-    # .PSObject.Properties.Name returns $null (not an empty array) when there
-    # are zero properties, so materialize to an array before -contains.
-    $propNames = @(@($json.PSObject.Properties) | ForEach-Object { $_.Name })
-    if ($propNames -notcontains 'env') {
-        $json | Add-Member -NotePropertyName 'env' -NotePropertyValue ([pscustomobject]@{})
+
+    # `set` table exists - merge the marker key in, preserving existing pairs.
+    $inner = $Matches[1].Trim()
+    $pairs = @()
+    if ($inner) { $pairs = @($inner -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+    $pairs += "$AGENT_MARKER_NAME = `"1`""
+    $lines[$setIdx] = "set = { " + ($pairs -join ', ') + " }"
+    Set-Content -LiteralPath $file -Value ($lines -join "`n") -Encoding utf8
+}
+
+# Appends "$AGENT_MARKER_NAME=1" to a .env file, creating it (and its parent
+# directory) if missing, and preserving any pre-existing lines.
+function Set-DotEnvMarker([string] $File) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $File) | Out-Null
+    if ((Test-Path -LiteralPath $File) -and ((Get-Content -LiteralPath $File -Raw) -match $AGENT_MARKER_NAME)) {
+        return
     }
-    $json.env | Add-Member -NotePropertyName $AGENT_MARKER_NAME -NotePropertyValue '1' -Force
-    $json | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $file -Encoding utf8
+    Add-Content -LiteralPath $File -Value "$AGENT_MARKER_NAME=1" -Encoding utf8
 }
 
 # Tests need only the function definitions, not the full sync run.
@@ -351,8 +414,13 @@ else {
         }
     if (-not ($Agent -eq 'claude')) {
         Write-Host "note: settings.json not deployed (Claude Code registration format) - wire hooks manually for '$Agent'." -ForegroundColor DarkGray
-        Set-AgentMarker $dstConfig $Agent
-        Write-Host "note: agent-session marker ($AGENT_MARKER_NAME) written into '$Agent' config - without it the pre-push guard disables itself there." -ForegroundColor DarkGray
+        try {
+            Set-AgentMarker $dstConfig $Agent
+            Write-Host "note: agent-session marker ($AGENT_MARKER_NAME) written into '$Agent' config - without it the pre-push guard disables itself there." -ForegroundColor DarkGray
+        }
+        catch [System.NotSupportedException] {
+            Write-Host "WARNING: no known agent-session marker mechanism for '$Agent' - the pre-push guard self-disables there until this harness gets one. This is a named, open gap, not a silent failure." -ForegroundColor Yellow
+        }
     }
     elseif ($Scope -eq 'UserProfile') {
         Write-Host "note: settings.json not deployed - merge hook registration into $($target.ConfigDir)\settings.json manually if wanted." -ForegroundColor DarkGray
