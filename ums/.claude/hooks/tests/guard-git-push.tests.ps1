@@ -62,10 +62,12 @@ foreach ($c in @(
 Assert-Match (Test-Cmd "git status`ngit push origin develop") 'permissionDecision.*deny' 'zamítnuto: push za jiným git příkazem ve stejném řádku/víceřádku'
 
 # ---------------------------------------------------------------------------
-# allowed now (regression pinned in the NEW direction): an unrecognized flag
-# means "not simple" and this layer is no longer the boundary — it defers to
-# the pre-push hook instead of guessing. Real force/delete/mirror pushes are
-# proven rejected end-to-end in pre-push.tests.ps1, not here.
+# DENIED, and this is the direction reversed by task 6: a RECOGNIZED `git push`
+# this file cannot read with confidence as harmless is now fail-CLOSED. These
+# assertions used to pin the opposite ("unknown flag -> allow, the pre-push
+# hook decides"), which was defensible while this layer carried no rule of its
+# own; it now carries the actor rule, so waving through the shapes it does not
+# understand would be waving through the very thing it exists to catch.
 # ---------------------------------------------------------------------------
 foreach ($c in @(
     'git push --force origin feature/ums-1-alfa',
@@ -81,19 +83,25 @@ foreach ($c in @(
     'git push -dq origin feature/ums-1-alfa',
     'git push --force-with-lease=refs/heads/x:deadbeef origin x',
     'git push --force origin develop'
-)) { Assert-Eq (Test-Cmd $c) '' "povoleno (neznámý přepínač, o rozhodnutí se stará pre-push hook): $c" }
+)) { Assert-Match (Test-Cmd $c) 'permissionDecision.*deny' "zamítnuto (rozpoznaný push, kterému guard nerozumí): $c" }
 
 # ---------------------------------------------------------------------------
-# allowed now (former over-denial from round 1, fixed by failing open on
-# anything not cleanly parseable): quoted branch names, redirections,
-# trailing comments, and a commit message that happens to mention "push"
+# The PRICE of the reversal above, pinned rather than hidden: shapes that
+# round 2 deliberately let through as "not cleanly parseable" are now denied
+# too, because the tokenizer does recognize a `push` subcommand in them. The
+# last case is the sharpest — a commit message that merely QUOTES a push
+# command. That is a real false positive; it is accepted here because it errs
+# toward denying (the agent rewords the message and moves on), while the
+# opposite error hands a protected branch to the agent. The narrowness of the
+# tightening is what keeps it bearable: it applies ONLY to a recognized `push`
+# subcommand, never to the context-free checks or to plain document text.
 # ---------------------------------------------------------------------------
 foreach ($c in @(
     'git push origin "feature/ums-1-alfa"',
     'git push origin feature/ums-1-alfa 2>&1',
     'git push origin feature/ums-1-alfa # nasazení',
     'git commit -m "vysvetli git push origin develop"'
-)) { Assert-Eq (Test-Cmd $c) '' "povoleno (dřívější nadměrné zamítnutí opraveno): $c" }
+)) { Assert-Match (Test-Cmd $c) 'permissionDecision.*deny' "zamítnuto (rozpoznaný push v tvaru, kterému guard nerozumí): $c" }
 
 # ---------------------------------------------------------------------------
 # `--no-verify` next to `push`: the one context-free substring check, since
@@ -310,18 +318,34 @@ Assert-Eq $fullBadStdin.Code 0 'exit 0: nerozparsovatelný vstup nezpůsobí pá
 Assert-Eq $fullBadStdin.Err '' 'žádný stderr: nerozparsovatelný vstup nevyhodí nezachycenou výjimku'
 
 # ---------------------------------------------------------------------------
-# UMS_ALLOW_SHARED_PUSH=1 — the human escape the pre-push hook honours. This
-# early-warning layer must not stand in front of the command the layer itself
-# hands the user, otherwise the escape is unusable in-session.
+# MB_HUMAN_PUSH=1 — the human escape the pre-push hook honours, DENIED here.
+# These assertions used to pin the opposite (the escape passes through),
+# which was right while the hook's escape was narrow and this layer carried no
+# rule: the layer would otherwise have blocked the command it hands the user.
+# It no longer does, on a measured premise: only the agent's own tool calls
+# reach a PreToolUse hook, a command the user types with a leading `!` never
+# does (task 1). So the variable turning up HERE means an agent wrote it —
+# a contract violation on its own, and the only mechanical containment left
+# once the hook's escape lifts everything.
 # ---------------------------------------------------------------------------
-Assert-Eq (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin develop') '' 'push sdílené větve s lidskou výjimkou projde'
-Assert-Eq (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin main') '' 'výjimka platí pro každou sdílenou větev'
-# the escape lifts ONE rule; it is not a licence to disable every hook
-Assert-Match (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push --no-verify origin develop') 'permissionDecision.*deny' 'výjimka neomlouvá --no-verify'
-# a different value is not the escape
-Assert-Match (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=0 git push origin develop') 'permissionDecision.*deny' 'jiná hodnota než 1 výjimkou není'
-# the rejection itself must teach the way out
-Assert-Match (Test-Cmd 'git push origin develop') 'UMS_ALLOW_SHARED_PUSH=1' 'zamítnutí pojmenuje únikovou cestu pro člověka'
+$rEscape = Test-Cmd 'MB_HUMAN_PUSH=1 git push origin HEAD:develop'
+Assert-Match $rEscape 'permissionDecision.*deny' 'guard zamítne agentní push nesoucí lidskou výjimku'
+Assert-Match $rEscape 'MB_HUMAN_PUSH' 'zamítnutí pojmenuje proměnnou, kvůli které padlo'
+# the old name is the same violation while it is still honoured by the hook
+Assert-Match (Test-Cmd 'UMS_ALLOW_SHARED_PUSH=1 git push origin develop') 'permissionDecision.*deny' 'guard zamítne i staré jméno výjimky'
+# ... and the target does not matter: writing the variable IS the violation,
+# so an UNPROTECTED branch (which would otherwise pass) is denied too
+Assert-Match (Test-Cmd 'MB_HUMAN_PUSH=1 git push origin feature/ums-1-alfa') 'permissionDecision.*deny' 'výjimka je porušením i u nechráněné větve'
+# LOAD-BEARING NEGATIVE for the pattern: a different value is not the escape,
+# so the very same command on an unprotected branch must still pass
+Assert-Eq (Test-Cmd 'MB_HUMAN_PUSH=0 git push origin feature/ums-1-alfa') '' 'jiná hodnota než 1 výjimkou není'
+# order preserved: --no-verify is judged BEFORE the escape, so its own (more
+# specific) reason is the one the agent gets
+Assert-Match (Test-Cmd 'MB_HUMAN_PUSH=1 git push --no-verify origin develop') 'no-verify' 'výjimka nepřebíjí dřívější kontrolu --no-verify'
+# the rejection of a plain push hands over the command instead: the moment of
+# integration belongs to the human, and the hook then lets that push through
+# by its own content rule when the commits are already published
+Assert-Match (Test-Cmd 'git push origin develop') '! git push origin HEAD:develop' 'zamítnutí podává uživateli hotový příkaz bez výjimky'
 
 # ---------------------------------------------------------------------------
 # bare push resolves the current branch from cwd when it can
@@ -370,5 +394,45 @@ $bashMatchers = @($settings.hooks.PreToolUse | Where-Object {
 Assert-Eq @($bashMatchers).Count 1 'guard-git-push je registrovaný právě jednou'
 Assert-Match $bashMatchers[0] 'Bash' 'matcher guardu pokrývá Bash tool'
 Assert-Match $bashMatchers[0] 'PowerShell' 'matcher guardu pokrývá i PowerShell tool'
+
+# ---------------------------------------------------------------------------
+# FAIL-CLOSED for a recognized `push`, with both halves of the boundary. The
+# tightening covers ONLY the recognized `push` subcommand — the context-free
+# checks, `fetch` and everything else stay fail-open, otherwise false alarms
+# would multiply on ordinary document text (this guard once denied writing up
+# the very design of this plan).
+# ---------------------------------------------------------------------------
+$r = Test-Cmd 'git push --mirror origin'
+Assert-Match $r 'permissionDecision.*deny' 'guard zamítne rozpoznaný push s neznámým přepínačem'
+Assert-Match $r 'neumím spolehlivě přečíst' 'zamítnutí říká, že push nešel přečíst, ne že je větev chráněná'
+
+$r = Test-Cmd 'git push origin a:b c:d'
+Assert-Match $r 'permissionDecision.*deny' 'guard zamítne rozpoznaný push s víc refspecy, kterým nerozumí'
+
+# non-plain remote — the third converted return; a URL is not a remote NAME
+$r = Test-Cmd 'git push https://example.com/evil.git HEAD:feature/x'
+Assert-Match $r 'permissionDecision.*deny' 'guard zamítne rozpoznaný push s nesrozumitelným jménem remote'
+
+# Kontrolní případ: jasně neškodný push na nechráněnou větev musí dál projít,
+# jinak by fail-closed zamítal všechno a asercie výš by nic nedokazovaly.
+$r = Test-Cmd 'git push -u origin feature/x'
+Assert-Eq $r '' 'kontrola: srozumitelný push na nechráněnou větev prochází'
+
+# Zbytkový průchod přiznaný v návrhu: tvar, ve kterém se token `git` vůbec
+# nerozpozná, se fail-closed větve nikdy nedotkne. `bash -c '…'` je přesně ten
+# případ, kterým guard prohrál oponenturu, a tenhle plán ho nezavírá.
+$r = Test-Cmd "bash -c 'git push --mirror origin'"
+Assert-Eq $r '' 'zbytkový průchod: nerozpoznaný tvar guard nezamítá'
+
+# The exit-code/stderr half: a deny must be a CLEAN deny, not a crash that
+# merely happens to print JSON (or, worse, nothing).
+$rFull = Test-CmdFull 'git push --mirror origin'
+Assert-Eq $rFull.Code 0 'exit 0: fail-closed zamítnutí nepadá, jen zamítá'
+Assert-Eq $rFull.Err '' 'žádný stderr: fail-closed zamítnutí nevyhodí nezachycenou výjimku'
+
+# The unresolvable current branch (detached HEAD) deliberately KEEPS its
+# fail-open answer and is asserted further up, unchanged: an unguessable
+# branch is not a recognized protected target, and denying there would block
+# legitimate work from a detached HEAD.
 
 Complete-Tests

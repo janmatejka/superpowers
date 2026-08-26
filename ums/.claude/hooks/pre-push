@@ -41,16 +41,24 @@
 # (git hooks live outside version control, so this guarantee only exists
 # once that script has been run against a given working copy).
 #
-# THE HUMAN ESCAPE: UMS_ALLOW_SHARED_PUSH=1 in the environment lifts the
-# shared-branch rule (and only that rule — deletion and force push stay
-# forbidden). It exists because a git hook cannot tell a human from an agent:
-# the whole layer asks the USER to publish `develop` themselves, so without an
-# escape the hook would block the very remedy it points at, and `--no-verify`
-# — which disables every hook, not just this rule — would become the only way
-# out. The rejection message below names the escape, so whoever hits the wall
+# THE HUMAN ESCAPE: MB_HUMAN_PUSH=1 in the environment means "a human takes
+# responsibility for THIS push" and lifts the WHOLE guard — the protected-
+# branch rule, the deletion ban and the force-push ban alike. It exists
+# because a git hook cannot tell a human from an agent: the whole layer asks
+# the USER to publish a protected branch themselves, so without an escape the
+# hook would block the very remedy it points at, and `--no-verify` — which
+# disables every hook, not just one rule — would become the only way out. The
+# WIDE scope is deliberate, not sloppiness: now that everything here is gated
+# on the agent-session marker, a human who rebases their OWN ticket branch
+# in-session carries that marker too, and a narrow escape would leave them
+# nothing but turning hooks off entirely. UMS_ALLOW_SHARED_PUSH=1 is the old
+# name, still honoured for the transition with a deprecation line on stderr.
+# The rejection message below names the escape, so whoever hits the wall
 # learns the way through it at that moment. An AGENT MUST NEVER SET IT: that
 # is contract text (Publication Contract), the same trust model as every other
-# rule of this layer, not something this hook can enforce.
+# rule of this layer, not something this hook can enforce — the mechanical
+# containment lives in the PreToolUse guard (guard-git-push.mjs), which denies
+# any command carrying either name.
 #
 # Two known, accepted bypasses — both require deliberate, visible intent,
 # unlike every CLI-spelling trick this hook exists to close:
@@ -121,6 +129,29 @@ is_agent_session() {
 # installing this layer would silently turn LFS off for everyone on the
 # team.
 if ! is_agent_session; then
+    run_chained "$@"
+    exit $?
+fi
+
+# The single unified way out for a human: it lifts the WHOLE guard, not one
+# rule (see THE HUMAN ESCAPE in the header for why the scope is this wide).
+# Decided HERE, above every check, because the decision is about WHO is
+# pushing, not about what a particular ref does. Per the contract an agent
+# never sets it; the mechanical containment against one that does is the
+# PreToolUse guard, not a narrower scope here.
+human_escape=0
+if [ "$MB_HUMAN_PUSH" = "1" ]; then
+    human_escape=1
+elif [ "$UMS_ALLOW_SHARED_PUSH" = "1" ]; then
+    human_escape=1
+    echo "UMS: UMS_ALLOW_SHARED_PUSH je zastaralé jméno — používej MB_HUMAN_PUSH=1." >&2
+fi
+
+# Announced, never silent: an escape left set in a shell would otherwise
+# disarm the guarantee invisibly for the rest of that shell's life. NOT a
+# plain `exit 0` — the chained foreign hook (LFS) still has to run.
+if [ "$human_escape" = "1" ]; then
+    echo "UMS: MB_HUMAN_PUSH=1 — vědomá výjimka člověka, guard je pro tenhle push zvednutý." >&2
     run_chained "$@"
     exit $?
 fi
@@ -238,13 +269,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     branch_lc=${remote_ref_lc#refs/heads/}
     if is_protected "$branch_lc"; then
         b=$(branch_name "$remote_ref")
-        if [ "$UMS_ALLOW_SHARED_PUSH" = "1" ]; then
-            # Deliberate human publication — announced, not silent, so an
-            # escape left set in a shell stays visible. NOT a `continue`:
-            # the deletion and non-fast-forward rules below still apply to
-            # this ref, the escape lifts the shared-branch rule only.
-            echo "UMS: UMS_ALLOW_SHARED_PUSH=1 — push do sdílené větve '$b' povolen (vědomá výjimka člověka)." >&2
-        elif is_integration_push "$local_sha" "$remote_sha"; then
+        if is_integration_push "$local_sha" "$remote_sha"; then
             echo "UMS: '$b' — fast-forward na commity už publikované na '$remote_name', push povolen." >&2
         else
             echo "UMS: '$b' je sdílená větev — projde jen fast-forward na commity, které už jsou" >&2
@@ -253,9 +278,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             # Refspec form on purpose: in a ticket clone WITHOUT a local
             # copy of the shared branch, `git push origin <b>` fails on an
             # unknown local ref, so the advice would not even run.
-            echo "     \`! UMS_ALLOW_SHARED_PUSH=1 git push $remote_name HEAD:$b\`" >&2
-            echo "     UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka pro člověka; agent ji nikdy nenastavuje." >&2
-            echo "     (Výjimka platí jen na sdílené větve — mazání a force push zůstávají zakázané.)" >&2
+            echo "     \`! MB_HUMAN_PUSH=1 git push $remote_name HEAD:$b\`" >&2
+            echo "     MB_HUMAN_PUSH=1 je vědomá výjimka pro člověka; agent ji nikdy nenastavuje." >&2
+            echo "     (Výjimka zvedá celý guard: člověk za tenhle jeden push přebírá odpovědnost.)" >&2
             reject=1
             continue
         fi

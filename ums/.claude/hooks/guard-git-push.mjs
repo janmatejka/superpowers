@@ -8,14 +8,24 @@
 // installed per clone by install-git-hooks.ps1), which git feeds
 // fully-resolved refs — no shell spelling left to bypass.
 //
-// This layer's only remaining job: a cheap, best-effort, FAIL-OPEN early
-// warning for the common accident — a plainly-typed `git push` whose target
-// is confidently recognized as a protected branch — plus one context-free
-// substring check for `--no-verify` (which would skip the real guarantee).
-// Everything this layer cannot parse with confidence now ALLOWS (quoted
-// branch names, redirections, trailing comments, a commit message that
-// happens to mention "push" must all pass); the pre-push hook remains the
-// backstop for anything this early check misses or gets wrong.
+// What this layer DOES carry is the ACTOR rule: the moment of integration
+// belongs to a human. Only the agent's own tool calls reach a PreToolUse
+// hook — a command the user types with a leading `!` never does — so a `git
+// push` arriving here is by definition the agent's, and a protected branch is
+// off limits to it even as the fast-forward the pre-push hook would happily
+// accept. For the same reason a command carrying the human escape
+// (HUMAN_ESCAPE_RE) is denied here: an agent never writes it.
+//
+// A RECOGNIZED `git push` is therefore FAIL-CLOSED: whatever this file cannot
+// read with confidence as harmless (unknown flag, non-plain remote, multiple
+// or malformed refspecs) is denied rather than waved through. Everything else
+// keeps the old FAIL-OPEN posture on purpose — the context-free `--no-verify`
+// check, `git fetch`, every other subcommand, an unresolvable current branch
+// (which names no protected target at all), and above all a shape whose `git`
+// token is not recognized in the first place (`bash -c 'git push …'`). That
+// residual pass-through is named and accepted, not closed: the pre-push hook
+// is still the real boundary, and widening the scan here is what produced
+// false positives on ordinary document text in earlier rounds.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -70,18 +80,27 @@ const loadProtected = (cwd) => {
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//, '');
 const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
 
+// Hands over the PLAIN command on purpose, with no escape in front of it: an
+// integration whose commits are already published on the remote is exactly
+// what the pre-push hook's content rule lets through, so prefixing
+// MB_HUMAN_PUSH here would teach the user to lift the whole guard for a push
+// that needs nothing lifted. When the push is NOT such a fast-forward, the
+// hook rejects it and its own message names the escape at that moment.
 const sharedBranchMessage = (branch) =>
-  `UMS: '${branch}' je sdílená větev — agent do ní nepushuje. Připrav příkaz a nech ho uživateli: ` +
-  `\`! UMS_ALLOW_SHARED_PUSH=1 git push origin HEAD:${branch}\` — UMS_ALLOW_SHARED_PUSH=1 je vědomá výjimka ` +
-  'pro člověka, agent ji nikdy nenastavuje (Publication Contract, dvouúrovňová push policy).';
+  `UMS: '${branch}' je sdílená větev — okamžik integrace patří člověku, agent do ní nepushuje ani ` +
+  `fast-forwardem. Připrav příkaz a nech ho uživateli: \`! git push origin HEAD:${branch}\` ` +
+  '(Publication Contract, vrstva aktéra).';
 
-// The human escape honoured by the pre-push hook (the real boundary). A
-// command carrying it is a deliberate human publication, so this early
-// warning must not stand in front of it — otherwise the layer would hand the
-// user a command its own guard then refuses, which is the deadlock this
-// escape exists to break. Checked AFTER the --no-verify rule below: the
-// escape lifts one rule, it is not a licence to disable every hook.
-const HUMAN_ESCAPE_RE = /(^|\s)UMS_ALLOW_SHARED_PUSH=1(\s|$)/;
+// The human escape honoured by the pre-push hook (the real boundary), under
+// both its current and its transitional old name. A command carrying it is
+// DENIED here, and that reversal rests on a measured premise: a command the
+// user types with a leading `!` never reaches a PreToolUse hook, so anything
+// arriving here is the agent's own tool call — and per the contract an agent
+// never sets this variable. Its presence is therefore a violation in itself,
+// and this is the only mechanical containment left now that the escape lifts
+// the whole guard on the hook side. Checked AFTER the --no-verify rule below,
+// which has the more specific reason for the same command.
+const HUMAN_ESCAPE_RE = /(^|\s)(MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH)=1(\s|$)/;
 
 const currentBranch = (cwd) => {
   try {
@@ -120,29 +139,41 @@ const isGitToken = (tok) => {
   return t === 'git' || t === 'git.exe' || /\/git$/.test(t);
 };
 
-// Best-effort, FAIL-OPEN: only denies when the target is confidently
-// resolved to a protected branch. Anything not cleanly parseable (unknown
-// flag, non-plain remote, multiple/malformed refspecs, unresolvable current
-// branch) now ALLOWS — the pre-push hook is the real check, and it resolves
-// the current branch itself from the actual push, not from a guessed cwd.
+// FAIL-CLOSED, and only here: this function is reached only once the scan has
+// recognized a `push` subcommand, so "I cannot read this" means "I cannot
+// rule out a push into a protected branch" — and this layer now carries the
+// actor rule, so it must not wave that through.
+//
+// The ONE deliberate exception is an unresolvable current branch: an
+// unguessable branch is not a recognized protected target, and denying there
+// would block legitimate work from a detached HEAD. It keeps returning
+// { deny: false }, exactly as before.
 function evaluatePush(args, cwd, patterns) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
-  if (flags.some((f) => !PUSH_ALLOWED_FLAGS.has(f))) return { deny: false };
+  const unparseable = (what) => ({
+    deny: true,
+    reason:
+      `UMS: tenhle push neumím spolehlivě přečíst (${what}), a protože nesu pravidlo o tom, ` +
+      'kdo smí pushovat do sdílené větve, radši ho zamítám (Publication Contract). ' +
+      'Napiš ho srozumitelně: `git push [-u] <remote> <ref>[:<ref>]`.',
+  });
+
+  if (flags.some((f) => !PUSH_ALLOWED_FLAGS.has(f))) return unparseable('neznámý přepínač');
 
   let target = null;
   if (positionals.length === 0) {
     target = currentBranch(cwd) || null;
   } else {
     const [remote, ...refspecs] = positionals;
-    if (!REMOTE_RE.test(remote)) return { deny: false };
+    if (!REMOTE_RE.test(remote)) return unparseable('nesrozumitelné jméno remote');
     if (refspecs.length === 0) {
       target = currentBranch(cwd) || null;
     } else if (refspecs.length === 1 && REFSPEC_RE.test(refspecs[0])) {
       target = refspecs[0].includes(':') ? refspecs[0].split(':').pop() : refspecs[0];
     } else {
-      return { deny: false }; // multiple / malformed refspecs -> not simple
+      return unparseable('víc nebo poškozené refspecy');
     }
   }
 
@@ -218,11 +249,18 @@ process.stdin.on('end', () => {
     );
   }
 
-  // Deliberate human publication of a shared branch (see HUMAN_ESCAPE_RE):
-  // allow the whole command. The pre-push hook — the actual boundary —
-  // honours the same variable and still enforces everything the escape does
-  // not lift (deletion, force push).
-  if (HUMAN_ESCAPE_RE.test(command)) process.exit(0);
+  // This block used to ALLOW the whole command, because the layer handed the
+  // user a command carrying the escape and its own guard would have refused
+  // it. That reason is gone: commands the user types with a leading `!` never
+  // reach this hook, so anything carrying the escape that DOES reach it is
+  // the agent's own tool call — a breach of the contract, not a human
+  // publication (see HUMAN_ESCAPE_RE).
+  if (HUMAN_ESCAPE_RE.test(command)) {
+    deny(
+      'UMS: `MB_HUMAN_PUSH` je vědomá výjimka ČLOVĚKA a agent ji nikdy nenastavuje ' +
+        '(Publication Contract). Připrav příkaz a nech ho uživateli.',
+    );
+  }
 
   const tokens = command.split(/\s+/).filter(Boolean);
   let i = 0;

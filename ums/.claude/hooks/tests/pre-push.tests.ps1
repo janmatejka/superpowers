@@ -451,47 +451,40 @@ Remove-Item -Recurse -Force $root7
 # `develop` themselves, but a git hook cannot tell a human from an agent, so
 # without an explicit escape the hook rejects the very command the layer just
 # handed over — and mb-jira-update then refuses to move the ticket to "Test"
-# because the merge commit is not on origin. UMS_ALLOW_SHARED_PUSH=1 is that
-# escape: a REAL push to a protected branch must succeed with it and still
-# fail without it, and the rejection must name it so the user learns the way
-# out at the moment they hit the wall.
+# because the merge commit is not on origin. MB_HUMAN_PUSH=1 is that escape:
+# a REAL push to a protected branch must succeed with it and still fail
+# without it, and the rejection must name it so the user learns the way out at
+# the moment they hit the wall. Its SCOPE — it lifts the whole guard, deletion
+# and force push included — and the transitional acceptance of the old name
+# are proven on their own fixture at the end of this suite.
 # ---------------------------------------------------------------------------
 Invoke-GitOk $work @('checkout', 'develop') | Out-Null
 $developBeforeEscape = Get-Sha $origin 'refs/heads/develop'
 $r = Invoke-GitTry $work @('push', 'origin', 'develop')
 Assert-True ($r.Code -ne 0) 'bez proměnné je push na develop stále zamítnut'
-Assert-Match $r.Out 'UMS_ALLOW_SHARED_PUSH=1' 'zamítnutí samo pojmenuje únikovou cestu pro člověka'
+Assert-Match $r.Out 'MB_HUMAN_PUSH=1' 'zamítnutí samo pojmenuje únikovou cestu pro člověka'
 Assert-Match $r.Out 'agent ji nikdy nenastavuje' 'zamítnutí říká, že výjimka patří člověku, ne agentovi'
 Assert-Eq (Get-Sha $origin 'refs/heads/develop') $developBeforeEscape 'remote develop se po zamítnutí nepohnul'
 
 # Set narrowly and always restored: a leaked escape would silently disarm the
 # guarantee for every later assertion in this suite.
 function Invoke-WithEscape([scriptblock] $Body) {
-    $prev = $env:UMS_ALLOW_SHARED_PUSH
-    $env:UMS_ALLOW_SHARED_PUSH = '1'
+    $prev = $env:MB_HUMAN_PUSH
+    $env:MB_HUMAN_PUSH = '1'
     try { & $Body }
     finally {
-        if ($null -eq $prev) { Remove-Item Env:UMS_ALLOW_SHARED_PUSH -ErrorAction SilentlyContinue }
-        else { $env:UMS_ALLOW_SHARED_PUSH = $prev }
+        if ($null -eq $prev) { Remove-Item Env:MB_HUMAN_PUSH -ErrorAction SilentlyContinue }
+        else { $env:MB_HUMAN_PUSH = $prev }
     }
 }
 
 $r = Invoke-WithEscape { Invoke-GitTry $work @('push', 'origin', 'develop') }
-Assert-Eq $r.Code 0 's UMS_ALLOW_SHARED_PUSH=1 skutečný push na develop projde'
+Assert-Eq $r.Code 0 's MB_HUMAN_PUSH=1 skutečný push na develop projde'
 # ASCII-only pattern on purpose: git's stderr reaches this suite through the
 # console code page, which mangles diacritics (the other Czech assertions
 # above match ASCII substrings for the same reason).
-Assert-Match $r.Out 'UMS: UMS_ALLOW_SHARED_PUSH=1' 'povolený push je ohlášen, ne tichý'
+Assert-Match $r.Out 'UMS: MB_HUMAN_PUSH=1' 'povolený push je ohlášen, ne tichý'
 Assert-Eq (Get-Sha $origin 'refs/heads/develop') (Get-Sha $work 'develop') 'remote develop po povoleném pushi odpovídá lokálnímu'
-
-# The escape lifts the shared-branch rule and NOTHING else.
-$beforeNarrow = Get-Sha $origin 'refs/heads/feature/x'
-$r = Invoke-WithEscape { Invoke-GitTry $work @('push', 'origin', '--delete', 'feature/x') }
-Assert-True ($r.Code -ne 0) 'výjimka nepovoluje mazání větve'
-Assert-Eq (Get-Sha $origin 'refs/heads/feature/x') $beforeNarrow 'vzdálená feature/x po pokusu o smazání s výjimkou zůstává'
-$r = Invoke-WithEscape { Invoke-GitTry $work @('push', '--force', 'origin', 'feature/x') }
-Assert-True ($r.Code -ne 0) 'výjimka nepovoluje force push'
-Assert-Eq (Get-Sha $origin 'refs/heads/feature/x') $beforeNarrow 'vzdálená feature/x se po force pushi s výjimkou nezměnila'
 
 # And it is gone again afterwards — the guarantee is back in place.
 Add-Content -Path (Join-Path $work 'f.txt') -Value 'after escape'
@@ -1452,5 +1445,94 @@ Assert-True ($r.Code -ne 0) 'obsah: nulová local sha (mazání chráněné vět
 Assert-Eq (Get-Sha $originContent 'refs/heads/develop') $developBeforeDelete 'obsah: develop po pokusu o smazání zůstává na originu'
 
 Remove-Item -Recurse -Force $fxContent.Root
+
+# ---------------------------------------------------------------------------
+# 26. THE HUMAN ESCAPE LIFTS THE WHOLE GUARD - the shared-branch rule, the
+# deletion ban and the force-push ban alike. The mechanical containment
+# against an agent abusing it is the PreToolUse guard (which denies any
+# command carrying the variable), not a narrower scope here: once the hook
+# only fires inside an agent session, a human rebasing their OWN ticket branch
+# in-session carries the marker too, and a narrow escape would leave them
+# nothing but turning hooks off entirely.
+#
+# Own fixture: the primary $work/$origin were cleaned up many cases above, and
+# a force push needs a history that actually diverged from the published one.
+# ---------------------------------------------------------------------------
+
+# The parameter is NOT called $Body on purpose - see Invoke-WithMarker's own
+# comment above. A scriptblock invoked with `&` resolves names against the
+# CALLER's scope chain, so a $Body here would bind to Invoke-WithoutMarker's
+# own $Body and recurse into itself (measured: 51 levels deep before a guard
+# tripped, i.e. unbounded).
+function Invoke-WithHumanPush([string] $VarName, [scriptblock] $PushBody) {
+    Invoke-WithMarker {
+        Set-Item "Env:$VarName" '1'
+        try { & $PushBody } finally { Remove-Item "Env:$VarName" -ErrorAction SilentlyContinue }
+    }
+}
+
+$fxHuman = New-PushFixture 'mbhuman'
+$workHuman = $fxHuman.Work
+$originHuman = $fxHuman.Origin
+Invoke-Installer $workHuman $null | Out-Null
+
+# ticket branch published, then rewritten locally -> pushing it is a genuine
+# non-fast-forward, which the hook forbids without the escape
+Invoke-GitOk $workHuman @('checkout', '-b', 'feature/x') | Out-Null
+'feature' | Out-File -FilePath (Join-Path $workHuman 'g.txt') -Encoding utf8
+Invoke-GitOk $workHuman @('add', '-A') | Out-Null
+Invoke-GitOk $workHuman @('commit', '-m', 'feature') | Out-Null
+Invoke-GitOk $workHuman @('push', '-u', 'origin', 'feature/x') | Out-Null
+$featurePublished = Get-Sha $originHuman 'refs/heads/feature/x'
+Invoke-GitOk $workHuman @('reset', '--hard', 'HEAD~1') | Out-Null
+'prepsana historie' | Out-File -FilePath (Join-Path $workHuman 'g.txt') -Encoding utf8
+Invoke-GitOk $workHuman @('add', '-A') | Out-Null
+Invoke-GitOk $workHuman @('commit', '-m', 'prepsana historie') | Out-Null
+
+# Controls FIRST: without the escape the very same push must be rejected,
+# otherwise the assertions below would prove nothing about the escape - only
+# that a force push happens to be legal here.
+$r = Invoke-GitTry $workHuman @('push', '--force', 'origin', 'HEAD:feature/x')
+Assert-True ($r.Code -ne 0) 'kontrola: bez výjimky je force push vlastní větve zamítnutý'
+Assert-Eq (Get-Sha $originHuman 'refs/heads/feature/x') $featurePublished 'kontrola: vzdálená feature/x se po zamítnutí nezměnila'
+
+# ... and a value other than 1 is not the escape either (`= "1"`, not `-n`)
+$r = Invoke-WithMarker {
+    $env:MB_HUMAN_PUSH = '0'
+    try { Invoke-GitTry $workHuman @('push', '--force', 'origin', 'HEAD:feature/x') }
+    finally { Remove-Item Env:MB_HUMAN_PUSH -ErrorAction SilentlyContinue }
+}
+Assert-True ($r.Code -ne 0) 'kontrola: MB_HUMAN_PUSH=0 výjimkou není, force push zůstává zamítnutý'
+Assert-Eq (Get-Sha $originHuman 'refs/heads/feature/x') $featurePublished 'kontrola: vzdálená feature/x se ani po MB_HUMAN_PUSH=0 nezměnila'
+
+$r = Invoke-WithHumanPush 'MB_HUMAN_PUSH' { Invoke-GitTry $workHuman @('push', '--force', 'origin', 'HEAD:feature/x') }
+Assert-Eq $r.Code 0 'výjimka: force push vlastní větve s MB_HUMAN_PUSH projde'
+# ASCII-only pattern: git's stderr reaches this suite through the console code
+# page, which mangles diacritics.
+Assert-Match $r.Out 'MB_HUMAN_PUSH' 'výjimka: povolení je ohlášené na stderr'
+Assert-Eq (Get-Sha $originHuman 'refs/heads/feature/x') (Get-Sha $workHuman 'feature/x') 'výjimka: vzdálená feature/x se posunula na přepsanou historii'
+
+# deletion, the second rule the escape used to leave standing
+$r = Invoke-WithHumanPush 'MB_HUMAN_PUSH' { Invoke-GitTry $workHuman @('push', 'origin', '--delete', 'feature/x') }
+Assert-Eq $r.Code 0 'výjimka: mazání větve s MB_HUMAN_PUSH projde'
+Assert-Eq (Get-Sha $originHuman 'refs/heads/feature/x') $null 'výjimka: vzdálená feature/x je skutečně smazaná'
+
+# the OLD name stays accepted for the transition, announcing itself as
+# deprecated and naming the new one
+Invoke-GitOk $workHuman @('checkout', 'develop') | Out-Null
+Add-Content -Path (Join-Path $workHuman 'f.txt') -Value 'nepublikovana zmena'
+Invoke-GitOk $workHuman @('commit', '-am', 'nepublikovana zmena') | Out-Null
+$developBeforeOldName = Get-Sha $originHuman 'refs/heads/develop'
+$r = Invoke-GitTry $workHuman @('push', 'origin', 'HEAD:develop')
+Assert-True ($r.Code -ne 0) 'kontrola: bez výjimky je push nepublikovaného commitu do develop zamítnutý'
+Assert-Eq (Get-Sha $originHuman 'refs/heads/develop') $developBeforeOldName 'kontrola: develop se po zamítnutí nepohnul'
+
+$r = Invoke-WithHumanPush 'UMS_ALLOW_SHARED_PUSH' { Invoke-GitTry $workHuman @('push', 'origin', 'HEAD:develop') }
+Assert-Eq $r.Code 0 'výjimka: staré jméno je přechodně stále přijímané'
+Assert-Match $r.Out 'MB_HUMAN_PUSH' 'výjimka: staré jméno hlásí, že je zastaralé, a jmenuje nové'
+Assert-Match $r.Out 'UMS_ALLOW_SHARED_PUSH' 'výjimka: hláška o zastaralosti pojmenuje i staré jméno'
+Assert-Eq (Get-Sha $originHuman 'refs/heads/develop') (Get-Sha $workHuman 'develop') 'výjimka: develop se se starým jménem posunul'
+
+Remove-Item -Recurse -Force $fxHuman.Root
 
 Complete-Tests
