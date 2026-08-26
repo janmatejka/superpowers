@@ -61,6 +61,13 @@ performing one. Reading another branch's state never checks that branch out.
     put there by another repository's install. The marker check settles that
     provenance question, which is the only thing that was ever at stake. A missing
     or unmarked hook stays a missing guarantee whatever `core.hooksPath` says.
+  - The hook's own VERSION and whether the guarantee applies to THIS session:
+    the first five lines must carry `UMS pre-push guard (Publication Contract) v2`,
+    and the synthetic-pipe check must be run **with `MB_AGENT_SESSION=1` set**,
+    because the hook deliberately enforces nothing outside an agent session
+    (Publication Contract). A hook that passes the synthetic line while the
+    marker IS set is a missing guarantee; one that passes without it is
+    correct behaviour, not a finding.
   - `<CTX_DIR>/ums-repo.json` — its presence decides which values are in force.
     Absent means the **built-in defaults** apply (`origin/develop` as base, the
     built-in protected-branch list, the generic ticket pattern), not the
@@ -246,7 +253,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
+Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než v2 (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]

@@ -11,6 +11,16 @@ $ErrorActionPreference = 'Stop'
 # further down save/clear/restore around themselves, so they are unaffected.
 $env:MB_AGENT_SESSION = '1'
 
+# Identity vs. version (Task 7): the header identity (first five lines) must
+# NEVER change - install-git-hooks.ps1's Test-IsOurHook recognizes its own
+# hook by that substring, and a rewritten identity would make the CURRENT
+# hook look foreign, get chained instead of replaced on the next install. The
+# version suffix on the SAME line is what lets a workspace recognize an old
+# hook and know it needs an upgrade.
+$hookSrc = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\pre-push') -TotalCount 5
+Assert-Match ($hookSrc -join "`n") 'UMS pre-push guard \(Publication Contract\)' 'hlavička hooku si drží identitu pro instalátor'
+Assert-Match ($hookSrc -join "`n") 'v2' 'hlavička hooku nese verzi, podle které jde poznat potřeba upgradu'
+
 # End-to-end proof of the real Publication Contract enforcement boundary:
 # the git `pre-push` hook. Everything here is a REAL git push against a
 # local bare "origin" — no network. Own fixture (per-directory convention),

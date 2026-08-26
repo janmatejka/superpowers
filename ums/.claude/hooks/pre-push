@@ -1,5 +1,5 @@
 #!/bin/sh
-# UMS pre-push guard (Publication Contract)
+# UMS pre-push guard (Publication Contract) v2
 #
 # This is the actual enforcement boundary for the Publication Contract (see
 # UMS_MEMORY_BANK_CONTRACT.md, "Publication Contract"). Once the gate below

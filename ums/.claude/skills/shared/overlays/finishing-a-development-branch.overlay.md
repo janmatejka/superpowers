@@ -7,6 +7,16 @@
 
 After the user chooses and BEFORE executing the choice:
 
+- **Publication guarantee self-check (fail-closed, before anything else).**
+  A session that resumes a pinned work item never passed the brainstorming
+  entry gate, and this is the session that integrates. Re-run the gate's hook
+  check here IN THIS SESSION'S ENVIRONMENT (contract, Workspace Discipline)
+  before executing the chosen option (the push that integrates): the resolved
+  `pre-push` must exist, carry
+  `UMS pre-push guard (Publication Contract) v2` within its first five lines,
+  and reject a synthetic protected-branch line. A synthetic line that PASSES
+  means the agent-session marker is absent here, so the guarantee does not
+  apply to this session — STOP and report; do not integrate.
 - **Option 1, 2, or 3** (Merge Locally / Push and Create PR / Keep As-Is) →
   invoke the `mb-harvest` skill. It harvests knowledge into the affected
   Memory Bank documents, runs the playbook gate (asks the user which collected
