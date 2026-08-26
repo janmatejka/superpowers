@@ -1583,4 +1583,39 @@ Assert-Eq (Get-Sha $originChainEsc 'refs/heads/develop') (Get-Sha $workChainEsc 
 
 Remove-Item -Recurse -Force $fxChainEsc.Root
 
+# ---------------------------------------------------------------------------
+# 28. UPGRADE DETECTION (Task 7 review finding). The whole point of carrying a
+# version on line 2 is that a workspace whose hook predates it (identity marker
+# present, no " v2" suffix - exactly the shape every workspace had before this
+# task) gets recognized as OURS by the installer and upgraded IN PLACE, not
+# treated as foreign and chained aside (Task 3's Move-ForeignHook path). This
+# is the property the SessionStart/mb-state self-check prose depends on: if the
+# installer ever misjudged a pre-v2 hook as foreign, re-running
+# install-git-hooks.ps1 as the self-check's own remedy instructs would leave
+# the workspace with a chained old hook instead of an upgraded one.
+# ---------------------------------------------------------------------------
+$root8 = Join-Path ([IO.Path]::GetTempPath()) ("mbprepush8-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $root8 | Out-Null
+& git init -q -b develop $root8 | Out-Null
+
+$realHookPath8 = Join-Path $PSScriptRoot '..\pre-push'
+$realHookLines8 = @(Get-Content -LiteralPath $realHookPath8)
+# Simulate the pre-Task-7 shape by stripping just the version suffix off line 2
+# - the identity substring is untouched, which is exactly what makes this case
+# distinguish "recognized as ours" from "recognized as foreign".
+$oldStyleLine8 = $realHookLines8[1] -replace '\s+v2\s*$', ''
+Assert-True ($oldStyleLine8 -ne $realHookLines8[1]) 'upgrade: fixtura sama sobě dokazuje, že simulovaná stará hlavička skutečně nenese v2 (sanity check)'
+$oldStyleLines8 = @($realHookLines8[0], $oldStyleLine8) + $realHookLines8[2..($realHookLines8.Count - 1)]
+$oldStyleHookPath8 = Join-Path $root8 '.git\hooks\pre-push'
+New-Item -ItemType Directory -Force -Path (Split-Path $oldStyleHookPath8) | Out-Null
+[IO.File]::WriteAllText($oldStyleHookPath8, (($oldStyleLines8 -join "`n") + "`n"))
+
+$res8 = Invoke-Installer $root8 $null
+Assert-True (-not (Test-Path (Join-Path $root8 '.git\hooks\pre-push.ums-chained'))) 'upgrade: hook bez v2 je rozpoznán jako NÁŠ, ne odsunut jako cizí do .ums-chained'
+Assert-Eq $res8.Code 0 'upgrade: instalace nad hookem bez v2 končí kódem 0'
+$upgradedHead8 = Get-Content -LiteralPath $oldStyleHookPath8 -TotalCount 5
+Assert-Match ($upgradedHead8 -join "`n") 'UMS pre-push guard \(Publication Contract\) v2' 'upgrade: po instalaci hlavička na místě nese v2'
+
+Remove-Item -Recurse -Force $root8
+
 Complete-Tests
