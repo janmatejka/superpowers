@@ -56,8 +56,48 @@ param(
     [string]$MonorepoRoot = 'D:\_datasys\ums',
     [string]$ForkUmsDir = $PSScriptRoot,
     # Test/advanced override of the user-profile root used by -Scope UserProfile.
-    [string]$UserProfileRoot = $HOME
+    [string]$UserProfileRoot = $HOME,
+    # Dot-source this script to reuse its function definitions in tests,
+    # without running the interactive/sync body below.
+    [switch] $DotSourceOnly
 )
+
+$AGENT_MARKER_NAME = 'MB_AGENT_SESSION'
+
+# The agent-session marker must reach EVERY harness, or the pre-push hook
+# disables itself there and the agent runs unsupervised. settings.json is
+# Claude Code's registration format and is deliberately not deployed to the
+# other targets, so the marker is written into each harness's own
+# configuration instead. The write is idempotent - a repeated deploy must
+# not grow the file.
+function Set-AgentMarker([string] $ConfigDir, [string] $Agent) {
+    $file = switch ($Agent) {
+        'codex'    { Join-Path $ConfigDir 'config.toml' }
+        'gemini'   { Join-Path $ConfigDir 'settings.json' }
+        'kilocode' { Join-Path $ConfigDir 'settings.json' }
+        default    { throw "Set-AgentMarker: unsupported agent '$Agent'" }
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+    if ((Test-Path -LiteralPath $file) -and ((Get-Content -LiteralPath $file -Raw) -match $AGENT_MARKER_NAME)) {
+        return
+    }
+    if ([IO.Path]::GetExtension($file) -eq '.toml') {
+        Add-Content -LiteralPath $file -Value "`n[env]`n$AGENT_MARKER_NAME = `"1`""
+        return
+    }
+    $json = if (Test-Path -LiteralPath $file) { Get-Content -LiteralPath $file -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+    # .PSObject.Properties.Name returns $null (not an empty array) when there
+    # are zero properties, so materialize to an array before -contains.
+    $propNames = @(@($json.PSObject.Properties) | ForEach-Object { $_.Name })
+    if ($propNames -notcontains 'env') {
+        $json | Add-Member -NotePropertyName 'env' -NotePropertyValue ([pscustomobject]@{})
+    }
+    $json.env | Add-Member -NotePropertyName $AGENT_MARKER_NAME -NotePropertyValue '1' -Force
+    $json | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $file -Encoding utf8
+}
+
+# Tests need only the function definitions, not the full sync run.
+if ($DotSourceOnly) { return }
 
 $ErrorActionPreference = 'Stop'
 
@@ -311,6 +351,8 @@ else {
         }
     if (-not ($Agent -eq 'claude')) {
         Write-Host "note: settings.json not deployed (Claude Code registration format) - wire hooks manually for '$Agent'." -ForegroundColor DarkGray
+        Set-AgentMarker $dstConfig $Agent
+        Write-Host "note: agent-session marker ($AGENT_MARKER_NAME) written into '$Agent' config - without it the pre-push guard disables itself there." -ForegroundColor DarkGray
     }
     elseif ($Scope -eq 'UserProfile') {
         Write-Host "note: settings.json not deployed - merge hook registration into $($target.ConfigDir)\settings.json manually if wanted." -ForegroundColor DarkGray
