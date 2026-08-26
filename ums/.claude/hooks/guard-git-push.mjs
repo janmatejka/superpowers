@@ -16,51 +16,50 @@
 // accept. For the same reason a command carrying the human escape
 // (HUMAN_ESCAPE_RE) is denied here: an agent never writes it.
 //
-// A RECOGNIZED `git push` is therefore FAIL-CLOSED: whatever this file cannot
-// read with confidence as harmless (unknown flag, non-plain remote, multiple
-// or malformed refspecs) is denied rather than waved through. "Recognized"
-// is deliberately narrow, and evaluatePush's own comment is the definition:
-// the `git` token has to sit at a COMMAND POSITION, and each unreadable thing
-// is excused only when the tokens that CAUSED it carry shell expansion — the
-// guard cannot judge what is not in the string. Without the command-position
-// half the tightening would fire on any string that happens to contain the
-// words `git push` — a heredoc, a commit message, an `echo` — which is
-// document text, not a push.
+// A RECOGNIZED `git push` therefore leans FAIL-CLOSED: this file's default
+// answer to an invocation it cannot read with confidence is deny, not
+// wave-through. Where it holds that answer back, and why, is evaluatePush's
+// business — next paragraph. "Recognized" is deliberately narrow: the `git`
+// token has to sit at a COMMAND POSITION. Without that requirement the
+// tightening would fire on any string that happens to contain the words `git
+// push` — a heredoc, a commit message, an `echo` — which is document text,
+// not a push.
 //
-// Expansion-freedom is NOT a precondition for judging a push, and two things
-// follow that this file used to get wrong: a destination written out in plain
-// text is judged however unreadable the rest of the line is, and an excused
-// problem never covers for an unexcused one beside it.
+// WHAT THE VERDICT ACTUALLY IS, read it from evaluatePush and from nowhere
+// else. This header deliberately does not restate its branches: every earlier
+// attempt to summarise them up here was falsified by the next change to the
+// function, and a summary that has gone quietly stale is worse than no summary.
 //
-// Everything else keeps the old FAIL-OPEN posture on purpose: `git fetch`,
-// every other subcommand, an unresolvable current branch (which names no
-// protected target at all), and above all a shape whose `git` token is not
-// recognized in the first place (`bash -c 'git push …'`). That residual
-// pass-through is named and accepted, not closed: the pre-push hook is still
-// the real boundary, and widening the scan here is what produced false
-// positives on ordinary document text in earlier rounds.
+// A shape this file does not recognize as a command at all (`bash -c 'git push
+// …'`) keeps the old FAIL-OPEN answer, as does `git fetch` outside its own
+// refspec rule, as does every other subcommand. That residual pass-through is
+// named and accepted, not closed: the pre-push hook is still the real
+// boundary, and widening the scan here is what produced false positives on
+// ordinary document text in earlier rounds.
 //
 // COMMAND POSITION IS READ FROM WHITESPACE-SPLIT TOKENS, so any separator the
-// split does not leave standing alone hides it and the invocation falls back
-// to fail-open. Two known carriers, same root cause and same accepted class:
-// a NEWLINE (`git status` newline `git push --mirror origin`) and a separator
-// GLUED to the previous token (`cd /repo; git push --mirror origin`, where
-// `/repo;` is neither a CONTROL token nor a NAME=value assignment). Promoting
-// either to a separator would immediately re-open the heredoc case, which is
-// precisely what this rule exists to protect — so the gap is accepted. Note
-// what it does NOT cost: a target the guard can read is still judged on both
-// of those shapes, because the protected-target deny does not need command
-// position for a cleanly-written invocation (see evaluatePush).
+// split does not leave standing alone hides it, and the fail-closed arm then
+// does not fire for that invocation at all. Known carriers, same root cause
+// and same accepted class: a NEWLINE (`git status` newline `git push --mirror
+// origin`), and a separator GLUED to the previous token (`cd /repo; git push
+// --mirror origin`, where `/repo;` is neither a CONTROL token nor a NAME=value
+// assignment).
+// Promoting either to a separator would immediately re-open the heredoc case,
+// which is precisely what this rule exists to protect — so the gap is
+// accepted. Note what it does NOT cost: a target the guard can read is still
+// judged on those shapes, because the protected-target deny does not need
+// command position for a cleanly-written invocation (see evaluatePush).
 //
-// TWO CHECKS ARE CONTEXT-FREE and knowingly pay that price, because both
-// guard something a parsed-invocation check could not:
-//   - `--no-verify` near `push`, which would skip the real guarantee;
-//   - HUMAN_ESCAPE_RE, whose whole value is that the variable never appears
-//     in an agent's command at all. The accepted cost is symmetric in both
-//     cases: an agent WRITING ABOUT either one from Bash (a heredoc, an echo,
-//     a commit message quoting it) is denied. Closing that would mean parsing
-//     shell quoting, which is exactly what this layer was demoted for failing
-//     to do — and for the escape it would also cost the containment itself.
+// CONTEXT-FREE CHECKS knowingly pay a price for reading the raw command TEXT
+// without asking whether it is an invocation at all, because what they guard
+// is invisible to a parsed-invocation check: `--no-verify` near `push` would
+// skip the real guarantee, and the whole value of HUMAN_ESCAPE_RE is that the
+// variable never appears in an agent's command in the first place. The
+// accepted cost is the same for each of them: an agent WRITING ABOUT one from
+// Bash (a heredoc, an echo, a commit message quoting it) is denied. Closing
+// that would mean parsing shell quoting, which is exactly what this layer was
+// demoted for failing to do — and for the escape it would also cost the
+// containment itself.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -131,10 +130,11 @@ const sharedBranchMessage = (branch) =>
 // DENIED here, and that reversal rests on a measured premise: a command the
 // user types with a leading `!` never reaches a PreToolUse hook, so anything
 // arriving here is the agent's own tool call — and per the contract an agent
-// never sets this variable. Its presence is therefore a violation in itself,
-// and this is the only mechanical containment left now that the escape lifts
-// the whole guard on the hook side. Checked AFTER the --no-verify rule below,
-// which has the more specific reason for the same command.
+// never sets this variable. Its presence is therefore a violation in itself.
+// On the hook side the escape lifts the whole guard and nothing downstream
+// re-examines the push, so this deny is where that examination happens
+// instead. Checked AFTER the --no-verify rule below, which has the more
+// specific reason for the same command.
 //
 // The accepted VALUE spellings are the shell's, not a tidier subset of them.
 // The hook tests `[ "$MB_HUMAN_PUSH" = "1" ]`, which the shell satisfies for
@@ -168,7 +168,9 @@ const deny = (reason) => {
 const CONTROL = new Set(['&&', '||', ';', '|', '&']);
 
 // Flags considered "boring" enough that we still trust our own read of the
-// remote/refspec around them. Any other flag means "not simple" -> allow.
+// remote/refspec around them. Any other flag is recorded as a problem for
+// evaluatePush to weigh; this line used to end "-> allow", which task 6
+// falsified and nothing here noticed for three rounds.
 const PUSH_ALLOWED_FLAGS = new Set([
   '-u', '--set-upstream', '-q', '--quiet', '-v', '--verbose',
   '--progress', '--no-progress',
@@ -223,35 +225,21 @@ const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 //              made it unreadable. A list, because one problem being excused
 //              says nothing about the next one.
 //
-// A protected target that IS readable is denied whatever else on the line is
-// not (round 2: the old code returned out of the unreadable path before ever
-// looking, so `git push $r develop` was allowed). Each problem is then judged
-// on its OWN merits, and any single one that survives denies:
+// A readable protected target is judged FIRST, before any problem is weighed:
+// an unreadable token elsewhere on the line must not buy silence about a
+// destination the command spells out (round 2: the old code returned out of
+// the unreadable path before ever looking, so `git push $r develop` was
+// allowed; today it denies on `develop`). For a MESSY invocation that is itself
+// gated on command position — in `cat <<EOF … git push --force origin develop
+// … EOF` the word `develop` is document text, and only the command position
+// tells the two apart. A CLEAN invocation needs no such permission: `git
+// status` newline `git push origin develop` names develop with no guessing.
 //
-//   1. atCommandPosition — the `git` token starts an invocation (index 0,
-//      after a shell control operator, or after a NAME=value assignment).
-//      Without this, fail-closed fires on any string CONTAINING the words
-//      `git push`: a heredoc being written to a file, a commit message
-//      quoting a command, an `echo`. That is document text, and denying it is
-//      the exact failure mode this layer was demoted for.
-//   2. none of the tokens that CAUSED that problem carry shell expansion —
-//      see EXPANSION_RE. Per token, not per line.
+// What each of the remaining checks asks, and why, is written beside the check
+// itself below rather than summarised here.
 //
 // `atCommandPosition` DEFAULTS TO TRUE so a stale call site omitting it
 // degrades toward more protection, the same rule loadProtected follows.
-//
-// Reading targets out of a MESSY invocation is itself gated on command
-// position: in `cat <<EOF … git push --force origin develop … EOF` the word
-// `develop` is document text, and only the command position tells the two
-// apart. A CLEAN invocation needs no such permission — `git status` newline
-// `git push origin develop` names develop with no guessing at all.
-//
-// So a RECOGNIZED push has exactly two ways left to be allowed: every problem
-// it has was caused by expansion (above), or it has no problem and no
-// protected target. The second covers the unresolvable current branch, which
-// contributes no target at all — an unguessable branch is not a recognized
-// protected target, and denying there would block legitimate work from a
-// detached HEAD.
 function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
@@ -265,6 +253,9 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   const note = (what, tokens) => problems.push({ what, tokens });
 
   const targets = [];
+  // A current branch that cannot be resolved contributes NO target rather than
+  // a guessed one: an unguessable branch is not a recognized protected target,
+  // and denying there would block legitimate work from a detached HEAD.
   const addCurrent = () => { const c = currentBranch(cwd); if (c) targets.push(c); };
 
   const badFlags = flags.filter((f) => !PUSH_ALLOWED_FLAGS.has(f));
@@ -291,11 +282,29 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
     }
   }
 
+  // A target read out of an invocation with nothing wrong with it needs no
+  // permission — it was spelled out. Read out of one this file could not fully
+  // parse, it only counts as a destination if the `git` was a command in the
+  // first place; otherwise `develop` in a heredoc body would be a push target.
   if (problems.length === 0 || atCommandPosition) {
     const hit = targets.find((t) => isProtected(t, patterns));
     if (hit) return { deny: true, reason: sharedBranchMessage(stripRef(hit)) };
   }
 
+  // A problem blocks where the invocation is one this file may judge at all,
+  // and where what made it unreadable is actually in the string.
+  //
+  // Command position — the `git` token starts an invocation (index 0, after a
+  // shell control operator, or after a NAME=value assignment). Without it,
+  // fail-closed would fire on any string CONTAINING the words `git push`: a
+  // heredoc being written to a file, a commit message quoting a command, an
+  // `echo`. That is document text, and denying it is the exact failure mode
+  // this layer was demoted for.
+  //
+  // And no shell expansion in the tokens that CAUSED that problem (see
+  // EXPANSION_RE) — per problem and per token, never on another problem's
+  // behalf, which is why this is a `find` over the list and not a test of the
+  // whole invocation.
   const blocking = atCommandPosition
     ? problems.find((p) => !p.tokens.some((t) => EXPANSION_RE.test(t)))
     : undefined;
@@ -322,9 +331,12 @@ const isWildcardLocalBranch = (ref) => {
   return s.startsWith('refs/heads/') || !s.startsWith('refs/');
 };
 
-// Fetch stays best-effort on the same footing as before: only denies an
-// explicit refspec whose destination is a protected local ref; everything
-// else passes (fetch is frequent and normally harmless).
+// Fetch stays best-effort on the same footing as before. It reads an explicit
+// refspec's destination and denies where that destination would overwrite a
+// protected local ref — by name, or through a wildcard that covers local
+// branches (see isWildcardLocalBranch above). A destination it cannot read
+// that way passes; fetch is frequent and normally harmless, and task 6's
+// fail-closed turn was deliberately confined to `push`.
 function evaluateFetch(args, patterns) {
   for (const t of args) {
     if (t.startsWith('-') || !t.includes(':')) continue;
@@ -367,9 +379,9 @@ process.stdin.on('end', () => {
   // Context-free substring check: `--no-verify` next to `push` (in a command
   // that also mentions `git`, so e.g. `npm run push -- --no-verify` does not
   // trigger this) would skip the real guarantee (the pre-push hook). A false
-  // positive here costs nothing, so it deliberately is not tied to a
-  // specific parsed invocation. The remaining edge — a commit message that
-  // happens to contain both words — is accepted as out of scope.
+  // positive here is cheap — the agent rewords — so the check deliberately is
+  // not tied to a specific parsed invocation. An accepted edge of that: a
+  // commit message that happens to contain both words is denied too.
   if (/\bgit\b/.test(command) && /\bpush\b/.test(command) && /--no-verify\b/.test(command)) {
     deny(
       'UMS: `--no-verify` by u pushe přeskočil pre-push hook (skutečnou pojistku Publication Contract, ' +
@@ -386,22 +398,33 @@ process.stdin.on('end', () => {
   const escape = command.match(HUMAN_ESCAPE_RE);
   if (escape) {
     // Names the variable that ACTUALLY matched, not whichever one this file
-    // mentions first — the message is read by someone who wrote one of two
-    // spellings and needs to know which one is the problem. And it hands over
-    // the command with the assignment stripped, the way sharedBranchMessage
-    // does: a deny that only scolds leaves the agent to improvise the way out.
-    // Stripping the assignment is textual surgery, so what comes out is only
-    // handed over when the WHOLE remainder is one clean `git push …` carrying
-    // no second escape. Two rounds of narrowing got here. `\bgit\b` was not
-    // enough: `export MB_HUMAN_PUSH=1 && git push …` leaves the fragment
-    // `export && git push …`, a line continuation leaves a stray backslash,
-    // and a command carrying BOTH names keeps the deprecated one — all three
-    // still contain the word `git` and none of them runs. A PREFIX test was
-    // not enough either: everything APPENDED after the push rode along into
-    // the handed command, chained second commands and whole second lines
-    // included, and that is the part a human would paste without noticing.
-    // Hence anchored at both ends, excluding the characters that would chain
-    // or continue a command.
+    // mentions first — the message is read by someone who wrote one of the
+    // spellings HUMAN_ESCAPE_RE knows and needs to know which one is the
+    // problem. And it hands over the command with the assignment stripped, the
+    // way sharedBranchMessage does: a deny that only scolds leaves the agent to
+    // improvise the way out.
+    //
+    // Stripping the assignment is textual surgery, so the remainder is handed
+    // over only if `runnable` below accepts it: it must begin `git push `, run
+    // to the end of the string, and contain none of `\n ; & |` or a second
+    // escape. Two rounds of narrowing got here. `\bgit\b` was not enough:
+    // `export MB_HUMAN_PUSH=1 && git push …` leaves the fragment `export &&
+    // git push …`, a line continuation leaves a stray backslash, and a command
+    // carrying BOTH names keeps the deprecated one — all three still contain
+    // the word `git` and none of them runs. A PREFIX test was not enough
+    // either: everything APPENDED after the push rode along into the handed
+    // command, chained second commands and whole second lines included, and
+    // that is the part a human would paste without noticing.
+    //
+    // Read `runnable` as exactly the test on the next line, not as "a clean
+    // `git push`", which is how earlier wording here glossed it and got it
+    // wrong. Measured, both still handed over verbatim: `git push origin
+    // develop > /tmp/x` (a redirection) and `git push origin $(whoami)` (a
+    // command substitution, which runs when the human pastes it). Left that
+    // way on purpose: the agent composed the text of this command in the first
+    // place and can put any text in its own message to the user, so this
+    // hand-over is not a channel that tightening would take away from it. If
+    // it is ever tightened anyway, delete this paragraph with the same commit.
     const plain = command.replace(HUMAN_ESCAPE_RE, '$1').replace(/^[\s;&]+/, '').trim();
     const runnable = /^git\s+push\s+[^\n;&|]*$/.test(plain) && !HUMAN_ESCAPE_RE.test(plain);
     const advice = runnable
