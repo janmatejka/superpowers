@@ -1414,7 +1414,10 @@ Invoke-GitOk $workContent @('push', '-u', 'origin', 'feature/x') | Out-Null
 # a) FF na commit, který na originu už je -> projde
 $r = Invoke-GitTry $workContent @('push', 'origin', 'HEAD:develop')
 Assert-Eq $r.Code 0 'obsah: FF push commitu už publikovaného na originu projde'
-Assert-Match $r.Out 'UMS' 'obsah: povolená integrace je ohlášená, ne tichá'
+# ASCII, konkrétní ke KTERÉ hlášce - 'fast-forward' samotné matchuje i zamítnutí
+# vynuceného non-fast-forward pushe ("není fast-forward … zakázáno"), teprve
+# spolu s 'povolen' (které se v zamítací hlášce nevyskytuje) je pár jednoznačný.
+Assert-Match $r.Out 'fast-forward.*povolen' 'obsah: povolená integrace je ohlášená hláškou POVOLENÍ, ne obecným UMS textem'
 Assert-Eq (Get-Sha $originContent 'refs/heads/develop') (Get-Sha $workContent 'feature/x') 'obsah: develop se posunul na integrovaný commit'
 
 # b) FF na commit, který na originu NENÍ -> zamítnuto
@@ -1432,6 +1435,21 @@ Invoke-GitOk $workContent @('remote', 'add', 'vanila', $otherContent) | Out-Null
 Invoke-GitOk $workContent @('push', 'vanila', 'HEAD:refs/heads/parkoviste') | Out-Null
 $r = Invoke-GitTry $workContent @('push', 'origin', 'HEAD:develop')
 Assert-True ($r.Code -ne 0) 'obsah: dosažitelnost na jiném remote se nepočítá'
+
+# d) nulová remote sha (nová chráněná větev, na originu ještě vůbec neexistuje)
+# -> is_integration_push ji zamítne rovnou svým vlastním guardem, i když je
+# local_sha jinak dosažitelný z refs/remotes/origin/ (feature/x je publikovaná).
+# `main` je v built-in seznamu chráněných vzorů, takže se řídí stejnou větví.
+Invoke-GitOk $workContent @('checkout', '-b', 'main', 'feature/x') | Out-Null
+$r = Invoke-GitTry $workContent @('push', 'origin', 'HEAD:refs/heads/main')
+Assert-True ($r.Code -ne 0) 'obsah: nulová remote sha (nová chráněná větev) je zamítnuta i přes jinak dosažitelný commit'
+Assert-Eq (Get-Sha $originContent 'refs/heads/main') $null 'obsah: main se na originu nevytvořila'
+
+# e) nulová local sha (mazání chráněné větve) -> stejný guard, jiná strana.
+$developBeforeDelete = Get-Sha $originContent 'refs/heads/develop'
+$r = Invoke-GitTry $workContent @('push', 'origin', '--delete', 'develop')
+Assert-True ($r.Code -ne 0) 'obsah: nulová local sha (mazání chráněné větve) je zamítnuta'
+Assert-Eq (Get-Sha $originContent 'refs/heads/develop') $developBeforeDelete 'obsah: develop po pokusu o smazání zůstává na originu'
 
 Remove-Item -Recurse -Force $fxContent.Root
 

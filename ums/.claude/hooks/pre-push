@@ -2,15 +2,19 @@
 # UMS pre-push guard (Publication Contract)
 #
 # This is the actual enforcement boundary for the Publication Contract (see
-# UMS_MEMORY_BANK_CONTRACT.md, "Publication Contract"). It judges a push to a
-# protected branch by its CONTENT, not by who or what sent it: a push is let
-# through when it is a fast-forward onto commits that already exist on the
-# remote being pushed to (is_integration_push, below) — proof of publication,
-# not of who looked at the branch name. Unlike a PreToolUse hook working from
-# a shell command string, git invokes this hook with fully-resolved refs on
-# stdin — every CLI spelling trick (HEAD, --git-dir, bash -c, env prefixes,
-# operator adjacency, config overrides) collapses to the same four fields
-# below, so there is no shell syntax left to bypass.
+# UMS_MEMORY_BANK_CONTRACT.md, "Publication Contract"). Once the gate below
+# decides the push is worth judging at all, it judges a push to a protected
+# branch by its CONTENT rather than by branch name alone: a push is let
+# through when it is a fast-forward onto commits already reachable from this
+# clone's own remote-tracking refs for the remote being pushed to
+# (is_integration_push, below) — evidence of publication, not a record of
+# who reviewed the branch. That evidence is only as honest as those
+# remote-tracking refs (see is_integration_push's own comment). Unlike a
+# PreToolUse hook working from a shell command string, git invokes this hook
+# with fully-resolved refs on stdin — every CLI spelling trick (HEAD,
+# --git-dir, bash -c, env prefixes, operator adjacency, config overrides)
+# collapses to the same four fields below, so there is no shell syntax left
+# to bypass.
 #
 # GATED ON AN AGENT-SESSION MARKER: everything below the stdin buffer only
 # fires when is_agent_session() finds MB_AGENT_SESSION=1 (injected by this
@@ -187,13 +191,21 @@ is_protected() {
     return 1
 }
 
-# Integrace = posun ukazatele chráněné větve na commity, které na TOMTO remote
-# už jsou. Dokazuje publikaci, NE prohlédnutí: agent smí pushovat vlastní
-# tiketovou větev, takže si dosažitelnost umí vyrobit. Pravidlo aktéra drží
-# PreToolUse guard, ne tenhle hook (viz Publication Contract).
+# Integration = moving a protected branch's pointer onto commits reachable
+# from THIS CLONE's OWN remote-tracking refs for the remote being pushed to
+# (refs/remotes/$remote_name/*, checked below via `git for-each-ref`) — not
+# from the remote itself, which this hook never contacts. That is evidence
+# of publication, not of review: an agent may push its own ticket branch, so
+# it can manufacture that reachability itself. The actor rule (who is
+# allowed to make the moment of integration happen) lives in the
+# PreToolUse guard, not here — see the Publication Contract. Being local
+# refs, this evidence is only as honest as they are: it trusts that nothing
+# in this clone wrote or left behind a remote-tracking ref that does not
+# reflect what is actually on the remote (see the header's own caveat).
 #
-# Oba podpříkazy mají uzavřený stdin - hlavní smyčka čte seznam refů a příkaz,
-# který z něj ukousne, by hook tiše umlčel na zbytku refů.
+# Both subcommands close their own stdin - they run inside the main loop,
+# which reads git's ref list from the same stdin buffer, and any
+# stdin-consuming command in there would silently swallow the remaining refs.
 is_integration_push() {
     _local="$1"
     _remote="$2"
@@ -235,7 +247,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         elif is_integration_push "$local_sha" "$remote_sha"; then
             echo "UMS: '$b' — fast-forward na commity už publikované na '$remote_name', push povolen." >&2
         else
-            echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
+            echo "UMS: '$b' je sdílená větev — projde jen fast-forward na commity, které už jsou" >&2
+            echo "     na '$remote_name' (Publication Contract). Nejdřív publikuj svoji větev." >&2
             echo "     Připrav příkaz a nech ho uživateli:" >&2
             # Refspec form on purpose: in a ticket clone WITHOUT a local
             # copy of the shared branch, `git push origin <b>` fails on an
