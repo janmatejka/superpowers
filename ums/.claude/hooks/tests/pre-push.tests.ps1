@@ -1388,4 +1388,51 @@ Assert-Eq $res.Code 0 'self-test: instalace z prostředí bez značky končí k�
 Assert-Match $res.Flat 'installed \+ verified live' 'self-test: hook je ověřený i bez značky v prostředí instalátoru'
 Remove-Item -Recurse -Force $rProof
 
+# ---------------------------------------------------------------------------
+# Pravidlo obsahu: na chráněné větvi projde fast-forward na commity, které už
+# JSOU na cílovém remote. Dosažitelnost se omezuje na remote, do kterého se
+# pushuje - tenhle fork má druhý remote (vanila), takže commit dosažitelný jen
+# tam by jinak prošel jako publikovaný.
+#
+# Vlastní fixtura (New-PushFixture, case 17+): primární $work/$origin/$root
+# mají v tuhle chvíli `develop` posunuté vlastními commity z dřívějších
+# případů (case 1, 15) a `feature/x` z nich větvenou dřív, než k nim
+# přibyly - jejich historie se rozešla a FF na "už publikované" by tam
+# neplatilo z důvodu zamotané fixtury, ne z důvodu testované logiky.
+# ---------------------------------------------------------------------------
+$fxContent = New-PushFixture 'mbcontent'
+$workContent = $fxContent.Work
+$originContent = $fxContent.Origin
+Invoke-Installer $workContent $null | Out-Null
+
+Invoke-GitOk $workContent @('checkout', '-b', 'feature/x') | Out-Null
+Add-Content -Path (Join-Path $workContent 'g.txt') -Value 'to be integrated'
+Invoke-GitOk $workContent @('add', '-A') | Out-Null
+Invoke-GitOk $workContent @('commit', '-m', 'integrace') | Out-Null
+Invoke-GitOk $workContent @('push', '-u', 'origin', 'feature/x') | Out-Null
+
+# a) FF na commit, který na originu už je -> projde
+$r = Invoke-GitTry $workContent @('push', 'origin', 'HEAD:develop')
+Assert-Eq $r.Code 0 'obsah: FF push commitu už publikovaného na originu projde'
+Assert-Match $r.Out 'UMS' 'obsah: povolená integrace je ohlášená, ne tichá'
+Assert-Eq (Get-Sha $originContent 'refs/heads/develop') (Get-Sha $workContent 'feature/x') 'obsah: develop se posunul na integrovaný commit'
+
+# b) FF na commit, který na originu NENÍ -> zamítnuto
+Add-Content -Path (Join-Path $workContent 'g.txt') -Value 'nepublikovano'
+Invoke-GitOk $workContent @('commit', '-am', 'nepublikovany commit') | Out-Null
+$developBeforeUnpub = Get-Sha $originContent 'refs/heads/develop'
+$r = Invoke-GitTry $workContent @('push', 'origin', 'HEAD:develop')
+Assert-True ($r.Code -ne 0) 'obsah: FF push nepublikovaného commitu zamítnut'
+Assert-Eq (Get-Sha $originContent 'refs/heads/develop') $developBeforeUnpub 'obsah: develop se po zamítnutí nepohnul'
+
+# c) commit dosažitelný jen na JINÉM remote se nepočítá
+$otherContent = Join-Path $fxContent.Root 'other.git'
+& git init --bare -q -b develop $otherContent | Out-Null
+Invoke-GitOk $workContent @('remote', 'add', 'vanila', $otherContent) | Out-Null
+Invoke-GitOk $workContent @('push', 'vanila', 'HEAD:refs/heads/parkoviste') | Out-Null
+$r = Invoke-GitTry $workContent @('push', 'origin', 'HEAD:develop')
+Assert-True ($r.Code -ne 0) 'obsah: dosažitelnost na jiném remote se nepočítá'
+
+Remove-Item -Recurse -Force $fxContent.Root
+
 Complete-Tests

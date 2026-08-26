@@ -1,13 +1,16 @@
 #!/bin/sh
 # UMS pre-push guard (Publication Contract)
 #
-# This is the actual enforcement boundary for the Publication Contract's
-# two-tier push policy (see UMS_MEMORY_BANK_CONTRACT.md, "Publication
-# Contract"). Unlike a PreToolUse hook working from a shell command string,
-# git invokes this hook with fully-resolved refs on stdin — every CLI
-# spelling trick (HEAD, --git-dir, bash -c, env prefixes, operator
-# adjacency, config overrides) collapses to the same four fields below, so
-# there is no shell syntax left to bypass.
+# This is the actual enforcement boundary for the Publication Contract (see
+# UMS_MEMORY_BANK_CONTRACT.md, "Publication Contract"). It judges a push to a
+# protected branch by its CONTENT, not by who or what sent it: a push is let
+# through when it is a fast-forward onto commits that already exist on the
+# remote being pushed to (is_integration_push, below) — proof of publication,
+# not of who looked at the branch name. Unlike a PreToolUse hook working from
+# a shell command string, git invokes this hook with fully-resolved refs on
+# stdin — every CLI spelling trick (HEAD, --git-dir, bash -c, env prefixes,
+# operator adjacency, config overrides) collapses to the same four fields
+# below, so there is no shell syntax left to bypass.
 #
 # GATED ON AN AGENT-SESSION MARKER: everything below the stdin buffer only
 # fires when is_agent_session() finds MB_AGENT_SESSION=1 (injected by this
@@ -24,7 +27,7 @@
 # this file's job is narrower: stay out of a human's way in the ordinary
 # case of a terminal or IDE push outside an agent session.
 #
-# Scope: refs/heads/* (branches) only. The two-tier policy is branch-scoped;
+# Scope: refs/heads/* (branches) only. The content rule is branch-scoped;
 # tag pushes and anything else are out of scope and always pass through
 # untouched (a tag delete or a tag force-move is not a "branch push").
 #
@@ -184,6 +187,24 @@ is_protected() {
     return 1
 }
 
+# Integrace = posun ukazatele chráněné větve na commity, které na TOMTO remote
+# už jsou. Dokazuje publikaci, NE prohlédnutí: agent smí pushovat vlastní
+# tiketovou větev, takže si dosažitelnost umí vyrobit. Pravidlo aktéra drží
+# PreToolUse guard, ne tenhle hook (viz Publication Contract).
+#
+# Oba podpříkazy mají uzavřený stdin - hlavní smyčka čte seznam refů a příkaz,
+# který z něj ukousne, by hook tiše umlčel na zbytku refů.
+is_integration_push() {
+    _local="$1"
+    _remote="$2"
+    [ "$_local" = "$zero" ] && return 1
+    [ "$_remote" = "$zero" ] && return 1
+    git merge-base --is-ancestor "$_remote" "$_local" </dev/null 2>/dev/null || return 1
+    _refs=$(git for-each-ref --contains "$_local" --format='%(refname)' \
+        "refs/remotes/$remote_name/" </dev/null 2>/dev/null)
+    [ -n "$_refs" ]
+}
+
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ -z "$local_ref" ] && continue
 
@@ -211,6 +232,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             # the deletion and non-fast-forward rules below still apply to
             # this ref, the escape lifts the shared-branch rule only.
             echo "UMS: UMS_ALLOW_SHARED_PUSH=1 — push do sdílené větve '$b' povolen (vědomá výjimka člověka)." >&2
+        elif is_integration_push "$local_sha" "$remote_sha"; then
+            echo "UMS: '$b' — fast-forward na commity už publikované na '$remote_name', push povolen." >&2
         else
             echo "UMS: '$b' je sdílená větev — agent do ní nepushuje (Publication Contract)." >&2
             echo "     Připrav příkaz a nech ho uživateli:" >&2
