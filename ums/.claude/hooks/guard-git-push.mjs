@@ -19,11 +19,18 @@
 // A RECOGNIZED `git push` is therefore FAIL-CLOSED: whatever this file cannot
 // read with confidence as harmless (unknown flag, non-plain remote, multiple
 // or malformed refspecs) is denied rather than waved through. "Recognized"
-// is deliberately narrow, and evaluatePush's own comment defines it: the
-// `git` token has to sit at a COMMAND POSITION and the arguments must be free
-// of shell EXPANSION. Without those two conditions the tightening would fire
-// on any string that happens to contain the words `git push` — a heredoc, a
-// commit message, an `echo` — which is document text, not a push.
+// is deliberately narrow, and evaluatePush's own comment is the definition:
+// the `git` token has to sit at a COMMAND POSITION, and each unreadable thing
+// is excused only when the tokens that CAUSED it carry shell expansion — the
+// guard cannot judge what is not in the string. Without the command-position
+// half the tightening would fire on any string that happens to contain the
+// words `git push` — a heredoc, a commit message, an `echo` — which is
+// document text, not a push.
+//
+// Expansion-freedom is NOT a precondition for judging a push, and two things
+// follow that this file used to get wrong: a destination written out in plain
+// text is judged however unreadable the rest of the line is, and an excused
+// problem never covers for an unexcused one beside it.
 //
 // Everything else keeps the old FAIL-OPEN posture on purpose: `git fetch`,
 // every other subcommand, an unresolvable current branch (which names no
@@ -186,11 +193,15 @@ const ENV_ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 // scripted work while catching nobody: an agent that wanted the bypass has
 // the far easier `bash -c` one, named and accepted in the design.
 //
-// Applied PER TOKEN, never to the whole invocation. Round 1 tested
+// Tested against the tokens that caused ONE problem, never against the whole
+// invocation and never against one problem on another's behalf. Round 1 tested
 // `args.some(...)` and that was a real weakening: one `$` anywhere bought
 // silence about a destination spelled out in plain text, so `git push $r
-// develop` and `git push --mirror $r` both went from deny to allow. Expansion
-// excuses the problem IT caused, and nothing else.
+// develop` and `git push --mirror $r` both went from deny to allow. Round 2
+// narrowed it to the causing tokens but still kept only the FIRST problem, so
+// an excused one hid an expansion-free one behind it — a wildcard refspec
+// after an expanded remote walked straight through. Expansion excuses the
+// problem IT caused, and nothing else.
 //
 // QUOTING alone is deliberately NOT expansion. `git push origin "develop"`
 // still names a literal branch, so it stays judged and the obvious evasion
@@ -206,14 +217,16 @@ const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 
 // Reads an invocation TWICE over, because the two answers are independent:
 //
-//   targets — every destination this push can be read to name. An unreadable
-//             token blinds the guard to THAT destination, not to the others.
-//   problem — what could not be read, and WHICH tokens made it unreadable.
+//   targets  — every destination this push can be read to name. An unreadable
+//              token blinds the guard to THAT destination, not to the others.
+//   problems — a LIST of what could not be read, each with the tokens that
+//              made it unreadable. A list, because one problem being excused
+//              says nothing about the next one.
 //
 // A protected target that IS readable is denied whatever else on the line is
-// not (Important A, round 2: the old code returned out of the unreadable path
-// before ever looking, so `git push $r develop` was allowed). A problem is
-// denied only where this file is entitled to be strict about it:
+// not (round 2: the old code returned out of the unreadable path before ever
+// looking, so `git push $r develop` was allowed). Each problem is then judged
+// on its OWN merits, and any single one that survives denies:
 //
 //   1. atCommandPosition — the `git` token starts an invocation (index 0,
 //      after a shell control operator, or after a NAME=value assignment).
@@ -233,16 +246,23 @@ const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 // apart. A CLEAN invocation needs no such permission — `git status` newline
 // `git push origin develop` names develop with no guessing at all.
 //
-// One fail-open path survives everything above: an unresolvable current
-// branch contributes no target. An unguessable branch is not a recognized
+// So a RECOGNIZED push has exactly two ways left to be allowed: every problem
+// it has was caused by expansion (above), or it has no problem and no
+// protected target. The second covers the unresolvable current branch, which
+// contributes no target at all — an unguessable branch is not a recognized
 // protected target, and denying there would block legitimate work from a
 // detached HEAD.
 function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
-  let problem = null;
-  const note = (what, tokens) => { if (!problem) problem = { what, tokens }; };
+  // A LIST, not a first-one-wins slot: each problem is judged against the
+  // tokens that caused IT, so an excused problem cannot shadow an unexcused
+  // one. `git push $r a:b c:d` has an expansion-caused bad remote AND an
+  // entirely expansion-free refspec defect; recording only the first let the
+  // second walk through.
+  const problems = [];
+  const note = (what, tokens) => problems.push({ what, tokens });
 
   const targets = [];
   const addCurrent = () => { const c = currentBranch(cwd); if (c) targets.push(c); };
@@ -271,16 +291,19 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
     }
   }
 
-  if (problem === null || atCommandPosition) {
+  if (problems.length === 0 || atCommandPosition) {
     const hit = targets.find((t) => isProtected(t, patterns));
     if (hit) return { deny: true, reason: sharedBranchMessage(stripRef(hit)) };
   }
 
-  if (problem && atCommandPosition && !problem.tokens.some((t) => EXPANSION_RE.test(t))) {
+  const blocking = atCommandPosition
+    ? problems.find((p) => !p.tokens.some((t) => EXPANSION_RE.test(t)))
+    : undefined;
+  if (blocking) {
     return {
       deny: true,
       reason:
-        `UMS: tenhle push neumím spolehlivě přečíst (${problem.what}), a protože nesu pravidlo o tom, ` +
+        `UMS: tenhle push neumím spolehlivě přečíst (${blocking.what}), a protože nesu pravidlo o tom, ` +
         'kdo smí pushovat do sdílené větve, radši ho zamítám (Publication Contract). ' +
         'Napiš ho srozumitelně: `git push [-u] <remote> <ref>[:<ref>]`.',
     };
@@ -368,13 +391,19 @@ process.stdin.on('end', () => {
     // the command with the assignment stripped, the way sharedBranchMessage
     // does: a deny that only scolds leaves the agent to improvise the way out.
     // Stripping the assignment is textual surgery, so what comes out is only
-    // handed over when it is a CLEAN `git push …` and carries no second
-    // escape. `\bgit\b` was not enough: `export MB_HUMAN_PUSH=1 && git push …`
-    // leaves the fragment `export && git push …`, a line continuation leaves a
-    // stray backslash, and a command carrying BOTH names keeps the deprecated
-    // one — all three still contain the word `git`, and none of them runs.
+    // handed over when the WHOLE remainder is one clean `git push …` carrying
+    // no second escape. Two rounds of narrowing got here. `\bgit\b` was not
+    // enough: `export MB_HUMAN_PUSH=1 && git push …` leaves the fragment
+    // `export && git push …`, a line continuation leaves a stray backslash,
+    // and a command carrying BOTH names keeps the deprecated one — all three
+    // still contain the word `git` and none of them runs. A PREFIX test was
+    // not enough either: everything APPENDED after the push rode along into
+    // the handed command, chained second commands and whole second lines
+    // included, and that is the part a human would paste without noticing.
+    // Hence anchored at both ends, excluding the characters that would chain
+    // or continue a command.
     const plain = command.replace(HUMAN_ESCAPE_RE, '$1').replace(/^[\s;&]+/, '').trim();
-    const runnable = /^git\s+push\s+\S/.test(plain) && !HUMAN_ESCAPE_RE.test(plain);
+    const runnable = /^git\s+push\s+[^\n;&|]*$/.test(plain) && !HUMAN_ESCAPE_RE.test(plain);
     const advice = runnable
       ? `Připrav příkaz a nech ho uživateli: \`! ${plain}\``
       : 'Připrav příkaz a nech ho uživateli.';
