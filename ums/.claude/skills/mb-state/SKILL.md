@@ -48,9 +48,15 @@ performing one. Reading another branch's state never checks that branch out.
   - The resolved path must exist **and** carry the case-sensitive marker
     `UMS pre-push guard` within its first five lines — a foreign `pre-push` from
     some other tool occupies the same filename and satisfies "exists" without
-    enforcing anything. Do NOT verify by pushing: mb-state is read-only, and the
-    executable self-test (feeding the hook a synthetic ref line) belongs to
-    `install-git-hooks.ps1` and to the entry gate, not here.
+    enforcing anything. Do NOT verify by pushing — and do not RUN the hook
+    either: mb-state is read-only, and the file sitting at that path is an
+    arbitrary executable (the foreign-hook case this very marker check exists to
+    detect), so a status report cannot promise "changes nothing" about executing
+    it. The executable self-test — feeding the hook a synthetic ref line, with
+    the marker set and with its mirror-image accept case — belongs to
+    `install-git-hooks.ps1` and to the entry gate, which fail closed on the
+    answer. mb-state only reports, so it has no use for a signal it may not act
+    on: what it states is what the file IS, never what it DOES.
   - `git config --get core.hooksPath` decides **where** the hook above was looked
     for, and `git rev-parse --git-path hooks/pre-push` already honours it — so a
     marker found there is a marker in the directory git itself will execute. An
@@ -61,13 +67,15 @@ performing one. Reading another branch's state never checks that branch out.
     put there by another repository's install. The marker check settles that
     provenance question, which is the only thing that was ever at stake. A missing
     or unmarked hook stays a missing guarantee whatever `core.hooksPath` says.
-  - The hook's own VERSION and whether the guarantee applies to THIS session:
-    the first five lines must carry `UMS pre-push guard (Publication Contract) v2`,
-    and the synthetic-pipe check must be run **with `MB_AGENT_SESSION=1` set**,
-    because the hook deliberately enforces nothing outside an agent session
-    (Publication Contract). A hook that passes the synthetic line while the
-    marker IS set is a missing guarantee; one that passes without it is
-    correct behaviour, not a finding.
+  - The hook's own VERSION, read from the same five lines: they must carry
+    `UMS pre-push guard (Publication Contract) v2`. A header with the identity
+    marker but WITHOUT the ` v2` suffix is our hook in a stale workspace — an
+    older, superseded set of rules, so it counts as a missing guarantee exactly
+    like an unmarked one, and it is reported with the same remedy (re-run
+    `install-git-hooks.ps1`, which upgrades it in place). Whether the guarantee
+    also applies to THIS SESSION is a different question, answered by the
+    synthetic pipe with `MB_AGENT_SESSION=1` set — and per the bullet above that
+    question belongs to the entry gate and the installer, not here.
   - `<CTX_DIR>/ums-repo.json` — its presence decides which values are in force.
     Absent means the **built-in defaults** apply (`origin/develop` as base, the
     built-in protected-branch list, the generic ticket pattern), not the
@@ -281,6 +289,7 @@ Další krok:
 - zbytky v cestě a větev MÁ pin → mb-park (odložit), nebo zahodit po tvém výslovném potvrzení
 - zbytky v cestě a větev je IDLE → commitni je, nebo zahoď po tvém výslovném potvrzení (mb-park by řekl „Není co parkovat")
 - pre-push chybí/neověřený → spusť install-git-hooks.ps1 a znovu ověř
+- pre-push je starší verze než v2 → spusť install-git-hooks.ps1 (upgraduje hook na místě) a znovu ověř
 - báze chybí commity → base sync na nejbližší hranici fáze (ne uprostřed tasku)
 ```
 
@@ -288,8 +297,12 @@ Two notes on the template. The `Workspace:` line is **not** one alternation over
 all findings: a missing hook, an absolute `core.hooksPath` and a missing
 configuration are independent findings that can hold at once, so list every one
 that applies. Only the FIRST position is an alternation, and `✅ způsobilý` is
-withheld for exactly one class of finding — a **missing guarantee**, today only the
-missing or unmarked `pre-push` hook. Everything that is not a missing guarantee
+withheld for ONE class of finding — a **missing guarantee** — which today has two
+members, both about the `pre-push` hook and both alternatives in that first
+position: it is missing or carries no marker, or its header is older than v2 (a
+superseded set of rules is not the guarantee either, which is why the template
+offers `⚠️ pre-push je starší verze než v2` there rather than beside `✅`).
+Everything that is not a missing guarantee
 rides ALONGSIDE `✅ způsobilý` instead of replacing it: `✅ způsobilý` with no
 further item means no finding at all, `✅ způsobilý` followed by items means the
 workspace is fit AND those items hold. A missing `ums-repo.json` carries `ℹ️`, not

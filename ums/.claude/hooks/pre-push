@@ -270,6 +270,23 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     esac
 
     branch_lc=${remote_ref_lc#refs/heads/}
+
+    # Judged BEFORE the protected-branch rule, and the order is the whole
+    # point of this position. A delete sends a zero local sha, which makes
+    # is_integration_push return false, so with the protected rule first a
+    # `git push origin --delete develop` was rejected with the shared-branch
+    # message - which advises publishing the branch and handing over
+    # `git push origin HEAD:develop`, advice about a push the user never
+    # attempted, while the message that actually describes a delete was
+    # unreachable for exactly the branches where it matters most. The verdict
+    # was right either way; only the text misled.
+    if [ "$local_sha" = "$zero" ]; then
+        b=$(branch_name "$remote_ref")
+        echo "UMS: mazání větve '$b' přes push není povolené (Publication Contract)." >&2
+        reject=1
+        continue
+    fi
+
     if is_protected "$branch_lc"; then
         b=$(branch_name "$remote_ref")
         if is_integration_push "$local_sha" "$remote_sha"; then
@@ -289,15 +306,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         fi
     fi
 
-    if [ "$local_sha" = "$zero" ]; then
-        b=$(branch_name "$remote_ref")
-        echo "UMS: mazání větve '$b' přes push není povolené (Publication Contract)." >&2
-        reject=1
-        continue
-    fi
-
     if [ "$remote_sha" != "$zero" ]; then
-        if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        # stdin closed for the same reason is_integration_push closes it on
+        # both of its subcommands: this runs inside the loop that reads git's
+        # ref list, and anything stdin-consuming in here silently swallows the
+        # remaining refs. Harmless for THIS subcommand today, but the
+        # invariant is stated one function up and has to be applied wherever
+        # it holds, not only where it currently bites.
+        if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" </dev/null 2>/dev/null; then
             b=$(branch_name "$remote_ref")
             echo "UMS: push do '$b' není fast-forward (vynucený/force push) — zakázáno" >&2
             echo "     (Publication Contract). Historii nikdy nepřepisuj tiše, řeš to s uživatelem." >&2

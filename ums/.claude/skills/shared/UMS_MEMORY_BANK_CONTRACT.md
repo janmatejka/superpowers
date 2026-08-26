@@ -1366,16 +1366,28 @@ waved through. Two conditions bound that arm, both named in the file itself: an
 unreadable token carrying a shell EXPANSION excuses the problem it caused,
 because such a token names something that is genuinely not in the string at
 all; and the arm fires only where the `git` token is visibly at a COMMAND
-POSITION, which a newline separator or a separator glued to the previous token
-(`cd /repo; git push …`) hides — an accepted gap, because promoting those to
+POSITION, which anything other than a closed list of left neighbours hides — a
+newline, a separator glued to the previous token (`cd /repo; git push …`) or to
+the `git` token itself (`X=1|git push …`), and a shell KEYWORD that is not an
+operator (`if true; then git push …`). An accepted gap in every one of those
+shapes, because promoting them to
 separators would re-open the heredoc case this rule exists to protect. What
 that gap does NOT cost is the deny on a target the guard can read in plain
 text: a cleanly-written invocation naming a protected branch is judged whether
-or not command position holds. A
+or not command position holds. **Two routes reach past that judgement, both
+named and neither closed.** A
 `git` token it cannot recognize as one at all (`bash -c 'git push …'`, whose
-token is `'git`, quote and all) never reaches that judgement; subcommands other
-than `push` are not its concern, and `git fetch` keeps its own narrower,
-best-effort refspec rule. Two checks deliberately read the raw command TEXT
+token is `'git`, quote and all) never reaches it; and neither does a recognized
+`git` whose SUBCOMMAND token is not `push` because a git ALIAS stands in for it
+(`git -c alias.zz=push zz origin <base>`, measured ALLOW with the guard silent —
+the pre-subcommand loop skips `-c` and its argument exactly as intended, and `zz`
+is simply not `push`). The alias route costs more than the first one: `pre-push`
+still stops a non-fast-forward, but the integration FAST-FORWARD — precisely what
+the actor rule reserves for the human — goes through in a single ordinary tool
+call. Closing it would mean asking git what a token means, the class of parsing
+this layer was deliberately demoted for, so it is named here instead. Subcommands
+other than `push` are not its concern either, and `git fetch` keeps its own
+narrower, best-effort refspec rule. Two checks deliberately read the raw command TEXT
 rather than a parsed invocation — the escape variable's name, and
 `--no-verify` — and the accepted price is that an agent merely WRITING either
 one from a shell tool is denied as well. Read the verdict from `evaluatePush`
@@ -1809,8 +1821,9 @@ When anything important is missing or ambiguous:
   publication time; the same slug or ticket active on a foreign branch; a base
   sync that cannot be performed at a phase boundary (divergence or a dirty tree);
   the ceiling of two integration rounds; a `pre-push` hook that is missing,
-  older than v2, or does not reject a synthetic protected-branch line run in
-  this session's own environment (Workspace Discipline); a failing
+  older than v2, or fails EITHER half of the synthetic-pipe check run in this
+  session's own environment — the protected-branch line it must reject and the
+  ticket-branch line it must accept (Workspace Discipline); a failing
   `git fetch origin` in phase 0 of the entry gate.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the

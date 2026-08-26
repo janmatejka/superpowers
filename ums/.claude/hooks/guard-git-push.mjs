@@ -14,7 +14,8 @@
 // push` arriving here is by definition the agent's, and a protected branch is
 // off limits to it even as the fast-forward the pre-push hook would happily
 // accept. For the same reason a command carrying the human escape
-// (HUMAN_ESCAPE_RE) is denied here: an agent never writes it.
+// (HUMAN_ESCAPE_RE for the POSIX-shell spelling, PS_ESCAPE_RE for PowerShell's)
+// is denied here: an agent never writes it.
 //
 // A RECOGNIZED `git push` therefore leans FAIL-CLOSED: this file's default
 // answer to an invocation it cannot read with confidence is deny, not
@@ -30,38 +31,66 @@
 // attempt to summarise them up here was falsified by the next change to the
 // function, and a summary that has gone quietly stale is worse than no summary.
 //
-// A `git` token this file does not recognize as one at all — `bash -c 'git
-// push …'`, whose token is `'git`, quote and all (see isGitToken) — never
-// reaches evaluatePush, so this file forms no opinion about the push inside
-// it. `git fetch` (outside its own refspec rule) and every other subcommand
-// do not reach it either. That residual pass-through is named and accepted,
-// not closed: the pre-push hook is still the real boundary, and widening the
-// scan here is what produced false positives on ordinary document text in
-// earlier rounds. Note the predicate: this is about the TOKEN, not about
-// command position. A recognized `git` sitting where a command cannot start
-// is still judged where the destination can be read — `echo git push origin
-// develop` denies.
+// TWO RESIDUAL ROUTES REACH PAST THIS FILE, both named here and neither
+// closed. FIRST, a `git` token it does not recognize as one at all — `bash -c
+// 'git push …'`, whose token is `'git`, quote and all (see isGitToken) — never
+// reaches evaluatePush, so this file forms no opinion about the push inside it
+// BEYOND THE TWO CONTEXT-FREE CHECKS BELOW, which read the raw command text
+// and do fire on it (measured: `bash -c 'X; MB_HUMAN_PUSH=1 git push origin
+// develop'` denies on the escape).
+// SECOND, a recognized `git` whose SUBCOMMAND token is not `push` because a
+// git ALIAS stands in for it: `git -c alias.zz=push zz origin HEAD:<base>` is
+// measured ALLOW, guard silent. Nothing is malfunctioning — the pre-subcommand
+// loop skips `-c` and its argument exactly as intended, and `zz` is simply not
+// `push` — which is what makes the route invisible. It costs more than the
+// first one does: the pre-push hook still stops a non-fast-forward, but the
+// integration FAST-FORWARD, precisely what the actor rule reserves for the
+// human, goes through in one ordinary tool call. Closing it would mean asking
+// git what a token means, which is the class of parsing this layer was demoted
+// for, so it is named rather than closed. `git fetch` (outside its own refspec
+// rule) and every other subcommand do not reach evaluatePush either. The
+// pre-push hook is still the real boundary, and widening the scan here is what
+// produced false positives on ordinary document text in earlier rounds. Note
+// the predicate on the first route: it is about the TOKEN, not about command
+// position. A recognized `git` sitting where a command cannot start is still
+// judged where the destination can be read — `echo git push origin develop`
+// denies.
 //
-// COMMAND POSITION IS READ FROM WHITESPACE-SPLIT TOKENS, so any separator the
-// split does not leave standing alone hides it, and the fail-closed arm then
-// does not fire for that invocation at all. Known carriers, same root cause
-// and same accepted class: a NEWLINE (`git status` newline `git push --mirror
-// origin`), and a separator GLUED to the previous token (`cd /repo; git push
-// --mirror origin`, where `/repo;` is neither a CONTROL token nor a NAME=value
-// assignment).
-// Promoting either to a separator would immediately re-open the heredoc case,
-// which is precisely what this rule exists to protect — so the gap is
-// accepted. Note what it does NOT cost: a target the guard can read is still
-// judged on those shapes, because the protected-target deny does not need
-// command position for a cleanly-written invocation (see evaluatePush).
+// COMMAND POSITION IS READ FROM WHITESPACE-SPLIT TOKENS AND FROM A CLOSED LIST
+// OF LEFT NEIGHBOURS (index 0, a CONTROL operator, a NAME=value assignment), so
+// anything else standing to the left of the `git` token hides it, and the
+// fail-closed arm then does not fire for that invocation at all. Known
+// carriers, same accepted class, each measured ALLOW:
+//   - a NEWLINE (`git status` newline `git push --mirror origin`);
+//   - a separator GLUED to the previous token (`cd /repo; git push --mirror
+//     origin`, where `/repo;` is neither a CONTROL token nor an assignment);
+//   - a separator glued to the `git` token ITSELF (`X=1|git push --mirror
+//     origin`): the token is then `X=1|git`, which isGitToken does not
+//     recognize, so the invocation is not even reached — the same
+//     whitespace-split root cause landing on the other side of the boundary;
+//   - a shell KEYWORD that stands alone but is not an operator, so CONTROL
+//     does not list it: `then`, `do`, `else`, `{`, `(`. `if true; then git
+//     push --mirror origin; fi` is ALLOW for that reason alone.
+// No repair is available for any of them. Promoting the glued/newline shapes to
+// separators re-opens the heredoc case this rule exists to protect; so does
+// adding the keywords, measured on the same shape — `cat <<'EOF' … if true;
+// then git push --force origin develop; fi … EOF` is ALLOW today and would
+// become a DENY on document text. So the gap is accepted. Note what it does
+// NOT cost: a target the guard can read is still judged on those shapes,
+// because the protected-target deny does not need command position for a
+// cleanly-written invocation (see evaluatePush).
 //
 // CONTEXT-FREE CHECKS knowingly pay a price for reading the raw command TEXT
 // without asking whether it is an invocation at all, because what they guard
 // is invisible to a parsed-invocation check: `--no-verify` near `push` would
-// skip the real guarantee, and the whole value of HUMAN_ESCAPE_RE is that the
-// variable never appears in an agent's command in the first place. The
-// accepted cost is the same for each of them: an agent WRITING ABOUT one from
-// Bash (a heredoc, an echo, a commit message quoting it) is denied. Closing
+// skip the real guarantee, and the whole value of the escape patterns is that
+// an agent never SETS the variable in the first place. The accepted cost is
+// the same for each of them: an agent writing the flag, or an ASSIGNMENT of
+// the escape, in text rather than as a command (a heredoc, an echo, a commit
+// message quoting it) is denied too. Note the limit of that cost for the
+// escape: what is matched is the assignment, not the bare name, so `grep -rn
+// MB_HUMAN_PUSH ums/` still passes — a property worth keeping and asserted in
+// the suite, and the reason neither pattern was ever widened to a name. Closing
 // that would mean parsing shell quoting, which is exactly what this layer was
 // demoted for failing to do — and for the escape it would also cost the
 // containment itself.
@@ -150,6 +179,53 @@ const sharedBranchMessage = (branch) =>
 // example a non-fast-forward rewrite of the agent's own published ticket
 // branch, which the hook would then let past on the escape.
 const HUMAN_ESCAPE_RE = /(^|\s)(MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH)=("1"|'1'|1)([\s;&]|$)/;
+
+// THE SAME CONTAINMENT IN POWERSHELL'S SPELLING. The regex above reads a
+// POSIX `NAME=value` assignment and nothing else, but this guard is registered
+// on `Bash|PowerShell` (settings.json) because this fork's sessions run on the
+// PowerShell tool. `$env:MB_HUMAN_PUSH='1'` sets the process environment `git`
+// inherits just as the shell prefix does, and the hook then lifts its WHOLE
+// guard — yet the name there is preceded by `env:`, so `(^|\s)NAME=` cannot
+// match it. Measured before this pattern existed, with `tool_name:
+// "PowerShell"`: `$env:MB_HUMAN_PUSH='1'; git push --force origin HEAD:develop`
+// was ALLOW, i.e. an agent force-pushing a protected branch through both
+// layers in entirely ordinary syntax.
+//
+// NOT degraded to a bare name match, deliberately: `grep -rn MB_HUMAN_PUSH
+// ums/` must keep passing, and that property is asserted in the suite. Each
+// shape below is an ASSIGNMENT construct, which is what separates it from a
+// mention.
+//
+//   `$env:NAME=1` / `${env:NAME}=1` — also the READ spelling (`echo
+//     $env:NAME`), so this one must carry the value, exactly like the POSIX
+//     shape: the accepted values are PowerShell's own (`1`, `'1'`, `"1"`), and
+//     the lookahead is the TERMINATOR half, so `=10` and `='1'x` are not it.
+//   `Set-Item [-Path] Env:NAME` and `[Environment]::SetEnvironmentVariable(
+//     'NAME'` — these carry no read spelling at all (the reads are `Get-Item`
+//     and `GetEnvironmentVariable`), so writing the construct at the escape's
+//     name IS the violation and no value is required. The asymmetry is
+//     deliberate, not an oversight.
+//
+// Case-insensitive: PowerShell resolves `$Env:`/`$ENV:` and cmdlet names
+// without regard to case, and Windows environment variable names are
+// case-insensitive too, so a case-sensitive pattern would miss a spelling that
+// really does set the variable. The `env:`/`Set-Item`/`SetEnvironmentVariable`
+// prefix is what keeps that from widening into a bare name match.
+//
+// Every alternative captures the NAME in a group of its own, so the matched
+// name is `match.slice(1).find(defined)` — the deny message has to name the
+// variable that actually matched, the same rule the POSIX shape follows.
+const PS_ESCAPE_NAMES = 'MB_HUMAN_PUSH|UMS_ALLOW_SHARED_PUSH';
+const PS_ESCAPE_RE = new RegExp(
+  `\\$\\{?env:(${PS_ESCAPE_NAMES})\\}?\\s*=\\s*(?:'1'|"1"|1)(?![\\w.'"])`
+  + `|Set-Item\\s+(?:-Path\\s+)?Env:\\\\?(${PS_ESCAPE_NAMES})\\b`
+  + `|\\[Environment\\]::SetEnvironmentVariable\\(\\s*['"](${PS_ESCAPE_NAMES})['"]`,
+  'i',
+);
+
+// The name that actually triggered a PowerShell-shaped match, whichever
+// alternative it came from.
+const psEscapeName = (m) => (m ? m.slice(1).find((g) => g !== undefined) : '');
 
 const currentBranch = (cwd) => {
   try {
@@ -282,11 +358,13 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
       // "names a destination" above - so a quoted branch yields a readable
       // target AND stays reported as not plainly written.
       //
-      // ONE PROBLEM PER OFFENDING TOKEN. Recording them together made the
-      // whole list share one excuse: `blocking` below tests `some`, so a
-      // single expanded token spoke for every other token filed with it, and
-      // appending `$x` bought silence about a wildcard refspec standing next
-      // to it. A problem may only be recorded on tokens that all bear on it.
+      // A PROBLEM MAY ONLY BE RECORDED ON TOKENS THAT ALL BEAR ON IT.
+      // Recording unrelated tokens together made the whole list share one
+      // excuse: `blocking` below tests `some`, so a single expanded token
+      // spoke for every other token filed with it, and appending `$x` bought
+      // silence about a wildcard refspec standing next to it. For THIS
+      // problem — a refspec that is not plainly written — the tokens that
+      // bear on it are one apiece, hence the loop.
       for (const r of refspecs.filter((t) => !REFSPEC_RE.test(t))) {
         note('víc nebo poškozené refspecy', [r]);
       }
@@ -295,6 +373,13 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
       // token this file cannot read does not stop it from seeing that more
       // than one destination is being pushed, and while this sat in that arm
       // one unreadable token dropped the arity defect on the floor.
+      //
+      // WARNING: do NOT "make this consistent" by splitting it per token.
+      // "More than one destination" is a property of the SET, so every token
+      // in `certain` bears on it and they belong in ONE problem — that is the
+      // rule above being followed, not broken. Splitting it would undo the
+      // fix that put the arity defect out of the `else` arm, and the tempting
+      // repair is the dangerous one here.
       //
       // Attributed to the refspecs whose presence is CERTAIN. An expanded
       // token may stand for nothing or for several things, so it cannot be
@@ -425,12 +510,16 @@ process.stdin.on('end', () => {
   // it. That reason is gone: commands the user types with a leading `!` never
   // reach this hook, so anything carrying the escape that DOES reach it is
   // the agent's own tool call — a breach of the contract, not a human
-  // publication (see HUMAN_ESCAPE_RE).
+  // publication (see HUMAN_ESCAPE_RE). The POSIX spelling is tried first
+  // because only it can be stripped back into a runnable command; the
+  // PowerShell spellings (PS_ESCAPE_RE) deny just as hard but hand nothing
+  // over.
   const escape = command.match(HUMAN_ESCAPE_RE);
-  if (escape) {
+  const psEscape = escape ? null : command.match(PS_ESCAPE_RE);
+  if (escape || psEscape) {
     // Names the variable that ACTUALLY matched, not whichever one this file
     // mentions first — the message is read by someone who wrote one of the
-    // spellings HUMAN_ESCAPE_RE knows and needs to know which one is the
+    // spellings the two patterns know and needs to know which one is the
     // problem. And it hands over the command with the assignment stripped, the
     // way sharedBranchMessage does: a deny that only scolds leaves the agent to
     // improvise the way out.
@@ -438,7 +527,7 @@ process.stdin.on('end', () => {
     // Stripping the assignment is textual surgery, so the remainder is handed
     // over only if `runnable` below accepts it: it must begin `git push `, run
     // to the end of the string, and contain none of `\n ; & |` or a second
-    // escape. Two rounds of narrowing got here. `\bgit\b` was not enough:
+    // escape in EITHER spelling (a POSIX assignment or a PowerShell one). Two rounds of narrowing got here. `\bgit\b` was not enough:
     // `export MB_HUMAN_PUSH=1 && git push …` leaves the fragment `export &&
     // git push …`, a line continuation leaves a stray backslash, and a command
     // carrying BOTH names keeps the deprecated one — all three still contain
@@ -456,14 +545,27 @@ process.stdin.on('end', () => {
     // place and can put any text in its own message to the user, so this
     // hand-over is not a channel that tightening would take away from it. If
     // it is ever tightened anyway, delete this paragraph with the same commit.
-    const plain = command.replace(HUMAN_ESCAPE_RE, '$1').replace(/^[\s;&]+/, '').trim();
-    const runnable = /^git\s+push\s+[^\n;&|]*$/.test(plain) && !HUMAN_ESCAPE_RE.test(plain);
+    //
+    // THE SURGERY IS DEFINED FOR THE POSIX SHAPE ONLY. A PowerShell shape
+    // (PS_ESCAPE_RE) falls back to the generic sentence and is never stripped:
+    // `$env:NAME='1';` is a statement, not an argument-list prefix, and the
+    // three constructs differ in how much of the line they occupy, so removing
+    // one textually is guesswork of exactly the kind the paragraph above says
+    // must not be handed to a human to paste. `plain` stays empty there and
+    // `runnable` is false by construction.
+    const plain = escape
+      ? command.replace(HUMAN_ESCAPE_RE, '$1').replace(/^[\s;&]+/, '').trim()
+      : '';
+    const runnable = Boolean(escape)
+      && /^git\s+push\s+[^\n;&|]*$/.test(plain)
+      && !HUMAN_ESCAPE_RE.test(plain)
+      && !PS_ESCAPE_RE.test(plain);
     const advice = runnable
       ? `Připrav příkaz a nech ho uživateli: \`! ${plain}\``
       : 'Připrav příkaz a nech ho uživateli.';
     deny(
-      `UMS: \`${escape[2]}\` je vědomá výjimka ČLOVĚKA a agent ji nikdy nenastavuje ` +
-        `(Publication Contract). ${advice}`,
+      `UMS: \`${escape ? escape[2] : psEscapeName(psEscape)}\` je vědomá výjimka ČLOVĚKA a agent ji ` +
+        `nikdy nenastavuje (Publication Contract). ${advice}`,
     );
   }
 

@@ -28,6 +28,18 @@ function Test-Cmd([string] $Command, [string] $Cwd = '') {
     return Invoke-Hook ($payload | ConvertTo-Json -Depth 5 -Compress)
 }
 
+# Same shape as Test-Cmd with the OTHER tool name. The guard is registered on
+# `Bash|PowerShell` (settings.json, asserted below), and this fork's sessions
+# run on the PowerShell tool — so every rule that reads the command TEXT has to
+# be pinned in PowerShell's spelling too, not only in POSIX shell's. Until this
+# helper existed the whole suite spoke `Bash`, and the escape containment was
+# measurably absent on the tool actually in use.
+function Test-CmdPs([string] $Command, [string] $Cwd = '') {
+    $payload = @{ tool_name = 'PowerShell'; tool_input = @{ command = $Command } }
+    if ($Cwd) { $payload.cwd = $Cwd }
+    return Invoke-Hook ($payload | ConvertTo-Json -Depth 5 -Compress)
+}
+
 # Same shape as Test-Cmd, but returns exit code and stderr too (via
 # Invoke-HookFull) — for assertions whose point is "must not throw", where
 # stdout alone cannot distinguish a crash from a clean allow.
@@ -646,5 +658,124 @@ Assert-Eq $rFull.Err '' 'žádný stderr: fail-closed zamítnutí nevyhodí neza
 # fail-open answer and is asserted further up, unchanged: an unguessable
 # branch is not a recognized protected target, and denying there would block
 # legitimate work from a detached HEAD.
+
+
+# ---------------------------------------------------------------------------
+# FINAL WHOLE-BRANCH REVIEW, Critical: THE ESCAPE CONTAINMENT IN POWERSHELL'S
+# SPELLING. Everything above speaks POSIX shell, but the guard is registered on
+# `Bash|PowerShell` (asserted further up) because this fork's sessions run on
+# the PowerShell tool. `$env:NAME='1'; git push …` sets the very environment
+# `git` inherits, and on the hook side the escape lifts the WHOLE guard — the
+# protected-branch rule, the deletion ban and the force-push ban alike.
+#
+# Measured against the real hook with `tool_name: "PowerShell"` BEFORE the fix:
+#   $env:<escape>='1'; git push origin HEAD:develop         -> deny, but by the
+#                                                              TARGET rule, not
+#                                                              by the escape one
+#   $env:<escape>='1'; git push --force origin HEAD:develop -> ALLOW
+#   $env:<escape>='1'; git push --force origin feature/x    -> ALLOW
+# The two ALLOWs are an agent force-pushing a protected branch through BOTH
+# layers in ordinary syntax: the bad flag makes a `problem`, and the assignment
+# statement is neither a CONTROL token nor a NAME=value assignment, so command
+# position is false — which suppresses the protected-target deny and the
+# fail-closed arm at once.
+# ---------------------------------------------------------------------------
+foreach ($c in @(
+    "`$env:MB_HUMAN_PUSH='1'; git push origin develop",
+    "`$env:MB_HUMAN_PUSH=`"1`"; git push origin develop",
+    "`$env:MB_HUMAN_PUSH=1; git push origin develop",
+    "`${env:MB_HUMAN_PUSH}='1'; git push origin feature/ums-1-alfa",
+    "`$Env:MB_HUMAN_PUSH = '1'; git push origin feature/ums-1-alfa",
+    'Set-Item -Path Env:MB_HUMAN_PUSH 1; git push origin feature/ums-1-alfa',
+    'Set-Item Env:\MB_HUMAN_PUSH -Value 1; git push origin feature/ums-1-alfa',
+    "[Environment]::SetEnvironmentVariable('MB_HUMAN_PUSH','1'); git push origin feature/ums-1-alfa"
+)) {
+    $rPs = Test-CmdPs $c
+    Assert-Match $rPs 'permissionDecision.*deny' "výjimka rozpoznaná i v PowerShellovém zápisu: $c"
+    # ... and the deny must be the ESCAPE's. Half these targets are `develop`,
+    # which the shared-branch rule would reject anyway, so without this the
+    # table would pass without the pattern recognizing the spelling at all.
+    Assert-Match $rPs 'vědomá výjimka ČLOVĚKA' "zamítnutí patří výjimce, ne sdílené větvi ani nečitelnosti: $c"
+    Assert-Match $rPs 'MB_HUMAN_PUSH' "zamítnutí jmenuje proměnnou, kvůli které padlo: $c"
+}
+# the transitional old name, in PowerShell's spelling too, and the message must
+# name the one that ACTUALLY triggered it
+$rPsOld = Test-CmdPs "`$env:UMS_ALLOW_SHARED_PUSH='1'; git push origin develop"
+Assert-Match $rPsOld 'permissionDecision.*deny' 'PowerShell: staré jméno výjimky je zamítnuté taky'
+Assert-Match $rPsOld 'UMS_ALLOW_SHARED_PUSH' 'PowerShell: zamítnutí jmenuje staré jméno, které ho spustilo'
+
+# THE THREE MEASURED CASES from the review, each an ALLOW before this fix. The
+# first one denied even before, but on the TARGET rule — so it is asserted on
+# the escape's own reason, otherwise it would go green without the fix.
+foreach ($c in @(
+    "`$env:MB_HUMAN_PUSH='1'; git push origin HEAD:develop",
+    "`$env:MB_HUMAN_PUSH='1'; git push --force origin HEAD:develop",
+    "`$env:MB_HUMAN_PUSH='1'; git push --force origin feature/x"
+)) {
+    $rMeasured = Test-CmdPs $c
+    Assert-Match $rMeasured 'permissionDecision.*deny' "měřený obchvat je zamítnutý: $c"
+    Assert-Match $rMeasured 'vědomá výjimka ČLOVĚKA' "měřený obchvat padá na výjimce, ne na cíli: $c"
+}
+
+# LOAD-BEARING NEGATIVES for the PowerShell pattern, on the same three axes the
+# POSIX table uses. Without them the pattern could have been widened into a bare
+# name match, which is the one repair this containment must NOT take.
+foreach ($c in @(
+    # different VALUE
+    "`$env:MB_HUMAN_PUSH='0'; git push origin feature/ums-1-alfa",
+    "`$env:MB_HUMAN_PUSH=`"0`"; git push origin feature/ums-1-alfa",
+    # different TERMINATOR after the value
+    "`$env:MB_HUMAN_PUSH=10; git push origin feature/ums-1-alfa",
+    "`$env:MB_HUMAN_PUSH='1'x; git push origin feature/ums-1-alfa",
+    # different name PREFIX / suffix
+    "`$env:NOT_MB_HUMAN_PUSH='1'; git push origin feature/ums-1-alfa",
+    "`$env:MB_HUMAN_PUSH_TOO='1'; git push origin feature/ums-1-alfa"
+)) { Assert-Eq (Test-CmdPs $c) '' "výjimkou v PowerShellu není: $c" }
+
+# ... and the READ spelling is not the write spelling. `$env:NAME` is also how
+# PowerShell READS the variable, which is why this alternative (unlike
+# `Set-Item Env:` and `SetEnvironmentVariable`, which have no read spelling)
+# has to carry the value at all.
+Assert-Eq (Test-CmdPs "if (`$env:MB_HUMAN_PUSH -eq '1') { git status }") '' 'čtení proměnné není její nastavení'
+
+# THE PROPERTY THE BARE-NAME REPAIR WOULD HAVE COST, asserted rather than left
+# to the comment that promises it: searching the layer's own sources for the
+# escape's name is ordinary read-only work and must keep passing, on both tools.
+Assert-Eq (Test-Cmd 'grep -rn MB_HUMAN_PUSH ums/') '' 'hledání jména výjimky ve zdrojích vrstvy projde (Bash)'
+Assert-Eq (Test-CmdPs 'Select-String -Pattern MB_HUMAN_PUSH -Path ums/.claude/hooks/pre-push') '' 'hledání jména výjimky ve zdrojích vrstvy projde (PowerShell)'
+
+# The POSIX spellings must keep denying EXACTLY as before — the widening is
+# additive, and a shared `HUMAN_ESCAPE_RE` is easy to break while extending it.
+foreach ($c in @(
+    'MB_HUMAN_PUSH=1 git push origin HEAD:develop',
+    'MB_HUMAN_PUSH=1 git push --force origin HEAD:develop',
+    'MB_HUMAN_PUSH="1" git push origin develop',
+    'UMS_ALLOW_SHARED_PUSH=1 git push origin develop'
+)) {
+    $rStill = Test-Cmd $c
+    Assert-Match $rStill 'vědomá výjimka ČLOVĚKA' "bashové hláskování zamítá dál: $c"
+}
+# ... including the hand-over, which is what separates "still denies" from
+# "still denies for the right reason and still helps"
+Assert-Match (Test-Cmd 'MB_HUMAN_PUSH=1 git push origin develop') 'uživateli: ' 'bashové hláskování dál podává příkaz bez výjimky'
+
+# THE HAND-OVER FALLS BACK for a PowerShell shape. Stripping `$env:NAME='1';`
+# out of a command is textual surgery on a statement, not on an argument-list
+# prefix, so the guard hands over nothing and says so in the generic sentence.
+$rPsHandover = Test-CmdPs "`$env:MB_HUMAN_PUSH='1'; git push origin develop"
+Assert-Match $rPsHandover 'permissionDecision.*deny' 'PowerShellový tvar: zamítnutí platí'
+Assert-NotMatch $rPsHandover 'uživateli: ' 'PowerShellový tvar: příkaz se nepodává, jde generická věta'
+# ... and the same fallback catches a remainder that would RE-SET the escape in
+# PowerShell's spelling once the POSIX one was stripped out of it. Without the
+# PowerShell half of that test the guard would hand a human a command carrying
+# the escape it had just refused.
+$rMixed = Test-Cmd "MB_HUMAN_PUSH=1 git push origin `$env:MB_HUMAN_PUSH=1"
+Assert-Match $rMixed 'permissionDecision.*deny' 'smíšené hláskování: zamítnutí platí'
+Assert-NotMatch $rMixed 'uživateli: ' 'smíšené hláskování: nepodává se příkaz, ve kterém zbyla PowerShellová výjimka'
+
+# CONTROLS on the PowerShell tool, so the table above cannot be green because
+# the guard denies everything arriving with that tool name — or allows it.
+Assert-Match (Test-CmdPs 'git push origin develop') 'sdílená větev' 'kontrola: pravidlo o sdílené větvi platí i na PowerShell toolu'
+Assert-Eq (Test-CmdPs 'git push origin feature/ums-1-alfa') '' 'kontrola: srozumitelný push na nechráněnou větev prochází i na PowerShell toolu'
 
 Complete-Tests

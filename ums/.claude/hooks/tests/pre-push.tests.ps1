@@ -1618,4 +1618,91 @@ Assert-Match ($upgradedHead8 -join "`n") 'UMS pre-push guard \(Publication Contr
 
 Remove-Item -Recurse -Force $root8
 
+
+# ---------------------------------------------------------------------------
+# 29. A NON-ZERO CHAINED EXIT MUST REJECT THE PUSH (final review, deferred
+# item). Chaining exists to preserve the foreign hook's VETO, and the veto is
+# the half no test reached: every canary above exits 0, so only the passing
+# path was exercised, while `run_chained "$@"` followed by `exit $?` is easy to
+# break by accident — an `echo`, a `trap`, a tidy-up line between the call and
+# the exit replaces `$?` with its own status and the veto silently disappears
+# with the hook still visibly "running". Here the chained hook exits 3 on a
+# push OUR hook allows, so the only thing that can reject it is the propagated
+# status.
+# ---------------------------------------------------------------------------
+$fxChainFail = New-PushFixture 'mbchainfail'
+$workChainFail = $fxChainFail.Work
+$originChainFail = $fxChainFail.Origin
+$foreignChainFail = Join-Path $workChainFail '.git/hooks/pre-push'
+New-Item -ItemType Directory -Force -Path (Split-Path $foreignChainFail) | Out-Null
+Set-Content -LiteralPath $foreignChainFail -Encoding ascii -Value @"
+#!/bin/sh
+echo "cizi hook: veto" >&2
+exit 3
+"@
+Invoke-Installer $workChainFail $null | Out-Null
+$chainedFailPath = Join-Path $workChainFail '.git/hooks/pre-push.ums-chained'
+Assert-True (Test-Path $chainedFailPath) 'veto: cizí hook je odsunutý a zřetězený'
+
+Invoke-GitOk $workChainFail @('checkout', '-q', '-b', 'feature/y') | Out-Null
+Add-Content -Path (Join-Path $workChainFail 'f.txt') -Value 'chain veto'
+Invoke-GitOk $workChainFail @('commit', '-am', 'chain veto') | Out-Null
+$r = Invoke-GitTry $workChainFail @('push', 'origin', 'HEAD:refs/heads/feature/y')
+Assert-True ($r.Code -ne 0) 'veto: nenulový exit zřetězeného hooku push zamítne'
+Assert-Eq (Get-Sha $originChainFail 'refs/heads/feature/y') $null 'veto: feature/y na originu nevznikla'
+# ... and the rejection is the CHAINED hook's, not ours: our hook has nothing
+# against this push and says nothing about it.
+Assert-NotMatch $r.Out 'UMS: ' 'veto: zamítnutí nepochází z naší kontroly, ale ze zřetězeného hooku'
+Assert-Match $r.Out 'cizi hook: veto' 'veto: stderr zřetězeného hooku se dostane k uživateli'
+
+# POSITIVE CONTROL: the same push, the same fixture, the same chained hook -
+# only its exit status changes. Without it the assertions above would be
+# satisfied by a hook that rejects this push for some entirely different reason.
+Set-Content -LiteralPath $chainedFailPath -Encoding ascii -Value @"
+#!/bin/sh
+exit 0
+"@
+& $gitBash -c 'chmod +x "$1"' _ ($chainedFailPath -replace '\\', '/') | Out-Null
+$r = Invoke-GitTry $workChainFail @('push', 'origin', 'HEAD:refs/heads/feature/y')
+Assert-Eq $r.Code 0 'veto: kontrola - s nulovým exitem zřetězeného hooku týž push projde'
+Assert-True ($null -ne (Get-Sha $originChainFail 'refs/heads/feature/y')) 'veto: kontrola - feature/y na originu vznikla'
+
+Remove-Item -Recurse -Force $fxChainFail.Root
+
+# ---------------------------------------------------------------------------
+# 30. A DELETE IS DESCRIBED AS A DELETE, even on a protected branch (final
+# review). A delete sends a zero local sha, which makes is_integration_push
+# return false, so while the protected-branch rule was judged first the user
+# got the shared-branch message: "projde jen fast-forward" plus the hand-over
+# `git push origin HEAD:develop` - advice about a push nobody attempted, and
+# the message that actually names a delete was unreachable for exactly the
+# branches where deleting matters most. The verdict was right both before and
+# after; this pins the TEXT. Patterns stay ASCII-only on purpose: git's stderr
+# comes back through a PowerShell pipeline, which the playbook warns decodes
+# UTF-8 through a legacy code page.
+# ---------------------------------------------------------------------------
+$fxDelMsg = New-PushFixture 'mbdelmsg'
+$workDelMsg = $fxDelMsg.Work
+$originDelMsg = $fxDelMsg.Origin
+Invoke-Installer $workDelMsg $null | Out-Null
+$developBeforeDelMsg = Get-Sha $originDelMsg 'refs/heads/develop'
+$r = Invoke-GitTry $workDelMsg @('push', 'origin', '--delete', 'develop')
+Assert-True ($r.Code -ne 0) 'mazání chráněné větve: zamítnuto'
+Assert-Eq (Get-Sha $originDelMsg 'refs/heads/develop') $developBeforeDelMsg 'mazání chráněné větve: develop na originu zůstal'
+Assert-Match $r.Out 'UMS: maz' 'mazání chráněné větve: hláška popisuje mazání'
+Assert-NotMatch $r.Out 'HEAD:develop' 'mazání chráněné větve: neradí příkaz k pushi, o který nikdo nežádal'
+Assert-NotMatch $r.Out 'je sd' 'mazání chráněné větve: nepodsouvá se hláška o sdílené větvi'
+
+# CONTROL: an ordinary push to the same protected branch still gets the
+# shared-branch message, so the assertions above cannot be green because the
+# protected-branch rule stopped firing altogether.
+Add-Content -Path (Join-Path $workDelMsg 'f.txt') -Value 'nepublikovana zmena'
+Invoke-GitOk $workDelMsg @('commit', '-am', 'nepublikovana zmena') | Out-Null
+$r = Invoke-GitTry $workDelMsg @('push', 'origin', 'HEAD:develop')
+Assert-True ($r.Code -ne 0) 'kontrola: běžný push na chráněnou větev je dál zamítnutý'
+Assert-Match $r.Out 'je sd' 'kontrola: běžný push na chráněnou větev dál dostává hlášku o sdílené větvi'
+Assert-Match $r.Out 'HEAD:develop' 'kontrola: běžný push na chráněnou větev dál dostává připravený příkaz'
+
+Remove-Item -Recurse -Force $fxDelMsg.Root
+
 Complete-Tests

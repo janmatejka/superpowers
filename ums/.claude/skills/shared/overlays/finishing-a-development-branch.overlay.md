@@ -14,9 +14,13 @@ After the user chooses and BEFORE executing the choice:
   before executing the chosen option (the push that integrates): the resolved
   `pre-push` must exist, carry
   `UMS pre-push guard (Publication Contract) v2` within its first five lines,
-  and reject a synthetic protected-branch line. A synthetic line that PASSES
-  means the agent-session marker is absent here, so the guarantee does not
-  apply to this session — STOP and report; do not integrate.
+  and reject a synthetic protected-branch line — **together with the
+  mirror-image ACCEPT case**, a synthetic ticket-branch creation that must exit
+  0 and say nothing. Both halves or neither: a hook that cannot execute at all
+  "rejects" everything too and would pass this check on the reject half alone
+  (contract, Publication Contract). A synthetic protected-branch line that
+  PASSES means the agent-session marker is absent here, so the guarantee does
+  not apply to this session — STOP and report; do not integrate.
 - **Option 1, 2, or 3** (Merge Locally / Push and Create PR / Keep As-Is) →
   invoke the `mb-harvest` skill. It harvests knowledge into the affected
   Memory Bank documents, runs the playbook gate (asks the user which collected
