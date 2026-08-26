@@ -1374,7 +1374,14 @@ shapes, because promoting them to
 separators would re-open the heredoc case this rule exists to protect. What
 that gap does NOT cost is the deny on a target the guard can read in plain
 text: a cleanly-written invocation naming a protected branch is judged whether
-or not command position holds. **Two routes reach past that judgement, both
+or not command position holds. Shell REDIRECTION is a separate thing from those
+separators and is handled the way a real shell handles it: it is REMOVED from
+the invocation's arguments (with its target, whether that sits in the next token
+or glued to the operator) and the scan carries on past it, so `git push origin
+<branch> 2>&1 | tail -3` is read as the push it is and `… > develop` writes a
+file rather than pushing a branch — while a protected branch written AFTER a
+redirection is still judged, because in a shell it is still an argument.
+**Two routes reach past the guard's judgement altogether, both
 named and neither closed.** A
 `git` token it cannot recognize as one at all (`bash -c 'git push …'`, whose
 token is `'git`, quote and all) never reaches it; and neither does a recognized

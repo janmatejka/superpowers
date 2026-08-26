@@ -80,6 +80,15 @@
 // because the protected-target deny does not need command position for a
 // cleanly-written invocation (see evaluatePush).
 //
+// CONTROL IS NOT THE ONLY SHELL SYNTAX INSIDE AN INVOCATION. A CONTROL token
+// ENDS the argument list; a REDIRECTION is STEPPED OVER and the scan carries
+// on past it, because that is what a real shell does — `git push origin 2>&1
+// develop` pushes `develop`, so ending the list at `2>&1` would let a
+// redirection hide a protected target. See REDIR_RE for the shapes, for why
+// heredoc is excluded from them, and for the defect this closed: ordinary
+// plumbing (`2>&1 | tail -3`, `> /tmp/out.txt`) used to be read as a broken
+// refspec and denied the agent's own ticket-branch push.
+//
 // CONTEXT-FREE CHECKS knowingly pay a price for reading the raw command TEXT
 // without asking whether it is an invocation at all, because what they guard
 // is invisible to a parsed-invocation check: `--no-verify` near `push` would
@@ -266,8 +275,42 @@ const deny = (reason) => {
   process.exit(0);
 };
 
-// Shell control-flow tokens that end the current invocation's argument list.
+// Shell control-flow tokens that END the current invocation's argument list.
 const CONTROL = new Set(['&&', '||', ';', '|', '&']);
+
+// Shell REDIRECTION, the other thing in an invocation that is not a git
+// argument. It is NOT in CONTROL and must not be: a real shell REMOVES a
+// redirection from the argument list and keeps reading the arguments around
+// it, so `git push origin 2>&1 develop` really does push `develop`. Ending
+// the scan at `2>&1` would let a redirection HIDE a protected target, which
+// is the one direction this file may not move in. So redirections are STEPPED
+// OVER, not treated as terminators, and everything after one is still an
+// argument.
+//
+// Before this existed a redirection token was collected as a refspec, failed
+// REFSPEC_RE, and became an expansion-free problem — so an agent's own
+// ticket-branch push denied the moment it carried ordinary plumbing:
+// `git push origin <branch> 2>&1 | tail -3` and `git push origin <branch> >
+// /tmp/out.txt` were both DENY, the second of them under a reason ("víc nebo
+// poškozené refspecy") that named a cause the command did not have. The
+// layer's own publication rule tells the agent to push after every commit and
+// agents pipe output routinely, so the defect fired on the command class the
+// layer most wants run. Redirection is shell knowledge the file already
+// reasons with (that is what CONTROL is), not a new class of parsing.
+//
+// The shapes are the ones people write: `>`, `>>`, `<`, the fd-prefixed forms
+// (`2>`, `2>>`, `N>&M`, `1>&2`), and `&>` / `&>>`. Group 1 is whatever is
+// GLUED to the operator: non-empty means the target rides along in the same
+// token (`2>&1`, `>/tmp/out.txt`), so one token is stepped over; empty means
+// the TARGET is the next token (`> /tmp/out.txt`), so two are. That second
+// arm is why `git push origin feature/x > develop` is not read as a push to
+// `develop` — the word is a FILE NAME, and a real shell never hands it to git.
+//
+// HEREDOC IS DELIBERATELY EXCLUDED (`<(?!<)`): `<<'EOF'` is not stepped over,
+// so nothing about the heredoc case moves. That case is ALLOW because the
+// trailing `EOF` token makes a problem off command position, and it must stay
+// exactly that.
+const REDIR_RE = /^(?:&>>?|[0-9]*>>?&?|[0-9]*<(?!<))(.*)$/;
 
 // Flags considered "boring" enough that we still trust our own read of the
 // remote/refspec around them. Any other flag is recorded as a problem for
@@ -612,9 +655,14 @@ process.stdin.on('end', () => {
     i++;
 
     // Collect this invocation's own argument tokens: stop at a shell
-    // control operator, or at the start of another git invocation.
+    // control operator, or at the start of another git invocation; step OVER
+    // a redirection (and its target where that sits in the next token) and
+    // keep collecting, the way a real shell removes it from the argument
+    // list. See REDIR_RE for why stepping over and not stopping.
     const args = [];
     while (i < tokens.length && !CONTROL.has(tokens[i]) && !isGitToken(tokens[i])) {
+      const redir = REDIR_RE.exec(tokens[i]);
+      if (redir) { i += redir[1] === '' ? 2 : 1; continue; }
       args.push(tokens[i]);
       i++;
     }

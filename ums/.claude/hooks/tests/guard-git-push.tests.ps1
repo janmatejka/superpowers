@@ -116,10 +116,17 @@ foreach ($c in @(
 # because each of these IS a push — `git` at a command position — that this
 # file cannot read. Erring toward denying costs the agent a rewrite; erring
 # the other way hands it a protected branch.
+#
+# `git push origin feature/ums-1-alfa 2>&1` USED TO SIT IN THIS LIST and does
+# not any more. It was never a shape the guard could not read — the push is
+# spelled out in full and `2>&1` is the shell's, not git's. Paying the price
+# there fired on the agent's own ticket-branch push whenever it carried
+# ordinary plumbing, which the publication rule asks for after every commit.
+# Redirection is now stepped over; the block near the end of this file pins
+# that, its limits, and the controls that keep it from loosening anything else.
 # ---------------------------------------------------------------------------
 foreach ($c in @(
     'git push origin "feature/ums-1-alfa"',
-    'git push origin feature/ums-1-alfa 2>&1',
     'git push origin feature/ums-1-alfa # nasazení'
 )) { Assert-Match (Test-Cmd $c) 'permissionDecision.*deny' "zamítnuto (rozpoznaný push v tvaru, kterému guard nerozumí): $c" }
 
@@ -890,5 +897,83 @@ Assert-NotMatch $rMixed 'uživateli: ' 'smíšené hláskování: nepodává se 
 # the guard denies everything arriving with that tool name — or allows it.
 Assert-Match (Test-CmdPs 'git push origin develop') 'sdílená větev' 'kontrola: pravidlo o sdílené větvi platí i na PowerShell toolu'
 Assert-Eq (Test-CmdPs 'git push origin feature/ums-1-alfa') '' 'kontrola: srozumitelný push na nechráněnou větev prochází i na PowerShell toolu'
+
+# ---------------------------------------------------------------------------
+# SHELL REDIRECTION IS NOT A REFSPEC (see REDIR_RE in the guard). A redirection
+# token used to be collected as an argument, fail REFSPEC_RE and become an
+# expansion-free problem, so the fail-closed arm denied the agent's own
+# ticket-branch push the moment the command carried ordinary plumbing — the
+# one command class the publication rule most wants run, and for `> /tmp/out`
+# under a reason ("víc nebo poškozené refspecy") that named a cause the
+# command did not have. Measured DENY before the fix, all four:
+#   git push 2>&1 | tail -3
+#   git push origin feature/ums-1-alfa 2>&1 | tail -3
+#   git push origin feature/ums-1-alfa > /tmp/out.txt
+#   (the same, on the PowerShell tool)
+# ---------------------------------------------------------------------------
+Assert-Eq (Test-Cmd 'git push origin feature/ums-1-alfa 2>&1 | tail -3') '' 'přesměrování: pipe za pushem tiketové větve projde'
+Assert-Eq (Test-Cmd 'git push origin feature/ums-1-alfa > /tmp/out.txt') '' 'přesměrování: výstup do souboru projde'
+Assert-Eq (Test-CmdPs 'git push origin feature/ums-1-alfa 2>&1 | Select-Object -Last 3') '' 'přesměrování: totéž na PowerShell toolu projde'
+Assert-Eq (Test-CmdPs 'git push origin feature/ums-1-alfa > /tmp/out.txt') '' 'přesměrování: výstup do souboru projde i na PowerShell toolu'
+# ... and the spellings the operator can take, each stepped over rather than
+# read as an argument. `<<` is NOT among them on purpose — see the heredoc
+# assertion further down in this block.
+foreach ($c in @(
+    'git push origin feature/ums-1-alfa 2> err.txt',
+    'git push origin feature/ums-1-alfa 2>> err.txt',
+    'git push origin feature/ums-1-alfa >> log.txt',
+    'git push origin feature/ums-1-alfa 2>/dev/null',
+    'git push origin feature/ums-1-alfa &> all.txt',
+    'git push origin feature/ums-1-alfa &>> all.txt',
+    'git push origin feature/ums-1-alfa 1>&2',
+    'git push origin feature/ums-1-alfa < /dev/null'
+)) { Assert-Eq (Test-Cmd $c) '' "přesměrování: tvar operátoru se přeskakuje: $c" }
+
+# THE REDIRECTION TARGET IS A FILE NAME, NOT A REFSPEC. `> develop` writes a
+# file called develop; a real shell never hands that word to git, so the guard
+# must not read it as a push to the protected branch. Both spacings, because
+# they take the two different arms of REDIR_RE (target in the next token vs.
+# glued to the operator).
+Assert-Eq (Test-Cmd 'git push origin feature/ums-1-alfa > develop') '' 'přesměrování: cíl přesměrování není refspec (oddělený)'
+Assert-Eq (Test-Cmd 'git push origin feature/ums-1-alfa >develop') '' 'přesměrování: cíl přesměrování není refspec (přilepený)'
+
+# AND WHAT A REDIRECTION MUST NOT DO IS HIDE A TARGET BEHIND ITSELF. In bash a
+# redirection may stand anywhere and is REMOVED from the argument list, so
+# `git push origin 2>&1 develop` really does push `develop` — the tokens after
+# it are still arguments. This is why redirections are stepped over rather than
+# treated as CONTROL: ending the argument list at `2>&1` would have opened a
+# one-token way to hide a protected branch from the guard.
+Assert-Match (Test-Cmd 'git push origin 2>&1 develop') 'sdílená větev' 'přesměrování neschovává chráněný cíl za sebou'
+Assert-Match (Test-CmdPs 'git push origin 2>&1 develop') 'sdílená větev' 'přesměrování neschovává chráněný cíl ani na PowerShell toolu'
+Assert-Match (Test-Cmd 'git push origin develop 2>&1 | tail -3') 'sdílená větev' 'přesměrování před pipou nemaže chráněný cíl'
+Assert-Match (Test-CmdPs 'git push origin develop > /tmp/out.txt') 'sdílená větev' 'přesměrování do souboru nemaže chráněný cíl'
+
+# CONTROLS: nothing else loosened. Each of these denied before the change and
+# must deny after it, or the ALLOWs above prove only that the guard went quiet.
+foreach ($c in @(
+    'git push origin develop',
+    'git push --force origin HEAD:develop',
+    'git push --mirror origin',
+    'git push origin refs/heads/*:refs/heads/*',
+    'git push origin a:b c:d'
+)) { Assert-Match (Test-Cmd $c) 'permissionDecision.*deny' "kontrola: nezvolnilo se nic dalšího: $c" }
+
+# THE HEREDOC CASE MUST NOT RE-OPEN. `<<` is excluded from the redirection
+# shapes, and `EOF` is still collected as an argument, so the trailing token
+# still makes a problem off command position and the body stays document text.
+Assert-Eq (Test-Cmd "cat <<'EOF'`ngit push --force origin develop`nEOF") '' 'heredoc: tělo zůstává textem dokumentu i po zavedení přesměrování'
+
+# A REDIRECTION AS THE FIRST TOKEN AFTER `push` leaves an EMPTY argument list,
+# which is a bare `git push` — it resolves the current branch and is judged
+# exactly as a bare push is. Both halves, against a real repository, the same
+# fixture shape the bare-push block above uses.
+$tmpRedir = Join-Path ([IO.Path]::GetTempPath()) ("mbhook-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $tmpRedir | Out-Null
+& git init -b develop $tmpRedir | Out-Null
+Assert-Match (Test-Cmd 'git push 2>&1 | tail -3' $tmpRedir) 'sdílená větev' 'přesměrování hned za push: pořád bare push, na develop zamítnut'
+& git -C $tmpRedir checkout -q -b feature/ums-9-x
+Assert-Eq (Test-Cmd 'git push 2>&1 | tail -3' $tmpRedir) '' 'přesměrování hned za push: na tiketové větvi projde'
+Remove-Item -Recurse -Force $tmpRedir
+
 
 Complete-Tests
