@@ -304,9 +304,12 @@ The file is git-ignored scratch in the working tree, so anything that writes
 there can write it — implementer subagents write into `.superpowers/` routinely
 — and its content reaches the model's context. A reader therefore NEVER emits the
 body as it lies: it parses the known keys and RE-RENDERS them. An unknown key, a
-line outside the `Key: value` shape, or a body over the size ceiling makes the
-baton stale. Emitting verbatim would let a body close the reader's own wrapper
-tag and continue as top-level instruction text.
+line outside the `Key: value` shape, a body over the size ceiling, or a parsed
+value containing an angle bracket or a control character makes the baton stale.
+Emitting verbatim would let a body close the reader's own wrapper tag and
+continue as top-level instruction text — whitelisting key names is not enough,
+because a legitimate key can still carry a value that closes the wrapper early,
+so the check rejects the character class rather than any one tag's spelling.
 
 **`Branch` and `Slug` are origin binding, not decoration** — they are what the
 reader validates against this session's own `HEAD` and `context.md` pin. `Kind`
