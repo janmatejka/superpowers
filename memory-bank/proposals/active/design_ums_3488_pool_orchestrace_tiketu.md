@@ -10,8 +10,15 @@ Rozpracování epiku (`mb-epic-elaboration`) dnes končí tím, že v
 `proposals/next/` leží předběžné návrhy budoucích tiketů. Odtud dál je ruční
 práce: operátor otevře workspace, přepne větev, přečte, co se má dělat, a
 nadiktuje sezení zadání. Cíl je, aby **řídicí sezení epiku (orchestrátor)
-umělo rozjet plnohodnotné sezení na tiket do volného slotu poolu a na
-požádání říct, jak sloty stojí.**
+umělo říct, které tikety je bezpečné rozjet a proč, rozjet plnohodnotné
+sezení na tiket do volného slotu poolu, a na požádání říct, jak sloty
+stojí.**
+
+Ta první část je ve vrstvě dnes **formálně nepokrytá**. `mb-epic-graph` umí
+říct, co je odblokované, ledger nese špinavé řádky, `pool-status.ps1` bude
+vědět o slotech — ale nic ty tři signály nespojuje, takže rozhodnutí „tenhle
+tiket rozjet, tenhle ne" vzniká ručně a dá se v něm udělat chyba, kterou nic
+nezachytí.
 
 Mechanická část toho postupu už je zaplacená. 2. 9. 2026 proběhlo pět pokusů
 rozjet sezení ručně; **tři selhaly, každý z jiné příčiny, a všechny tři
@@ -38,9 +45,13 @@ nikdy nerozjel.
 - Tři skripty vrstvy: `pool-status.ps1` (derivace stavu slotů),
   `pool-launch.ps1` (vyčištění prostředí a spuštění), `pool-provision.ps1`
   (operátorské zakládání slotu).
-- Nový skill `mb-epic-run` se třemi operacemi: `status`, `spawn <TIKET>`,
-  `attach <TIKET>`.
-- Brána připravenosti nad ledgerem epiku včetně dirty-setu.
+- Nový skill `mb-epic-run` se čtyřmi operacemi: `status`, `ready <EPIK>`,
+  `spawn <TIKET>`, `attach <TIKET>`.
+- **Rozhodovací proces „co je bezpečné rozjet"** — dnes ve vrstvě formálně
+  nepokrytý; join glyphu z grafu, dirty-setu z ledgeru a stavu poolu do
+  jednoho verdiktu s pojmenovaným důvodem.
+- Strojově čitelný výstup `-Json` pro `epic-graph.ps1`, aby ten join
+  nemusel parsovat vyrenderovanou tabulku.
 - Generovaný briefing tiketu jako soubor ve slotu.
 - Režim cíleného skenu v `doc-index.ps1`, aby byla kolizní kontrola na
   monorepu vůbec proveditelná.
@@ -279,50 +290,87 @@ o transcriptu a první tah skutečně proběhl. Do Jiry jde „běží" teprve p
 prvním commitu na větvi tiketu; do té doby je pravdivé jen „větev
 připravená, sezení spuštěné".
 
-### 6. Brána připravenosti
+### 6. Rozhodovací proces: co je bezpečné rozjet
 
-Spawn tiketu je krok uzávěrky elaboračního okna (fáze 7), takže se nabízí jen
-u tiketů, jejichž předběžný návrh v tom okně přistál v `proposals/next/`.
-Spawn tiketu bez návrhu vyžaduje **výslovný pokyn operátora** a zapíše baton
-bez `Spec` — takové sezení začne vstupní bránou a brainstormingem.
+Tohle je ta část, kterou dnes ve vrstvě **nic formálně nepokrývá**. Playbook
+umí *jak* spustit; nikde není *co* je bezpečné spustit. Rozhodovalo se ručně
+nad ledgerem a grafem.
 
-Brána je **fail-closed se jmenovitým důvodem u každého odmítnutého tiketu**:
+**Mechanika už existuje, chybí join.** Obě poloviny jsou strojově čitelné a
+žádná se nepřepočítává podruhé:
 
-1. **Pool existuje** — aspoň jeden linked worktree mimo orchestrátorův.
-2. **Tiket je v ledgeru epiku.**
-3. **Prázdný dirty-set tiketu.** Tohle je ta past, kterou graf neumí: tiket
-   může svítit „připraveno k implementaci" a přitom mít špinavé řádky, které
-   říkají, že jeho zadání po sousedních tiketech přestalo platit. Brána
-   odmítne a **řekne které řádky** to jsou. Data jsou v ledgeru, takže je to
-   čtení, ne nová evidence.
-4. **Návrh, nebo výslovný pokyn** — draft `design_<slug>.md` v některém
-   `proposals/next/` na aktuální větvi nebo dosažitelný přes `mb-doc-index`.
-5. **Žádná kolize aktivní práce** na cizí větvi (viz sekce 9).
-6. **Větev tiketu není vyzvednutá jinde** — poznají to derivované stavy
-   slotů, a kdyby ne, poslední slovo má git sám: větev nelze vyzvednout ve
-   dvou worktrees. Tenhle odmítnutý checkout **je** to vynucení, že tiket
-   běží nejvýš v jednom slotu; žádná evidence ho nereplikuje.
-7. **Volný slot** podle derivace ze sekce 2. Není-li žádný, brána ohlásí,
-   který slot co drží, a zastaví se.
+| Zdroj | Co už umí |
+|---|---|
+| `mb-epic-graph` | **stavový glyph** slučující Jira stav, odblokovanost podle tvrdých `Blocks` a existenci návrhu (`▶️` připraveno k implementaci · `⏳` návrh hotov, ale blokováno · `💡` odblokováno bez návrhu · `⛔` blokováno · `✅`/`🧪`/`👀`/`🔨` hotovo a rozpracované stavy), a **vlny** (vlna 0 = odblokováno) |
+| `ledger-status.ps1` | **dirty-set** — tabulka `Položka/Tiket \| Zašpiněno oknem \| Důvod \| Vyčištěno oknem`; aktuálně špinavé = prázdný poslední sloupec |
+| `doc-index.ps1` | kolize aktivní práce na cizí větvi a kde leží draft |
+| `pool-status.ps1` | volné sloty a jestli je větev tiketu vyzvednutá jinde |
 
-Pravidla brány dnes stojí na **jediném rozhodování** (uzávěrka okna W06,
-2. 9. 2026). Dirty-set je do brány zařazený proto, že je to jmenovaná past se
-změřeným projevem; ostatní pravidla nad rámec výčtu výše se dopsat nemají,
-dokud se neukáže, co se opakuje. Ta zdrženlivost patří do návrhu, ne do
-implementace.
+**Glyph sám je past, a to je celý důvod, proč join existuje.** SKODASMS-240
+svítilo `▶️` „připraveno k implementaci" a přitom mělo tři špinavé řádky —
+jeho zadání přestalo po SKODASMS-239 a SKODASMS-250 platit ve třech bodech.
+Kdo se řídí ikonou, postaví mock podle zadání, které dvakrát pozbylo
+platnosti. Graf o dirty-setu neví a vědět nemá; rozhoduje teprve průnik.
+
+**`mb-epic-graph` proto dostane `-Json`.** Dnes emituje jen markdownovou
+tabulku vln a Mermaid, takže by join musel parsovat vyrenderovanou prózu — a
+odvozovat fakta z renderovaného textu je přesně to, co
+[playbook.md](../../playbook.md) zakazuje. Výstup nese per tiket klíč, vlnu,
+glyph, přímé blokátory, počet tiketů, které tiket odblokuje, a fázi návrhu.
+Je to tentýž důvod, z jakého `-Json` má `mb-doc-index`: tištěná tabulka
+nenese sloupce, které strojový konzument potřebuje. Graf zůstává orákulem
+grafu, join ho konzumuje.
+
+**Výstup je klasifikace do tří tříd s pojmenovaným důvodem u každého
+tiketu**, řazená podle vlny a pak podle počtu odblokovaných tiketů. Řazení je
+derivované z grafu, ne úsudek.
+
+- **ROZJET** — glyph `▶️`, prázdný dirty-set, návrh v `next/`, žádná kolize,
+  větev nevyzvednutá jinde.
+- **ROZHODNI** — startovatelné, ale něco chce lidský soud: chybí návrh
+  (legitimní, ale znamená to start brainstormingem, ne prohloubení), nebo
+  má tiket jeden informativní špinavý řádek či otevřenou položku.
+- **NEROZJET** — jmenovaný blokátor: špinavé řádky (**a které**), tvrdá
+  `Blocks` závislost na tiketu, který není done-for-planning, větev
+  vyzvednutá jinde, kolize aktivní práce.
+
+Počet volných slotů se hlásí jako **informace, ne jako limit výběru** —
+množinu ke spuštění nevybírá skill, vybírá ji operátor. Doporučení „spusť
+tyhle" se záměrně nestaví: svádělo by k řízení se výstupem bez čtení důvodů,
+což je přesně past 240.
+
+**Per-tiketová brána je tatáž evaluace zúžená na jeden tiket**, ne druhý
+mechanismus. `mb-epic-run spawn <TIKET>` ji spustí nad tím jedním tiketem a
+cokoli jiného než ROZJET je fail-closed STOP se jmenovaným důvodem; ROZHODNI
+navíc potřebuje výslovný pokyn operátora a zapíše baton bez `Spec`. K
+evaluaci se tedy dá dostat i bez spawnu — což je vlastní hodnota:
+`mb-epic-run ready` odpoví na „co je připravené", aniž cokoli rozjede.
+
+Nad rámec výčtu výše se pravidla **dopisovat nemají**, dokud se neukáže, co
+se opakuje: dirty-set a `Blocks` jsou tu proto, že první je jmenovaná past se
+změřeným projevem a druhý se jen konzumuje z grafu, kde už je hotový. Ta
+zdrženlivost patří do návrhu, ne do implementace.
 
 ### 7. Skill `mb-epic-run`
 
-Sourozenec `mb-epic-elaboration`, stejně jako `mb-epic-graph`. Tři operace,
+Sourozenec `mb-epic-elaboration`, stejně jako `mb-epic-graph`. Čtyři operace,
 všechny reportované česky.
 
 **`status`** — spustí `pool-status.ps1`, vyrenderuje tabulku a přidá pohled
 epiku: u každého tiketu v ledgeru, jestli ho nějaký slot drží. Čistě
-read-only.
+read-only. Odpovídá na „jak stojí sloty".
+
+**`ready <EPIK>`** — rozhodovací proces ze sekce 6 nad celým epikem:
+klasifikace ROZJET / ROZHODNI / NEROZJET s pojmenovaným důvodem u každého
+tiketu, řazená podle vlny a počtu odblokovaných tiketů, plus počet volných
+slotů jako informace. Čistě read-only, nic nespouští. Odpovídá na „co je
+připravené".
 
 **`spawn <TIKET>`** v tomto pořadí:
 
-1. Brána připravenosti (sekce 6). Odmítnutí = STOP se jmenovaným důvodem.
+1. Rozhodovací proces ze sekce 6 zúžený na tento tiket. Cokoli jiného než
+   ROZJET je STOP se jmenovaným důvodem; ROZHODNI pokračuje jen s výslovným
+   pokynem operátora a bez `Spec`.
 2. Volba slotu z derivovaného stavu.
 3. Generování briefingu do `<slot>/.superpowers/ticket-brief-<TIKET>.md`.
 4. Zápis batonu do `<slot>/.superpowers/session-intent.md` (adresář vytvořit,
@@ -446,11 +494,13 @@ procent.
 
 ### 11. Integrace do `mb-epic-elaboration`
 
-`SKILL.md` fáze 7 (Close) a `protocol.md` §3.3: po publikaci se u každého
-tiketu, jehož draft v tomto okně přistál v `next/`, **nabídne**
-`mb-epic-run spawn` — nabídka, jedna otázka, rozhodne operátor per tiket.
-Přidá se řádek do quick-reference. Jsou to soubory vrstvy, edituje se přímo,
-žádný overlay.
+`SKILL.md` fáze 7 (Close) a `protocol.md` §3.3: po publikaci se spustí
+`mb-epic-run ready` nad epikem — uzávěrka okna tím dostane rovnou přehled, co
+je připravené a co ne a proč — a u tiketů ve třídě ROZJET se **nabídne**
+`mb-epic-run spawn`: nabídka, jedna otázka, rozhodne operátor per tiket.
+Pořadí je záměrné: klasifikace před nabídkou, aby nabídka nevznikla u tiketu,
+který má špinavé řádky. Přidá se řádek do quick-reference. Jsou to soubory
+vrstvy, edituje se přímo, žádný overlay.
 
 `ledger-template.md` dostane konvenci pro poznámku o slotu, pokud ji ledger
 potřebuje, aby přežil parsování v `ledger-status.ps1`; ta sada musí na
@@ -478,6 +528,12 @@ měněného pojmu nenajde:
   Baton v [architecture.md](../../architecture.md), hlavička hooku, testy.
 - **Věty o `doc-index.ps1` jako o read-only nástroji s daným výkonem** — po
   přidání cíleného skenu se mění obojí.
+- **Věty, které stavovému glyphu `mb-epic-graph` přisuzují rozhodovací
+  pravomoc.** Glyph `▶️` se čte jako „připraveno k implementaci", ale sám o
+  dirty-setu neví. `mb-epic-graph/SKILL.md` dostane **jednořádkovou křížovou
+  referenci** na to, že o rozjetí rozhoduje join v `mb-epic-run`, ne glyph —
+  odkaz, ne zduplikované pravidlo. Prohledat i `architecture.md`, popis
+  glyphů a text, který jde do popisu epiku v Jiře.
 
 ## Odchylky od zadání a jejich důvody
 
@@ -496,6 +552,9 @@ měřenou zkušeností, ne nesouhlas se záměrem.
 | FIXED 5: čtyři adaptéry (`vscode`, `terminal`, `deeplink`, `bg`) | `terminal` + `direct` | Jen tyhle dva jsou prokázané. `vscode` a `deeplink` by šly poslat nepotvrzené — a lekce dne je, že nepotvrzené spuštění vypadá jako úspěch. `bg` by dal liveness, ale běží mimo obrazovku, kde se ověřuje |
 | FIXED 5: „launcher jen spustí Claude Code" | povinné vyčištění deseti proměnných před spuštěním | Bez toho naběhne dětská session s vypnutým transcriptem — pokus 2 z 2. 9. Zadání tuhle třídu problému vůbec nezmiňuje |
 | B4.1: eligibilita bez dirty-setu | brána nese dirty-set a jmenuje řádky | Jmenovaná past s měřeným projevem: tiket svítí „připraveno" a jeho zadání dvakrát přestalo platit. Akceptační kritérium UMS-3488 |
+| Rozhodnutí, **které** tikety rozjet, brief neřeší vůbec — eligibilita se testuje až u jmenovaného tiketu ve `spawn` | čtvrtá operace `ready <EPIK>`, klasifikace celého epiku do tří tříd; per-tiketová brána je tatáž evaluace zúžená | Ve vrstvě to dnes formálně nepokrývá nic — poznatky §8 to jmenují jako „úsudek, který nikde není zapsaný", UMS-3488 to má v prvním řádku rozsahu. Brána dosažitelná jen přes `spawn` navíc neumí odpovědět na „co je připravené" bez toho, že něco rozjede |
+| Odblokovanost podle `Blocks` odložena na „po druhém až třetím rozjetí" | zařazena hned | Nepíše se nová logika — `mb-epic-graph` ji už počítá do glyphu a do vln; join ji jen konzumuje. Odkládat konzumaci hotového orákula by uspořilo nic a nechalo v rozhodování dvě třetiny signálu |
+| — | `epic-graph.ps1` dostane `-Json` | Graf dnes emituje jen markdownovou tabulku a Mermaid, takže join by parsoval vyrenderovanou prózu; `mb-doc-index` má `-Json` z téhož důvodu |
 | B4.2: kolize přes `mb-doc-index` jak je | `doc-index.ps1` dostane cílený sken | Jak je napsané, na monorepu neproveditelné (25 min, zabito). Oprava navíc narovná vstupní bránu, ne jen spawn |
 | Baton nese jen ukazatele | volitelný klíč `Brief` a generovaný briefing ve slotu | Briefing souborem je to, co obě úspěšná spuštění udělalo funkčními; a brána, která zná špinavé řádky, je nesmí zatajit agentovi, kterého spouští |
 | B3: `pool-provision.ps1 -Root -Count` zakládá `slot-<n>` | `-Path <dir> -Base <ref>`, jeden slot na volání | Bez konfigurovaného rootu není z čeho jméno derivovat, a pool má vlastní konvenci (`ums01..ums04`). UMS-3488 výslovně žádá nedávat jména slotů natvrdo |
@@ -592,10 +651,19 @@ git-ignorovaného `.superpowers/`.
 6. **Cílený sken `doc-index.ps1`** — proti fixture repu (nové asercie) a
    **proti skutečnému monorepu**, kde má doběhnout a odpovědět; naměřený čas
    zapsat.
-7. **Brána: odmítnutí se jmenovaným důvodem.** Fixture ledger se stavem
-   tiketu se třemi špinavými řádky; očekávaný výstup jmenuje ty řádky, ne
-   jen „odmítnuto".
-8. **`initialUserMessage` ve VS Code extension — OPERÁTORSKÝ KROK, ZDE SE
+7. **Rozhodovací proces: odmítnutí se jmenovaným důvodem.** Fixtura
+   reprodukuje stav z 2. 9. 2026: tiket s glyphem `▶️` a **třemi** špinavými
+   řádky musí skončit v NEROZJET a **jmenovat ty řádky**, ne jen „odmítnuto"
+   — to je akceptační kritérium č. 1 z UMS-3488 a zároveň jediný důkaz, že
+   join nepřebírá verdikt z glyphu. Dál: tiket bez návrhu → ROZHODNI (ne
+   NEROZJET), tiket blokovaný neuzavřeným předchůdcem → NEROZJET s jménem
+   blokátoru, čistý tiket → ROZJET. Řazení: vlna vzestupně, pak počet
+   odblokovaných tiketů klesající.
+8. **`epic-graph.ps1 -Json`** — asercie na tvar (klíč, vlna, glyph, přímé
+   blokátory, počet odblokovaných, fáze návrhu) a na to, že `-Json` a
+   tabulka vln dávají pro tutéž fixturu **shodné** glyphy a vlny; jinak by
+   vznikla dvě orákula téhož.
+9. **`initialUserMessage` ve VS Code extension — OPERÁTORSKÝ KROK, ZDE SE
    ZASTAVÍM.** Postup: otevři v tomto workspace čerstvé sezení extension
    (nové okno, nebo `/clear`) ve chvíli, kdy v
    `<MB_ROOT>/.superpowers/session-intent.md` leží platný baton — platný
@@ -606,20 +674,20 @@ git-ignorovaného `.superpowers/`.
    extension pole ignoruje) **před harvestem**. Ignoruje-li ho, je to
    zapsané omezení toho frontendu a položka se dokončí; workaround se
    nestaví.
-9. **End-to-end spawn — OPERÁTORSKÝ KROK.** Provisionuj jeden slot; z
-   orchestrátoru spusť `mb-epic-run spawn <TIKET>` s adaptérem `terminal`;
-   pozoruj, že nové sezení rozjede první tah bez zásahu, projde vstupní
-   bránu, založí tiketovou větev a aktivuje draft. Pak `mb-epic-run status`
-   ukáže slot jako ACTIVE se slugem. Zopakuj s adaptérem `direct`. Ověření
-   podle sekce 5: **není** tam `⚠ Transcript saving is off` a první tah
-   skutečně proběhl.
-10. **Negativní: dvakrát tentýž tiket** → STOP kolizí, nebo odmítnutým
+10. **End-to-end spawn — OPERÁTORSKÝ KROK.** Provisionuj jeden slot; z
+    orchestrátoru spusť `mb-epic-run spawn <TIKET>` s adaptérem `terminal`;
+    pozoruj, že nové sezení rozjede první tah bez zásahu, projde vstupní
+    bránu, založí tiketovou větev a aktivuje draft. Pak `mb-epic-run status`
+    ukáže slot jako ACTIVE se slugem. Zopakuj s adaptérem `direct`. Ověření
+    podle sekce 5: **není** tam `⚠ Transcript saving is off` a první tah
+    skutečně proběhl.
+11. **Negativní: dvakrát tentýž tiket** → STOP kolizí, nebo odmítnutým
     checkoutem gitu; slot nedotčený, nic nezapsáno.
-11. **Negativní: pool, kde je jediný slot špinavý** → report, žádný zapsaný
+12. **Negativní: pool, kde je jediný slot špinavý** → report, žádný zapsaný
     baton.
-12. **Negativní: repozitář bez linked worktree** → `mb-epic-run` fail-closed
+13. **Negativní: repozitář bez linked worktree** → `mb-epic-run` fail-closed
     odmítne českou hláškou, která to říká.
-13. **Sweepy ze sekce 12 provedené a nálezy opravené** v témž commitu jako
+14. **Sweepy ze sekce 12 provedené a nálezy opravené** v témž commitu jako
     pravidlo, které je vyvolalo.
 
 ## Pořadí úloh
@@ -633,14 +701,19 @@ git-ignorovaného `.superpowers/`.
 3. **Hook `ticket-start`** — per-druhové povinné klíče, tři hlídky,
    `$RenderOrder`, testy. Verifikuje se izolovaně.
 4. **`doc-index.ps1` cílený sken** + testy + měření proti monorepu.
-5. **Tři pool skripty** + testy.
-6. **Skill `mb-epic-run`** + `SKILLS_MANIFEST.md`.
-7. **Integrace do `mb-epic-elaboration`** + zelené `ledger-status.ps1`.
-8. **Dokumentace** — README skillu (anglicky) a český průvodce, včetně
+5. **`epic-graph.ps1 -Json`** + testy, včetně asercie na shodu glyphů a vln
+   mezi `-Json` a tabulkou vln. Jde před skillem, protože rozhodovací proces
+   ho konzumuje.
+6. **Tři pool skripty** + testy.
+7. **Skill `mb-epic-run`** — čtyři operace včetně rozhodovacího procesu, plus
+   `SKILLS_MANIFEST.md` a jednořádková křížová reference v
+   `mb-epic-graph/SKILL.md`.
+8. **Integrace do `mb-epic-elaboration`** + zelené `ledger-status.ps1`.
+9. **Dokumentace** — README skillu (anglicky) a český průvodce, včetně
    pohodlí stanice z B6.
-9. **Overlay + revendor** — `Instruction` do výčtu v
-   `subagent-driven-development.overlay.md`, obnova nasazení, plný revendor
-   s pinovaným tagem.
+10. **Overlay + revendor** — `Instruction` do výčtu v
+    `subagent-driven-development.overlay.md`, obnova nasazení, plný revendor
+    s pinovaným tagem.
 
 Každá úloha končí commitem přes `mb-git-commit` a publikací tiketové větve
 (první publikace `git push -u origin <větev>`, protože `switch -c` nechal
@@ -654,9 +727,10 @@ upstream na bázi).
   potřebuje vlastní operátorské ověření. `bg` je z nich nejcennější: dal by
   `pool-status.ps1` skutečný zdroj liveness a `attach` skutečné
   `claude attach <id>`.
-- **Zbytek brány připravenosti** z UMS-3488 (odblokovanost podle tvrdých
-  `Blocks` linků z grafu) — dopsat až po druhém až třetím rozjetí, aby se
-  ukázalo, co se opakuje.
+- **Vážení a doporučení množiny ke spuštění** („spusť tyhle tři") se
+  nestaví. Rozhodovací proces klasifikuje a řadí; výběr dělá operátor. Až
+  bude víc rozjetí za sebou, ukáže se, jestli je vážení vůbec potřeba, nebo
+  jestli klasifikace s důvodem stačí.
 - **`NO_COLOR`** — neověřeno, jestli po odebrání barvy skutečně naskočí, a
   jestli není potřeba i `FORCE_COLOR=1`.
 - **Proč selhal `cmd.exe /k` s batchem** (pokus 1 z 2. 9.) — nerozebráno.
