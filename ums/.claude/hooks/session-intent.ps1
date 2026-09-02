@@ -61,7 +61,15 @@ try {
         $key = $m.Groups['k'].Value
         if ($RenderOrder -notcontains $key) { $bad = $true; break }
         if ($fields.Contains($key)) { $bad = $true; break }
-        $fields[$key] = $m.Groups['v'].Value.Trim()
+        $value = $m.Groups['v'].Value.Trim()
+        # A value containing this reader's own wrapper tag would close it early
+        # when re-rendered, letting the remainder read as top-level instruction
+        # text. Values are re-rendered verbatim (only key NAMES are drawn from
+        # the canonical $RenderOrder), so this is the one thing they must not
+        # carry. Staleness is the disposition already used for an unknown key
+        # or a malformed line; a structurally hostile value gets the same one.
+        if ($value -match '(?i)</?session-intent') { $bad = $true; break }
+        $fields[$key] = $value
     }
     if ($bad) {
         Move-Aside $batonPath 'session-intent.stale.md'
