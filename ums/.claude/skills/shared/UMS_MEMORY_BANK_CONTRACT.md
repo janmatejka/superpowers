@@ -1,7 +1,11 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.11
-- Supersedes v2.10 (rewrites the Publication Contract's two-tier push policy
+- **Contract-Version:** 2.12
+- Supersedes v2.11 (adds the Session Intent Baton — an ephemeral, never-committed
+  handoff file with a closed format, its reader's guards and exceptions, the
+  writer precondition and the session-start precedence rule — and records that
+  context rotation is a fifth, handoff-shaped stop class).
+- v2.11 superseded v2.10 (rewrites the Publication Contract's two-tier push policy
   into an actor/content split, renames the human escape to `MB_HUMAN_PUSH`
   and widens it, and makes the workspace hook check session-scoped).
 - v2.10 superseded v2.9 (added the Agentic Design Opposition section).
@@ -269,16 +273,95 @@ Explicitly **legal and outside this lock**:
 - Source-code changes anywhere in the repository.
 - The superpowers scratch tree `<MB_ROOT>/.superpowers/` (task briefs,
   implementer reports, review packages, progress ledger,
-  `playbook-candidates/<slug>.md`) — git-ignored, ephemeral, owned by the
-  superpowers execution skills and the Playbook Contract. One named exception to
-  the git-ignored rule: `mb-park` commits the CURRENT slug's candidate file to
-  the ticket branch, so parking loses no evidence (see Playbook Contract).
+  `playbook-candidates/<slug>.md`, `session-intent.md`) — git-ignored,
+  ephemeral, owned by the superpowers execution skills and the Playbook
+  Contract. One named exception to the git-ignored rule: `mb-park` commits the
+  CURRENT slug's candidate file to the ticket branch, so parking loses no
+  evidence (see Playbook Contract).
 - Plan checkboxes and task-progress tracking inside the plan file and the
   `.superpowers/sdd/` ledger.
 
 Other rules:
 
 - Do not hardcode machine-specific or repository-root absolute paths.
+
+### Session Intent Baton
+
+The **baton** is how the operator's intent survives a `/clear`. It lives at
+`<MB_ROOT>/.superpowers/session-intent.md`, is written by whoever ends a phase
+and is consumed by a `SessionStart` hook in the next session. It is AI-facing
+scratch and therefore English.
+
+**Shape.** The first line is the identity line, `# Session intent — <ISO-8601
+UTC>`. The body is a block of `Key: value` lines. Required: `Kind`
+(`plan-execution` | `plan-resume`), `Plan`, `Branch`, `Slug`. Optional: `Spec`,
+`Ticket`, `Ledger`, `Next task` — omitted when they have no value, never written
+empty. The last line is a single `Instruction:` naming the skill to invoke. Paths
+are relative to `MB_ROOT`.
+
+**The format is CLOSED, and that is a security property rather than tidiness.**
+The file is git-ignored scratch in the working tree, so anything that writes
+there can write it — implementer subagents write into `.superpowers/` routinely
+— and its content reaches the model's context. A reader therefore NEVER emits the
+body as it lies: it parses the known keys and RE-RENDERS them. An unknown key, a
+line outside the `Key: value` shape, or a body over the size ceiling makes the
+baton stale. Emitting verbatim would let a body close the reader's own wrapper
+tag and continue as top-level instruction text.
+
+**`Branch` and `Slug` are origin binding, not decoration** — they are what the
+reader validates against this session's own `HEAD` and `context.md` pin. `Kind`
+must be one of its two values and `Plan` must name an existing file: a plan the
+harvest deleted is a stale baton, not an instruction pointing at nothing. A baton
+missing any required key is invalid and is treated as stale.
+
+**Consume-on-read.** The reader renames the file to `session-intent.consumed.md`
+immediately after emitting it, overwriting any previous consumed file. A baton
+rejected by a guard is renamed to `session-intent.stale.md` instead and nothing
+is emitted. Neither file is ever deleted — a confused operator must still be able
+to read what it said.
+
+**Invalidation** is that same rename to `session-intent.stale.md`, performed by
+whoever ENDS or SETS ASIDE a work item; a silent no-op when no baton is present.
+It is not a numbered step of any sequence — the baton is git-ignored, so it has
+no ordering relationship with a commit or a push — it is bookkeeping done before
+the skill reports its result. It runs where the skill ACTED, never where it
+refused to act: a STOP that reports "nothing was committed, pushed or discarded"
+must stay true.
+
+**Writer precondition.** A baton is written only where a consumer will read it:
+the harness must be one whose session-start hooks this layer configures
+(`CLAUDECODE` non-empty), and the hook must exist and be registered. This layer's
+`settings.json` is deliberately not deployed to non-Claude harnesses while the
+skills are, so without this check a writer would leave an instruction nobody
+reads. The rule lives here because two consumers implement it.
+
+**Precedence.** Several `SessionStart` hooks may each contribute their own
+`additionalContext`, in no guaranteed order. The session-eligibility check of the
+bootstrap block — the publication-guarantee self-check — is a PRECONDITION of
+acting on a baton, never the other way round. A baton never overrides a
+fail-closed gate.
+
+**Reader exception to `MB_ROOT` Discovery.** A hook that may only contribute
+context must never prevent a session from starting, so the baton reader exits 0
+silently on EVERY failure path, including the missing-git case that section makes
+a hard failure. This is the one exception and it is stated here so a later reader
+does not "repair" the hook against that section.
+
+**The baton is NEVER committed, and the reason is the recoverability boundary of
+Workspace Discipline** — does this information exist anywhere else?
+`playbook-candidates/<slug>.md` does not, which is why the Playbook Contract's
+named exception and `mb-park`'s `git add -f` exist. `sdd/<plan-basename>/` does,
+in the plan checkboxes and the git log, which is why it is deleted and never
+committed. The baton belongs to neither tier: its lifetime is seconds to minutes
+and losing it costs nothing — the fallback is the operator typing the intent,
+which is today's behaviour. Committing it would actively harm: the file would
+return on every checkout of that branch, in any workspace and any fresh clone,
+and a `startup` days later would replay a stale instruction — precisely the
+failure consume-on-read exists to prevent, reintroduced through git. It would
+also force `mb-park` to decide whether to commit it, and a committed "execute
+this plan" instruction published to `origin` is a live hazard for every resuming
+session. There is therefore no exception here, and the Playbook Contract's "one
+named exception to the git-ignored rule" stays true.
 
 ### Link Conventions
 
@@ -1812,6 +1895,10 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
   `epic-graph.ps1` tables and findings). This is a named exception, not a
   mixed-language rule surface: the boundary is the artifact, and each
   artifact is wholly one language.
+- **A hook whose entire output is model context is English**, even though the
+  hooks named above appear on the Czech side for their REJECTION MESSAGES. The
+  criterion is the audience of the output, not the file's kind: a rejection a
+  human reads is Czech, an `additionalContext` payload a model reads is English.
 - If language rules conflict across workflow surfaces, Czech requirements for
   user-facing/persistent text take precedence.
 
