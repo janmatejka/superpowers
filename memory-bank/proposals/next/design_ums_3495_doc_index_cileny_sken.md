@@ -1,6 +1,6 @@
 # Návrh (předběžný): Cílený sken v `doc-index.ps1`
 
-- **Jira:** (žádný tiket — vyčlenit z UMS-3488)
+- **Jira:** UMS-3495 (https://datasyscz.atlassian.net/browse/UMS-3495)
 - **Target MB:** memory-bank/
 - **Vytvořeno:** 2026-09-02
 - **Stav:** předběžný, vyčleněno z UMS-3488 druhou oponenturou

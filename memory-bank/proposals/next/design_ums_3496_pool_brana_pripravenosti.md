@@ -1,6 +1,6 @@
 # Návrh (předběžný): Brána připravenosti — co je bezpečné rozjet
 
-- **Jira:** (žádný tiket — vyčlenit z UMS-3488)
+- **Jira:** UMS-3496 (https://datasyscz.atlassian.net/browse/UMS-3496)
 - **Target MB:** memory-bank/
 - **Vytvořeno:** 2026-09-02
 - **Stav:** předběžný, **záměrně odložený** — aktivovat po dvou až třech rozjetích s mechanikou z UMS-3488

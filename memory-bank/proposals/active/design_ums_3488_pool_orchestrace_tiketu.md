@@ -25,7 +25,7 @@ záměrně nepatří.** Běžela jednou, ručně, a byla šestkrát ze šesti sp
 Automatizovat na jednom datovém bodu polovinu, která nikdy neselhala, dřív
 než polovinu, která selhala třikrát z pěti, je pozpátku; UMS-3488 to sám
 doporučuje odložit o dvě až tři rozjetí. Návrh té části leží jako předběžný v
-[`../next/design_pool_brana_pripravenosti.md`](../next/design_pool_brana_pripravenosti.md).
+[`../next/design_ums_3496_pool_brana_pripravenosti.md`](../next/design_ums_3496_pool_brana_pripravenosti.md).
 
 Druhý, menší cíl: **dokončit session baton** dvěma amendmenty ze sklizené
 položky `baton_rotace_kontextu`. Ty s poolem nesouvisejí — jsou to nezávislé
@@ -55,10 +55,10 @@ opravy, které jen leží ve stejném souboru.
   adresáře. **Není to o poolu** — je to živý defekt nasazené vrstvy, kvůli
   kterému dnes na monorepu každá vstupní brána běží s fail-closed kontrolou,
   která nedoběhne. Návrh:
-  [`../next/design_doc_index_cileny_sken.md`](../next/design_doc_index_cileny_sken.md).
+  [`../next/design_ums_3495_doc_index_cileny_sken.md`](../next/design_ums_3495_doc_index_cileny_sken.md).
 - **Brána připravenosti a klasifikace tiketů**, `-Json` pro `epic-graph.ps1` a
   `ledger-status.ps1`, případný generovaný briefing. Návrh:
-  [`../next/design_pool_brana_pripravenosti.md`](../next/design_pool_brana_pripravenosti.md).
+  [`../next/design_ums_3496_pool_brana_pripravenosti.md`](../next/design_ums_3496_pool_brana_pripravenosti.md).
 
 **Mimo rozsah úplně** (a proč):
 
@@ -402,7 +402,7 @@ jsou**, a vytiskne oba výstupy vedle tabulky poolu. **Žádný verdikt, žádn�
 klasifikace.** Rozhodnutí zůstává operátorovi, který ho zatím dělal ručně a
 správně; skill mu k tomu jen položí obě tabulky na jedno místo, aby je
 nemusel sbírat. Návrh klasifikace je předběžný v
-[`../next/design_pool_brana_pripravenosti.md`](../next/design_pool_brana_pripravenosti.md)
+[`../next/design_ums_3496_pool_brana_pripravenosti.md`](../next/design_ums_3496_pool_brana_pripravenosti.md)
 a každé rozjetí se do ledgeru zapíše, aby se po dvou až třech ukázalo, co se
 opakuje.
 
