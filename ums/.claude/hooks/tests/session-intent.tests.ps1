@@ -291,4 +291,103 @@ Assert-Eq $r.Out '' 'mimo git repozitář: žádný výstup'
 Assert-Eq $r.Code 0 'mimo git repozitář: exit 0'
 Remove-Item -Recurse -Force $plain
 
+# --- 4, 5. branch guard, včetně shody lišící se jen velikostí písmen -----
+
+$fx = New-BatonFixture 'branch-mismatch'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'x'
+Write-Baton $fx.Work ((New-ValidBatonBody $fx.Work) -replace 'Branch: baton-branch', 'Branch: jina-vetev')
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'neshoda větve: žádný výstup'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'neshoda větve: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
+# PowerShell's -eq is case-insensitive on strings; git refs are not. Measured:
+# 'Feature-X' -eq 'feature-x' is True, -ceq is False. Mutating the guard's
+# PRESENCE leaves this property green, so it needs its own case.
+$fx = New-BatonFixture 'branch-case'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'x'
+Write-Baton $fx.Work ((New-ValidBatonBody $fx.Work) -replace 'Branch: baton-branch', 'Branch: Baton-Branch')
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'větev lišící se jen velikostí písmen: žádný výstup'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'větev lišící se jen velikostí písmen: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
+# --- 6. slug guard ------------------------------------------------------
+
+$fx = New-BatonFixture 'slug-mismatch'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'jiny_slug'
+Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'neshoda slugu: žádný výstup'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'neshoda slugu: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
+# Negativity finding (Step 5, mutation 3): no existing case caught -cne -> -ne
+# in the SLUG guard, because 'jiny_slug' vs 'x' already differs case-insensitively.
+# Added per the plan's own instruction to close the gap the mutation exposed.
+$fx = New-BatonFixture 'slug-case'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'X'
+Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'slug lišící se jen velikostí písmen: žádný výstup'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'slug lišící se jen velikostí písmen: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
+# --- 7, 8. chybějící Branch / Slug --------------------------------------
+
+foreach ($case in @(
+        @{ Label = 'no-branch'; Drop = 'Branch: baton-branch'; Msg = 'chybějící Branch' },
+        @{ Label = 'no-slug'; Drop = 'Slug: x'; Msg = 'chybějící Slug' })) {
+    $fx = New-BatonFixture $case.Label
+    New-PlanFile $fx.Work
+    Write-Pin $fx.Work 'x'
+    Write-Baton $fx.Work ((New-ValidBatonBody $fx.Work) -replace [regex]::Escape($case.Drop), '')
+    $r = Invoke-Baton $fx.Work
+    Assert-Eq $r.Out '' "$($case.Msg): žádný výstup"
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) "$($case.Msg): přejmenován na .stale.md"
+    Remove-Item -Recurse -Force $fx.Root
+}
+
+# --- 15, 16. context.md chybí / je IDLE: slug guard nemá názor ----------
+
+$fx = New-BatonFixture 'no-context'
+New-PlanFile $fx.Work
+Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+$r = Invoke-Baton $fx.Work
+Assert-True ($r.Out.Length -gt 0) 'chybějící context.md: baton se emituje (žádný názor, ne fail-closed)'
+Remove-Item -Recurse -Force $fx.Root
+
+$fx = New-BatonFixture 'idle-context'
+New-PlanFile $fx.Work
+Set-Content -LiteralPath (Join-Path $fx.Work 'memory-bank\context.md') -Value "# Context`n`n## Active Work`n`n(No active work - IDLE phase)`n" -Encoding utf8
+Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+$r = Invoke-Baton $fx.Work
+Assert-True ($r.Out.Length -gt 0) 'IDLE context.md: baton se emituje (pin chybí, tedy žádný názor)'
+Remove-Item -Recurse -Force $fx.Root
+
+# Legacy alias the contract mandates readers accept.
+$fx = New-BatonFixture 'legacy-pin'
+New-PlanFile $fx.Work
+Set-Content -LiteralPath (Join-Path $fx.Work 'memory-bank\context.md') -Value "# Context`n`n## Active Work`n`n- **Target MB Pin:** memory-bank/`n- **Proposal:** x`n" -Encoding utf8
+Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+$r = Invoke-Baton $fx.Work
+Assert-True ($r.Out.Length -gt 0) 'legacy Proposal alias: slug se přečte a projde'
+Remove-Item -Recurse -Force $fx.Root
+
+# --- 20. detached HEAD --------------------------------------------------
+
+$fx = New-BatonFixture 'detached'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'x'
+Invoke-GitOk $fx.Work @('checkout', '--detach', 'HEAD') | Out-Null
+Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'detached HEAD: žádný výstup'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'detached HEAD: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
 Complete-Tests

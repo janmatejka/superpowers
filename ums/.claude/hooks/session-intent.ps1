@@ -94,6 +94,42 @@ try {
         exit 0
     }
 
+    # Branch guard — load-bearing. Without it: the operator finishes a plan on
+    # ticket A, the baton is written, and instead of typing /clear they park A
+    # and switch to B. `.superpowers/` is git-ignored, so the baton does not
+    # travel with the checkout — it simply stays, and the next session on B
+    # would start executing plan A on the wrong branch.
+    #
+    # -ceq, never -eq: PowerShell string equality is case-insensitive while git
+    # refs are case-sensitive, so `feature-x` would accept a baton for
+    # `Feature-X`. Detached HEAD yields the literal 'HEAD', which matches no
+    # branch name — stale, which is the right answer.
+    $head = & git rev-parse --abbrev-ref HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
+        Move-Aside $batonPath 'session-intent.stale.md'
+        exit 0
+    }
+    if (([string] $head).Trim() -cne $fields['Branch']) {
+        Move-Aside $batonPath 'session-intent.stale.md'
+        exit 0
+    }
+
+    # Slug guard — secondary. Its job is only to catch a pin that has moved on
+    # to different work. An unreadable or pin-less context.md is NO OPINION, so
+    # it passes: the branch guard already carries the load, and there is nothing
+    # to compare rather than something that disagrees.
+    $ctxPath = Join-Path (Join-Path $root 'memory-bank') 'context.md'
+    if (Test-Path -LiteralPath $ctxPath -PathType Leaf) {
+        $ctxText = ''
+        try { $ctxText = Get-Content -LiteralPath $ctxPath -Raw -Encoding utf8 } catch { $ctxText = '' }
+        # `- **Proposal:**` is the mandated legacy alias of `- **Work item:**`.
+        $pin = [regex]::Match($ctxText, '(?m)^\s*-\s+\*\*(?:Work item|Proposal):\*\*\s*(?<slug>\S+)\s*$')
+        if ($pin.Success -and ($pin.Groups['slug'].Value -cne $fields['Slug'])) {
+            Move-Aside $batonPath 'session-intent.stale.md'
+            exit 0
+        }
+    }
+
     # Age, rendered rather than enforced: writing a baton and going to lunch is
     # legitimate, so there is no hard expiry. Above the threshold the reader
     # writes the instruction itself; the model is not asked to do arithmetic.
