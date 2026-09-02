@@ -33,6 +33,7 @@ ums/
     │   │                                 stdin-buffer arm always applies, but the rest of its own checks
     │   │                                 only activate once the agent-session marker reaches it)
     │   ├── install-git-hooks.ps1      ← installs pre-push per clone (git hooks are untracked; required — see below)
+    │   ├── session-intent.ps1         ← SessionStart hook — delivers the session intent baton
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
@@ -128,6 +129,7 @@ connection configured per harness.
 | Publication guarantee (`hooks/pre-push`, a plain git hook — see the per-clone install note above) | Marker (`MB_AGENT_SESSION`) reaches it via the `env` block of this layer's own `settings.json`; `sync-with-monorepo.ps1` never calls `Set-AgentMarker` for `-Agent claude` because that file already carries it — except under `-Scope UserProfile`, which deliberately does not deploy `settings.json`, leaving Claude Code on the `CLAUDECODE=1`/non-empty `AI_AGENT` fallback; one arm — the ref-list buffer check — sits above the marker gate and rejects the whole push, tags included, for everyone regardless of the marker | Codex: marker set via `config.toml [shell_environment_policy].set`; Gemini: marker set via a `.env` file in `.gemini/`; **Kilo Code has no documented mechanism to set it**, so the marker never arrives, the gate never opens, and the hook enforces NOTHING there |
 | Worktree ban | `permissions.deny: EnterWorktree/ExitWorktree` + `skillOverrides: using-git-worktrees: off` | No shown equivalent — degrade to the ban text in the instructions file; `using-git-worktrees` itself honors a declared preference ("work in place") |
 | Model selection for subagents | Owned by superpowers (SDD Model Selection); UMS only adds the cheapest-tier guard for summarization/read-only dispatches (contract, Dispatch Model Policy) | Portable text; the cheapest-tier guard is effective only where the harness exposes a model parameter on subagent dispatch |
+| Session intent baton delivery | `SessionStart` hook (`session-intent.ps1`) with a `clear\|startup` matcher; the writer precondition checks for it before writing a baton | No equivalent — the writer's precondition fails, so no baton is written and the operator types the intent, which is the pre-baton behaviour |
 
 Deploying to a non-Claude harness is automated by the sync script:
 

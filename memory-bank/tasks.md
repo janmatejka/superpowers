@@ -89,3 +89,25 @@ archivovaného návrhu [design_publikace_a_viditelnost.md](proposals/completed/d
    zapsán v [SKILLS_MANIFEST.md](../ums/.claude/skills/shared/SKILLS_MANIFEST.md).
 6. **Strukturální oprava** — `context.md` mimo kolizní cestu, cestující SDD
    kontext, epická vrstva v kontraktu, mergovatelný dirty-set.
+7. **Režim doručení 2 — spawn a opuštění.** Agent založí čerstvé sezení v novém
+   tabu (`wt.exe new-tab --startingDirectory <MB_ROOT> pwsh -NoProfile -Command
+   claude`) a své vlastní opustí; nula vstupu operátora při handoffu. Nic se
+   nezabíjí. Pořadí je povinné: napsat baton, pak spawnout, pak ukončit tah.
+   Startovní adresář je nosný, protože hook řeší `MB_ROOT` přes
+   `git rev-parse --show-toplevel`. Na příkazovou řádku se nepředává žádný
+   prompt — jeden doručovací mechanismus, dva spouštěče. Chybějící `wt.exe`
+   není chyba (běžný stav ve VS Code terminálu nebo přes SSH), vrací se odlišný
+   status „unavailable" a volající degraduje na režim 1. Režim je per-workspace
+   konfigurace, ne rozhodnutí modelu, s `clear` jako defaultem. Odloženo proto,
+   že režim 1 musí být prokazatelně funkční dřív, než přibude druhá cesta —
+   jinak má selhání handoffu dva kandidáty na příčinu.
+8. **Zaparkovat SDD ledger jako evidenci.** `sdd/<plan-basename>/` je dnes
+   klasifikovaný jako rekonstruovatelný (checkboxy plánu plus git log). Ledger je
+   většinou to, ale ne úplně: jeho `Ruling:` řádky nesou rozhodnutí, jeho důvod a
+   cenu chyby, plus odložené minory a zaparkované nálezy — nic z toho v git
+   logu není. `mb-park` přitom slibuje obnovitelnost z `origin`, a ten slib pro
+   rulingy neplatí. Konzistentní tvar je tatáž výjimka, jakou už mají kandidáti
+   playbooku: `mb-park` ledger commitne (`git add -f`), obnovená práce do něj
+   přidává, odstranění patří harvestu. Vyžaduje změny v Playbook Contractu a
+   Workspace Discipline a úpravu bulletu „Finish" v SDD overlay. Odloženo proto,
+   že mění plochu kontraktu a zaslouží si vlastní review — s batonem nesouvisí.

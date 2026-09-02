@@ -748,7 +748,7 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
 - **Tahle kontrola (Contract-Version + přítomnost všech `mb-*` adresářů)
   odhalí jen CHYBĚJÍCÍ nasazení, ne ZASTARALÉ.** Na staleness (obsah
   souboru se změnil, ne jen jeho existence) použij `diff -rq ums/.claude
-  .claude` — a pamatuj, že tři vendorované skilly s overlay bloky se musí
+  .claude` — a pamatuj, že čtyři vendorované skilly s overlay bloky se musí
   srovnávat proti monorepo kopii, ne proti `ums/`, kde vůbec neleží (viz
   bod níž).
   Proč: deployovaná kopie `finishing-a-development-branch/SKILL.md` nesla
@@ -756,9 +756,10 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   v `ums/.claude/skills/shared/overlays/` měl 109 řádků popisujících
   FF-push integraci s playbook gate — `Contract-Version` i přítomnost
   `mb-*` adresářů přitom obě kontroly prošly beze zmínky.
-- Tři upstream skilly s overlay bloky (`brainstorming`,
-  `subagent-driven-development`, `finishing-a-development-branch`) se kopií
-  nevyrobí — po změně overlay fragmentu je musí vygenerovat revendor.
+- Čtyři upstream skilly s overlay bloky (`brainstorming`,
+  `subagent-driven-development`, `finishing-a-development-branch`,
+  `writing-plans`) se kopií nevyrobí — po změně overlay fragmentu je musí
+  vygenerovat revendor.
 - **Po každém revendoru dorovnej vendorované skilly i v `.agents/skills`
   kopií z `.claude/skills`** — platí pro tento fork i pro monorepo. Revendor
   cílí jen na `.claude/skills` a sync vendorované skilly nesynchronizuje
