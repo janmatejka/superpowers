@@ -1958,6 +1958,12 @@ never put to the user — reading upstream's word "merge" as covering it
 would turn the mandatory base sync before the first dispatch into a
 question.
 
+Context rotation, on the other hand, IS a fifth class, introduced by the
+subagent-driven-development overlay — and a differently shaped one: the four are
+escalation stops (stop, ask, continue here), while rotation is a handoff stop
+(this session ends, a fresh one continues), like the Architect Review Gate. It is
+additive and weakens none of the four.
+
 ## Resolution Protocol
 
 This file is shared across multiple skills in the following directory

@@ -19,6 +19,40 @@
   into the agent's OWN ticket branch is NOT the "side effect outside this
   worktree" the four classes mean — it is mandatory at phase boundaries
   (Base sync below) and is never put to the user.
+- **A fifth stop class: context rotation.** The SKILL text above says "Four
+  things stop you, **and only these**". In this repository there is a fifth, and
+  that sentence is hereby narrowed: it enumerates the ESCALATION stops — the ones
+  where you stop and ASK, then continue in this same session. Context rotation is
+  a HANDOFF stop: this session ends and a fresh one continues. The layer already
+  has one (the Architect Review Gate). The four are untouched and unweakened;
+  this is additive.
+
+  Permitted **only at a task boundary** — after the completion line is appended
+  to the ledger and the todo is marked complete, and before the next dispatch.
+  Nowhere else: mid-task the on-disk state is incomplete and a rotation discards
+  a live review cycle.
+
+  At that boundary, when the remaining context looks insufficient for another
+  task: write the session intent baton (contract, "Session Intent Baton") with
+  `Kind: plan-resume`, the plan path, the ledger path, the branch, the slug and
+  the number of the next incomplete task; append a plain note to the ledger that
+  the session was rotated here (a note, NOT a `Ruling:` — no conflict was
+  decided); report in Czech; and stop with the single instruction to type
+  `/clear`.
+
+  **This is a judgement call, not a measurement.** Hook input carries no reliable
+  token-budget field; do not build a threshold detector and do not claim one
+  exists. The operator's own meter overrides you in BOTH directions.
+
+  **Writer precondition:** per the contract subsection, write no baton where no
+  consumer will read it — report instead that the intent will not be delivered
+  automatically.
+
+  **A resumed session does NOT re-run the base sync or the baseline.** The Base
+  sync bullet below says "before dispatching the first task"; that means task 1
+  of the PLAN, not task 1 of a session. `Next task: N` in the baton is what tells
+  a fresh session which it is. Reading it the other way would make a rotation a
+  direct trigger of the mid-phase base merge that same bullet forbids.
 - **Authority and the Spec field:** where the upstream text above says "the
   spec is the binding authority, the plan is its argument", read it with the
   contract's subject split — a conflict between the design and the plan is
