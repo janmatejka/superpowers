@@ -12,6 +12,18 @@
 # known keys are parsed and RE-RENDERED, never echoed. Emitting the body verbatim
 # would let it close the wrapper tag below and continue as top-level instruction.
 Set-StrictMode -Version Latest
+# Every non-terminating error becomes terminating, so it is routed into the one
+# silent catch at the bottom instead of printing a PowerShell error record to
+# stderr and then carrying on with a half-assigned variable. That is what the
+# "exits 0 silently" claim above actually requires, and at the default
+# 'Continue' it was false: a locked file made Get-Content write to stderr, leave
+# its target $null, and let the script run on and throw somewhere less obvious.
+$ErrorActionPreference = 'Stop'
+# ...but NOT for native commands. This script probes `git` by $LASTEXITCODE and
+# decides what a non-zero exit means itself (no repository is a plain exit 0; a
+# failed HEAD lookup is invalidation). Pinned explicitly rather than left to the
+# host default so that contract holds on any PowerShell version.
+$PSNativeCommandUseErrorActionPreference = $false
 
 $MaxBytes = 8192
 $Required = @('Kind', 'Plan', 'Branch', 'Slug')
@@ -32,10 +44,21 @@ try {
     $batonPath = Join-Path (Join-Path $root '.superpowers') 'session-intent.md'
     if (-not (Test-Path -LiteralPath $batonPath -PathType Leaf)) { exit 0 }
 
+    # Size ceiling, part one: bound the READ. `Get-Content -Raw` loads the whole
+    # file, so checking only afterwards meant a multi-megabyte scratch file was
+    # pulled into memory in full just to be thrown away — the ceiling read as a
+    # bound while being none, and session start paid for it.
+    if ((Get-Item -LiteralPath $batonPath).Length -gt $MaxBytes) {
+        Move-Aside $batonPath 'session-intent.stale.md'
+        exit 0
+    }
+
     $raw = Get-Content -LiteralPath $batonPath -Raw -Encoding utf8
     if ($null -eq $raw -or [string]::IsNullOrWhiteSpace($raw)) { exit 0 }
 
-    # Size ceiling: a body this large is not a pointer block.
+    # Part two, kept as-is: on-disk length counts a BOM and any CRLF the decode
+    # collapses, so it is the wrong number to judge CONTENT by. This is the
+    # correct check; the one above is only there to make it cheap.
     if ([Text.Encoding]::UTF8.GetByteCount($raw) -gt $MaxBytes) {
         Move-Aside $batonPath 'session-intent.stale.md'
         exit 0
@@ -54,7 +77,14 @@ try {
 
     $fields = [ordered] @{}
     $bad = $false
-    foreach ($line in $lines[1..($lines.Count - 1)]) {
+    # `Select-Object -Skip 1`, never $lines[1..($lines.Count - 1)]: for a
+    # single-line file that slice is $lines[1..0], and 1..0 is a DESCENDING
+    # range in PowerShell, so it reads index 1 — out of bounds, which under
+    # Set-StrictMode throws. An identity-line-only file with no trailing newline
+    # therefore fell into the silent catch and was neither emitted NOR
+    # invalidated: it stayed as session-intent.md and was re-evaluated
+    # identically on every single session start.
+    foreach ($line in $lines | Select-Object -Skip 1) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         $m = [regex]::Match($line, '^(?<k>[A-Za-z][A-Za-z ]*):[ ]?(?<v>.*)$')
         if (-not $m.Success) { $bad = $true; break }
@@ -62,13 +92,32 @@ try {
         if ($RenderOrder -notcontains $key) { $bad = $true; break }
         if ($fields.Contains($key)) { $bad = $true; break }
         $value = $m.Groups['v'].Value.Trim()
-        # A value containing this reader's own wrapper tag would close it early
-        # when re-rendered, letting the remainder read as top-level instruction
-        # text. Values are re-rendered verbatim (only key NAMES are drawn from
-        # the canonical $RenderOrder), so this is the one thing they must not
-        # carry. Staleness is the disposition already used for an unknown key
-        # or a malformed line; a structurally hostile value gets the same one.
-        if ($value -match '(?i)</?session-intent') { $bad = $true; break }
+        # Values are re-rendered VERBATIM (only key NAMES are drawn from the
+        # canonical $RenderOrder), so a value is the one place attacker-chosen
+        # text reaches the emitted block — and this is a structural-character
+        # check rather than a search for one tag, deliberately.
+        #
+        # The wrapper is a TEXTUAL convention a model reads, not XML a parser
+        # validates, so a merely visually-identical closing tag followed by
+        # instruction text restores the whole hole. A literal
+        # '(?i)</?session-intent' check therefore did not close it: it demands
+        # the exact ASCII '<' and the exact spelling, and both
+        # '</session‑intent>' written with U+2011 NON-BREAKING HYPHEN and
+        # '< /session-intent>' were measured sailing through and being emitted
+        # inside the wrapper. Enumerating spellings of one tag is a losing game;
+        # rejecting the class is cheap and final, and '[<>]' strictly subsumes
+        # the check it replaces.
+        #
+        # \p{Cc} is the same argument for control characters: a bare CR inside a
+        # value survives the "`r?`n" split and .Trim() and then renders as extra
+        # apparent key lines inside the block.
+        #
+        # No legitimate pointer value — a plan or ledger path, a branch, a slug,
+        # a ticket key, a task number, a skill name — has any reason to carry an
+        # angle bracket or a control character, so the whole class can go.
+        # Staleness is the disposition already used for an unknown key or a
+        # malformed line; a structurally hostile value gets the same one.
+        if ($value -match '[<>]' -or $value -match '\p{Cc}') { $bad = $true; break }
         $fields[$key] = $value
     }
     if ($bad) {
@@ -122,6 +171,17 @@ try {
     if (Test-Path -LiteralPath $ctxPath -PathType Leaf) {
         $ctxText = ''
         try { $ctxText = Get-Content -LiteralPath $ctxPath -Raw -Encoding utf8 } catch { $ctxText = '' }
+        # Belt and braces for the no-opinion promise above. A read that fails
+        # leaves the assignment unmade, and an empty file reads as $null too, so
+        # $ctxText can be $null here on paths where the catch never fires —
+        # which is exactly what happened at the default 'Continue', where
+        # Get-Content on a locked file raised a NON-terminating error the catch
+        # could not see. [regex]::Match($null, ...) then threw into the outer
+        # silent catch, so a perfectly valid handoff was lost AND the baton was
+        # left as session-intent.md — the one disposition a rejected baton may
+        # never have. Normalised here so no opinion does not rest on
+        # $ErrorActionPreference alone.
+        if ($null -eq $ctxText) { $ctxText = '' }
         # `- **Proposal:**` is the mandated legacy alias of `- **Work item:**`.
         $pin = [regex]::Match($ctxText, '(?m)^\s*-\s+\*\*(?:Work item|Proposal):\*\*\s*(?<slug>\S+)\s*$')
         if ($pin.Success -and ($pin.Groups['slug'].Value -cne $fields['Slug'])) {
@@ -143,8 +203,23 @@ try {
         [ref] $stamp)
     if ($parsed) {
         $span = [datetimeoffset]::UtcNow - $stamp
-        $ageText = '{0}h {1}m' -f [int] $span.TotalHours, $span.Minutes
-        $aged = $span.TotalHours -gt 12
+        if ($span.Ticks -lt 0) {
+            # A stamp in the future is not an age. The trigger is mundane — a
+            # writer stamping LOCAL time and appending 'Z', or plain clock skew
+            # — and unclamped it was doubly wrong: measured with
+            # '3000-01-01T00:00:00Z' it rendered age="-8532039h -24m", and
+            # because a negative TotalHours is never greater than 12 it also
+            # DROPPED the confirmation trailer. The only staleness signal the
+            # model gets became nonsense precisely when the stamp is untrusted.
+            # Unknown-and-aged is the fail-safe reading, and it is already the
+            # outcome for a stamp that will not parse at all.
+            $ageText = 'unknown'
+            $aged = $true
+        }
+        else {
+            $ageText = '{0}h {1}m' -f [int] $span.TotalHours, $span.Minutes
+            $aged = $span.TotalHours -gt 12
+        }
     }
 
     $rendered = foreach ($key in $RenderOrder) {
