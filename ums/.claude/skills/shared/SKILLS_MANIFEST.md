@@ -16,8 +16,8 @@ je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMOR
 ## Vendorované Superpowers skilly (v6.3.0)
 
 14 skillů vendorovaných z obra/superpowers — viz `VENDORED_FROM.md`.
-UMS overlay bloky mají přesně 3: `brainstorming`, `subagent-driven-development`,
-`finishing-a-development-branch`. Ostatní jsou byte-identické s upstreamem.
+UMS overlay bloky mají přesně 4: `brainstorming`, `subagent-driven-development`,
+`finishing-a-development-branch` a `writing-plans`. Ostatní jsou byte-identické s upstreamem.
 
 ## Aktivní mb-* skilly
 
