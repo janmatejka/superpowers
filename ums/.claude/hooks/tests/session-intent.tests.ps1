@@ -390,4 +390,18 @@ Assert-Eq $r.Out '' 'detached HEAD: žádný výstup'
 Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'detached HEAD: přejmenován na .stale.md'
 Remove-Item -Recurse -Force $fx.Root
 
+# --- registrace v settings.json ----------------------------------------
+
+# NOT a test of the matcher's behaviour — that is the harness's to evaluate and
+# only the end-to-end run proves it. This guards the SHAPE of the registration,
+# which nothing else does: a hook nobody registers is a hook nobody runs.
+$settingsPath = Join-Path $PSScriptRoot '..\..\settings.json'
+$settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+$starts = @($settings.hooks.SessionStart)
+Assert-Eq $starts.Count 2 'settings.json: SessionStart má dva záznamy'
+$batonEntry = @($starts | Where-Object { $_.hooks[0].command -match 'session-intent\.ps1' })
+Assert-Eq $batonEntry.Count 1 'settings.json: právě jeden záznam volá session-intent.ps1'
+Assert-Eq $batonEntry[0].matcher 'clear|startup' 'settings.json: matcher je clear|startup (resume ani compact ne — start s prázdným kontextem)'
+Assert-True ($starts[0].PSObject.Properties.Name -notcontains 'matcher') 'settings.json: bootstrap záznam zůstal bez matcheru'
+
 Complete-Tests
