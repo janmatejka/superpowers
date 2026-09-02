@@ -202,6 +202,10 @@ it and `mb-init`/the next brainstorming recreate it on demand.
 specifies. On partial failure, leave `context.md` unchanged and report which
 MBs failed.
 
+- Invalidate the session intent baton (contract, "Session Intent Baton"). Local
+  point: this belongs to the SAME success condition as the reset above — on a
+  partial failure the work item has not ended, so the baton must survive.
+
 ### 6. Announce (Czech)
 
 > „✅ Práce sklizena do Memory Bank."

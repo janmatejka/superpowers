@@ -136,6 +136,10 @@ After the user chooses and BEFORE executing the choice:
   `origin`. The branch published on `origin` is left in place: deleting a branch
   through a push is forbidden with or without the escape variable.
 
+  Invalidate the session intent baton (contract, "Session Intent Baton") before
+  reporting. This path performs the abandon itself rather than calling
+  `mb-abort`, so it does not inherit that skill's invalidation.
+
   If the linked ticket sits in "Design Review" (fallback shape included —
   status "Review" with the `[DESIGN REVIEW]` request-comment marker; contract,
   Architect Review Gate, "Design Review" fallback), offer the Jira cleanup per

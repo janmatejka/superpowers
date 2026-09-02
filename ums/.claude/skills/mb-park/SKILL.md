@@ -48,6 +48,8 @@ needs. Whoever parks may switch afterwards, at a phase boundary, on a clean tree
 - IDLE — the `(No active work - IDLE phase)` marker, or a block with no pin —
   means **there is nothing to park**: say so and stop, without committing
   anything.
+  - Invalidate the session intent baton (contract, "Session Intent Baton") before
+    reporting. The reason for parking is unchanged by there being nothing to park.
 - Record for the report: the slug, the `Jira` line, and the current branch
   (`git rev-parse --abbrev-ref HEAD`).
 - **A detached HEAD is a STOP** (`git symbolic-ref -q HEAD` fails). Park's whole
@@ -124,6 +126,8 @@ candidates were appended afterwards.
   it and stop; do not manufacture an empty commit. It is a derived state, read
   from git and from the file every time, never from a flag or a bookkeeping file
   that can go stale.
+  - Invalidate the session intent baton (contract, "Session Intent Baton") before
+    reporting. The reason for parking is unchanged by there being nothing to park.
 - Anything else continues through steps 2–4 — including a clean tree whose only
   leftover is a fresh untracked candidate file. Step 3 then carries the single
   commit of this park; step 2 finds nothing to commit and says so.
@@ -205,6 +209,12 @@ from `origin`, which is the whole promise of parking.
   An empty result then means the park is not published, so the claim "recoverable
   from `origin`" is false — a fail-closed STOP with an offer to publish, never a
   warning.
+- Invalidate the session intent baton (contract, "Session Intent Baton"). Local
+  point: it belongs HERE, after the publication STOP above, not at the top of
+  the workflow. Reaching that STOP means the park did not complete, and a baton
+  destroyed there was still valid. On the two step-0 STOPs (protected branch,
+  detached HEAD) it does NOT run at all: park did not act, and that path's own
+  report says „Nic jsem necommitnul, nic nepushnul a nic nezahodil."
 
 ---
 

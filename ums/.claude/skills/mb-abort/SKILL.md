@@ -71,6 +71,9 @@ schema (`context.md` Schema & Writers): `## Active Work` →
 `- **Báze:** …` lines of the abandoned work item exactly as that section
 specifies. Do not preserve any other section or history.
 
+- Invalidate the session intent baton (contract, "Session Intent Baton"). The
+  work item ends here, so an outstanding `plan-execution` baton is void.
+
 ### 4a. Commit and publish the abandon
 
 Per the contract's Publication Contract, subsection "Abandon" — steps 1–3 of that
