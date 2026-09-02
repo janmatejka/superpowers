@@ -10,9 +10,9 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.11 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.12 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
-| Overlay bloky | přesně 3 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
+| Overlay bloky | přesně 4 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`, `writing-plans`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
 ## Konfigurace repozitáře (`ums-repo.json`)
 
@@ -51,7 +51,9 @@ stejnou konfiguraci vždy stejnou odpověď.
   [`Test-UmsProtectedBranch.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsProtectedBranch.ps1),
   [`Get-UmsBaseCandidates.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsBaseCandidates.ps1),
   [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEffectiveBase.ps1),
-  hook `bpmn-validate.ps1`.
+  [`session-intent.ps1`](../ums/.claude/hooks/session-intent.ps1) (`SessionStart`
+  hook, čtenář session intent batonu — viz [architecture.md](architecture.md),
+  sekce Session Intent Baton), hook `bpmn-validate.ps1`.
 - **Node.js** (ESM, `"type": "module"`) — hooks
   [`deny-superpowers-docs.mjs`](../ums/.claude/hooks/deny-superpowers-docs.mjs)
   (čte JSON ze stdin, vrací `permissionDecision: deny`) a
@@ -93,7 +95,7 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 | Klíč | Obsah |
 |---|---|
 | `env` | `MB_AGENT_SESSION: "1"` — vstupní marker agentní relace; bez něj `pre-push` hook nevynucuje nic vlastního (viz níže) |
-| `hooks.SessionStart` | `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md`; entry gate stejného kroku navíc fail-closed ověří verzi `pre-push` hooku (`UMS pre-push guard (Publication Contract) v2`) a spustí synteticky obě poloviny jeho self-checku (zamítnutí i propuštění) — postup je v [playbook.md](playbook.md) |
+| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md`; entry gate stejného kroku navíc fail-closed ověří verzi `pre-push` hooku (`UMS pre-push guard (Publication Contract) v2`) a spustí synteticky obě poloviny jeho self-checku (zamítnutí i propuštění) — postup je v [playbook.md](playbook.md). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
 | `hooks.PostCompact` | `systemMessage`: po kompaktaci znovu načíst kontrakt, `context.md` a při exekuci plánu i `.superpowers/sdd/<plan-basename>/progress.md` |
 | `hooks.PreToolUse` (`Write|Edit`) | `deny-superpowers-docs.mjs` — blokuje zápis do `docs/superpowers/**` a `docs/plans/**` |
 | `hooks.PreToolUse` (`Bash|PowerShell`) | `guard-git-push.mjs` — nese pravidlo podle AKTÉRA (jen vlastní tool-cally agenta, ne příkazy uživatele psané přes `!`): na rozpoznaný `git push` leans fail-CLOSED (nečitelný cíl zamítá, nečeká na vyjasnění), zamítá push agenta na chráněnou větev včetně integračního fast-forwardu, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a `--no-verify` bez kontextu; NENÍ záruka publikace — tou zůstává git `pre-push` hook (níže), který navíc vynucuje jen uvnitř agentní relace |
@@ -184,8 +186,8 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 17 sad, dohromady
-954 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 18 sad, dohromady
+1044 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -246,7 +248,12 @@ v [playbook.md](playbook.md).
   jako v reálném shellu, pojmenované mezery jako `bash -c` nebo git alias) a
   `sync-marker.tests.ps1` (18; `Set-AgentMarker` per harness — Codex
   `config.toml`, Gemini `.env`, Kilo Code hlásí `NotSupportedException` a
-  nezapisuje nic).
+  nezapisuje nic) a `session-intent.tests.ps1` (90; čtenář session intent
+  batonu — uzavřený formát s re-renderem, branch a slug guard
+  case-sensitive, existence `Plan`, věk bez tvrdé expirace, consume-on-read
+  vč. replay okna mezi emisí a přejmenováním, čtyři regresní zámky
+  (chybějící/prázdný soubor, zamčený soubor, cizí git repozitář) odlišené od
+  pozitivní kontroly, a shapová kontrola registrace v `settings.json`).
 
 **Upstream** — [`tests/`](../tests/) obsahuje shellové a Node.js testy
 infrastruktury pluginu po harnessech (`claude-code`, `codex`, `kimi`,

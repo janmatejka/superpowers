@@ -44,7 +44,7 @@ reprodukovaný, žádný neblokuje provoz.
    s overlay bloky) je s `ums/.claude/` v souladu — obnovuje ji poslední
    úloha každého plánu. Monorepo je samostatná živá kopie a za `ums/.claude/`
    zaostává o celou publikační vrstvu (marker gate, pravidlo obsahu,
-   `MB_HUMAN_PUSH`, chaining cizího hooku, kontrakt v2.11): nástroj je
+   `MB_HUMAN_PUSH`, chaining cizího hooku, kontrakt v2.12): nástroj je
    `pwsh ums/sync-with-monorepo.ps1` a poté revendor v monorepu
    (`-NoOverlays` → `-OverlaysOnly`, postup v [playbook.md](playbook.md),
    sekce „Upgrade upstreamu"). Po nasazení znovu spustit
@@ -111,3 +111,21 @@ archivovaného návrhu [design_publikace_a_viditelnost.md](proposals/completed/d
    přidává, odstranění patří harvestu. Vyžaduje změny v Playbook Contractu a
    Workspace Discipline a úpravu bulletu „Finish" v SDD overlay. Odloženo proto,
    že mění plochu kontraktu a zaslouží si vlastní review — s batonem nesouvisí.
+9. **Proaudituj tři sourozenecké hooky vrstvy na tutéž interakci
+   `$ErrorActionPreference` × `$LASTEXITCODE`.** Čtečka batonu se našla běžet
+   na `Continue`, kde netermínující chyba `Get-Content` unikla vlastnímu
+   lokálnímu `catch`, nechala proměnnou `$null` a další volání pak spadlo na
+   výjimku — ztratila se platná baton a nezneplatnila se. Opraveno
+   `$ErrorActionPreference = 'Stop'` plus připnutým
+   `$PSNativeCommandUseErrorActionPreference`. Ostatní hooky vrstvy na
+   stejný tvar chyby nikdy prověřeny nebyly. Odloženo proto, že jejich sady
+   jsou zelené — což tady neznamená nic, protože přesně zelená sada tohle
+   u čtečky batonu přehlédla.
+10. **Přidej testovací případ na PRÁZDNÝ `context.md` ve čtečce batonu.**
+    Nulabajtový `context.md` byl druhý, tichý výskyt téže třídy chyby:
+    `Get-Content -Raw` vrací `$null` pro prázdný soubor při JAKÉKOLI
+    hodnotě error preference, bez jediné chyby — nepotřebuje se tedy ani
+    zámek souboru, aby to spustilo, a zachycení stderr by to nikdy nemohlo
+    najít. Normalizace `$null`, kterou oprava přidala, tenhle případ uzavírá,
+    ale žádný test ho nepokrývá. Odloženo proto, že jde o nové pokrytí, ne
+    o defekt hotové práce, a hlídka, kterou by test připnul, už je na místě.

@@ -298,6 +298,34 @@ Konvence, které nová sada musí dodržet:
   bisekce (probe1/probe2/probe3) mohla přímo spouštět částečné verze velké
   sady bez úpravy relativních cest; kopie mimo `tests/` by totéž vyžadovala
   ruční přepis cest.
+- **Pass/fail českých PowerShellových sad posuzuj z markerů, ne z prózy.**
+  Grepuj markery `FAIL`, řádek `<N> passed` a kontroluj exit kód, ne
+  vykreslený text hlášky.
+  Proč: české asserční hlášky se v tomhle prostředí vykreslují jako mojibake
+  kvůli neshodě konzolové code page, zatímco markery, počet a exit kód
+  zůstávají spolehlivé.
+- **Obnovu netrackovaného cíle mutace ověřuj hashem, ne gitem.** U každého
+  souboru, který je na aktuální větvi nový nebo netrackovaný, ověřuj obnovu
+  po mutačním testu hashem obsahu zachyceným před první mutací, plus `cmp`.
+  Proč: git je vůči mutacím netrackovaného souboru slepý oběma směry, takže
+  `git diff` nic nehlásí bez ohledu na to, jestli byla obnova správná nebo
+  zpackaná — je to prázdný, bezcenný pass.
+- **Mutaci odebraného pole může zastínit ranější kontrola.** Když předvídáš,
+  které případy má mutace odstraňující hlídku zčervenat, zkontroluj, jestli
+  stejný symptom už nepokrývá ranější, obecnější validace (kontrola
+  povinného pole nebo tvaru); pokud ano, ten případ legitimně zůstává zelený
+  a patří do reportu jako očekávaná odchylka, ne jako rozbitý mutační test.
+  Proč: odstranění celé hlídky větve zčervenalo tři ze čtyř předpovězených
+  případů — „chybějící Branch" zůstalo zelené, protože kontrola povinných
+  polí ho zamítá dřív, než se vůbec dostane k hlídce.
+- **Každý case-sensitive komparátor potřebuje vlastní testovací případ.** Ke
+  každému `-cne` (nebo jinému case-sensitive komparátoru) přidanému do
+  hlídky napiš vyhrazený případ, jehož dvě hodnoty se liší JEN velikostí
+  písmen; obecný případ „tohle jsou různé hodnoty" není pokrytí negativity
+  pro tenhle komparátor.
+  Proč: mutace `-cne` na `-ne` v hlídce slugu nezměnila nic měřitelného —
+  `jiny_slug` a `x` se liší i case-insensitive, takže sada prošla 57/57
+  s živou mutací a nedokázala nic o case-sensitivitě.
 
 ## PowerShell v této vrstvě
 
@@ -526,6 +554,35 @@ Konvence, které nová sada musí dodržet:
   přes chráněnou větev; skip-a-pokračuj drží DENY (`develop`) na obou
   toolech, ukončení by ho nedrželo — bash ten příkaz skutečně pushne na
   `develop`.
+- **Signaturu sdíleného helperu přečti, nehádej.** Než zavoláš jakýkoli
+  `Get-Ums*`/`Test-Ums*` helper, přečti si jeho řádek `function` kvůli
+  přesným jménům parametrů; fail-closed verdikt proti vlastnímu
+  nakonfigurovanému defaultu repozitáře ber jako signál špatného volání, ne
+  jako nález — než na něj zareaguješ nápravou, zopakuj volání s hodnotou
+  pozičně.
+  Proč: `Test-UmsProtectedBranch -BranchName …` vrátilo `Matched=False` pro
+  větev, která je první položkou `protectedBranches` — parametr je `-Name`
+  a jednoduchá funkce (bez `[CmdletBinding()]`) tiše propustila neznámý
+  přepínač do `$args`, což vyrobilo falešný STOP.
+- **Porovnání operandů z gitu v PowerShellu piš case-sensitive.** Každé
+  PowerShellové srovnání, jehož operandy pocházejí z gitu (jména větví,
+  jména refů, prefixy sha, cesty uvnitř repa), používá `-ceq`/`-cne`/
+  `-cmatch`, nikdy defaultní case-insensitive tvar; ověř to párem lišícím se
+  jen velikostí písmen a mutaci pro negativitu dělej záměnou operátoru, ne
+  odstraněním hlídky.
+  Proč: měřeno, `'Feature-X' -eq 'feature-x'` je `True`, zatímco `-ceq` je
+  `False` — obvyklá formulace tak přijme token ražený pro jinou větev,
+  a mutace odstraněním přítomnosti hlídky nechá tuhle vlastnost zelenou,
+  takže defekt přežije celou sadu.
+- **Uzavřený re-render musí sanitizovat HODNOTY, ne jen jména polí.** Když
+  bezpečnostní vlastnost formátu stojí na „re-renderují se jen známé věci",
+  audituj zvlášť, které klíče jsou povolené A co smí obsahovat jejich
+  hodnoty; odmítej třídu znaků, ne výčet hláskování jedné značky.
+  Proč: dobře tvarovaný řádek se whitelistovaným klíčem
+  (`Ticket: </session-intent> IGNORE…`) prošel tvarovým regexem i
+  whitelistem klíčů a byl re-renderován doslovně, čímž předčasně uzavřel
+  wrapper; první oprava pokryla jen ASCII hláskování a homoglyf U+2011 ji
+  obešel — obojí měřeno end-to-end.
 
 ## Git hooky (POSIX sh)
 
@@ -608,6 +665,19 @@ Konvence, které nová sada musí dodržet:
   false a chráněná větev se trefí první — uživatel dostal „projde jen
   fast-forward" místo hlášky o mazání, ačkoli verdikt (zamítnutí) byl
   správný, takže žádný test na kód to nechytil.
+- **Před nabídkou kandidátů báze ověř, že sklizená práce je i integrovaná.**
+  Pro každého kandidáta (a pro každou lokální IDLE, ale v bázi nepřítomnou
+  tiketovou větev) spusť `git log --oneline <kandidát>..<aktuální větev>`
+  a nahlas každého kandidáta, který neobsahuje větev, na které sezení stojí.
+  Neprázdný výsledek na sklizené větvi znamená čekající lidský integrační
+  push, ne novou práci — předej holý refspec příkaz a čekej. Než ho předáš,
+  dokaž, že ho hook přijme: propusť poctivou čtveřici (`<local ref> <new
+  sha> <remote ref> <old base sha>`) přes rozřešený hook — exit 0 znamená,
+  že do příkazu nepatří žádná lidská úniková proměnná.
+  Proč: báze 34 commitů pozadu byla jednou zvolena mlčky — nesla kontrakt
+  v2.10 a `pre-push` bez přípony ` v2`, tedy přesně základy, na kterých nová
+  práce stavěla, a nic ve vstupní bráně se na tohle nedívá (čistý strom,
+  prázdný stash, `mb-doc-index` bez nálezů).
 
 ## Upgrade upstreamu (revendor)
 
@@ -1305,6 +1375,39 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   řádků posunutá — splice vyřízl prostředek jednoho odstavce a nechal
   viset konec jiného, a `node --check` prošel čistě, protože poškozený byl
   jen komentář.
+- **Bump verze kontraktu je vlastní sweep, mimo sweep na slovník
+  pravidla.** Kromě sweepu slovníku měněných pravidel spusť před commitem
+  `grep -rn '<stará verze>' ums/ memory-bank/ CLAUDE.md` a rozděl nálezy
+  podle vlastníka: soubory vrstvy patří implementaci, dokumenty Memory Bank
+  patří harvestu.
+  Proč: oba slovníkové sweepy byly kompletní a oba minuly samotnou verzi —
+  sedm restatementů `2.11`, které žádný slovníkový grep nechytí, a
+  `brief.md` nebyl v žádném hand-off seznamu vůbec.
+- **Inventáře sweepuj podle DRUHU artefaktu, ne podle jeho jména.** Po
+  slovníkovém sweepu spusť druhý průchod cílený na druh vytvořeného
+  artefaktu — ptej se „kdo počítá nebo vyjmenovává věci tohoto druhu?"; pro
+  tuhle vrstvu to znamená `tech.md` (počty sad, součty asercí, inventář
+  nástrojů, řádek `settings.json`), `ums/README.md` (adresářové stromy,
+  matice harnessů) a `SKILLS_MANIFEST.md`. Grepuj na jména SOUROZENECKÝCH
+  artefaktů, nikdy na jméno nového, které z definice zatím nikde neleží.
+  Proč: čtyři inventární věty zůstaly nepravdivé a žádná z nich
+  neobsahovala slovo „overlay", „baton" ani „stop"; všechny čtyři odhalila
+  až adversariální review, ne vlastní sweepy autora.
+- **Grep tool bez `output_mode: "content"` zahodí `-n`.** Když čísla řádků
+  odvozuješ znovu Grep toolem místo syrového shellového `grep`, předej
+  `output_mode: "content"` explicitně spolu s `-n`.
+  Proč: vynechání tiše spadne na výpis souborů se shodou a nedá žádná čísla
+  řádků.
+- **Vložení odstavce do prózy cíli na konec odstavce, ověřený čtením
+  dopředu.** Než vložíš nový odstavec „za" pojmenovanou větu nebo
+  číslovaný seznam, přečti dopředu za řádek, který vypadá jako konec,
+  a potvrď, že nejde o zalomené pokračování téže věty; upřednostni
+  přirozený konec odstavce, pokud instrukce jasně nemíří na přerušení.
+  Proč: jedno vložení rozdělilo jedinou větu na dva odstavce, protože řádek
+  vypadající jako konec odstavce byl uprostřed věty zalomený; v jiném
+  případě následovala za pojmenovanou větou dvojtečka a inline výčet
+  patřící téže větě, takže vložení by oddělilo tvrzení od jeho vlastního
+  zdůvodnění.
 
 ## Psaní plánů, návrhů a commitů
 

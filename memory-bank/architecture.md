@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.11, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.12, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -52,7 +52,7 @@ starou verzí vrstvy.
 
 ## 2. Workflow Superpowers a body zásahu UMS
 
-Superpowers řídí životní cyklus práce. UMS do něj vstupuje **přesně třemi
+Superpowers řídí životní cyklus práce. UMS do něj vstupuje **přesně čtyřmi
 overlay bloky** plus sadou skillů volaných z těchto bloků.
 
 ```mermaid
@@ -67,10 +67,16 @@ flowchart TD
     ARS --> WP["writing-plans"]
     GATE -->|ne| WP
     WP --> PLAN["plan_slug.md v proposals/active/"]
-    PLAN --> EXEC{"volba exekuce"}
-    EXEC -->|subagenti| SDD["subagent-driven-development"]
-    EXEC -->|inline| EP["executing-plans"]
-    SDD --> O2{{"OVERLAY 2: bez worktrees, jazyk dispatchu, model guard"}}
+    PLAN --> O4{{"OVERLAY 4: tri volby exekuce"}}
+    O4 -->|subagenti| SDD["subagent-driven-development"]
+    O4 -->|inline| EP["executing-plans"]
+    O4 -->|fresh session| BAT1["session-intent.md: Kind plan-execution"]
+    BAT1 -.->|operator: /clear| NEW1["nove sezeni, SessionStart hook cte baton"]
+    NEW1 --> SDD
+    SDD --> O2{{"OVERLAY 2: bez worktrees, jazyk dispatchu, model guard, pata stop trida"}}
+    SDD -.->|rotace kontextu na hranici tasku| BAT2["session-intent.md: Kind plan-resume"]
+    BAT2 -.->|operator: /clear| NEW2["nove sezeni, SessionStart hook cte baton"]
+    NEW2 --> SDD
     EP --> FIN["finishing-a-development-branch"]
     O2 --> FIN
     FIN --> O3{{"OVERLAY 3: Harvest Gate — krok 4.5"}}
@@ -165,7 +171,20 @@ na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
   + `merge <baseRef>`, s posouzením průniku a odstupňovanou verifikací),
 - **publikace** — agent pushuje vlastní větev po každém commitu (obecné
   pravidlo, sekce 3); před dispatchem prvního tasku je to commit s plánem,
-  vedle povinné baseline build/test kontroly.
+  vedle povinné baseline build/test kontroly,
+- **pátá stop třída — rotace kontextu** — na hranici tasku (po zápisu
+  dokončovací řádky do ledgeru a odškrtnutí toda, před dalším dispatchem),
+  jeví-li se zbývající kontext jako nedostatečný na další task: napsat baton
+  (`Kind: plan-resume`, cesta plánu, cesta ledgeru, větev, slug, číslo
+  dalšího nedokončeného tasku), zapsat řádek o rotaci do ledgeru, ohlásit
+  česky a zastavit s jedinou instrukcí — operátor napíše `/clear`. Na rozdíl
+  od upstream čtyř eskalačních tříd (zastav, zeptej se, pokračuj v tomtéž
+  sezení) je to třída **předávací** — sezení končí a pokračuje čerstvé —, jako
+  Architect Review Gate. Je to úsudek modelu, ne měření: detektor prahu
+  kontextu se nestaví. Obnovené sezení nesmí na základě batonu znovu spustit
+  base sync ani baseline — ty patří k tasku 1 plánu, ne k tasku 1 sezení
+  (`Next task: N` v batonu je rozlišující informace). Podrobnosti formátu a
+  guardů viz podsekce „Session Intent Baton" níže.
 
 ### Overlay 3 — `finishing-a-development-branch`
 
@@ -202,7 +221,74 @@ kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává kro
   `context.md` se resetuje, tento pohyb se commitne a pushne na tiketové
   větvi (stejně jako každý jiný commit) a teprve pak se lokální větev smaže —
   `git switch --detach <baseRef>` (nemá se kam vrátit, žádná lokální báze) a
-  `git branch -d`; vzdálená větev se nikdy nemaže.
+  `git branch -d`; vzdálená větev se nikdy nemaže. Discard cestu provádí
+  fragment sám (nevolá `mb-abort`), takže i invalidace session intent batonu
+  je zapsaná přímo v ní.
+
+### Overlay 4 — `writing-plans`
+
+Fragment [`writing-plans.overlay.md`](../ums/.claude/skills/shared/overlays/writing-plans.overlay.md),
+kotvený `ANCHOR-BEFORE` na otázku „Which approach?" — druhý fragment citlivý
+na drift upstreamu. Menu exekuce se rozšiřuje ze dvou voleb na tři, žádná
+druhá otázka ani práh počtu tasků se nepřidává:
+
+- **1. Subagent-Driven** a **2. Inline Execution** — beze změny, upstream.
+- **3. Fresh Session** (doporučeno u větších plánů, nebo když se návrhový
+  dialog protáhl) — agent napíše session intent baton (`Kind: plan-execution`,
+  cesta plánu, cesta specu, větev, slug, tiket), ohlásí česky jedním krátkým
+  odstavcem a skončí — nic nedispatchuje, nenabízí pokračování v tomtéž
+  sezení. Operátor pak napíše `/clear`; příští sezení dostane zkonstruovaný
+  brief místo toho, co si operátor vzpomene napsat, a startuje bez jediného
+  řádku brainstormingového transkriptu.
+- Volba 3 se nabízí jen když platí **precondice zapisovatele** (níže) — jinak
+  menu zůstává na dvou a upstream text platí beze změny.
+
+Fragment má jedinou kotvu, takže obsluha volby 3 stojí **před** otázkou
+„Which approach?", zatímco obsluhy voleb 1 a 2 stojí za ní — vědomá asymetrie,
+protože menu vyrenderované operátorovi musí být v okamžiku otázky úplné.
+
+### Session Intent Baton
+
+Mechanika, kterou používá Overlay 2 (pátá stop třída) i Overlay 4 (třetí
+volba exekuce), zavedená kontraktem, podsekce „Session Intent Baton"
+(normativní zdroj formátu a guardů).
+
+- **Soubor:** `<MB_ROOT>/.superpowers/session-intent.md` — git-ignorovaný,
+  nikdy se necommituje (fallback při ztrátě je, že operátor napíše záměr
+  sám — dnešní chování bez batonu).
+- **Zapisovatelé:** `writing-plans` (volba 3, `Kind: plan-execution`) a
+  `subagent-driven-development` (pátá stop třída, `Kind: plan-resume`), oba
+  vázané precondicí — baton se píše jen když existuje detekovaný konzument
+  (neprázdný `CLAUDECODE` a registrovaný hook); jinak zapisovatel ohlásí, že
+  se záměr automaticky nedoručí.
+- **Čtenář:** [`ums/.claude/hooks/session-intent.ps1`](../ums/.claude/hooks/session-intent.ps1),
+  `SessionStart` hook s matcherem `clear|startup` (registrace v
+  [`ums/.claude/settings.json`](../ums/.claude/settings.json) — druhý
+  `SessionStart` záznam vedle stávajícího bootstrap záznamu bez matcheru).
+  Matcher vynechává `resume`, `compact` a `fork`, protože obnovené sezení si
+  nese vlastní transkript i baton, který samo napsalo. Hook naparsuje známé
+  klíče a znovu je vyrenderuje (nikdy neemituje tělo doslova), ověří branch a
+  slug guard (case-sensitive, `Branch` proti `git rev-parse --abbrev-ref
+  HEAD`, `Slug` proti `context.md`), existenci `Plan`, a přejmenuje soubor
+  po emisi (`.consumed.md`) nebo při zamítnutí guardem (`.stale.md`) — nikdy
+  nemaže. `SessionStart` je informační, takže hook na každé chybové cestě
+  (chybějící git, chybějící/nečitelný soubor, tvarová chyba) tiše skončí
+  s exit 0 a session start nikdy nezablokuje.
+- **Precedence:** kontrola publikační záruky z bootstrap `SessionStart`
+  záznamu je precondice jednání podle batonu, nikdy naopak — baton nikdy
+  nepřebíjí fail-closed bránu; pořadí obou `SessionStart` záznamů není nikde
+  garantované, takže totéž nese i patička, kterou hook připojuje za baton.
+- **Invalidace** (přejmenování na `.stale.md`) probíhá na čtyřech místech
+  životního cyklu: `mb-harvest` (krok reset `context.md`, podmíněně úspěchem
+  — harvest smí částečně selhat), `mb-abort` (krok reset `context.md`),
+  discard cesta ve fragmentu `finishing-a-development-branch.overlay.md` (ta
+  cestu provádí sama, nevolá `mb-abort`) a `mb-park` — ten invaliduje jen tam,
+  kde dokončil, co dělá (IDLE „není co parkovat", „práce je už zaparkovaná",
+  nebo úspěšná publikace v kroku 4), nikdy na STOPech kroku 0 (chráněná větev,
+  detached HEAD), protože tam park nejednal a baton zůstává platný.
+
+Testy mechaniky jsou v `hooks/tests/session-intent.tests.ps1` (inventář
+v [tech.md](tech.md)).
 
 ### Co Superpowers vlastní bez zásahu UMS
 
@@ -217,7 +303,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.11, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.12, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -383,8 +469,11 @@ ostatní) a [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Ge
 hodnotou, prázdná hodnota, chybějící diakritika — hlásí v `Malformed` a
 nepočítá se jako „řádek chybí"). Tyto tři skripty čtou (nebo zpřísňují STOP)
 `mb-park`, `mb-state`, `mb-jira-update`, `mb-architect-review`, `mb-harvest`
-a všechny tři overlay fragmenty; `Get-UmsRepoConfig.ps1` se neměnil —
-per-položková báze není konfigurace repozitáře.
+a overlay fragmenty `brainstorming`, `subagent-driven-development` a
+`finishing-a-development-branch` — jmenovitě tyto tři, ne všechny čtyři:
+`writing-plans` (Overlay 4) bázi ani chráněné větve neřeší, takže sdílené
+skripty nekonzumuje. `Get-UmsRepoConfig.ps1` se neměnil — per-položková báze
+není konfigurace repozitáře.
 
 Vedle něj běží `guard-git-push.mjs` jako PreToolUse hook (`Bash|PowerShell`)
 — nenese publikační záruku (tou zůstává git `pre-push` hook výše), ale nese
@@ -414,7 +503,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.11](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.12](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
