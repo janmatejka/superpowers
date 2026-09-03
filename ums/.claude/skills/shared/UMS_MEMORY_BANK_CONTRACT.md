@@ -667,15 +667,14 @@ work item, therefore a STOP.
 
 ## Workspace Discipline
 
-A **workspace** is a clone the user works in. A pool slot (Worktree Policy) is
-likewise a workspace in this contract's sense, even though it is a linked
-worktree rather than a clone, and "one session per workspace" below therefore
-holds per slot. The user creates it and chooses
-it; it is used repeatedly and it carries the leftovers of previous work. The
-layer therefore treats a workspace as found, never as one the SESSION
-provisioned: the one provisioning tool this layer has (`pool-provision.ps1`,
-Worktree Policy) belongs to the operator and refuses to run under an
-agent-session marker.
+A **workspace** is a clone the user works in. The user creates it and chooses
+it; it is used repeatedly and it carries the leftovers of previous work. A
+pool slot (Worktree Policy) is likewise a workspace in this contract's sense,
+even though it is a linked worktree rather than a clone, and "one session per
+workspace" below therefore holds per slot. The layer therefore treats a
+workspace as found, never as one the SESSION provisioned: the one provisioning
+tool this layer has (`pool-provision.ps1`, Worktree Policy) belongs to the
+operator and refuses to run under an agent-session marker.
 
 **The single boundary of responsibility: the agent never destroys anything that
 cannot be recovered from `origin`.**
@@ -888,8 +887,10 @@ work is recoverable from `origin` by definition, which is why it does not block
 starting another ticket (Active Work Item).
 
 **One session per workspace.** Work on several tickets is interleaved, not
-parallel — two sessions in one clone would fight over the same working tree and
-the same `context.md`.
+parallel — two sessions in one workspace would fight over the same working
+tree and the same `context.md`. A pool (Worktree Policy) spans several
+workspaces, each still bound to that same one-session rule on its own, so
+sessions running in parallel across different slots are not a violation of it.
 
 Life-cycle operations (harvest, `mb-abort`, Jira finalization) always run on that
 ticket's own branch.
