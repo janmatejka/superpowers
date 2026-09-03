@@ -5,7 +5,7 @@ license: MIT
 metadata:
   author: UMS Project
   version: "1.0"
-allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git branch:*), Bash(git for-each-ref:*), Bash(git fetch:*), Bash(git stash list:*), Bash(claude agents:*), Read, Grep, Glob, PowerShell(pwsh:*)
+allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git branch:*), Bash(git for-each-ref:*), Bash(git fetch:*), Bash(git stash list:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(claude agents:*), Read, Grep, Glob, Edit, Skill, PowerShell(pwsh:*)
 ---
 
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
@@ -53,14 +53,27 @@ These are not style. Each one closes a measured failure.
    is wrong in exactly the unreadable case, which is the mid-`mb-park` or
    interrupted-session state. `free` already folds both in. Read `free`, and
    when it is false read `reasons`; never re-derive freedom from `pin`.
-10. **Never ask git for the worktree list yourself.** `git worktree list` is
-    denied to the Bash tool by this layer's `permissions.deny`, where deny
-    beats allow — which is also why it is absent from `allowed-tools` above.
+10. **Never ask git for the worktree list yourself.** This layer denies
+    `git worktree list` to the Bash tool through `permissions.deny`, where
+    deny beats allow, so the command is deliberately absent from
+    `allowed-tools` above — and it stays absent regardless of what that deny
+    list happens to contain, because the reason is not the deny.
     `pool-status.ps1` is the one reader, and it calls git from inside `pwsh`,
     not through the Bash tool. Every "is this branch checked out somewhere"
     question is answered from the **union of `slots[].branch` and
     `excluded[].branch`** in its JSON. That union covers the primary worktree
     too, which is where a ticket branch is most likely to be checked out.
+
+**`allowed-tools` is not what protects the slots — the rules above are.** The
+field is deliberately wider than "read-only git", because `spawn` writes a
+ledger line, commits it through `mb-git-commit` and publishes the branch, all
+three in the ORCHESTRATOR's own repository: that needs `Edit`, `Skill` and
+`git add` / `git commit` / `git push`, and without them the step cannot run at
+all. Narrowing the field back would break `spawn` and buy nothing for slot
+safety, because a tool pattern at the granularity of `Bash(git commit:*)`
+**cannot tell `git -C <slot> commit` from a local invocation**. Every
+slot-facing call in this skill is read-only and `-C`-scoped by rules 1 and 2;
+that is the guarantee, and the field never was.
 
 ## Operations
 
