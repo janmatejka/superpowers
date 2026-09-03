@@ -93,10 +93,10 @@
   in the existing working directory. Isolation comes from the workspace, and the
   **workspace is the user's choice** — the user creates it and picks it; the
   session runs in the workspace where the work already is and never provisions
-  another one (contract, "Workspace Discipline"). What "one session per
-  workspace" means, including the pool carve-out, is that same section's rule
-  by name (contract, "Workspace Discipline", "One session per workspace") — not
-  restated here.
+  another one (contract, "Workspace Discipline"). "One session per workspace",
+  including the pool carve-out, is that same section's own rule — see it by
+  name (contract, "Workspace Discipline", "One session per workspace") rather
+  than a restatement here.
   Where the upstream text above says "outside this worktree", read "outside
   this clone/workspace" — worktrees are banned here.
 - **Playbook:** resolve the target Memory Bank's procedure document FIRST —
