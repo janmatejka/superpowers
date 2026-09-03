@@ -316,8 +316,16 @@ prochází traversal beze časového omezení
 ([`doc-index.ps1`](../ums/.claude/skills/mb-doc-index/scripts/doc-index.ps1);
 jména refů se do `git log` předávají přes `--stdin`, protože stovky refů
 překročí limit příkazové řádky Windows), omezený i cestou a bází
-(`-BaseRef`); deklarovaný záměr (`-Jira`/`-Slug`) enumeruje úplně bez
-časového okna. Výsledek se slučuje s lokálním working tree (pseudo-větev
+(`-BaseRef`). Ten hlavní traversal je **vždy okenní**, deklarovaný záměr
+nevyjímaje: větve commitů v něm řeší jedno `branch -r --contains` na každý
+commit, takže odokenění násobí počet volání celou historií a na monorepu běh
+vůbec nedoběhl. **Deklarovaný záměr (`-Jira`/`-Slug`) proto má vlastní široký
+průchod** — jeden `git log --stdin --source` nad všemi refy, omezený na
+`proposals/active/`, kde `%S` pojmenuje větev, takže per-commit řešení větví
+odpadá a počet procesů je konstantní. Úzké zaměření na `active/` je záměr:
+kolizní srovnání jinou fázi neporovnává, takže deklarovaný běh je pro
+`active/` nadmnožinou okenního a `next/` ani `completed/` z uspaných větví
+nenese. Výsledek se slučuje s lokálním working tree (pseudo-větev
 `local`, jeden `git ls-files --cached --others --exclude-standard`, bez
 rekurzivního průchodu adresářů) a s obsahem báze (pseudo-větev `base`) do
 jednoho indexu. Změřený výkon je v [tech.md](tech.md).

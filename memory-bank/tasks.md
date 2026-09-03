@@ -20,15 +20,19 @@ reprodukovaný, žádný neblokuje provoz.
 3. **JIRA-less cestě deklarovaný záměr nepomůže** — bez tiketu a bez slugu nemá
    kolizní kontrola co porovnávat, takže dvě sezení bez tiketu se o sobě
    nedozvědí.
-4. **`doc-index.ps1` v měřítku monorepa nesplňuje návrhový rozpočet.** Na
-   `d:\_datasys\ums` (219 remote refs, `.git` 4,1 GB) trvá běžný běh 32–35 s a
-   běh s deklarovaným záměrem (`-Jira`/`-Slug`) 57 s, proti 2,0 s v tomto
-   forku — rozpočet 15 s tedy nesplněn. Hotspot zůstává touto pracovní
-   položkou nedotčen: `git branch -r --contains` jednou na commit plus
-   `cat-file -e` a `show` jednou na dvojici (větev, cesta); samotné čtení
-   refů stojí jen 0,1 s. Dvoufázový filtr stáří tipu, který tato větev
-   přidala, dělá výběr refů levným — zbylá cena je probírání obsahu po
-   dvojicích. Neřešeno.
+4. **`doc-index.ps1` v měřítku monorepa nesplňuje návrhový rozpočet 15 s.**
+   Na `d:\_datasys\ums` (337 remote refs, `.git` 4,4 GB) trvá běžný okenní běh
+   **103–107 s** a běh s deklarovaným záměrem **~160 s**, proti 2,0 s v tomto
+   forku. UMS-3495 vyřešilo jen tu horší polovinu: deklarovaný záměr dřív
+   **nedoběhl vůbec** (25+ min, zabito), čímž byl fail-closed kolizní STOP
+   vstupní brány na monorepu nedosažitelný. Zbývající cena je **spawn procesu
+   na dvojici** (větev, cesta) — `cat-file -e` a pak `show` — plus
+   `branch -r --contains` na commit v okenním traversalu; čtení refů stojí
+   0,1 s. Nahradit sondu jedním výpisem stromu na ref **nelze**, `git ls-tree`
+   pathspec magic `:(glob)` nepodporuje. Per-ref `git log` (jeden proces na
+   ref) je slepá ulička ze stejného důvodu, z jakého je drahá sonda — na
+   Windows dominuje spawn. Neřešeno; smysl by mělo teprve zbavit se
+   per-dvojicových procesů, ne přesouvat je jinam.
 5. **Sdílený blok detekce fáze v pěti skillech se rozchází s kontraktem.**
    `mb-git-commit`, `mb-git-message`, `mb-jira-update`, `mb-sync` a `mb-scan`
    nesou stejný zkopírovaný odstavec: čte blok `## Active Work` jako

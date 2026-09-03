@@ -326,6 +326,18 @@ Konvence, které nová sada musí dodržet:
   Proč: mutace `-cne` na `-ne` v hlídce slugu nezměnila nic měřitelného —
   `jiny_slug` a `x` se liší i case-insensitive, takže sada prošla 57/57
   s živou mutací a nedokázala nic o case-sensitivitě.
+- **Skutečná volání gitu počítej `git.bat` shimem dřív v `PATH`, ne mockem** —
+  zaznamená si argv a přepošle je reálnému gitu, takže měří to, co se opravdu
+  stalo, a funguje i pro volání z **potomka** `pwsh`, kterého spouští
+  `Invoke-Index` a podobné helpery (potomek dědí `PATH`). Před napsáním jakékoli
+  asercie na počty ověř dvě věci: že se shim opravdu použil (neprázdný log a
+  v něm volání, které dělá jen potomek, například `for-each-ref`), a že
+  **nezkresluje** — porovnej výstup skriptu pod shimem s během bez něj a
+  vyžaduj bajtovou shodu.
+  Proč: batch soubor re-expanduje `%`, takže argument `--format=%x01%H%x09…`
+  je kandidát na rozbití; měřeno, prošel beze změny a výstupy byly identické,
+  ale bez té kontroly by čísla popisovala jiný běh než ten skutečný. A shim,
+  který se nepoužije, dělá z každé asercie na počet volání zelenou nulu.
 
 ## PowerShell v této vrstvě
 
@@ -448,6 +460,16 @@ Konvence, které nová sada musí dodržet:
   pro symref `origin/HEAD` a v každém jméně ponechal remote prefix, který
   v `protectedBranches` nematchne nic — obojí by se dostalo do seznamu
   chráněných větví jako fantomová položka.
+- **`git ls-tree` nepodporuje pathspec magic `:(glob)`** — bere jen literální
+  prefix. Chceš-li ověřit existenci cest, které neleží pod fixním prefixem
+  (Memory Bank je v monorepu v `**/memory-bank/`, tedy v libovolné hloubce),
+  nech per-dvojicovou sondu `cat-file -e`; výpis celého stromu každého refu je
+  dražší než sonda, kterou to mělo ušetřit. Chování si ověř jedním příkazem,
+  ne z dokumentace — pathspec magic je per-příkaz, ne globální vlastnost gitu.
+  Proč: `git ls-tree -r --name-only <ref> -- ':(glob)**/…/*.md'` skončí
+  `fatal: pathspec magic not supported by this command: 'glob'` a exit 128,
+  zatímco `git log` s týmž pathspecem funguje — záměna vypadá jako
+  ekvivalentní optimalizace a shodí celý index.
 - **Skill snippet, který dot-sourcuje jeden shared skript a pak volá i
   funkce z JINÉHO shared skriptu, projdi řádek po řádku a potvrď, že
   KAŽDÁ volaná funkce je dot-sourcovaná explicitně NAD voláním ve stejném

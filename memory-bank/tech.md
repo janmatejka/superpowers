@@ -186,8 +186,8 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 18 sad, dohromady
-1044 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 20 sad, dohromady
+1072 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -204,10 +204,16 @@ v [playbook.md](playbook.md).
   filtrem aktivity, báze z `ums-repo.json` vs. explicitní `-BaseRef`, jméno
   větve s diakritikou, lokální sken, filtrování `tests/fixtures`),
   `findings.tests.ps1` (33; kolize včetně uspané větve při deklarovaném záměru,
-  self-kolize vlastní pushnuté větve, fronta na více větvích, obživlá fronta)
-  proti fixture repu generovanému `new-fixture-repo.ps1` (commity mají
-  explicitní `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`, aby byl věk tipů
-  deterministický).
+  self-kolize vlastní pushnuté větve, fronta na více větvích, obživlá fronta),
+  `output-target.tests.ps1` (12; cíl `-Json` kontrolovaný před prací —
+  chybějící adresář zastaví běh dřív, než vypíše report, plus tři pozitivní
+  kontroly, aby sada nezezelenala nad skriptem, který `-Json` odmítá vždy),
+  `targeted-scan.tests.ps1` (16; **počítá skutečná volání gitu**
+  zaznamenávajícím `git.bat` shimem v PATH — deklarovaný záměr nesmí přidat
+  ani jedno `branch -r --contains` nad okenní běh, a uspaná větev musí být
+  přesto dosažena) proti fixture repu generovanému `new-fixture-repo.ps1`
+  (commity mají explicitní `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`, aby byl věk
+  tipů deterministický).
 - [`mb-migrate-docs/tests/`](../ums/.claude/skills/mb-migrate-docs/tests/) —
   `migrate.tests.ps1` (37; plán i `-Apply` mechanické migrace — sloučení
   `product.md` do `brief.md`, přejmenování `tasks.md` na `playbook.md`,
@@ -309,19 +315,40 @@ jeho Python (ruff, ty).
 - **`git branch --show-current` vrací i jméno nenarozené větve** (repo bez
   jediného commitu) — cestu „nejde určit aktuální větev" tak reálně
   vyzkouší jen detached HEAD, ne čerstvě inicializovaný repozitář.
-- **Výkon `doc-index.ps1` je změřený v obou měřítkách.** V tomto forku (4 refy
-  pod `refs/remotes/origin/`) trvá běh 2,0 s s `-NoFetch` a 3,0 s včetně
-  `git fetch`. Proti monorepu UMS (219 vzdálených větví, `.git` 4,1 GB) trvá
-  běh s `-NoFetch` a defaultním oknem 30 dní **32–35 s**; deklarovaný záměr
-  (`-Jira`/`-Slug`), který enumeruje bez časového omezení, **57 s**. Rozpočet
-  z návrhu (do 15 s) tedy splněný není — předchozí implementace filtrující
-  podle data commitu byla na témže repu ještě pomalejší (39,7 s). Čtení refů
-  ani traverzace nejsou úzké místo (`for-each-ref` 219 refů 0,10 s,
-  `git log --stdin` 0,12 s / 33 commitů); čas žere `git branch -r --contains`
-  na každý commit (3,1 s / 33 commitů) a pak `cat-file -e` + `show` na každý
-  pár (větev, cesta) — 139 párů v tom běhu. Refy se do `git log` předávají
-  přes `--stdin`, protože 219 jmen refů na příkazové řádce má 13,7 kB a míří
-  k 32k limitu Windows.
+- **Výkon `doc-index.ps1` je změřený v obou měřítkách, a číslo vždy patří k
+  počtu refů, při kterém vzniklo.** V tomto forku (4 refy pod
+  `refs/remotes/origin/`) trvá běh 2,0 s s `-NoFetch` a 3,0 s včetně
+  `git fetch`. Proti monorepu UMS (**337** vzdálených větví, `.git` 4,4 GB)
+  trvá běh s `-NoFetch` a defaultním oknem 30 dní **103–107 s** a běh s
+  deklarovaným záměrem **~160 s**. Rozpočet z návrhu (do 15 s) splněný není.
+  Starší měření téhož dokumentu (32–35 s a 57 s) vzniklo při **219** refech a
+  neplatí pro dnešní velikost repa — rozdíl je růstem repozitáře, ne regresí
+  kódu; ověřeno záměnou verzí těsně po sobě.
+  Čtení refů ani traverzace nejsou úzké místo (`for-each-ref` 219 refů 0,10 s,
+  `git log --stdin` 0,12 s / 33 commitů). Zbývající cena je **spawn procesu na
+  dvojici** (větev, cesta) — `cat-file -e` a pak `show` — plus
+  `git branch -r --contains` jednou na commit v okenním traversalu. Refy se do
+  `git log` předávají přes `--stdin`, protože stovky jmen refů na příkazové
+  řádce míří k 32k limitu Windows.
+- **Deklarovaný záměr (`-Jira`/`-Slug`) nerozšiřuje hlavní traversal, má
+  vlastní široký průchod.** Odokenění hlavního traversalu bylo příčinou toho,
+  že běh na monorepu **nedoběhl vůbec** (přes 25 minut bez výstupu, zabito):
+  ten traversal řeší větve commitů jedním `branch -r --contains` **na commit**,
+  takže bez okna se počet volání násobí celou historií. Deklarovaný záměr proto
+  obsluhuje samostatný průchod — jeden `git log --stdin --source` nad všemi
+  refy, omezený na `proposals/active/`, kde `%S` pojmenuje větev, takže
+  per-commit řešení větví není potřeba vůbec. Počet procesů je konstantní.
+  Průchod je záměrně úzký na `active/`, protože kolizní srovnání jinou fázi
+  neporovnává; výstup deklarovaného běhu je proto **nadmnožinou** okenního pro
+  `active/` (změřeno: 0 chybí, +7 navíc) a nenese `next/` ani `completed/`
+  z uspaných větví. Jediný konzument deklarovaného záměru je kolizní kontrola
+  Target-MB discovery; `mb-epic-elaboration` index volá bez záměru, takže jeho
+  `-IndexFile` vstup to nezúžilo.
+- **Cíl `-Json` se kontroluje před prací, ne až při zápisu.** Zápis na konci
+  znamenal, že chybějící adresář nechal vypsat celý normální report a teprve
+  pak běh spadl: exit 1, žádný soubor, a volající čtoucí stdout viděl zdravý
+  běh. V čerstvém worktree je přitom chybějící `.superpowers/` normální stav —
+  vytváří ho workflow, ne checkout.
 - **Jména refů se v `doc-index.ps1` vrací zpátky do gitu, takže musí přežít
   round trip přes PowerShell.** `git for-each-ref` tiskne jméno větve jako
   surové UTF-8 a to, co z něj PowerShell dekóduje, přesně to pošle na stdin
