@@ -19,8 +19,15 @@ slot, so this installs only when the hook is MISSING or older than v2 —
 reinstalling a current hook would be a write nobody asked for.
 
 .OUTPUTS
-English progress lines. Exit: 0 = OK, 1 = input/script failure,
-4 = refused by the agent-session guard.
+English progress lines. Exit: 0 = OK (provisioned and the publication
+guarantee is confirmed), 1 = input/script failure, 4 = refused by the
+agent-session guard, 5 = the slot WAS provisioned (worktree and marker are in
+place — never unwound) but the shared pre-push guard's presence could not be
+confirmed: the hook path could not be resolved from inside the slot, the
+installer script was not found, or install-git-hooks.ps1 itself exited
+non-zero. A caller must not treat exit 5 as success — the postcondition this
+script exists to establish (a marked v2 hook resolvable from inside the slot)
+is exactly what is unconfirmed in that case.
 #>
 [CmdletBinding()]
 param(
@@ -46,13 +53,17 @@ function Invoke-RepoGit([string] $Dir, [string[]] $GitArgs) {
 
 # This is checked FIRST, before repo resolution, before the fetch, before
 # anything that writes: proves the guard fires before any side effect, not
-# merely that the exit code is 4. Reads exactly the variables the pre-push
-# hook's own entry gate reads (MB_AGENT_SESSION == "1", AI_AGENT non-empty,
-# CLAUDECODE == "1"), except the third clause is folded into a non-empty
-# CLAUDECODE check: [ "$CLAUDECODE" = "1" ] is a strict subset of "CLAUDECODE
-# is non-empty", so testing the exact value adds nothing an OR already gets
-# from the broader check — "an agent session" still means the same set of
-# processes as the hook's gate, just without a redundant clause.
+# merely that the exit code is 4. Reads the same three variables the
+# pre-push hook's own entry gate reads (MB_AGENT_SESSION, AI_AGENT,
+# CLAUDECODE), but this guard is deliberately BROADER than that gate on the
+# third one: the hook requires CLAUDECODE == "1" exactly, while this guard
+# fires on ANY non-empty CLAUDECODE. [ "$CLAUDECODE" = "1" ] is a strict
+# subset of "CLAUDECODE is non-empty", so a fourth clause testing the exact
+# value would add nothing an OR already gets from the broader one — that is
+# why it was dropped, not because the two checks are equivalent. Keeping the
+# broader check is correct: over-caution is right for an operator guard,
+# which must never UNDER-enforce, and a value the hook itself would not
+# recognise as "1" still means something that set CLAUDECODE is running here.
 $agentMarker = ($env:MB_AGENT_SESSION -eq '1') -or
                (-not [string]::IsNullOrEmpty($env:AI_AGENT)) -or
                (-not [string]::IsNullOrEmpty($env:CLAUDECODE))
@@ -115,9 +126,16 @@ Set-Content -LiteralPath (Join-Path $markerDir 'pool-slot') -Value $markerText -
 Write-Output 'Marker .superpowers/pool-slot created.'
 
 # --- shared hook check, asked FROM INSIDE the new slot -----------------------
+# $guaranteeUnconfirmed tracks whether the postcondition this script exists to
+# establish (a marked v2 hook resolvable from inside the slot) was actually
+# reached. The worktree and the marker are NEVER unwound over this — the slot
+# genuinely exists and the operator needs to see it — but a run that could not
+# confirm the guarantee must not claim success (exit 0) either; see exit 5.
+$guaranteeUnconfirmed = $false
 $hookRes = Invoke-RepoGit $Path @('rev-parse', '--git-path', 'hooks/pre-push')
 if ($hookRes.Code -ne 0) {
-    Write-Output 'WARNING: could not resolve the pre-push hook path from inside the slot.'
+    Write-Output 'WARNING: could not resolve the pre-push hook path from inside the slot. The publication guarantee is NOT confirmed.'
+    $guaranteeUnconfirmed = $true
 }
 else {
     $hookRaw = ([string] ($hookRes.Out | Select-Object -First 1)).Trim()
@@ -127,9 +145,14 @@ else {
     $current = $false
     if (Test-Path -LiteralPath $hookPath -PathType Leaf) {
         $head5 = @(Get-Content -LiteralPath $hookPath -TotalCount 5)
-        # -cmatch, case-sensitive: a broken hook whose error message merely
-        # quotes its own path would otherwise pass as verified in any
-        # repository living under a directory whose name contains "ums".
+        # -cmatch, case-sensitive: this reads the hook's STATIC file content
+        # and never executes it, unlike install-git-hooks.ps1's own live-hook
+        # proof (whose broken-hook/stderr-quoting risk is where this exact
+        # phrasing was borrowed from, and does not apply here). The real
+        # reason to stay case-sensitive: this is an identity check against the
+        # EXACT marker string install-git-hooks.ps1 itself stamps, so a
+        # hand-edited or differently-cased paraphrase in a hook's header is
+        # never mistaken for that stamp.
         $current = [bool](@($head5 | Where-Object { $_ -cmatch 'UMS pre-push guard \(Publication Contract\) v2' }).Count)
     }
     if ($current) {
@@ -139,12 +162,14 @@ else {
         Write-Output "Shared pre-push guard is missing or older than v2 at $hookPath — installing."
         $installer = Join-Path $PSScriptRoot '..\..\..\hooks\install-git-hooks.ps1'
         if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
-            Write-Output "WARNING: installer not found at $installer; install the hook by hand."
+            Write-Output "WARNING: installer not found at $installer; install the hook by hand. The publication guarantee is NOT confirmed."
+            $guaranteeUnconfirmed = $true
         }
         else {
             & pwsh -NoProfile -File $installer -RepoRoot $Path
             if ($LASTEXITCODE -ne 0) {
                 Write-Output "WARNING: install-git-hooks.ps1 exited $LASTEXITCODE — the publication guarantee is NOT confirmed."
+                $guaranteeUnconfirmed = $true
             }
         }
     }
@@ -157,5 +182,14 @@ Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyCont
     ForEach-Object { $bytes += $_.Length; $files++ }
 $gb = [math]::Round($bytes / 1GB, 2)
 Write-Output "Slot provisioned: $files files, $gb GB (bytes: $bytes)."
+
+if ($guaranteeUnconfirmed) {
+    # The worktree and the marker above are NOT unwound: the slot genuinely
+    # exists and the operator needs to see it. What must not happen is
+    # reporting exit 0 — this run never reached the postcondition (a marked v2
+    # hook resolvable from inside the slot) that a successful run promises.
+    Write-Output 'Slot provisioned, but the publication guarantee could NOT be confirmed (see WARNING above).'
+    exit 5
+}
 Write-Output 'Next: run the mb-epic-run skill (status) to see the slot in the pool.'
 exit 0
