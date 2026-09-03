@@ -12,10 +12,20 @@ param([Parameter(ValueFromRemainingArguments = $true)] $Rest)
 # ConvertTo-Json then omits without any error of its own. `$payload.env[$n]`
 # below is unaffected because `env` is a hashtable value being indexed, not a
 # new property being added to the outer pscustomobject.
+# `cmdLine` (fix round 1, Gate 4) is the RAW OS-level argv of this process,
+# untouched by PowerShell's own parameter binder — unlike `$Rest`/`argv`
+# above, which can silently lose a token: `param([Parameter(...)] $Rest)`
+# implicitly promotes this script to an "advanced" one, exposing PowerShell's
+# common parameters, and a bare `-d` token is accepted as an unambiguous
+# abbreviation of the switch `-Debug` and vanishes before `$Rest` ever sees
+# it (measured; `-q`/`-x` in the same position do not vanish). `cmdLine`
+# exists so a caller can still prove the terminal adapter's `-d <slot>` pair
+# reached this process intact even though `argv` cannot show it.
 $payload = [pscustomobject] @{
-    argv = @($Rest | ForEach-Object { [string] $_ })
-    env  = @{}
-    cwd  = (Get-Location).Path
+    argv    = @($Rest | ForEach-Object { [string] $_ })
+    cmdLine = @([Environment]::GetCommandLineArgs())
+    env     = @{}
+    cwd     = (Get-Location).Path
 }
 foreach ($n in @('CLAUDE_CODE_CHILD_SESSION','CLAUDE_CODE_SESSION_ID','CLAUDE_CODE_BRIDGE_SESSION_ID',
                  'CLAUDE_CODE_MESSAGING_SOCKET','CLAUDE_CODE_MESSAGING_TOKEN','CLAUDE_CODE_SSE_PORT',

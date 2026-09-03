@@ -62,9 +62,11 @@ function New-SlotLedger([string] $Slot, [string] $PlanBase, [string] $LastLine) 
 }
 
 # Invoke-WithFakeSessionEnv and Invoke-WithoutSessionEnv are exact mirrors —
-# one SETS the nine variables a spawned child would inherit from an
-# orchestrator session, the other REMOVES the agent-session marker variables —
-# and both restore afterward. Their scriptblock parameter names ($EnvBody,
+# one SETS eleven variables (the nine a spawned child would inherit from an
+# orchestrator session, PLUS the two deliberately kept ones, so a test can
+# assert they survive rather than merely being absent on both sides), the
+# other REMOVES the agent-session marker variables — and both restore
+# afterward. Their scriptblock parameter names ($EnvBody,
 # $NoEnvBody) differ from each other and from every OTHER wrapper function's
 # scriptblock parameter in this file ON PURPOSE: `& $X` inside a scriptblock
 # binds dynamically to the $X of the FUNCTION currently executing, not to the
@@ -75,8 +77,8 @@ function New-SlotLedger([string] $Slot, [string] $PlanBase, [string] $LastLine) 
 # wrappers in this codebase (Task 3's playbook candidates); do not reintroduce
 # it here by "tidying" these two names to match.
 
-# Sets the nine variables a child would inherit from an orchestrator session,
-# runs $EnvBody, and restores.
+# Sets eleven variables — the nine a child would inherit from an orchestrator
+# session, plus the two deliberately kept ones — runs $EnvBody, and restores.
 function Invoke-WithFakeSessionEnv([scriptblock] $EnvBody) {
     $names = @('CLAUDE_CODE_CHILD_SESSION','CLAUDE_CODE_SESSION_ID','CLAUDE_CODE_BRIDGE_SESSION_ID',
                'CLAUDE_CODE_MESSAGING_SOCKET','CLAUDE_CODE_MESSAGING_TOKEN','CLAUDE_CODE_SSE_PORT',

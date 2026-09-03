@@ -88,6 +88,30 @@ if ([string]::IsNullOrWhiteSpace($Prompt)) {
 if ($Prompt.Contains(';')) {
     Write-Status 'failed' 'The prompt contains a semicolon; wt.exe reads it as a command separator. Rewrite the prompt without one.' 1
 }
+# Measured (fix round 1): a double quote is NOT a safe character to carry
+# through either adapter's delivery. On the direct adapter, wrapping the
+# prompt in a literal quote pair for Start-Process (below) means an embedded
+# quote either gets silently DELETED (`read the "ledger" file` arrives as
+# `read the ledger file`, content corrupted with no error) or SPLITS the
+# prompt into more than one argv element (`brief a" b` arrives as two
+# elements, `brief a` and `b` — failure mode 2, restored). The same corruption
+# was also measured on the terminal adapter's `&` delivery, so this is refused
+# for BOTH adapters, before either is chosen, exactly like the semicolon.
+# Escaping instead of refusing was considered and rejected: the prompt is one
+# short line saying what to do, which ticket, and where to read the rest, so
+# it never legitimately needs a literal quote.
+if ($Prompt.Contains('"')) {
+    Write-Status 'failed' 'The prompt contains a double quote, which is silently dropped or splits the prompt on delivery. Rewrite the prompt without one.' 1
+}
+# Measured (fix round 1): a trailing backslash escapes the quote that wraps
+# the prompt for the direct adapter's Start-Process call — the backslash is
+# consumed, a stray literal quote is appended to the prompt text, the REAL
+# closing quote is consumed too, and anything after the prompt on the
+# command line would be swallowed into it. Refused for both adapters, before
+# either is chosen, for the same reason as the semicolon and the double quote.
+if ($Prompt.EndsWith('\')) {
+    Write-Status 'failed' 'The prompt ends with a backslash, which escapes the quote wrapping it on the direct adapter. Rewrite the prompt without a trailing backslash.' 1
+}
 if ($Prompt.Length -gt 600) {
     Write-Status 'failed' "The prompt is $($Prompt.Length) characters. A prompt says what to do, which ticket, and where to read the rest — the rest is pulled from the ledger." 1
 }
@@ -107,53 +131,74 @@ elseif (-not (Test-Path -LiteralPath $claude -PathType Leaf)) {
 foreach ($n in $StripVars) { Remove-Item -Path "Env:$n" -ErrorAction SilentlyContinue }
 
 # The prompt travels on argv, never on the command line as a bare, unquoted
-# token — that is failure mode 2. The TWO adapters below need TWO different
-# fixes for the SAME underlying problem, because they build a child's argv
-# through two different mechanisms:
-#
-#   - `& $terminal ... @claudeArgs` (below) is PowerShell's own native-command
-#     invocation. Measured: it quotes an array element containing whitespace
-#     automatically before handing the child a command line, so $claudeArgs
-#     here carries the prompt UNQUOTED and arrives at the child as one token.
-#   - `Start-Process -ArgumentList $directArgs` (the direct adapter) does NOT
-#     do this — measured, on a real executable target, not just a script:
-#     Start-Process joins array elements into a command line WITHOUT quoting
-#     any of them, so an unquoted multi-word prompt falls apart into one word
-#     per space (2026-09-02 attempt 3, exactly this failure). Attempt 4's
-#     proven fix is to wrap the prompt in a LITERAL double-quote pair before
-#     it ever reaches Start-Process; $directArgs below does only that, and
-#     only for Start-Process's call — the shared $claudeArgs used by the
-#     terminal adapter is left alone, because adding the same literal quotes
-#     there would double-quote a string PowerShell already quotes correctly.
+# token — that is failure mode 2. `& $terminal ... @claudeArgs` (below) is
+# PowerShell's own native-command invocation: measured, it quotes an array
+# element containing whitespace automatically before handing the child a
+# command line, so $claudeArgs here carries the prompt UNQUOTED and still
+# arrives at the child as one token — no fix needed on that path.
+# `Start-Process -ArgumentList` (the direct adapter, below) does NOT do this —
+# measured, on a real executable target, not just a script: it joins array
+# elements into a command line WITHOUT quoting any of them, so an unquoted
+# multi-word prompt falls apart into one word per space (2026-09-02 attempt 3,
+# exactly this failure). Attempt 4's proven fix is to wrap the prompt in a
+# literal double-quote pair before it ever reaches Start-Process.
+# $directArgs below does only that, and only for Start-Process's call, kept
+# separate from the shared $claudeArgs used by the terminal adapter — NOT
+# because adding the same quotes there would break anything (measured: it
+# would not; the terminal child's own parser consumes the redundant quotes
+# and the prompt still arrives as one intact element), but because the
+# terminal path does not NEED them, and the smallest correct change adds a
+# quote only where one is actually required.
 $claudeArgs = @('--name', $Ticket, $Prompt)
 
 if ($Adapter -eq 'direct') {
+    $proc = $null
     try {
         $directArgs = @('--name', $Ticket, ('"' + $Prompt + '"'))
-        Start-Process -FilePath $claude -ArgumentList $directArgs -WorkingDirectory $SlotPath | Out-Null
+        $proc = Start-Process -FilePath $claude -ArgumentList $directArgs -WorkingDirectory $SlotPath -PassThru
     }
     catch {
         Write-Status 'failed' "Start-Process failed: $($_.Exception.Message)" 1
     }
+    # Measured (fix round 1): Start-Process against a bare .ps1, or against a
+    # non-executable file, can neither throw NOR start anything — control
+    # would fall through and report launched with nothing actually running.
+    # -PassThru turns that into a checkable fact: it either throws (caught
+    # above) or returns a real process object. $proc -eq $null here means
+    # neither happened, so no false "launched" is ever reported. Task 6's
+    # session-registry check remains an independent SECOND proof, not the
+    # only one.
+    if ($null -eq $proc) {
+        Write-Status 'failed' "Start-Process did not start a process for $claude (no exception, no process returned). Verify -ClaudeCommand points at a real executable." 1
+    }
     Write-Status 'launched' "direct adapter: $claude in $SlotPath, session named $Ticket" 0
 }
+else {
+    # terminal adapter. Structured as the `else` half of the SAME if, not as
+    # fall-through code after the direct branch's Write-Status calls: this
+    # makes "never falls back to another adapter" a fact about the script's
+    # SHAPE, not merely a consequence of Write-Status always calling `exit`.
+    $terminal = $TerminalCommand
+    if ([string]::IsNullOrWhiteSpace($terminal)) {
+        $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
+        if (-not $cmd) { Write-Status 'unavailable' 'wt.exe was not found in PATH. This script never falls back to another adapter.' 2 }
+        $terminal = $cmd.Source
+    }
+    elseif (-not (Test-Path -LiteralPath $terminal -PathType Leaf)) {
+        Write-Status 'unavailable' "The given terminal command does not exist: $terminal. This script never falls back to another adapter." 2
+    }
 
-# terminal adapter
-$terminal = $TerminalCommand
-if ([string]::IsNullOrWhiteSpace($terminal)) {
-    $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
-    if (-not $cmd) { Write-Status 'unavailable' 'wt.exe was not found in PATH. This script never falls back to another adapter.' 2 }
-    $terminal = $cmd.Source
+    try {
+        # Piped to Out-Null so a chatty terminal command's own stdout cannot
+        # land ahead of this script's status word on ITS stdout — the
+        # contract is exactly one status word plus one reason line, and a
+        # real wt.exe is normally silent, so this is a latent risk made
+        # unconditionally safe rather than an observed failure.
+        & $terminal -d $SlotPath $claude @claudeArgs | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Status 'failed' "The terminal command exited with $LASTEXITCODE." 1 }
+    }
+    catch {
+        Write-Status 'failed' "The terminal command failed: $($_.Exception.Message)" 1
+    }
+    Write-Status 'launched' "terminal adapter: $terminal -d $SlotPath, session named $Ticket" 0
 }
-elseif (-not (Test-Path -LiteralPath $terminal -PathType Leaf)) {
-    Write-Status 'unavailable' "The given terminal command does not exist: $terminal. This script never falls back to another adapter." 2
-}
-
-try {
-    & $terminal -d $SlotPath $claude @claudeArgs
-    if ($LASTEXITCODE -ne 0) { Write-Status 'failed' "The terminal command exited with $LASTEXITCODE." 1 }
-}
-catch {
-    Write-Status 'failed' "The terminal command failed: $($_.Exception.Message)" 1
-}
-Write-Status 'launched' "terminal adapter: $terminal -d $SlotPath, session named $Ticket" 0
