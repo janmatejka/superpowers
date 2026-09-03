@@ -83,6 +83,27 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
 $script:ExitCode = 0
 
+# --- -Json target, checked BEFORE the work ---------------------------------
+# The write used to happen at the very end, so a missing target directory
+# produced the COMPLETE, normal-looking report on stdout and only then died on
+# Set-Content: exit 1, no JSON file, and a caller reading stdout saw a healthy
+# run. For a fail-closed collision check that is the difference between "no
+# collision" and "the check never completed" — and in a fresh worktree the
+# missing directory is the normal state, because `.superpowers/` is created by
+# the workflow, not by the checkout. Position is the fix: failing here costs
+# nothing, failing at the end costs the whole traversal (minutes on the target
+# monorepo). Existence only — a directory that exists but rejects the write is
+# not the measured case and is left to the write itself.
+if ($Json) {
+    $jsonDir = Split-Path -Parent $Json
+    # A bare filename has no parent; that means the current directory, which by
+    # definition exists — do not turn it into a failure.
+    if ($jsonDir -and -not (Test-Path -LiteralPath $jsonDir)) {
+        Write-Error "-Json output directory does not exist: $jsonDir"
+        exit 1
+    }
+}
+
 # --- repo resolution (contract: one discovery step) -------------------------
 # NB: $LASTEXITCODE must only be inspected right after a native call in the
 # SAME branch — under Set-StrictMode, reading it before any native command has
@@ -226,11 +247,18 @@ function Get-ActiveRemoteRefs([int] $Days, [string] $Glob) {
     return $out
 }
 
-# Declared intent must NOT be narrowed by the display window: a colleague's
-# dormant branch on the SAME ticket is exactly what has to stop pinning. So
-# enumerate WIDE when intent is declared and filter narrow only for display.
-$enumDays = if ($Jira -or $Slug) { 0 } else { $SinceDays }
-$activeRefs = Get-ActiveRemoteRefs $enumDays $BranchGlob
+# The MAIN traversal is always windowed, declared intent included. Widening it
+# was tried and measured: with the window off on the target monorepo (337
+# remote branches) the walk below never finished — over 25 minutes with no
+# output, killed — because it resolves the branches of each commit with one
+# `branch -r --contains` per COMMIT, and switching the window off multiplies
+# the commit count by all of history. That made the entry gate's fail-closed
+# collision STOP unreachable exactly where it matters most.
+# Declared intent is served instead by the separate WIDE pass further down,
+# which asks one bounded question (is this slug/ticket active anywhere) with a
+# constant number of git processes. See the comment there for why it is a
+# separate pass and not a wider version of this one.
+$activeRefs = Get-ActiveRemoteRefs $SinceDays $BranchGlob
 # 0 = no window (same convention as Get-ActiveRemoteRefs), otherwise nothing
 # except the local/base pseudo-branches could ever be printed.
 $displayCutoff = if ($SinceDays -gt 0) { [DateTimeOffset]::UtcNow.AddDays(-$SinceDays).ToUnixTimeSeconds() } else { 0 }
@@ -332,6 +360,96 @@ foreach ($commit in $commits) {
                 # display window filters on. NOT $commit.Date: an old design
                 # commit on a live branch must stay visible.
                 activity = $activityByBranch[$branch]
+            }
+        }
+    }
+}
+
+# --- WIDE pass, declared intent only ---------------------------------------
+# The collision that matters most is a colleague's DORMANT branch carrying
+# active work on the declared slug/ticket: dormant means its tip fell outside
+# the window, so the main traversal above never looked at it. Declared intent
+# therefore needs a look with NO window — but it must not pay the main
+# traversal's price for it.
+#
+# Why this is a separate pass and not `Get-ActiveRemoteRefs 0` above:
+#   * the main traversal resolves each commit's branches with `branch -r
+#     --contains`, one call PER COMMIT. Unwindowed that is all of history —
+#     measured on the target monorepo: over 25 minutes, no output, killed.
+#   * a per-REF walk (one `git log <ref>` each) removes `--contains` but pays a
+#     PROCESS per ref, and process spawn dominates on Windows (playbook.md
+#     measures 100x on a comparable rewrite). It was tried and abandoned on
+#     that ground; the run that prompted abandoning it came out at ~122 s, but
+#     against a baseline nobody had measured at the time, so treat that number
+#     as the reason it was dropped rather than as a proven regression.
+# So this pass keeps the process count CONSTANT: one `git log --stdin` over all
+# refs, with `--source`/%S naming the ref each commit was reached from, so no
+# per-commit branch resolution is needed at all.
+#
+# Scope is deliberately narrow, and that is what makes it cheap: only
+# `proposals/active/*.md`, because the collision comparison below only ever
+# looks at phase 'active'. It ADDS entries the main traversal missed and never
+# replaces them — a (branch, path) pair already known keeps its richer record.
+#
+# `--source` names ONE ref per commit (the first the traversal reached it
+# from), not every ref containing it. For this pass that is sufficient and not
+# a semantic loss: the question is "is this work item active on a foreign
+# branch at all", and the finding names one branch. The main traversal keeps
+# its `--contains` fan-out for the table and the other findings.
+if ($Jira -or $Slug) {
+    $allRefs = Get-ActiveRemoteRefs 0 $BranchGlob
+    if (@($allRefs).Count -gt 0) {
+        $refMeta = @{}
+        foreach ($ar in @($allRefs)) { $refMeta[$ar.Ref] = $ar }
+
+        $known = @{}
+        foreach ($e in @($entries)) { $known["$($e.branch)|$($e.path)"] = $true }
+
+        $wideRevs = (@($allRefs | ForEach-Object { $_.Ref }) + @("^$BaseRef")) -join "`n"
+        $wideLog = $wideRevs | & git -C $RepoPath log --stdin --source --name-only `
+            '--format=%x01%H%x09%cI%x09%an%x09%S' '--' `
+            ':(glob)**/memory-bank/proposals/active/*.md' 2>$null
+        Stop-OnGitFailure 'log --stdin --source (declared intent)'
+        if ($null -eq $wideLog) { $wideLog = '' }
+
+        $cur = $null
+        foreach ($ln in ($wideLog -split "`n")) {
+            $ln = $ln.TrimEnd("`r")
+            if ($ln.StartsWith([char]1)) {
+                $parts = $ln.Substring(1) -split "`t"
+                # %S is the LAST field; a ref name cannot contain a tab, so a
+                # fixed index is safe here.
+                $cur = [pscustomobject]@{ Sha = $parts[0]; Date = $parts[1]; Author = $parts[2]; Ref = $parts[3] }
+                continue
+            }
+            if (-not $ln -or -not $cur) { continue }
+            $path = $ln -replace '\\', '/'
+            if (Test-FixturePath $path) { continue }
+            if (-not $refMeta.ContainsKey($cur.Ref)) { continue }   # ref outside -BranchGlob
+            $meta = $refMeta[$cur.Ref]
+            $key = "$($meta.Short)|$path"
+            if ($known.ContainsKey($key)) { continue }
+            $known[$key] = $true
+
+            # PROBE, not a traversal call — see Stop-OnGitFailure's comment.
+            Invoke-RepoGit @('cat-file', '-e', "$($meta.Short):$path") | Out-Null
+            if ($LASTEXITCODE -ne 0) { continue }
+
+            $wideContent = Invoke-RepoGit @('show', "$($meta.Short):$path")
+            Stop-OnGitFailure "show $($meta.Short):$path"
+
+            $entries += [pscustomobject]@{
+                slug     = Get-Slug $path
+                jira     = Get-JiraHeader $wideContent
+                phase    = Get-Phase $path
+                path     = $path
+                branch   = $meta.Short
+                commit   = $cur.Sha
+                date     = $cur.Date
+                author   = $cur.Author
+                # Real tip age, so the display window still trims this row out
+                # of the printed table while the finding below keeps it.
+                activity = $meta.Activity
             }
         }
     }
