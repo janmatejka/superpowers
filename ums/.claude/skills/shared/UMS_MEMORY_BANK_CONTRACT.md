@@ -1,10 +1,21 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.12
-- Supersedes v2.11 (adds the Session Intent Baton — an ephemeral, never-committed
-  handoff file with a closed format, its reader's guards and exceptions, the
-  writer precondition and the session-start precedence rule — and records that
-  context rotation is a fifth, handoff-shaped stop class).
+- **Contract-Version:** 2.13
+- Supersedes v2.12 (adds the pool-slot exception to the Worktree Policy and
+  rewrites that policy's disk measurement; corrects the derivation of "a free
+  workspace" for a shared-`.git` pool — which signals are per-worktree, that a
+  stash cannot be attributed to a slot, and that a LIVE SESSION in a slot is a
+  signal of its own that no git command knows; narrows two Workspace Discipline
+  sentences to the actor; makes the baton's `Instruction` key required AND
+  validated and states that the baton carries intent within one's OWN workspace
+  only; records that neither the launcher's environment-variable list nor the
+  path to `claude.exe` is repository configuration; and adds
+  `git branch --unset-upstream` after the `switch -c` that creates a ticket
+  branch).
+- v2.12 superseded v2.11 (added the Session Intent Baton — an ephemeral,
+  never-committed handoff file with a closed format, its reader's guards and
+  exceptions, the writer precondition and the session-start precedence rule —
+  and recorded that context rotation is a fifth, handoff-shaped stop class).
 - v2.11 superseded v2.10 (rewrites the Publication Contract's two-tier push policy
   into an actor/content split, renames the human escape to `MB_HUMAN_PUSH`
   and widens it, and makes the workspace hook check session-scoped).
@@ -294,10 +305,23 @@ scratch and therefore English.
 
 **Shape.** The first line is the identity line, `# Session intent — <ISO-8601
 UTC>`. The body is a block of `Key: value` lines. Required: `Kind`
-(`plan-execution` | `plan-resume`), `Plan`, `Branch`, `Slug`. Optional: `Spec`,
-`Ticket`, `Ledger`, `Next task` — omitted when they have no value, never written
-empty. The last line is a single `Instruction:` naming the skill to invoke. Paths
-are relative to `MB_ROOT`.
+(`plan-execution` | `plan-resume`), `Plan`, `Branch`, `Slug` and
+`Instruction`. Optional: `Spec`, `Ticket`, `Ledger`, `Next task` — omitted when
+they have no value, never written empty. The last line is that single
+`Instruction:` line naming the skill to invoke. Paths are relative to
+`MB_ROOT`.
+
+**`Instruction` is required AND validated, and the reason is what the reader
+does with it.** Earlier versions named it "the last line" in prose while the
+reader carried it only in its render order, so a baton without it was
+delivered. Its value must NAME AN EXISTING SKILL — the reader derives the set
+of legal names from the skill directories beside its own hook directory — and
+must not exceed a short length ceiling. Without both checks the reader would
+hand up to the whole size ceiling of attacker-chosen text as an automatically
+executed first move. An empty or unreadable skill list makes every
+`Instruction` unmatchable and therefore every baton stale, and that is the
+right answer rather than a degradation to skip: the documented fallback for a
+lost baton is the operator typing the intent, which costs nothing.
 
 **The format is CLOSED, and that is a security property rather than tidiness.**
 The file is git-ignored scratch in the working tree, so anything that writes
@@ -322,6 +346,18 @@ immediately after emitting it, overwriting any previous consumed file. A baton
 rejected by a guard is renamed to `session-intent.stale.md` instead and nothing
 is emitted. Neither file is ever deleted — a confused operator must still be able
 to read what it said.
+
+**The baton carries intent within ONE'S OWN workspace, and no further.** It is
+an AMBIENT channel: a `SessionStart` hook fires in every session anyone opens
+in that worktree, so the baton cannot address a particular process. Delivering
+intent into a DIFFERENT workspace — a pool slot — is therefore not a third
+`Kind` but a different channel entirely: the prompt travels on the launched
+process's argv and the rest is PULLED from a committed ledger line. Every
+guard a `ticket-start` baton would have needed (a `Slot` origin binding, a
+clean-tree check, a check that the ticket branch does not exist, an IDLE-pin
+check, a shape check on `Ticket`) is repair work bought by that one change of
+channel, and both proven launchers carry a prompt already. Do not reintroduce
+a `ticket-start` kind without a member that needs one.
 
 **Invalidation** is that same rename to `session-intent.stale.md`, performed by
 whoever ENDS or SETS ASIDE a work item; a silent no-op when no baton is present.
@@ -429,6 +465,16 @@ introduced:**
 | `protectedBranches` | the `pre-push` hook (through the generated list below), `guard-git-push.mjs` |
 | `ticketPattern` | `mb-state`, the entry gate, `mb-architect-review` |
 | `projectMarkers`, `sharedRoots` | the intersection heuristic (see Base Sync & Drift Detection) |
+
+**No `pool` block, and two named non-keys.** Neither the list of environment
+variables a launcher strips before spawning a session nor the path to the
+harness executable is repository configuration: both are properties of the
+HARNESS, not of the repository, so they live in the launcher script's own body.
+Recording it here is what keeps the section's opening sentence — "no
+repository-specific value may live in a skill body or in a script" — true
+rather than quietly contradicted. Pool membership is likewise not
+configuration: it is derived from `git worktree list` plus the marker file in
+the worktree itself (Worktree Policy).
 
 **`baseRef` is a fully-qualified remote-tracking ref** (`origin/develop`,
 `origin/ums-memory-bank`) and is used as-is wherever git READS the base: a merge
@@ -623,7 +669,10 @@ work item, therefore a STOP.
 
 A **workspace** is a clone the user works in. The user creates it and chooses
 it; it is used repeatedly and it carries the leftovers of previous work. The
-layer therefore treats a workspace as found, never as freshly provisioned.
+layer therefore treats a workspace as found, never as one the SESSION
+provisioned: the one provisioning tool this layer has (`pool-provision.ps1`,
+Worktree Policy) belongs to the operator and refuses to run under an
+agent-session marker.
 
 **The single boundary of responsibility: the agent never destroys anything that
 cannot be recovered from `origin`.**
@@ -640,7 +689,9 @@ cannot be recovered from `origin`.**
 The decision about non-recoverable content belongs to the user; detecting it and
 presenting it belongs to the agent.
 
-**"A free workspace" is a derived state, not a record.** It is derived from empty
+**"A free workspace" is a derived state, not a record.** (for one clone with its
+own `.git`; a pool slot shares `.git` and is covered by the subsection below)
+It is derived from empty
 output of all three of `git status --porcelain`, `git stash list` and
 `git log --branches --not --remotes`, plus a **fourth signal none of those three
 can report:** a non-empty **untracked** candidate file of the CURRENT slug,
@@ -649,6 +700,63 @@ git-ignored, so `git status --porcelain` is silent about it while the evidence
 exists in this workspace and nowhere else — probe it directly (does it exist, is it
 non-empty, is it tracked, per `git ls-files --error-unmatch`). All four are derived
 every time, never from a flag or a bookkeeping file that can go stale.
+
+### A pool slot's freedom is derived from per-worktree signals only
+
+A pool slot (Worktree Policy) shares `.git` with every other slot, so the
+three-signal derivation above does not hold there as written. Measured: in a
+linked worktree only `HEAD` and the index are per-worktree; `refs/stash` and
+`refs/heads` are SHARED — `git -C <slot> rev-parse --git-path refs/stash`
+returns the same file from two different slots. `git stash list` therefore
+answers identically from every slot, and `--branches` is repo-wide by
+construction, so ONE unpushed commit anywhere in the repository would make
+EVERY slot permanently unfree.
+
+The signals that decide a slot's freedom:
+
+| Signal | Source | Scope |
+|---|---|---|
+| dirty tree | `git -C <slot> status --porcelain` | per-worktree |
+| unpushed commits OF THIS SLOT | `git -C <slot> log '@{upstream}..HEAD'`, or `git -C <slot> log HEAD --not --remotes` with no upstream | per-worktree |
+| branch, or detached | `git worktree list --porcelain` | per-worktree |
+| pin | `<slot>/memory-bank/context.md` | per-worktree |
+| plan progress | `<slot>/.superpowers/sdd/plan_<slug>/progress.md` OF THE SLUG THE PIN NAMES | per-worktree |
+| **live session** | `claude agents --json --cwd <slot>`, records with a `pid` present | per-worktree |
+| stash | `git stash list` | **repo-wide — cannot be attributed to a slot** |
+| playbook candidate | `<slot>/.superpowers/playbook-candidates/<slug>.md` | per-worktree, but only meaningful WHILE THE SLOT CARRIES A PIN |
+
+**Occupancy is read from the harness, not from git.** Without that signal the
+derivation has a hole git cannot close: a slot with a clean tree and an IDLE
+pin in which a session has just started reads as "free" for as long as that
+session needs to reach its pin write — the entry gate with a fetch and a
+collision scan, on the order of a minute — and a spawn would send a second
+session into it, which "one session per workspace" forbids. **A live session
+in a slot is therefore a hard reason not to use it.** The signal is
+fail-closed: when it cannot be read, occupancy is reported as UNKNOWN and no
+spawn proceeds without an explicit operator instruction. PID files under the
+user's Claude directory are NOT read — that is an undocumented interface.
+
+**A free slot** carries the marker, a clean tree, an IDLE pin, NO live
+session, no unpushed commits on its own HEAD or its own branch, and does not
+hold a ticket branch of the epic being spawned.
+
+Two signals are deliberately excluded. **A stash cannot be attributed to a
+slot** — it is reported once per repository as information, never as a
+property of a slot. **A playbook candidate is defined only against the
+CURRENT slug**, and an IDLE slot has no current slug, so every candidate in it
+is a foreign one, which this contract already classifies as "merely present":
+announced, never touched. Were it part of freedom, the slot would be
+permanently unusable with no defined remedy — only the harvest of that slug
+may delete the file, and that slug is finished.
+
+**The ledger is paired to the slug FROM THE PIN, never to "the first directory
+found under `sdd/`".** Measured: a slot pinned to one slug carried two
+directories under `.superpowers/sdd/`, and the leftover of earlier work sorts
+first — "first found" would report foreign progress as this ticket's.
+
+A slot with NON-RECOVERABLE leftovers is not free, and the orchestrator does
+NOT tidy it: it reports the slot and leaves the decision to the user, in the
+slot where the leftovers lie.
 
 Leftovers split in two:
 
@@ -1252,9 +1360,11 @@ warning.
 **The publication rule: the agent pushes its OWN ticket branch after every
 commit**, always announcing the branch and the outgoing commits. Publication is
 therefore not a list of milestones to remember but the normal end of every commit
-on a ticket branch — a commit that is not pushed is work only this workspace can
-see. The points below remain listed as its notable special cases, not as the
-whole rule:
+on a ticket branch — a commit that is not pushed exists only in the local
+`.git`, never on `origin`; a pool slot shares that `.git` with every other
+slot, so the commit is visible from any of them, but it is still absent from
+`origin` until pushed. The points below remain listed as its notable special
+cases, not as the whole rule:
 
 1. after the design document is written and committed (brainstorming),
 2. after the implementation plan is written and committed (before the first task
@@ -1323,13 +1433,16 @@ both; the human escape below lifts them along with the rest of the guard, and
 the two accepted bypasses named further down evade them as they evade
 everything else in this hook.
 
-**The first publication of a freshly created ticket branch is
-`git push -u origin <branch>` — never a bare `git push`.**
-`git switch -c <branch> <chosen base>` sets the new branch's upstream to the
-BASE, so a bare push would target the (typically protected) base branch;
-`-u` rewrites the upstream, and the trap ends with the first publication.
-When inspecting a workspace, a ticket branch whose upstream is a protected
-branch is a finding, not a normal state.
+**A freshly created ticket branch is DETACHED from its inherited upstream, and
+its first publication is `git push -u origin <branch>` — never a bare
+`git push`.** `git switch -c <branch> <chosen base>` sets the new branch's
+upstream to the BASE, so until that upstream is rewritten every bare push
+targets the (typically protected) base branch. Two steps, and both belong at
+the source rather than in any one caller's prose: immediately after the
+`switch -c`, run `git branch --unset-upstream`, so no accident in between can
+aim at the base; and publish the first time with `-u`, which sets the upstream
+to the branch itself. When inspecting a workspace, a ticket branch whose
+upstream is a protected branch is a finding, not a normal state.
 
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
 scoped to `refs/heads/*` — none of the checks below look at a tag push, though
@@ -1565,8 +1678,10 @@ reached through — the `mb-abort` skill, or Discard in
    delete the **local** branch. The remote branch is never deleted.
 
 Step 3 is the step that is not obvious and therefore the one that gets skipped. An
-abandon that is not published exists only in the workspace that performed it: on
-`origin` the branch still carries the ACTIVE pin with the pair still in `active/`,
+abandon that is not published exists only in the local `.git` that performed
+it (a pool slot shares that `.git` with every other slot, so the commit is
+visible there too) — but never on `origin`: the branch still carries the
+ACTIVE pin there, with the pair still in `active/`,
 so `mb-doc-index` keeps reporting that slug and that ticket as active work — a
 `KOLIZE AKTIVNÍ PRÁCE` no later session can clear, which means the ticket can never
 be picked up again. The exemption granted to an integrated branch does not help
@@ -1601,6 +1716,8 @@ Documents are never pushed into a shared branch to make them visible; they are
   not used in a ticket workspace: if one exists it is neither updated nor merged —
   every later merge, diff and push of this work item names the remote base, which
   from the pin write onwards is the effective base.
+  Immediately after creation the branch is detached from its inherited
+  upstream (Publication Contract, the first-publication rule).
   **Postcondition of creation:** `proposals/active/` is empty or absent and
   `context.md` is IDLE (state names, tested by the pin — see the `context.md`
   Schema & Writers section). If it is not, STOP, delete the branch and repeat — a
@@ -1891,13 +2008,14 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
   content around it is Czech.
 - **Developer tooling is English.** The layer's own PowerShell tooling —
   `install-git-hooks.ps1`, `sync-with-monorepo.ps1`,
-  `revendor-superpowers.ps1` and their console output — is written and speaks
+  `revendor-superpowers.ps1`, `pool-status.ps1`, `pool-launch.ps1`,
+  `pool-provision.ps1` and their console output — is written and speaks
   English, matching the code around it; only what an agent or a user meets
   during Memory Bank WORK is Czech (the `pre-push` and `guard-git-push.mjs`
-  rejection messages, the `mb-*` skills' reports, `doc-index.ps1` /
-  `epic-graph.ps1` tables and findings). This is a named exception, not a
-  mixed-language rule surface: the boundary is the artifact, and each
-  artifact is wholly one language.
+  rejection messages, the `mb-*` skills' reports — `mb-epic-run` included —
+  `doc-index.ps1` / `epic-graph.ps1` tables and findings). This is a named
+  exception, not a mixed-language rule surface: the boundary is the artifact,
+  and each artifact is wholly one language.
 - **A hook whose entire output is model context is English**, even though the
   hooks named above appear on the Czech side for their REJECTION MESSAGES. The
   criterion is the audience of the output, not the file's kind: a rejection a
@@ -1907,19 +2025,46 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 
 ## Worktree Policy
 
-**Default: total ban.** Git worktrees must not be used in this monorepo — the
-repository is extremely large and worktree creation is expensive (time and
-disk). Enforced by: `permissions.deny` on `EnterWorktree`/`ExitWorktree`,
+**Default: total ban.** Git worktrees must not be created by an agent in this
+monorepo. Enforced by: `permissions.deny` on `EnterWorktree`/`ExitWorktree`,
 `skillOverrides: using-git-worktrees: off`, and the CLAUDE.md ban. The
 superpowers isolation step resolves to **branch-in-place**: create a feature
 branch in the existing working directory (never work on main/master without
 explicit user consent).
 
-The ban rests on a measurement, not on an impression: a clone of the monorepo
-occupies 25 GB, of which `.git` is 4.1 GB, so a linked worktree — which shares
-only `.git` — saves 16 %. That is not enough to pay for the extra tree, its
-build output and its hook installation. Isolation is achieved instead by the user
-choosing a workspace (Workspace Discipline).
+**The ban does not rest on disk cost, and the earlier measurement that said it
+did was wrong.** Measured 2026-09-02 on the UMS monorepo: a linked worktree
+occupies 7.7 GB, the shared `.git` 4.4 GB and the main clone 27.2 GB, so a
+linked worktree saves roughly 70 %, not 16 % — the difference is accumulated
+build output, not source. What the ban actually rests on is the model: one
+session per workspace, and no workspace an agent provisioned for itself.
+
+**One exception: a POOL SLOT.** A pool slot is a linked worktree the USER
+created and MARKED (the marker file `.superpowers/pool-slot`), which lives
+across many tickets and hosts at most one session. The layer looks at it as a
+FOUND workspace — Workspace Discipline, the entry gate, `mb-park` /
+`mb-harvest` / `mb-abort`, the Publication Contract and the cross-clone
+collision check all apply to it unchanged. Agent-created worktrees stay
+banned; provisioning a slot is an operator action (`pool-provision.ps1`,
+which refuses to run under an agent-session marker without an explicit
+operator switch).
+
+An idle slot is detached, or stands on a branch whose name equals the slot
+directory's name — but **IDLE is decided by the pin and never by a branch
+name.** Measured: a slot standing on its own eponymous branch with a clean
+tree carried an ACTIVE pin, so the pool's real convention is "its own branch
+PARKS the slot while the pin persists". The name shape is accepted for a
+different reason: it is a named place to switch a slot to when a branch
+checked out elsewhere has to be released.
+
+**A shared `.git` is what keeps the publication guarantee.** Measured: from
+each of four slots `git rev-parse --git-path hooks/pre-push` returns the same
+file under the main clone's `.git`, so ONE run of `install-git-hooks.ps1`
+covers every slot. Two traps of that check: the path SHAPE differs by where
+you ask from (absolute from a slot, relative `.git/hooks/pre-push` from the
+PRIMARY worktree), so any cross-slot identity comparison must normalize to an
+absolute path; and a RELATIVE `core.hooksPath` resolves per worktree, which
+means each slot then needs its own installer run.
 
 ## Fail-Closed Behavior
 
