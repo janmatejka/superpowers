@@ -51,12 +51,12 @@ function Write-Pin([string] $Work, [string] $Slug) {
 # record to stderr and then returned 0". Discarding stderr is exactly what hid a
 # non-terminating Get-Content error on the slug-guard read. Out and Code keep
 # their names and meaning, so every pre-existing case is untouched.
-function Invoke-Baton([string] $Work) {
+function Invoke-Baton([string] $Work, [string] $HookScript = $HookPath) {
     $prev = Get-Location
     $errFile = Join-Path ([IO.Path]::GetTempPath()) ('mbbatonerr-' + [guid]::NewGuid().ToString('N') + '.txt')
     try {
         Set-Location -LiteralPath $Work
-        $out = (& pwsh -NoProfile -File $HookPath 2> $errFile | Out-String)
+        $out = (& pwsh -NoProfile -File $HookScript 2> $errFile | Out-String)
         $code = $LASTEXITCODE
         $err = ''
         if (Test-Path -LiteralPath $errFile) {
@@ -72,6 +72,18 @@ function Invoke-Baton([string] $Work) {
 }
 
 # A valid baton for the fixture's own branch and slug; individual cases mutate it.
+#
+# Instruction names `mb-harvest`, not the production-canonical
+# `subagent-driven-development`. This default is exercised via the REAL hook
+# (default $HookPath in Invoke-Baton, i.e. ums/.claude/hooks/session-intent.ps1),
+# whose $PSScriptRoot-derived sibling is ums/.claude/skills — this UMS layer's
+# OWN 18 mb-* skill directories plus `shared`, verified empirically to number
+# 19. `subagent-driven-development` is a vendored superpowers skill that exists
+# only in the merged DEPLOYED tree (.claude/skills, 36 entries), never in the
+# vendored source tree alone. `mb-harvest` is guaranteed present here, so it
+# keeps every pre-existing case that expects DELIVERY (or staleness for an
+# UNRELATED reason) meaningful — see the A2 section below for the cases where
+# the skill list itself is the thing under test.
 function New-ValidBatonBody([string] $Work, [string] $Stamp = '') {
     if ([string]::IsNullOrEmpty($Stamp)) {
         $Stamp = [datetimeoffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -84,7 +96,7 @@ Plan: memory-bank/proposals/active/plan_x.md
 Branch: baton-branch
 Slug: x
 
-Instruction: Invoke the subagent-driven-development skill and execute the plan above.
+Instruction: Invoke the mb-harvest skill and execute the plan above.
 "@
 }
 
@@ -539,5 +551,168 @@ $batonEntry = @($starts | Where-Object { $_.hooks[0].command -match 'session-int
 Assert-Eq $batonEntry.Count 1 'settings.json: právě jeden záznam volá session-intent.ps1'
 Assert-Eq $batonEntry[0].matcher 'clear|startup' 'settings.json: matcher je clear|startup (resume ani compact ne — start s prázdným kontextem)'
 Assert-True ($starts[0].PSObject.Properties.Name -notcontains 'matcher') 'settings.json: bootstrap záznam zůstal bez matcheru'
+
+# --- A1: initialUserMessage on the happy path -------------------------------
+$fx = New-BatonFixture 'a1-happy'
+try {
+    New-PlanFile $fx.Work
+    Write-Pin $fx.Work 'x'
+    Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)
+    $r = Invoke-Baton $fx.Work
+    Assert-Eq $r.Code 0 'A1 happy path exits 0'
+    Assert-Match $r.Out '"initialUserMessage"' 'A1 emits initialUserMessage next to additionalContext'
+    Assert-Match $r.Out '"additionalContext"' 'A1 does not replace additionalContext'
+    $json = $r.Out | ConvertFrom-Json
+    Assert-Match $json.hookSpecificOutput.initialUserMessage 'bootstrap' 'initialUserMessage states the bootstrap checks come first'
+    Assert-Match $json.hookSpecificOutput.initialUserMessage 'fail-closed' 'initialUserMessage states a baton never overrides a fail-closed gate'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- A1: silent on every stale path ----------------------------------------
+$fx = New-BatonFixture 'a1-stale'
+try {
+    New-PlanFile $fx.Work
+    Write-Pin $fx.Work 'x'
+    # Wrong branch => stale; nothing may be emitted at all.
+    Write-Baton $fx.Work ((New-ValidBatonBody $fx.Work) -replace 'Branch: baton-branch', 'Branch: some-other-branch')
+    $r = Invoke-Baton $fx.Work
+    Assert-Eq $r.Code 0 'A1 stale path still exits 0'
+    Assert-Eq $r.Out '' 'A1 stale path emits nothing at all'
+    Assert-NotMatch $r.Out 'initialUserMessage' 'A1 emits no initialUserMessage on the stale path'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'stale baton renamed'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- A2: Instruction is required and validated ------------------------------
+# The reader derives legal instruction words from the skill directories beside
+# its own hooks directory, so the fixture must provide them.
+function New-SkillDirs([string] $Work, [string[]] $Names) {
+    $skills = Join-Path (Join-Path $Work '.claude') 'skills'
+    foreach ($n in $Names) { New-Item -ItemType Directory -Force -Path (Join-Path $skills $n) | Out-Null }
+    return $skills
+}
+
+# Ruling A (ledger, Task 2) said Invoke-Baton's real hook already sees
+# subagent-driven-development among its 19 sibling skill directories. Verified
+# empirically instead of trusting that: ums/.claude/skills has exactly 19
+# entries (the 18 mb-* directories plus `shared`), and NONE of them is
+# subagent-driven-development -- that is a vendored superpowers skill that
+# exists only in the merged DEPLOYED tree (.claude/skills, 36 entries), never
+# in this vendored source tree alone. New-ValidBatonBody's default was changed
+# (see its own comment) to name `mb-harvest` instead, so it resolves correctly
+# against the real hook. Only the cases where the skill LIST itself is the
+# subject (naming no skill, an empty list, the case-only mismatch, and the
+# positive control -- which specifically wants the production-canonical
+# `subagent-driven-development` wording rendered) redirect $PSScriptRoot by
+# running a COPY of the hook placed inside the fixture's own tree; cases (a)
+# and (c) do not depend on the list and keep running against the real deployed
+# file unchanged.
+function New-DeployedHookCopy([string] $Work) {
+    $hooksDir = Join-Path (Join-Path $Work '.claude') 'hooks'
+    New-Item -ItemType Directory -Force -Path $hooksDir | Out-Null
+    $dest = Join-Path $hooksDir 'session-intent.ps1'
+    # Copied at fixture-build time (not referenced live) so the copy cannot
+    # drift from the file under test mid-run.
+    Copy-Item -LiteralPath $HookPath -Destination $dest -Force
+    return $dest
+}
+
+# a) missing Instruction => stale
+$fx = New-BatonFixture 'a2-missing'
+try {
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    $body = (New-ValidBatonBody $fx.Work) -replace '(?m)^Instruction:.*$', ''
+    Write-Baton $fx.Work $body
+    $r = Invoke-Baton $fx.Work
+    Assert-Eq $r.Out '' 'A2 baton without Instruction emits nothing'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'A2 baton without Instruction is stale'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# b) Instruction naming no existing skill => stale
+$fx = New-BatonFixture 'a2-noskill'
+try {
+    $hookCopy = New-DeployedHookCopy $fx.Work
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    New-SkillDirs $fx.Work @('subagent-driven-development', 'mb-harvest') | Out-Null
+    $body = (New-ValidBatonBody $fx.Work) -replace '(?m)^Instruction:.*$', 'Instruction: Do whatever you feel like doing right now.'
+    Write-Baton $fx.Work $body
+    $r = Invoke-Baton $fx.Work $hookCopy
+    Assert-Eq $r.Out '' 'A2 Instruction naming no skill emits nothing'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'A2 Instruction naming no skill is stale'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# c) Instruction over the length ceiling => stale (even though it names a skill)
+$fx = New-BatonFixture 'a2-long'
+try {
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    $long = 'Invoke the subagent-driven-development skill. ' + ('x' * 300)
+    $body = (New-ValidBatonBody $fx.Work) -replace '(?m)^Instruction:.*$', "Instruction: $long"
+    Write-Baton $fx.Work $body
+    $r = Invoke-Baton $fx.Work
+    Assert-Eq $r.Out '' 'A2 over-long Instruction emits nothing'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'A2 over-long Instruction is stale'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# d) empty skill list => every Instruction unmatchable => stale (fail-closed)
+# Ruling A: run against the hook COPY with no .claude/skills directory created
+# beside it at all, so the empty list is genuinely produced by THIS fixture,
+# not masked by the real deployment's 19 skill directories the real hook would
+# see via its own $PSScriptRoot.
+$fx = New-BatonFixture 'a2-noskillsdir'
+try {
+    $hookCopy = New-DeployedHookCopy $fx.Work
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    Write-Baton $fx.Work (New-ValidBatonBody $fx.Work)   # no .claude/skills at all
+    $r = Invoke-Baton $fx.Work $hookCopy
+    Assert-Eq $r.Out '' 'A2 unreadable skill list is fail-closed'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'A2 unreadable skill list makes the baton stale'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# e) POSITIVE control: a valid Instruction naming an existing skill still passes,
+#    for BOTH kinds — without this the four cases above are satisfied by a
+#    reader that rejects everything. Runs against the hook copy with the named
+#    skill directory actually present, exercising the same fixture-controlled
+#    list as (b) and (d). Instruction is set explicitly to the
+#    production-canonical `subagent-driven-development` wording (rather than
+#    New-ValidBatonBody's default `mb-harvest`), matching the skill directory
+#    this case creates and the wording the render assertion below checks for.
+foreach ($kind in @('plan-execution', 'plan-resume')) {
+    $fx = New-BatonFixture "a2-ok-$kind"
+    try {
+        $hookCopy = New-DeployedHookCopy $fx.Work
+        New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+        New-SkillDirs $fx.Work @('subagent-driven-development') | Out-Null
+        $body = (New-ValidBatonBody $fx.Work) -replace 'Kind: plan-execution', "Kind: $kind"
+        $body = $body -replace '(?m)^Instruction:.*$', 'Instruction: Invoke the subagent-driven-development skill and execute the plan above.'
+        Write-Baton $fx.Work $body
+        $r = Invoke-Baton $fx.Work $hookCopy
+        Assert-Match $r.Out '<session-intent' "A2 valid Instruction still delivered for $kind"
+        Assert-Match $r.Out 'Instruction: Invoke the subagent-driven-development skill' "A2 Instruction rendered for $kind"
+        Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.consumed.md')) "A2 valid baton consumed for $kind"
+    }
+    finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+}
+
+# f) Instruction whose skill name differs from the directory only by case => stale.
+# Permanent addition per plan Resolution #3 (Global Constraints: "every
+# case-sensitive comparator needs its own test case") — without it, swapping
+# -cmatch for -match in step 10's negativity check would prove nothing, because
+# no other case here differs from its skill directory only in letter case.
+$fx = New-BatonFixture 'a2-case'
+try {
+    $hookCopy = New-DeployedHookCopy $fx.Work
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    New-SkillDirs $fx.Work @('subagent-driven-development') | Out-Null
+    $body = (New-ValidBatonBody $fx.Work) -replace '(?m)^Instruction:.*$', 'Instruction: Invoke the Subagent-Driven-Development skill and execute the plan above.'
+    Write-Baton $fx.Work $body
+    $r = Invoke-Baton $fx.Work $hookCopy
+    Assert-Eq $r.Out '' 'A2 Instruction differing from the skill directory only by case emits nothing'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'A2 Instruction differing only by case is stale'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
 Complete-Tests

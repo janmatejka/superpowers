@@ -26,7 +26,12 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 $MaxBytes = 8192
-$Required = @('Kind', 'Plan', 'Branch', 'Slug')
+# Instruction becomes an automatically executed first move (see the payload at
+# the bottom), so its value is bounded twice: it must NAME a skill that exists
+# in this deployment, and it must be short. 200 characters is roughly three
+# times the canonical instruction and leaves no room for a payload.
+$MaxInstruction = 200
+$Required = @('Kind', 'Plan', 'Branch', 'Slug', 'Instruction')
 # Render order is fixed so the emitted block is stable regardless of file order.
 $RenderOrder = @('Kind', 'Plan', 'Spec', 'Branch', 'Slug', 'Ticket', 'Ledger', 'Next task', 'Instruction')
 $KindValues = @('plan-execution', 'plan-resume')
@@ -136,6 +141,40 @@ try {
         exit 0
     }
 
+    # Instruction validation. The legal words are the skill directory names of
+    # THIS deployment, taken from the skills directory beside this hook's own
+    # directory ($PSScriptRoot is <deployment>/hooks, skills are its sibling).
+    # An empty or unreadable list matches nothing and the baton goes stale —
+    # deliberately fail-closed: the documented fallback for a lost baton is the
+    # operator typing the intent, so the cost of being wrong this way is zero,
+    # while the cost the other way is up to $MaxBytes of arbitrary text handed
+    # over as the session's first user message.
+    $instruction = $fields['Instruction']
+    if ($instruction.Length -gt $MaxInstruction) {
+        Move-Aside $batonPath 'session-intent.stale.md'
+        exit 0
+    }
+    $skillNames = @()
+    try {
+        $skillsDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'skills'
+        if (Test-Path -LiteralPath $skillsDir -PathType Container) {
+            $skillNames = @(Get-ChildItem -LiteralPath $skillsDir -Directory -ErrorAction Stop |
+                ForEach-Object { $_.Name })
+        }
+    }
+    catch { $skillNames = @() }
+    # -cmatch, never -match: skill names are lower-case path names and the
+    # comparison must not accept a differently-cased near-miss, the same reason
+    # the branch and slug guards below are case-sensitive.
+    $namesASkill = $false
+    foreach ($n in $skillNames) {
+        if ($instruction -cmatch [regex]::Escape($n)) { $namesASkill = $true; break }
+    }
+    if (-not $namesASkill) {
+        Move-Aside $batonPath 'session-intent.stale.md'
+        exit 0
+    }
+
     # The plan the baton points at must still exist: a plan the harvest deleted
     # is a stale baton, not an instruction pointing at nothing.
     if (-not (Test-Path -LiteralPath (Join-Path $root $fields['Plan']) -PathType Leaf)) {
@@ -241,10 +280,26 @@ try {
         ($trailer -join ' ')
     ) -join "`n"
 
+    # Fixed English text, never derived from the baton: this string becomes the
+    # session's first USER message, so nothing attacker-chosen may reach it.
+    # Ordering is load-bearing — the bootstrap checks are a PRECONDITION of
+    # acting on a baton, never the other way round (contract, "Session Intent
+    # Baton", Precedence).
+    #
+    # Field verified against the Claude Code hooks reference:
+    # https://code.claude.com/docs/en/hooks#sessionstart-decision-control
+    # "`initialUserMessage` | String used as the first user message of the session."
+    $firstMove = @(
+        'A session intent baton from the previous session in this workspace has been delivered above.',
+        'Run the bootstrap checks of the session-start context FIRST — the publication-guarantee self-check is a precondition, and a baton never overrides a fail-closed gate.',
+        'Only then act on the baton''s Instruction line.'
+    ) -join ' '
+
     $payload = [pscustomobject] @{
         hookSpecificOutput = [pscustomobject] @{
-            hookEventName     = 'SessionStart'
-            additionalContext = $body
+            hookEventName      = 'SessionStart'
+            additionalContext  = $body
+            initialUserMessage = $firstMove
         }
     }
     # Emit FIRST, rename after: a crash between the two replays the baton next

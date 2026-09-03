@@ -34,11 +34,17 @@
 
   At that boundary, when the remaining context looks insufficient for another
   task: write the session intent baton (contract, "Session Intent Baton") with
-  `Kind: plan-resume`, the plan path, the ledger path, the branch, the slug and
-  the number of the next incomplete task; append a plain note to the ledger that
-  the session was rotated here (a note, NOT a `Ruling:` — no conflict was
-  decided); report in Czech; and stop with the single instruction to type
-  `/clear`.
+  `Kind: plan-resume`, the plan path, the ledger path, the branch, the slug, the
+  number of the next incomplete task and the required `Instruction:` line naming
+  subagent-driven-development; append a plain note to the ledger that the session
+  was rotated here (a note, NOT a `Ruling:` — no conflict was decided); report in
+  Czech; and stop with the single instruction to type `/clear`.
+
+  **`Instruction` is REQUIRED and its value is VALIDATED** (contract, same
+  subsection): the reader accepts it only when it names a skill that exists in
+  this deployment and stays under a short length ceiling. A baton written
+  without it — or with a value that names no skill — is rejected as stale and
+  the handoff is silently lost.
 
   **This is a judgement call, not a measurement.** Hook input carries no reliable
   token-budget field; do not build a threshold detector and do not claim one
@@ -87,8 +93,10 @@
   in the existing working directory. Isolation comes from the workspace, and the
   **workspace is the user's choice** — the user creates it and picks it; the
   session runs in the workspace where the work already is and never provisions
-  another one (contract, "Workspace Discipline"). One session per workspace: work
-  on several tickets is interleaved, not parallel.
+  another one (contract, "Workspace Discipline"). What "one session per
+  workspace" means, including the pool carve-out, is that same section's rule
+  by name (contract, "Workspace Discipline", "One session per workspace") — not
+  restated here.
   Where the upstream text above says "outside this worktree", read "outside
   this clone/workspace" — worktrees are banned here.
 - **Playbook:** resolve the target Memory Bank's procedure document FIRST —
