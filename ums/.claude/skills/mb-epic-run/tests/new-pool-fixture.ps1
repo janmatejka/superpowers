@@ -27,8 +27,12 @@ $origin = Join-Path $root 'origin.git'
 $main = Join-Path $root 'main'
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 
-& git init -q --bare -b develop $origin | Out-Null
-& git clone -q $origin $main | Out-Null
+# 2>&1 merges stderr into the pipeline before Out-Null discards it: `-q`
+# suppresses PROGRESS on stdout, but git's "You appear to have cloned an empty
+# repository" advice goes to stderr, which `| Out-Null` alone never touches —
+# measured leaking into every suite run despite `-q`.
+& git init -q --bare -b develop $origin 2>&1 | Out-Null
+& git clone -q $origin $main 2>&1 | Out-Null
 Invoke-FixtureGit $main @('config', 'user.email', 'test@example.invalid') | Out-Null
 Invoke-FixtureGit $main @('config', 'user.name', 'Test') | Out-Null
 'base' | Out-File -FilePath (Join-Path $main 'f.txt') -Encoding utf8

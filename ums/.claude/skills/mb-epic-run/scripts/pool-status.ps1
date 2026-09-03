@@ -77,6 +77,18 @@ function ConvertTo-SlashPath([string] $Path) {
     return ([IO.Path]::GetFullPath($Path)).Replace('\', '/').TrimEnd('/')
 }
 
+# Windows paths are case-INSENSITIVE and [IO.Path]::GetFullPath does not
+# canonicalise case, so two spellings of the same path (the porcelain record's
+# vs. the caller's -RepoPath) can differ only in case and still name the same
+# worktree. Normalise BOTH sides to lower-case before comparing so the
+# "orchestrator's own worktree" exclusion cannot be missed by a casing
+# mismatch — keep -ceq (not -ieq) on the normalised copies, per the Global
+# Constraint that git-derived operands compare case-sensitively; this
+# compares two ALREADY-lower-cased strings, it does not relax the operator.
+function ConvertTo-ComparablePath([string] $Path) {
+    return (ConvertTo-SlashPath $Path).ToLowerInvariant()
+}
+
 if ([string]::IsNullOrWhiteSpace($RepoPath)) {
     $top = & git rev-parse --show-toplevel 2>$null
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($top)) {
@@ -145,7 +157,7 @@ for ($i = 0; $i -lt $records.Count; $i++) {
     $branch = Get-ExcludedBranch $r
     if ($i -eq 0)   { $excluded += @{ path = $abs; reason = 'primary worktree'; branch = $branch }; continue }
     if ($r.Bare)    { $excluded += @{ path = $abs; reason = 'bare worktree'; branch = $branch }; continue }
-    if ($abs -ceq $repoAbs) { $excluded += @{ path = $abs; reason = "the orchestrator's own worktree"; branch = $branch }; continue }
+    if ((ConvertTo-ComparablePath $r.Path) -ceq (ConvertTo-ComparablePath $RepoPath)) { $excluded += @{ path = $abs; reason = "the orchestrator's own worktree"; branch = $branch }; continue }
     if ($r.Prunable) { $excluded += @{ path = $abs; reason = "prunable: $($r.Prunable)"; branch = $branch }; continue }
     if ($r.Locked)   { $excluded += @{ path = $abs; reason = "locked: $($r.Locked)"; branch = $branch }; continue }
     if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $r.Path '.superpowers') 'pool-slot') -PathType Leaf)) {
@@ -165,17 +177,43 @@ $occupancySource = if ($claude) { 'claude' } else { 'unavailable' }
 
 function Get-SlotSession([string] $Claude, [string] $SlotPath) {
     # Returns @{ state = 'live'|'none'|'unknown'; pids = @() }. Fail-closed:
-    # anything unreadable is 'unknown', which the caller must not treat as free.
+    # anything unreadable OR any output that does not match the documented
+    # shape ("a JSON array of records") is 'unknown', which the caller must
+    # not treat as free. Three shapes used to read as 'none' (fail-OPEN) and
+    # were fixed here (Gate item 2 of fix round 1):
+    #   1. exit 0 with empty/whitespace output — measured, the real harness
+    #      answers a session-less slot with `[]` (three bytes), never nothing;
+    #      silence is an anomaly in the contract, not evidence of zero sessions.
+    #   2. the bare JSON literal `null` — was fail-open while `not json at all`
+    #      was already fail-closed, an arbitrary asymmetry.
+    #   3. a top-level JSON OBJECT rather than an array (e.g. `{"agents":[...]}`)
+    #      — the most dangerous: it has no `pid` property, the per-item loop
+    #      below just skips it, and every slot would read 'none'/free on a
+    #      harness-side output-shape change instead of failing loudly. The
+    #      design states the shape of `claude agents --json` is not stable and
+    #      the signal is therefore fail-closed.
     if (-not $Claude) { return @{ state = 'unknown'; pids = @() } }
     $raw = ''
     try { $raw = (& $Claude agents --json --cwd $SlotPath 2>&1 | Out-String) }
     catch { return @{ state = 'unknown'; pids = @() } }
     if ($LASTEXITCODE -ne 0) { return @{ state = 'unknown'; pids = @() } }
-    if ([string]::IsNullOrWhiteSpace($raw)) { return @{ state = 'none'; pids = @() } }
+    if ([string]::IsNullOrWhiteSpace($raw)) { return @{ state = 'unknown'; pids = @() } }
+    $trimmed = $raw.Trim()
+    # Check the RAW TEXT prefix, not the parsed value: ConvertFrom-Json
+    # collapses BOTH the literal `null` and the empty array `[]` to PowerShell
+    # $null (the well-known zero/one-pipeline-object capture quirk), so a
+    # post-parse `$null` check cannot tell "not an array" apart from "an array
+    # with nothing in it" — and a bare top-level object parses to a lone
+    # PSCustomObject exactly like a genuine single-element array does. Only
+    # the untouched source text can distinguish "not an array at all" from
+    # "an array with 0 or 1 elements", which is why this check runs BEFORE
+    # ConvertFrom-Json is ever called.
+    if (-not $trimmed.StartsWith('[')) { return @{ state = 'unknown'; pids = @() } }
     $parsed = $null
-    try { $parsed = $raw | ConvertFrom-Json } catch { return @{ state = 'unknown'; pids = @() } }
+    try { $parsed = $trimmed | ConvertFrom-Json } catch { return @{ state = 'unknown'; pids = @() } }
     # A successful ConvertFrom-Json does NOT mean an object with properties:
-    # root null, a scalar and an array all parse without error.
+    # the empty array `[]` parses to $null here (see above) — genuinely "no
+    # sessions", now that the text prefix already proved it WAS an array.
     if ($null -eq $parsed) { return @{ state = 'none'; pids = @() } }
     $items = @($parsed)
     if ($items.Count -eq 0) { return @{ state = 'none'; pids = @() } }
@@ -185,7 +223,12 @@ function Get-SlotSession([string] $Claude, [string] $SlotPath) {
         $names = @(@($it.PSObject.Properties) | ForEach-Object { $_.Name })
         if ($names -notcontains 'pid') { continue }
         if ($null -eq $it.pid -or [string]::IsNullOrWhiteSpace([string] $it.pid)) { continue }
-        $pids += [int] $it.pid
+        # Rider: guard the numeric cast. A record with "pid": "n/a" must mark
+        # THIS slot unknown, not throw uncaught under
+        # $ErrorActionPreference = 'Stop' and abort the whole report.
+        $parsedPid = 0
+        if (-not [int]::TryParse([string] $it.pid, [ref] $parsedPid)) { return @{ state = 'unknown'; pids = @() } }
+        $pids += $parsedPid
     }
     if ($pids.Count -gt 0) { return @{ state = 'live'; pids = $pids } }
     return @{ state = 'none'; pids = @() }
@@ -193,23 +236,41 @@ function Get-SlotSession([string] $Claude, [string] $SlotPath) {
 
 # --- per-slot derivation -----------------------------------------------------
 function Get-SlotPin([string] $SlotPath) {
+    # Returns @{ Pin = <pscustomobject>|$null; Unreadable = $true|$false }.
+    #
+    # Three facts collapse to Pin=$null, and ALL THREE are legitimately IDLE
+    # per the contract ("ACTIVE and IDLE are state NAMES, not tokens in the
+    # file ... a block with no pin is the IDLE state"): the file is absent,
+    # the file reads as empty/whitespace, or the file is READABLE but its
+    # Active Work block carries no full pin pair (a PARTIAL pin — slug without
+    # target, or vice versa — is not a pin).
+    #
+    # A FOURTH fact is different and must NOT collapse into the same $null:
+    # the file EXISTS and CANNOT BE READ (the `catch` below). That is not "a
+    # block with no pin" — it is an unreadable per-worktree signal, exactly
+    # like `status unreadable` and `unpushed count unreadable` elsewhere in
+    # this script, and occupancy `unknown`. Reporting it as IDLE would be
+    # fail-OPEN; Unreadable=$true lets the caller add a fail-closed reason
+    # without inventing a fake pin.
     $ctx = Join-Path (Join-Path $SlotPath 'memory-bank') 'context.md'
-    if (-not (Test-Path -LiteralPath $ctx -PathType Leaf)) { return $null }
+    if (-not (Test-Path -LiteralPath $ctx -PathType Leaf)) { return @{ Pin = $null; Unreadable = $false } }
     $text = ''
-    try { $text = Get-Content -LiteralPath $ctx -Raw -Encoding utf8 } catch { return $null }
-    if ($null -eq $text) { return $null }
+    try { $text = Get-Content -LiteralPath $ctx -Raw -Encoding utf8 }
+    catch { return @{ Pin = $null; Unreadable = $true } }
+    if ($null -eq $text) { return @{ Pin = $null; Unreadable = $false } }
     # ACTIVE is a state NAME, never a token in the file: the mechanical test is
     # whether the Active Work block carries a pin. `- **Proposal:**` is the
     # mandated legacy alias of `- **Work item:**`.
     $slug = [regex]::Match($text, '(?m)^\s*-\s+\*\*(?:Work item|Proposal):\*\*\s*(?<v>\S+)\s*$')
     $target = [regex]::Match($text, '(?m)^\s*-\s+\*\*Target MB Pin:\*\*\s*(?<v>\S+)\s*$')
-    if (-not ($slug.Success -and $target.Success)) { return $null }
+    if (-not ($slug.Success -and $target.Success)) { return @{ Pin = $null; Unreadable = $false } }
     $jira = [regex]::Match($text, '(?m)^\s*-\s+\*\*Jira:\*\*\s*(?<v>\S+)')
-    return [pscustomobject] @{
+    $pin = [pscustomobject] @{
         targetMb = $target.Groups['v'].Value
         slug     = $slug.Groups['v'].Value
         jira     = if ($jira.Success) { $jira.Groups['v'].Value } else { '' }
     }
+    return @{ Pin = $pin; Unreadable = $false }
 }
 
 function Get-SlotProgress([string] $SlotPath, [string] $Slug) {
@@ -253,7 +314,9 @@ foreach ($c in $candidates) {
     $unpushed = if ($unpRes.Code -eq 0) { @($unpRes.Out | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count } else { -1 }
     if ($unpushed -lt 0) { $reasons += 'unpushed count unreadable' } elseif ($unpushed -gt 0) { $reasons += "unpushed commits ($unpushed)" }
 
-    $pin = Get-SlotPin $c.Path
+    $pinResult = Get-SlotPin $c.Path
+    $pin = $pinResult.Pin
+    if ($pinResult.Unreadable) { $reasons += 'pin unreadable (fail-closed)' }
     if ($null -ne $pin) { $reasons += "ACTIVE pin: $($pin.slug)" }
 
     $session = Get-SlotSession $claude $c.Path

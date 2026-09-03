@@ -17,6 +17,11 @@ function Get-Slot($Data, [string] $Name) {
     return @($Data.slots | Where-Object { $_.name -eq $Name }) | Select-Object -First 1
 }
 
+# Clean slate: MBPOOL_STUB_CWD_MODES is a per-cwd override (Gate 4) that no
+# case before it existed, but leaving it set from one run to the next would
+# make a later case's plain MBPOOL_STUB_MODE silently ignored.
+$env:MBPOOL_STUB_CWD_MODES = $null
+
 # --- case 1: no marked worktree => the repository has no pool (exit 3) -------
 # This is the state of the superpowers fork itself (zero linked worktrees), so
 # the path has to be proven, not assumed.
@@ -37,6 +42,7 @@ try {
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
 # --- case 2: marker decides membership --------------------------------------
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 2 -Label 'marker'
 try {
     Set-SlotMarker $fx.Slots[0]
@@ -53,6 +59,7 @@ finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 # refs/stash is SHARED across a pool, so `git stash list` answers identically
 # from every slot. With the contract's original three-signal derivation this
 # case goes red; that is the negativity this assertion exists for.
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 2 -Label 'stash'
 try {
     foreach ($s in $fx.Slots) { Set-SlotMarker $s; Set-SlotIdle $s }
@@ -68,6 +75,7 @@ finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 # --- case 4: REGRESSION PROOF — an unpushed commit on branch A must not
 # unfree a slot standing on branch B. `--branches` is repo-wide by
 # construction; one unpushed commit anywhere would freeze the whole pool.
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 2 -Label 'unpushed'
 try {
     foreach ($s in $fx.Slots) { Set-SlotMarker $s; Set-SlotIdle $s }
@@ -114,6 +122,7 @@ finally {
 
 # --- case 6: the ledger is paired to the slug FROM THE PIN ------------------
 # A slot carrying two sdd directories, the foreign one sorting first.
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 1 -Label 'ledger'
 try {
     Set-SlotMarker $fx.Slots[0]
@@ -131,6 +140,7 @@ finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 # --- case 7: a FOREIGN playbook candidate leaves the slot free --------------
 # It is only defined against the CURRENT slug; an IDLE slot has none, so every
 # candidate in it is foreign, and a foreign candidate is "merely present".
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 1 -Label 'candidate'
 try {
     Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
@@ -143,6 +153,7 @@ try {
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
 # --- case 8: an ACTIVE pin is not free, and a branch NAME never decides IDLE -
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 1 -Label 'pin'
 try {
     Set-SlotMarker $fx.Slots[0]
@@ -160,6 +171,7 @@ try {
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
 # --- case 9: locked and prunable worktrees are excluded with a named reason --
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 2 -Label 'locked'
 try {
     foreach ($s in $fx.Slots) { Set-SlotMarker $s; Set-SlotIdle $s }
@@ -183,6 +195,7 @@ finally {
 # Every case-sensitive comparator needs its own dedicated case whose two
 # values differ ONLY by letter case — a generic "these are different values"
 # case proves nothing about case sensitivity specifically.
+$env:MBPOOL_STUB_MODE = 'empty'
 $fx = & $NewFixture -SlotCount 1 -Label 'epic-case'
 try {
     Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
@@ -199,5 +212,100 @@ try {
     Assert-Match (($s2.reasons -join ' ')) 'UMS-3488' 'the reason names the matched epic'
 }
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- case 11: a pin file that EXISTS but cannot be READ is fail-closed, not
+# IDLE (Gate item 1, fix round 1) --------------------------------------------
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 1 -Label 'pin-unreadable'
+$handle = $null
+try {
+    Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
+    $ctxPath = Join-Path $fx.Slots[0] 'memory-bank\context.md'
+    # icacls is blocked in this sandbox (measured, Task 2); deny sharing from
+    # this process instead, for the duration of the child script's run.
+    $handle = [System.IO.File]::Open($ctxPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+    $r = Invoke-Status $fx.Main
+    $s = Get-Slot $r.Data 'slot01'
+    Assert-Eq $s.free $false 'a context.md that exists but cannot be read is NOT free (fail-closed, Gate 1)'
+    Assert-Match (($s.reasons -join ' ')) 'pin unreadable' 'the reason names the unreadable pin, not IDLE'
+}
+finally {
+    if ($handle) { $handle.Dispose() }
+    Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue
+}
+
+# --- case 12: silent exit-0 output is UNKNOWN, not "no session" (Gate 2.1) --
+$env:MBPOOL_STUB_MODE = 'silent'
+$fx = & $NewFixture -SlotCount 1 -Label 'occ-silent'
+try {
+    Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
+    $r = Invoke-Status $fx.Main
+    $s = Get-Slot $r.Data 'slot01'
+    Assert-Eq $s.session.state 'unknown' 'exit 0 with no output at all is UNKNOWN, never "none" (Gate 2.1)'
+    Assert-Eq $s.free $false 'occupancy unknown is fail-closed here too'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- case 13: the bare JSON literal `null` is UNKNOWN, not "no session"
+# (Gate 2.2) -------------------------------------------------------------------
+$env:MBPOOL_STUB_MODE = 'jsonnull'
+$fx = & $NewFixture -SlotCount 1 -Label 'occ-jsonnull'
+try {
+    Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
+    $r = Invoke-Status $fx.Main
+    $s = Get-Slot $r.Data 'slot01'
+    Assert-Eq $s.session.state 'unknown' 'the literal null is UNKNOWN, not "none" — same fail-closed rule as unparseable output (Gate 2.2)'
+    Assert-Eq $s.free $false 'occupancy unknown is fail-closed here too'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- case 14: a top-level JSON OBJECT (not an array) is UNKNOWN (Gate 2.3) --
+# The most dangerous of the three holes: silently reading "none" here would
+# disable the pool's only load-bearing occupancy gate on a harness-side
+# output-shape change instead of failing loudly.
+$env:MBPOOL_STUB_MODE = 'wrapped'
+$fx = & $NewFixture -SlotCount 1 -Label 'occ-wrapped'
+try {
+    Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
+    $r = Invoke-Status $fx.Main
+    $s = Get-Slot $r.Data 'slot01'
+    Assert-Eq $s.session.state 'unknown' 'a top-level JSON object instead of an array is UNKNOWN, not "none" (Gate 2.3)'
+    Assert-Eq $s.free $false 'occupancy unknown is fail-closed here too'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- case 15: the -Json guard fires BEFORE any work — ordering, not just the
+# exit code (Gate item 3) ------------------------------------------------------
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 1 -Label 'json-guard'
+try {
+    Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
+    $badJsonDir = Join-Path ([IO.Path]::GetTempPath()) ('mbpool-nonexistent-' + [guid]::NewGuid().ToString('N'))
+    $badJson = Join-Path $badJsonDir 'out.json'
+    $r = Invoke-PoolScript 'pool-status.ps1' @('-RepoPath', $fx.Main, '-Json', $badJson, '-ClaudeCommand', $Stub)
+    Assert-Eq $r.Code 1 'a missing -Json target directory exits 1'
+    Assert-NotMatch $r.Out 'Pool status for' 'the guard fires BEFORE the report is printed — a refactor that kept exit 1 but moved the check next to the write would still leave this line printed'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- case 16: occupancy is threaded per --cwd, not answered identically for
+# every slot (Gate item 4) ------------------------------------------------------
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 2 -Label 'per-cwd'
+try {
+    foreach ($s in $fx.Slots) { Set-SlotMarker $s; Set-SlotIdle $s }
+    $env:MBPOOL_STUB_CWD_MODES = 'slot01=live;slot02=empty'
+    $r = Invoke-Status $fx.Main
+    $s1 = Get-Slot $r.Data 'slot01'
+    $s2 = Get-Slot $r.Data 'slot02'
+    Assert-Eq $s1.session.state 'live' 'slot01 reads live from its OWN --cwd'
+    Assert-Eq $s1.free $false 'slot01 is occupied'
+    Assert-Eq $s2.session.state 'none' 'slot02, in the SAME run, reads none from its OWN --cwd — a constant-path or dropped --cwd regression would make this live too'
+    Assert-Eq $s2.free $true 'slot02 is free'
+}
+finally {
+    $env:MBPOOL_STUB_CWD_MODES = $null
+    Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue
+}
 
 Complete-Tests
