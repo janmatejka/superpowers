@@ -667,7 +667,10 @@ work item, therefore a STOP.
 
 ## Workspace Discipline
 
-A **workspace** is a clone the user works in. The user creates it and chooses
+A **workspace** is a clone the user works in. A pool slot (Worktree Policy) is
+likewise a workspace in this contract's sense, even though it is a linked
+worktree rather than a clone, and "one session per workspace" below therefore
+holds per slot. The user creates it and chooses
 it; it is used repeatedly and it carries the leftovers of previous work. The
 layer therefore treats a workspace as found, never as one the SESSION
 provisioned: the one provisioning tool this layer has (`pool-provision.ps1`,
@@ -764,7 +767,10 @@ Leftovers split in two:
   of the CURRENT slug. They block a safe branch switch and must be resolved. The
   candidate file belongs here because it is non-recoverable by the classification
   above: switching away leaves it behind unattached to any branch, and committing it
-  is what `mb-park`'s named exception exists for.
+  is what `mb-park`'s named exception exists for. In a pool slot a stash is NOT a
+  per-slot blocker here — see "A pool slot's freedom is derived from per-worktree
+  signals only" above; for a clone with its own `.git` a stash still blocks as
+  stated.
 - **Merely present** — unpushed commits of other branches, candidate files of
   other slugs (and a TRACKED candidate file of the current slug — `mb-park` already
   parked it, so it is recoverable from `origin`). They are announced only; the agent
