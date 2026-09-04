@@ -185,9 +185,8 @@ Adjustments to the checklist above:
   branch after every commit, always announcing the branch and the outgoing commits
   (Publication Contract). If this is the branch's FIRST publication, push with
   `git push -u origin <branch>`, never bare — per the contract's first-publication
-  rule (Publication Contract): `switch -c` left the upstream pointing at the base,
-  already detached by the `git branch --unset-upstream` run immediately at
-  creation (the **Create the ticket branch** step above).
+  rule (Publication Contract), whose other half already ran at creation (the
+  **Create the ticket branch** step above: `git branch --unset-upstream`).
 
   On the **bounded** path the design was approved IN CHAT; after that
   approval write the same content to
