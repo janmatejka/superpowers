@@ -128,7 +128,9 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
       uncommitted design travels with the switch on its own, which is precisely why
       committing it later costs nothing. Create the branch in place
       (branch-in-place, always with an explicit starting point after a
-      `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <effective base>`).
+      `git fetch origin`: `git switch -c <TICKET>-<kebab-slug> <effective base>`,
+      then `git branch --unset-upstream` — contract, Publication Contract, the
+      first-publication rule).
       **`context.md` already exists at this point** — step 1's precondition
       requires it — so its effective base (if a `- **Báze:**` line was written for
       this work item) is simply read, not freshly chosen here: this is the

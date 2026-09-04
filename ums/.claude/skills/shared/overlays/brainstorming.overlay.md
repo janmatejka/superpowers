@@ -119,7 +119,10 @@ Adjustments to the checklist above:
      commit here (nothing
      else), per the rule stated in the "Write design doc" adjustment below:
      `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a
-     `git fetch origin`, always with the explicit start point. When the
+     `git fetch origin`, always with the explicit start point, **immediately
+     followed by `git branch --unset-upstream`** (Publication Contract, the
+     first-publication rule — the paired first-publication `-u` is confirmed
+     in the "Write design doc" phase below). When the
      **Jira ticket** step answered
      "none", the kebab slug alone names the branch — the ticket code is part of the
      name only when there is one (contract, "Active Work Item (Design + Plan Pair)",
@@ -162,7 +165,9 @@ Adjustments to the checklist above:
   The rule that governed that creation, invoked by the **Create the ticket
   branch** step above and stated here in full: **always with an explicit starting
   point**, `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a
-  `git fetch origin`, where the chosen base defaults to `baseRef` from
+  `git fetch origin`, **immediately followed by `git branch
+  --unset-upstream`** (Publication Contract, the first-publication rule),
+  where the chosen base defaults to `baseRef` from
   `<CTX_DIR>/ums-repo.json` (the contract's "Repository Configuration" section)
   unless the user picked a different protected branch in the **Choose the
   base** step above. The implicit form, without a starting point, branches off whatever
@@ -180,7 +185,9 @@ Adjustments to the checklist above:
   branch after every commit, always announcing the branch and the outgoing commits
   (Publication Contract). If this is the branch's FIRST publication, push with
   `git push -u origin <branch>`, never bare — per the contract's first-publication
-  rule (Publication Contract): `switch -c` left the upstream pointing at the base.
+  rule (Publication Contract): `switch -c` left the upstream pointing at the base,
+  already detached by the `git branch --unset-upstream` run immediately at
+  creation (the **Create the ticket branch** step above).
 
   On the **bounded** path the design was approved IN CHAT; after that
   approval write the same content to

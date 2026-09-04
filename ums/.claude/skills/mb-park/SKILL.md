@@ -266,9 +266,10 @@ The protected-branch variant (step 0), which is a STOP, not a park:
 >   větev, takže push by neproběhl ani po commitu, a commit odtud by se na
 >   tiketovou větev nedostal.
 > - Cesta dál: přesuň práci na tiketovou větev — `git switch -c <TIKET>-<slug>
->   <effective base>`, necommitnuté změny jdou s přepnutím samy — a zaparkuj tam.
->   Nebo práci uzavři přes finishing-a-development-branch, případně zahoď přes
->   `mb-abort`.
+>   <effective base>`, necommitnuté změny jdou s přepnutím samy, hned pak
+>   `git branch --unset-upstream` (kontrakt, Publication Contract, first-publication
+>   rule) — a zaparkuj tam. Nebo práci uzavři přes finishing-a-development-branch,
+>   případně zahoď přes `mb-abort`.
 
 ---
 
