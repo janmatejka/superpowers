@@ -42,7 +42,9 @@
       "Bash(rm -rf:*)",
       "Bash(git reset --hard:*)",
       "Bash(git worktree:*)",
-      "PowerShell(pool-provision.ps1:*)"
+      "PowerShell(git worktree:*)",
+      "PowerShell(pool-provision.ps1:*)",
+      "Bash(pool-provision.ps1:*)"
     ]
   },
   "skillOverrides": {
