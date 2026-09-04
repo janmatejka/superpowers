@@ -720,3 +720,25 @@ upstream na bázi).
   `memory-bank/.superpowers/` je; změřeno je to naopak.
 - **Redistribuovatelnost do `pmq_logopedie_nr`** nešla ověřit — repozitář
   není lokálně k dispozici.
+- **Obousměrné zprávy mezi orchestrátorem a tiketovými sezeními** — vyžádáno
+  uživatelem 4. 9. 2026, směrem k tomu, co už dnes intenzivně dělá ručně:
+  hlášení postupu a doručení změny návrhu za běhu. **Změřeno v tom sezení:**
+  `ListAgents` z hlavního klonu vidí sezení běžící ve slotech monorepa jako
+  **peery** (`ums01-39`, `ums02-76`) a `SendMessage` je adresuje jménem —
+  kanál tedy existuje a nic se pro něj stavět nemusí. Podstatné je, že to
+  **není v rozporu s tímto návrhem, nýbrž na něm stojí**: odebrání devíti
+  proměnných v `pool-launch.ps1` je právě to, co ze spuštěného sezení udělá
+  samostatného peera místo dětského sezení s identitou rodiče. Kdyby se
+  `CLAUDE_CODE_MESSAGING_SOCKET` a spol. nechaly, vznikne totéž sezení, ne
+  protějšek. Zprávy navíc do pracovního stromu slotu nezapisují, takže
+  železná pravidla ani model tahu neporušují.
+  **Otevřená otázka k proměření jako první:** peeři se v seznamu jmenují po
+  adresářích slotů, takže jestli `--name <TIKET>` to jméno skutečně nastavuje
+  — a je tedy zároveň adresou i důkazem spuštění — ověřené není.
+- **Autonomie volená uživatelem podle situace** — vyžádáno týmž zadáním.
+  Zvolená veličina: **kdy agent zastaví a ptá se**, tedy škála nad STOP
+  třídami kontraktu, od „ptej se na každé hranici fáze" po „rozhoduj rulingy
+  a hlas se až na konci". Dnes jsou ty hranice pevné, takže to není parametr
+  skillu, ale zásah do kontraktu — a potkává se s modelem rulingů v SDD
+  („Rulings, not stalls") i s pátou, předávací stop třídou. Patří to do
+  vlastního návrhu, ne do tohoto tiketu.
