@@ -57,11 +57,13 @@ $memberHeading = 'Členové'
 if (@($tickets).Count -eq 0) { $tickets = Get-SectionTable $lines 'Tikety'; $memberHeading = 'Tikety' }
 $windows = Get-SectionTable $lines 'Okna'
 $dirty   = Get-SectionTable $lines 'Dirty-set'
+$spawns  = Get-SectionTable $lines 'Rozjetí'
 
 $items   = @($items   | Where-Object { $_.Count -ge 4 -and $_[0] -and $_[0] -notmatch '^<' })
 $tickets = @($tickets | Where-Object { $_.Count -ge 2 -and $_[0] -and $_[0] -notmatch '^<' })
 $windows = @($windows | Where-Object { $_.Count -ge 3 -and $_[0] -and $_[0] -notmatch '^<' })
 $dirty   = @($dirty   | Where-Object { $_.Count -ge 3 -and $_[0] })
+$spawns  = @($spawns  | Where-Object { $_.Count -ge 4 -and $_[0] -and $_[0] -notmatch '^<' })
 
 $issuesFound = @()   # inconsistency messages
 
@@ -106,6 +108,13 @@ if ($activeWindows.Count -gt 1) {
     $issuesFound += "Více než jedno rozpracované okno ($(($activeWindows | ForEach-Object { $_[0] }) -join ', ')) — okna se uzavírají po jednom."
 }
 
+# --- spawn rows -----------------------------------------------------------
+foreach ($s in $spawns) {
+    if (-not $ticketStates.ContainsKey($s[0])) {
+        $issuesFound += "Řádek rozjetí pro «$($s[0])» nemá odpovídajícího člena v tabulce $memberHeading."
+    }
+}
+
 # --- report -------------------------------------------------------------------
 $epicLine = ($lines | Where-Object { $_ -match '^\s*-\s+\*\*Epic:\*\*' } | Select-Object -First 1)
 Write-Output "# Stav evidence ledgeru"
@@ -129,6 +138,13 @@ foreach ($w in $windows) { Write-Output ("- {0}: {1} — {2}" -f $w[0], $w[2], $
 Write-Output ''
 Write-Output "## Dirty-set (nevyčištěné: $($dirtyOpen.Count))"
 foreach ($d in $dirtyOpen) { Write-Output ("- {0} (okno {1}): {2}" -f $d[0], $d[1], $d[2]) }
+Write-Output ''
+Write-Output "## Rozjetí ($($spawns.Count))"
+if ($spawns.Count -eq 0) { Write-Output '- žádné' }
+foreach ($s in $spawns) {
+    $trap = if ($s.Count -ge 6 -and $s[5]) { " — pasti: $($s[5])" } else { '' }
+    Write-Output ("- {0} ({1}): {2}, slot {3}{4}" -f $s[0], $s[1], $s[3], $s[2], $trap)
+}
 Write-Output ''
 if ($issuesFound.Count -gt 0) {
     Write-Output '## ❌ Nekonzistence ledgeru'

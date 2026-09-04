@@ -149,6 +149,15 @@ A window closes only when its slice is internally consistent. Order:
    actor's own branch — announced, not negotiated. The commit-pinned links
    written in the next step MUST be reachable on `origin`, so this push precedes
    them. Never push a shared branch.
+
+   After the window's single commit is published, OFFER the pool. `mb-epic-run
+   ready <EPIC>` prints both existing oracles beside the pool table; it produces
+   no verdict of its own. For each ticket the operator selects, `mb-epic-run
+   spawn <TICKET>` runs its own eligibility gate, writes ONE intent line into the
+   ledger's `## Rozjetí` section on THIS branch, and launches a session in a free
+   slot. This is an offer and a per-ticket decision, never a batch action, and it
+   happens AFTER publication because the spawned session pulls the window's
+   documents from `origin`.
 7. **Refresh proposal links (post-commit):** for every ticket the window
    created or whose proposal it changed — plus any window ticket still missing
    the link — set/refresh ONE line in the Jira description:

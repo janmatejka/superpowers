@@ -50,3 +50,20 @@ Aktuálně špinavé = řádky s prázdným sloupcem „Vyčištěno oknem".
 
 | Položka/Tiket | Zašpiněno oknem | Důvod | Vyčištěno oknem |
 |---------------|-----------------|-------|-----------------|
+
+## Rozjetí
+
+Jeden řádek na jedno rozjetí tiketu do slotu poolu (skill `mb-epic-run`,
+operace `spawn`). Řádek je **tažený** artefakt: sezení ve slotu si podle něj
+dohledá zbytek v commitnutých dokumentech — orchestrátor do pracovního stromu
+slotu nezapisuje nic. Sloupce **neměnit ani nepřehazovat**, parsuje je
+`scripts/ledger-status.ps1` pozičně.
+
+Sloupec `Draft` nese větev i cestu, protože draft může ležet na cizí větvi.
+Zvolená báze tu vlastní sloupec **nemá** — jejím jediným domovem je řádek
+`Báze:` v `context.md` té pracovní položky; netriviální bázi zmiň větou ve
+sloupci `Pasti`.
+
+| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Pasti |
+|-------|-------|------|---------|-----------------------|-------|
+| <UMS-0000> | <YYYY-MM-DD> | <jméno slotu nebo —> | <rozjeto \| odloženo \| selhalo> | <větev> @ <cesta k draftu> | <krátce, co může překvapit> |
