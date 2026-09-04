@@ -23,6 +23,8 @@ ums/
 ├── CLAUDE.md.sample          ← monorepo root CLAUDE.md (user-preference lever)
 ├── .gitattributes             ← forces LF on the extensionless pre-push hook (Windows CRLF trap)
 ├── sync-with-monorepo.ps1    ← fork ⇄ monorepo sync (claude) + deploy for other agents (-Agent)
+├── docs/
+│   └── pool-rozjeti-tiketu.md  ← Czech operator guide for the pool (mb-epic-run)
 └── .claude/
     ├── settings.json         ← Claude Code glue (hooks, permission denies, skillOverrides)
     ├── hooks/
@@ -38,6 +40,10 @@ ums/
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
         ├── shared/           ← contract v2.13, manifest, VENDORED_FROM.md, overlays/*.overlay.md
+        ├── mb-epic-run/      ← pool status/launch/provision (see its own README.md)
+        │   ├── SKILL.md
+        │   ├── scripts/      ← pool-status.ps1, pool-launch.ps1, pool-provision.ps1
+        │   └── tests/        ← pool-status.tests.ps1, pool-launch.tests.ps1, pool-provision.tests.ps1
         ├── mb-harvest/ …     ← active mb-* utility skills
         └── mb-plan/ …        ← deprecated v1 stubs (transitional)
 ```
@@ -117,7 +123,10 @@ the overlay fragments, and the work-item (design+plan pair) document
 conventions are plain markdown — they work wherever superpowers skills load (Claude Code, Codex
 native discovery, Cursor, Copilot CLI, Kimi, OpenCode, pi, Devin CLI, Hermes Agent). The mb-* skills
 use only git + filesystem + markdown; `mb-jira-update` needs an Atlassian MCP
-connection configured per harness.
+connection configured per harness. `mb-epic-run` and the contract text it
+follows are plain Markdown plus `pwsh` scripts and carry over the same way —
+except its occupancy probe, which is Claude Code-specific (see the table
+below).
 
 **Claude Code-specific glue (`.claude/settings.json` + `hooks/`):**
 
@@ -130,6 +139,7 @@ connection configured per harness.
 | Worktree ban | `permissions.deny: EnterWorktree/ExitWorktree` + `skillOverrides: using-git-worktrees: off` | No shown equivalent — degrade to the ban text in the instructions file; `using-git-worktrees` itself honors a declared preference ("work in place") |
 | Model selection for subagents | Owned by superpowers (SDD Model Selection); UMS only adds the cheapest-tier guard for summarization/read-only dispatches (contract, Dispatch Model Policy) | Portable text; the cheapest-tier guard is effective only where the harness exposes a model parameter on subagent dispatch |
 | Session intent baton delivery | `SessionStart` hook (`session-intent.ps1`) with a `clear\|startup` matcher; the writer precondition checks for it before writing a baton | No equivalent — the writer's precondition fails, so no baton is written and the operator types the intent, which is the pre-baton behaviour |
+| Pool slot occupancy probe (`mb-epic-run`, `pool-status.ps1`) | Native — reads `claude agents --json --cwd <slot>` directly | `claude agents --json` is bound to Claude Code, so on another harness **slot occupancy is not available** and it degrades **fail-closed**: `pool-status.ps1` reports `session.state: unknown` for the slot, `mb-epic-run` treats `unknown` as not free, and a spawn happens only on the operator's explicit instruction, never on the skill's own judgement. The agent-session guard in `pool-provision.ps1` (refuses to run under an agent-session marker without `-Operator`) travels with the script itself and enforces there on any harness; `permissions.deny`'s `EnterWorktree`/`ExitWorktree` denial (the Worktree ban row above) carries the same "provisioning/entering a worktree is not the agent's call" spirit for Claude Code specifically, but is Claude Code configuration and does not travel |
 
 Deploying to a non-Claude harness is automated by the sync script:
 
