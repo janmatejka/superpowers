@@ -4,8 +4,9 @@ Tento průvodce je pro operátora, který ještě s poolem nepracoval. Popisuje,
 pool je, jak označit existující sloty, jak založit nový, jak do slotu rozjet
 tiket a co po spuštění zkontrolovat na obrazovce.
 
-**Tento průvodce je psaný pro monorepo** (`D:\_datasys\ums...`), kde pool
-skutečně žije. **Tento fork (`superpowers`) žádné linkované worktree nemá** —
+**Tento průvodce je psaný pro monorepo**, kde pool skutečně žije; cesty v
+příkladech níž jsou z jedné konkrétní stanice a **je nutné je upravit** —
+adresáře worktreí nemusí ležet vedle repozitáře a měřeně tam neleží. **Tento fork (`superpowers`) žádné linkované worktree nemá** —
 spouštění příkazů z kapitoly 2 zde nezaloží žádný slot a nic se nestane, což
 je očekávané chování, ne chyba. Vývojářský popis skriptů, které pool obsluhují,
 je v [README skillu mb-epic-run](../.claude/skills/mb-epic-run/README.md);
@@ -33,22 +34,36 @@ přepnulo na tiketovou větev.
 Máš-li v monorepu už založené worktrees a chceš je zpětně prohlásit za sloty
 poolu, označ každou jedním příkazem:
 
+**Cesty si nevypisuj z hlavy — nech si je odvodit.** Adresář worktree se nemusí
+nacházet vedle repozitáře a často se tam nenachází: měřeno 4. 9. 2026 na
+monorepu leží worktrees registrované jako `ums01`–`ums04` v úplně jiném
+stromě, než ve kterém je `.git`. Zdrojem pravdy je `.git/worktrees/*/gitdir`:
+
 ```powershell
-foreach ($s in @('D:\_datasys\ums01','D:\_datasys\ums02','D:\_datasys\ums03','D:\_datasys\ums04')) {
-  New-Item -ItemType Directory -Force -Path (Join-Path $s '.superpowers') | Out-Null
-  Set-Content -LiteralPath (Join-Path $s '.superpowers\pool-slot') -Value '# UMS pool slot marker.' -Encoding utf8
+$repo = 'D:\_datasys\ums'   # kořen monorepa, uprav na svůj
+Get-ChildItem (Join-Path $repo '.git\worktrees') -Directory | ForEach-Object {
+  $slot = (Get-Content (Join-Path $_.FullName 'gitdir') -Raw).Trim() -replace '[\\/]\.git$',''
+  New-Item -ItemType Directory -Force -Path (Join-Path $slot '.superpowers') | Out-Null
+  Set-Content -LiteralPath (Join-Path $slot '.superpowers\pool-slot') -Value '# UMS pool slot marker.' -Encoding utf8
+  "označeno: $slot"
 }
 ```
 
-Uprav seznam cest na svoje skutečné worktrees. Příkaz je idempotentní — spustíš-li
-ho znovu na už označeném slotu, marker jen přepíše stejným obsahem.
+Příkaz je idempotentní — spustíš-li ho znovu na už označeném slotu, marker jen
+přepíše stejným obsahem. Označí **všechny** registrované worktrees; když některý
+slotem být nemá, jeho marker po spuštění smaž (nebo si seznam vyfiltruj).
+
+Že to zabralo, ověříš tím, že se sloty objeví v tabulce:
+`pwsh <cesta k monorepu>/.claude/skills/mb-epic-run/scripts/pool-status.ps1`.
+Dokud žádný worktree marker nenese, skript vrací **exit 3** a hlásí, že
+repozitář pool nemá — to není chyba, to je ta fail-closed odpověď.
 
 ## 3. Jak založit nový slot
 
 Nový slot založíš skriptem `pool-provision.ps1`:
 
 ```powershell
-pwsh ums/.claude/skills/mb-epic-run/scripts/pool-provision.ps1 -Path D:\_datasys\ums05 -Operator
+pwsh <cesta k monorepu>/.claude/skills/mb-epic-run/scripts/pool-provision.ps1 -Path <cesta pro nový slot> -Operator
 ```
 
 Skript vytvoří novou linkovanou worktree (detached, z konfigurované báze
