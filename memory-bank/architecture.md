@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.12, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.13, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -116,9 +116,12 @@ položky). Zásahy do architektonické cesty:
   bez druhého kola review) přesměruje uložení z upstream cesty
   `docs/superpowers/specs/` na `<PLAN_MB>/proposals/active/design_<slug>.md`
   (česky, s hlavičkou dle kontraktu) a vyžaduje větev na místě místo worktree
-  (`git switch -c <TIKET>-<slug> <zvolená báze>` po `git fetch origin` —
-  tiketový workspace nemá lokální bázi; báze je ta, kterou bod 1 právě
-  zvolil, ne nutně `baseRef`); po commitu návrhu ho agent pushuje —
+  (`git switch -c <TIKET>-<slug> <zvolená báze>` po `git fetch origin`, hned
+  následované `git branch --unset-upstream` — jinak by každý holý push mířil
+  na bázi, na kterou `switch -c` nastavil upstream (kontrakt, Publication
+  Contract, first-publication rule) — tiketový workspace nemá lokální bázi;
+  báze je ta, kterou bod 1 právě zvolil, ne nutně `baseRef`); po commitu
+  návrhu ho agent pushuje poprvé s `-u` —
   publikace vlastní větve po každém commitu je obecné pravidlo, ne jen tento
   jeden krok (sekce 3).
 - **Nabídka agentické oponentury** (jen architektonická cesta, po schválení
@@ -176,8 +179,10 @@ na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
   dokončovací řádky do ledgeru a odškrtnutí toda, před dalším dispatchem),
   jeví-li se zbývající kontext jako nedostatečný na další task: napsat baton
   (`Kind: plan-resume`, cesta plánu, cesta ledgeru, větev, slug, číslo
-  dalšího nedokončeného tasku), zapsat řádek o rotaci do ledgeru, ohlásit
-  česky a zastavit s jedinou instrukcí — operátor napíše `/clear`. Na rozdíl
+  dalšího nedokončeného tasku a povinný, validovaný řádek `Instruction:`
+  jmenující `subagent-driven-development`), zapsat řádek o rotaci do
+  ledgeru, ohlásit česky a zastavit s jedinou instrukcí — operátor napíše
+  `/clear`. Na rozdíl
   od upstream čtyř eskalačních tříd (zastav, zeptej se, pokračuj v tomtéž
   sezení) je to třída **předávací** — sezení končí a pokračuje čerstvé —, jako
   Architect Review Gate. Je to úsudek modelu, ne měření: detektor prahu
@@ -251,7 +256,11 @@ protože menu vyrenderované operátorovi musí být v okamžiku otázky úplné
 
 Mechanika, kterou používá Overlay 2 (pátá stop třída) i Overlay 4 (třetí
 volba exekuce), zavedená kontraktem, podsekce „Session Intent Baton"
-(normativní zdroj formátu a guardů).
+(normativní zdroj formátu a guardů). Baton nese záměr **jen uvnitř vlastního
+workspace** — mezi sezeními, která tentýž operátor otevírá ve stejném klonu
+po `/clear`. Záměr do JINÉHO workspace (slot poolu) se nedoručuje batonem
+vůbec, ale argv spuštěného procesu plus tažením z commitnutého ledgeru (sekce
+6); baton proto nedostal třetí druh (`Kind`) pro tento účel.
 
 - **Soubor:** `<MB_ROOT>/.superpowers/session-intent.md` — git-ignorovaný,
   nikdy se necommituje (fallback při ztrátě je, že operátor napíše záměr
@@ -274,6 +283,23 @@ volba exekuce), zavedená kontraktem, podsekce „Session Intent Baton"
   nemaže. `SessionStart` je informační, takže hook na každé chybové cestě
   (chybějící git, chybějící/nečitelný soubor, tvarová chyba) tiše skončí
   s exit 0 a session start nikdy nezablokuje.
+- **`Instruction` je povinný klíč a jeho hodnota se validuje.** Kromě
+  existujících klíčů (`Kind`, `Plan`, `Branch`, `Slug`) musí baton nést i
+  `Instruction`, a hook ho neposuzuje jen podle přítomnosti: hodnota musí
+  **jmenovat existující skill** — legální jména odvozuje z adresářů skillů
+  vedle vlastního adresáře hooků (case-sensitive `-cmatch`) — a nesmí
+  přesáhnout 200 znaků. Chybějící klíč, hodnota bez shody se žádným skillem
+  nebo hodnota nad stropem dělá baton stale stejně jako branch/slug guard.
+  Prázdný nebo nečitelný seznam skillů shodu nenajde nikdy, takže i tehdy je
+  baton stale — fail-closed, ne degradace: záložní cesta (operátor napíše
+  záměr sám) nic nestojí.
+- **Hook emituje `initialUserMessage` vedle `additionalContext`** — pevný
+  anglický text (nikdy odvozený z obsahu batonu), který řekne, že bootstrap
+  kontroly mají přednost a že baton nikdy nepřebíjí fail-closed bránu, a
+  teprve pak nechá jednat podle řádku `Instruction`. Emituje se jen na
+  happy path; každá stale i absentní cesta zůstává tichá. Hodnota je v
+  delivery modu 1 (`/clear` ve vlastním workspace) — sezení se rozjede bez
+  čekání na ruční stisk klávesy operátorem.
 - **Precedence:** kontrola publikační záruky z bootstrap `SessionStart`
   záznamu je precondice jednání podle batonu, nikdy naopak — baton nikdy
   nepřebíjí fail-closed bránu; pořadí obou `SessionStart` záznamů není nikde
@@ -303,7 +329,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.12, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.13, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -345,9 +371,10 @@ Převzetí draftu z cizí větve je **kopie blobu** (`git show <ref>:<path> >
 nesoucím ledger i všechny proposaly okna, takže cherry-pick by přitáhl cizí
 ledger. Převzatý dokument nese v hlavičce `**Převzato z:** <branch>@<sha>`.
 Tiketová větev se zakládá vždy explicitním počátečním bodem `<baseRef>`
-(`git switch -c <TIKET>-<slug> <baseRef>` po `git fetch origin`) — lokální
-báze se v tiketovém workspace nepoužívá ani neaktualizuje, jinak by větev
-neviděla ani mergnuté plánování. Obživlá fronta (originál draftu zůstane
+(`git switch -c <TIKET>-<slug> <baseRef>` po `git fetch origin`, hned
+následované `git branch --unset-upstream`) — lokální báze se v tiketovém
+workspace nepoužívá ani neaktualizuje, jinak by větev neviděla ani mergnuté
+plánování. Obživlá fronta (originál draftu zůstane
 v `next/` na zdrojové větvi a znovu se objeví v bázi po jejím mergi) je
 detekovaná (`mb-doc-index`, `mb-epic-graph -Check`), ne bráněná — úklid je
 jeden `git rm`.
@@ -511,7 +538,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.12](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.13](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -631,6 +658,10 @@ flowchart LR
     DI -->|-Json / -IndexFile| EG
     EE -->|predbezne navrhy| NEXT["proposals/next/"]
     NEXT -->|aktivace, i z cizi vetve| BS
+    EE -->|Close: ready/spawn nabidka| ER["mb-epic-run"]
+    ER -->|ready: obe orakula vedle sebe| EG
+    ER -->|spawn: kolizni kontrola| DI
+    ER -->|spawn: radek zameru| LEDGER["ledger.md, sekce Rozjeti"]
     ST["mb-state"] -.->|read-only report| IDLE
     ST -.->|cizi vetve, kolize| DI
     ST -.->|navrhne pri zbytcich v ceste| PK["mb-park"]
@@ -650,9 +681,10 @@ flowchart LR
 | `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest`, z `mb-migrate-docs` |
 | `mb-sync` | Dosynchronizuje MB dokumenty s realitou kódu mimo workflow; drift `playbook.md` jen navrhuje ke schválení, nezapisuje ho sám. | ručně |
 | `mb-scan` | Read-only hloubková analýza projektu. | ručně |
-| `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. Framing okna čte i poznámky zpětného toku z návrhů (dirty řádky `návrh <slug>`, `notes.md`). | ručně, nebo inline okno z Epic Backflow kroku |
+| `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. Framing okna čte i poznámky zpětného toku z návrhů (dirty řádky `návrh <slug>`, `notes.md`). Uzávěrka okna (fáze 7, Close) po publikaci nabízí pool přes `mb-epic-run`. | ručně, nebo inline okno z Epic Backflow kroku |
 | `mb-epic-graph` | Graf závislostí epiku z Jira linků nebo z hlaviček návrhů, plus orákulum konzistence text ↔ linky a `-IndexFile` findings o cizích větvích. Read-only skript. | z `mb-epic-elaboration`, nebo ručně |
 | `mb-doc-index` | Read-only index MB dokumentů napříč větvemi `origin` (model tahu); kolizní findings pro discovery, elaboraci i `mb-state`. | z brainstormingu (discovery), z `mb-epic-elaboration`, z `mb-state`, nebo ručně |
+| `mb-epic-run` | Mechanika poolu (sekce 6): derivovaný stav slotů, obě orákula připravenosti na jednom místě (`ready`), spuštění sezení na tiket do volného slotu se strojovým ověřením (`spawn`), dohledání slotu, který tiket drží (`attach`). Read-only vůči slotům; jediný trackovaný zápis je řádek záměru v ledgeru epiku na elaborační větvi. | z uzávěrky `mb-epic-elaboration` (nabídka), nebo ručně |
 | `mb-migrate-docs` | Migruje Memory Banky v zadaném rozsahu na aktuální sadu dokumentů — sloučí `product.md` do `brief.md`, přejmenuje `tasks.md` na `playbook.md`, přepíše relativní odkazy; MB s `KONFLIKT PLAYBOOKU` (`tasks.md` i `playbook.md` současně) přeskočí a nahlásí. | ručně, pro repozitáře ve starém tvaru |
 | `mb-plan`, `mb-act` | Deprecated stuby v1 — jen přesměrují na Superpowers workflow. | zpětná kompatibilita |
 
@@ -671,7 +703,94 @@ traversal historie vzdálených větví, enumerace, findings) a `mb-migrate-docs
 přeskupoval řádky, nikdy nepsal nové). Ostatní `mb-*` skilly jsou čistě
 instrukční Markdown.
 
-## 6. Vendoring a nasazení
+## 6. Pool: mechanika slotů a spuštění sezení na tiket
+
+Normativní zdroj: kontrakt v2.13, sekce **Worktree Policy** (výjimka pro
+slot poolu a její přepsané měření disku), **Workspace Discipline** (podsekce
+„A pool slot's freedom is derived from per-worktree signals only") a
+**Session Intent Baton** (proč záměr do slotu baton nenese). Mechanika
+navazuje na `mb-epic-elaboration` (sekce 5): elaborace rozdělí epik na
+tikety, pool je automatizovaná mechanika, kterou se rozjede sezení na
+vybraný tiket.
+
+**Slot je uživatelem provisionovaný a označený linked git worktree.** Založí
+ho `pool-provision.ps1` (operátorský nástroj — guard proti agentní relaci ve
+skriptu samém, nezávisle na `permissions.deny`; `git worktree add --detach
+<cesta> origin/<báze>`, marker `.superpowers/pool-slot`, kontrola sdíleného
+`pre-push` hooku z nitra nového slotu, exit 5 když se publikační záruka
+nepotvrdí). Slot žije napříč mnoha tikety, hostí nejvýš jedno sezení a nese
+jednu tiketovou větev a jeden pin v `context.md`. Vrstva na něj hledí jako na
+**nalezený** workspace — Workspace Discipline, vstupní brána,
+`mb-park`/`mb-harvest`/`mb-abort`, Publication Contract a meziclonová kolizní
+kontrola platí beze změny; agent worktree nikdy nezaloží ani nevstoupí do
+provisioningu sám (`permissions.deny` blokuje `git worktree`/`pool-provision.ps1`
+v obou frame formátech, `Bash` i `PowerShell`).
+
+**Členství v poolu i volnost slotu jsou derivované, ne konfigurované.**
+Kandidáty vypíše `git worktree list --porcelain`; slotem je z nich ten, který
+nese marker. Repozitář bez označeného worktree nemá pool (v tomto forku dnes
+nula) a `mb-epic-run` na to fail-closed odmítne. Volnost se **nesmí** derivovat
+kontraktovou trojicí `status` + `stash list` + `log --branches --not --remotes`
+z klonu s vlastním `.git` — v poolu je `refs/stash` i `refs/heads` **sdílené**
+mezi sloty (stejný soubor pod `.git` hlavního klonu), takže by jeden nepushnutý
+commit kdekoli v repu udělal každý slot navždy nevolným. Derivace proto čte jen
+**per-worktree** signály (dirty tree, nepushnuté commity vlastní větve, pin,
+postup v plánu podle slugu **z pinu** — ne „první nalezený adresář pod `sdd/`")
+plus jeden signál, který git nezná vůbec: **živé sezení**, čtené z harnessu
+(`claude agents --json --cwd <slot>`, filtr na přítomný `pid`), fail-closed na
+`unknown`. Stash je repo-wide informace, nikdy vlastnost slotu; cizí kandidát
+playbooku (jiný slug než pin slotu) je jen ohlášen, nikdy důvod nevolnosti.
+**Volný slot** = marker, čistý strom, IDLE pin, žádné živé sezení, žádné
+nepushnuté commity, nedrží tiketovou větev spawnovaného epiku.
+
+**Doručení záměru do slotu je argv + tažený řádek v ledgeru, ne baton.** Baton
+je ambientní kanál (`SessionStart` hook vystřelí v každém sezení, které kdokoli
+otevře v tom worktree) a nemůže adresovat konkrétní proces, takže nedostal
+třetí druh pro tento účel. Místo toho: `pool-launch.ps1` spustí sezení
+s krátkým, jednořádkovým, zauvozovkovaným promptem na argv (co dělat, který
+tiket, která větev, kde číst zbytek) a `mb-epic-run spawn` zapíše **jeden
+řádek** do sekce `## Rozjetí` ledgeru epiku (`memory-bank/epics/<epic_snake>/ledger.md`,
+šest poziční sloupců: `Tiket`, `Datum`, `Slot`, `Verdikt`, `Draft (větev +
+cesta)`, `Pasti`), commitne a pushne na elaborační větvi — do pracovního
+stromu slotu se nezapisuje nic. Sezení ve slotu si zbytek (rozsah, blokátory,
+umístění draftu) najde samo v commitnutých dokumentech.
+
+**Launcher čistí zděděné prostředí a ověřuje spuštění strojově.**
+`pool-launch.ps1` před spuštěním odebere devět proměnných zděděných od
+rodičovského sezení Claude Code (`CLAUDE_CODE_CHILD_SESSION`,
+`CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_BRIDGE_SESSION_ID`,
+`CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`,
+`CLAUDE_CODE_SSE_PORT`, `CLAUDE_PID`, `CLAUDE_CODE_ENTRYPOINT`, `NO_COLOR`) —
+bez toho by potomek naběhl jako dětské sezení s vypnutým transcriptem a
+identitou rodiče. `CLAUDECODE` se záměrně nechává (precondice zapisovatele
+batonu i jediný nosič publikační záruky na `-Scope UserProfile`). Dva
+adaptéry, každý jeden příkaz beze skrytého fallbacku: `terminal` (`wt.exe`) a
+`direct` (`Start-Process`); chybí-li `wt.exe`, vrací se stav `unavailable` a
+volající se zastaví — skript sám nikdy nerozhoduje, který adaptér použít.
+Pět tvarů promptu se odmítá jako vstupní chyba ještě před spuštěním
+(středník, uvozovka, koncové zpětné lomítko, prázdný prompt, prompt nad 600
+znaků). Existence procesu nic nedokazuje (měřeno: všechna tři selhání 2. 9.
+2026 měla PID) — mechanické ověření spuštění čte **záznam v session registru
+harnessu** (`claude agents --json --cwd <slot>` s přítomným jménem `--name
+<TIKET>` a časem startu po spawnu); operátorské otázky (chybějící varování o
+vypnutém transcriptu, celý prompt v prvním vstupu) zůstávají záložní
+kontrolou, ne jedinou.
+
+**Skill `mb-epic-run`** má čtyři operace, všechny reportované česky (skripty
+jsou anglické vývojářské nástroje): `status` (tabulka stavu slotů + pohled
+epiku), `ready <EPIK>` (obě existující orákula — `mb-epic-graph` a
+`ledger-status.ps1` — vedle tabulky poolu, bez vlastního verdiktu), `spawn
+<TIKET>` (způsobilost → volba slotu → zápis řádku záměru → launch →
+mechanické ověření, v tomto pořadí) a `attach <TIKET>` (dohledá a **vytiskne**
+další akci, nespouští nic za operátora). `allowed-tools` v jeho frontmatteru
+**restringuje** dostupné nástroje (ne jen je předschvaluje) — proto je
+záměrně širší než read-only, protože `spawn` píše, commitne a publikuje
+řádek ve VLASTNÍM repozitáři skillu, ne ve slotu. Bezpečnost slotů nese
+tělo skillu (deset železných pravidel — nikdy `cd` do slotu, nikdy zapisující
+git příkaz ve slotu, nikdy žádný zápis do slotu, nikdy spawn bez kolizní
+kontroly, STOP nechá slot přesně tak, jak ho našel, …), ne `allowed-tools`.
+
+## 7. Vendoring a nasazení
 
 ```mermaid
 flowchart TD
@@ -701,7 +820,7 @@ instrukční soubor pro `claude`, `codex`, `gemini`, `kilocode` × `Monorepo`,
 Příkazy obou fází, jejich pořadí i pravidla o tom, co se kam nenasazuje, jsou
 v [playbook.md](playbook.md).
 
-## 7. Invarianty, na kterých vrstva stojí
+## 8. Invarianty, na kterých vrstva stojí
 
 1. **Aditivnost.** Mimo `ums/` (plus `CLAUDE.md` sekci a `memory-bank/`) se na
    této větvi nic nemění → upstream merge nikdy nekonfliktuje.
@@ -711,7 +830,10 @@ v [playbook.md](playbook.md).
    `PLAN_MB` v okamžiku zápisu návrhu, nejednoznačná cílová MB, druhý aktivní
    slug — vždy zastavit, nikdy neuhádnout.
 4. **Superpowers řídí, MB dokumentuje.** UMS nepřebírá exekuci ani volbu modelu.
-5. **Bez worktrees.** Izolace = větev na místě.
+5. **Bez agentem vytvářených worktrees.** Izolace = větev na místě. Jedinou
+   výjimkou je slot poolu — linked worktree, který založil a **označil**
+   uživatel (sekce 6); agent worktree nikdy nezaloží ani nevstoupí do
+   provisioningu sám.
 6. **Publikace podle aktéra a obsahu, žádná tichá sdílená větev.** Vlastní
    tiketovou větev agent pushuje sám a vždy ohlásí; na chráněnou větev
    (`develop`, `main`, `master`, `release/*`) svým vlastním tool-callem
@@ -725,7 +847,7 @@ v [playbook.md](playbook.md).
    `sync-with-monorepo.ps1`, `revendor-superpowers.ps1` — jsou výjimkou a
    mluví anglicky jako kód kolem nich).
 
-## 8. Specifika Memory Bank tohoto repozitáře
+## 9. Specifika Memory Bank tohoto repozitáře
 
 - `memory-bank/` plní současně roli `CTX_DIR` i `PLAN_MB` — repozitář je jeden
   projekt (vrstva UMS) a práce na něm je repo-wide, takže se `Target MB Pin`

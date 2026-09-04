@@ -10,7 +10,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.12 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.13 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 4 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`, `writing-plans`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
@@ -101,7 +101,7 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 | `hooks.PreToolUse` (`Bash|PowerShell`) | `guard-git-push.mjs` — nese pravidlo podle AKTÉRA (jen vlastní tool-cally agenta, ne příkazy uživatele psané přes `!`): na rozpoznaný `git push` leans fail-CLOSED (nečitelný cíl zamítá, nečeká na vyjasnění), zamítá push agenta na chráněnou větev včetně integračního fast-forwardu, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a `--no-verify` bez kontextu; NENÍ záruka publikace — tou zůstává git `pre-push` hook (níže), který navíc vynucuje jen uvnitř agentní relace |
 | `hooks.PostToolUse` (`Write|Edit`) | `bpmn-validate.ps1` — validace BPMN v monorepu |
 | `permissions.allow` | read-only nástroje (grep, rg, cat, head, tail, ls, wc, diff, sed, find, test, echo; git status/diff/log/show/ls-files/rev-parse/branch/check-ignore/stash list/fetch/ls-remote/for-each-ref/ls-tree/cat-file/merge-base; PowerShell Get-Content/Get-ChildItem/Test-Path/Select-String) |
-| `permissions.deny` | `EnterWorktree`, `ExitWorktree`, `Bash(rm -rf:*)`, `Bash(git reset --hard:*)` |
+| `permissions.deny` | `EnterWorktree`, `ExitWorktree`, `Bash(rm -rf:*)`, `Bash(git reset --hard:*)`, `Bash(git worktree:*)`, `PowerShell(git worktree:*)`, `Bash(pool-provision.ps1:*)`, `PowerShell(pool-provision.ps1:*)` — poslední čtveřice vynucuje mechanicky, že worktree i jeho provisionaci zakládá jen uživatel (kontrakt, Worktree Policy) |
 | `skillOverrides` | `using-git-worktrees: off` |
 | `worktree.bgIsolation` | `none` |
 
@@ -186,8 +186,8 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 20 sad, dohromady
-1072 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 23 sad, dohromady
+1235 asercí:
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -196,7 +196,22 @@ v [playbook.md](playbook.md).
   + fixtures (proposal dokumenty ve starém i novém pojmenování, Jira JSON
   snapshoty, `fixtures/doc-index/*.json`).
 - [`mb-epic-elaboration/tests/`](../ums/.claude/skills/mb-epic-elaboration/tests/) —
-  `ledger-status.tests.ps1` (9) + fixtures.
+  `ledger-status.tests.ps1` (23; přibyla sekce ledgeru „## Rozjetí" — pozičně
+  parsovaná šestisloupcová tabulka řádků záměru — a její orphan případ, tiket
+  v řádku záměru bez odpovídajícího člena epiku) + fixtures (`ledger_rozjeti.md`,
+  `ledger_rozjeti_orphan.md`).
+- [`mb-epic-run/tests/`](../ums/.claude/skills/mb-epic-run/tests/) — testy
+  mechaniky poolu (`mb-epic-run`, viz [architecture.md](architecture.md),
+  sekce 6), vlastní `_assert.ps1` a fixture builder
+  `new-pool-fixture.ps1` (skutečné linked worktrees se sdíleným `.git`, ne
+  simulace): `pool-status.tests.ps1` (52; volnost jen z per-worktree signálů,
+  marker, obsazenost stubovaná `tests/stubs/claude-stub.ps1`, ledger podle
+  slugu z pinu, `-1` jako nečitelný sentinel u `dirtyCount`/`unpushedCount`),
+  `pool-launch.tests.ps1` (41; vyčištění devíti proměnných, oba adaptéry
+  proti `tests/stubs/argv-probe.ps1`/`argv-probe.cmd`, pět odmítnutých tvarů
+  promptu, stavové slovo na vlastní řádce), `pool-provision.tests.ps1` (26;
+  guard proti agentní relaci, marker, kontrola sdíleného hooku, exit 5 při
+  nepotvrzené publikační záruce).
 - [`mb-doc-index/tests/`](../ums/.claude/skills/mb-doc-index/tests/) —
   `enumeration.tests.ps1` (43; okno aktivity podle tipu větve, čerstvá větev
   se starým návrhovým commitem, uspaná větev dosažitelná přes commit společný
@@ -254,12 +269,17 @@ v [playbook.md](playbook.md).
   jako v reálném shellu, pojmenované mezery jako `bash -c` nebo git alias) a
   `sync-marker.tests.ps1` (18; `Set-AgentMarker` per harness — Codex
   `config.toml`, Gemini `.env`, Kilo Code hlásí `NotSupportedException` a
-  nezapisuje nic) a `session-intent.tests.ps1` (90; čtenář session intent
+  nezapisuje nic) a `session-intent.tests.ps1` (120; čtenář session intent
   batonu — uzavřený formát s re-renderem, branch a slug guard
   case-sensitive, existence `Plan`, věk bez tvrdé expirace, consume-on-read
   vč. replay okna mezi emisí a přejmenováním, čtyři regresní zámky
   (chybějící/prázdný soubor, zamčený soubor, cizí git repozitář) odlišené od
-  pozitivní kontroly, a shapová kontrola registrace v `settings.json`).
+  pozitivní kontroly, shapová kontrola registrace v `settings.json`, a od
+  UMS-3488 navíc `initialUserMessage` vedle `additionalContext` na happy
+  path i jeho nepřítomnost na stale cestě (A1), a `Instruction` jako povinný
+  a validovaný klíč — chybějící, nejmenující žádný skill nebo nad stropem
+  200 znaků dělá baton stale, prázdný nebo nečitelný seznam skillů je
+  fail-closed (A2)).
 
 **Upstream** — [`tests/`](../tests/) obsahuje shellové a Node.js testy
 infrastruktury pluginu po harnessech (`claude-code`, `codex`, `kimi`,

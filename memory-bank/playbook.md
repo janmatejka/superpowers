@@ -230,6 +230,43 @@ Konvence, které nová sada musí dodržet:
   na přítomnost `rm -rf` v řetězci bez ohledu na cíl. Když nástroj odmítne
   i izolované volání, fixture v OS temp adresáři je bezpečné nechat ležet
   (neovlivňuje stav repa) a úklid vynechat.
+- **Ta samá hlídka reaguje i na cíl schovaný za `$(...)` příkazovou
+  substitucí, ne jen na literální cestu** — indirekce přes proměnnou nebo
+  soubor (`rm -rf "$(cat /tmp/marker.txt)"`) nástroj neobejde.
+  Proč: izolované volání `rm -rf "$(cat /tmp/...)"` mimo repozitář bylo
+  zamítnuto stejně jako přímé `rm -rf <tmp-dir>` — nemá smysl schovávat cíl
+  za substituci, prostě nech throwaway fixturu ležet, stejně jako u
+  literální cesty výše.
+- **Než na faktu z ledgerového `Ruling:` postavíš testovací fixturu (obsah
+  adresáře, počet, členství), ověř si ten fakt STROJOVĚ v aktuálním sezení
+  (`ls`/`Get-ChildItem`) — bez ohledu na to, že ruling jako ROZHODNUTÍ je
+  závazný.** Ověřování faktu není znovuotevírání rozhodnutí; ukáže-li se
+  fakt mylný, dodrž rozhodnutí rulingu a oprav jen tu nejužší část sdílené
+  fixtury, o kterou se opíral (jeden default string v jednom helperu) — ne
+  rozšiř mechanismus na případy, pro které rozhodnutí nikdy nebylo míněno.
+  Proč: ruling tvrdil, že sesterský adresář skillů vedle hooku má 19 skillů
+  „včetně subagent-driven-development" — počet byl správný, členství ne
+  (`ums/.claude/skills` má 19 vlastních `mb-*`/`shared` položek; vendorovaný
+  skill žije jen ve sloučeném NASAZENÉM stromu, `.claude/skills`, 36
+  položek). Beze změření by to rozbilo tucet existujících baseline fixtur
+  hned po nasazení validace a ticše proměnilo několik nesouvisejících testů
+  jiných hlídek (branch/slug mismatch, escape/injection, oversize, detached
+  HEAD) v zámky nové kontroly, ne v důkaz těch původních.
+- **Fixtura s linked worktrees sdílejícími jeden `.git`, která potřebuje
+  GENUINE čistý strom pro IDLE/baseline případ, musí do základního commitu
+  před založením worktrees dostat (a) `.gitignore` pro to, co kontrakt už
+  prohlašuje za ignorované (`.superpowers/`), (b) `.gitattributes` s
+  `eol=lf` (`* text=auto eol=lf`), aby čistota nezávisela na
+  `core.autocrlf` hostitele, a (c) obsah každého trackovaného souboru, který
+  má helper reprodukovat bajt po bajtu, zapisovat `Set-Content -NoNewline`
+  (s koncovým „`n" vloženým přímo do řetězce) — v INICIÁLNÍM commitu i při
+  každém pozdějším přepisu tím helperem.**
+  Proč: bez (a) byl `.superpowers/` bez `.gitignore` untracked a „čistý"
+  strom fixtury vypadal špinavý. Bez (b)/(c) `Set-Content -Value $s` (kde
+  `$s` už končí na „`n") připojil navrch ještě HOSTITELŮV vlastní konec
+  řádku (CRLF na Windows) — přepis stejného obsahu už commitnutého,
+  git-normalizovaného (`eol=lf`) souboru pak bajtově nesouhlasil a hlásil se
+  jako modifikovaný.
 - **Kanárek testující exec bit odsunutého cizího hooku ověřuj jen tím, že
   PO instalaci vůbec existuje/byl zavolán — ne tím, že se neaktivoval dřív,
   než to udělá tvůj vlastní test krok.**
@@ -350,12 +387,24 @@ Konvence, které nová sada musí dodržet:
   chyby a bez varování. Všechny výstupy této vrstvy jsou česky, takže je to
   past, na kterou se tu naráží opakovaně. Kontroluj ji greppem přes celý
   skript, ne jen tam, kde chybu čekáš.
-- **Obal `Get-Content` do `@()`, když budeš volat `.Count` nebo indexovat.**
-  Jednořádkový soubor vrací skalární `String` a `.Count` pod
-  `Set-StrictMode -Version Latest` spadne na `PropertyNotFoundException`.
+- **Když hodnota musí být vždy kolekce, obal do `@()` CELÝ výraz, který ji
+  produkuje — nikdy jen jednotlivou větev uvnitř něj.** Platí pro
+  `Get-Content` (jednořádkový soubor vrací skalární `String`, `.Count` pod
+  `Set-StrictMode -Version Latest` spadne na `PropertyNotFoundException`)
+  i pro `if`/`else` (nebo libovolný scriptblock): piš `$x = @(if (…) { … }
+  else { @() })`, NIKDY `$x = if (…) { @(…) } else { @() }` — obal jen
+  kolem větve prázdnou pipeline nezachytí. Než tomuto tvaru důvěřuješ ve
+  skutečném skriptu, ověř ho pětiřádkovým reprodukčním testem:
+  `Set-StrictMode -Version Latest; $arr=[object[]]@(); $x = if($true){@($arr|Where-Object{$false})}else{@()}; $null -eq $x`.
   Proč: obvyklý `if ($null -eq $x) { $x = @() }` kryje jen prázdný vstup, ne
-  jednoprvkový. `@(Get-Content <prázdný soubor>)` přitom dá pole s `Count = 0`,
-  ne pole s jedním `$null` — jeden obal řeší oba okraje.
+  jednoprvkový; `@(Get-Content <prázdný soubor>)` dá pole s `Count = 0`, ne
+  pole s jedním `$null` — to řeší `Get-Content` případ. Ale
+  `$x = if (cond) { @(<možná prázdná pipeline>) } else { @() }` dá `$null`,
+  ne prázdné pole: vnitřní `@()` se rozbalí do nula pipeline objektů dřív,
+  než vnější přiřazení něco zachytí. `.Count` na výsledném `$null` pod
+  strict módem spadl přesně na tom „no pool" větvení, které měl task nejvíc
+  dokázat, a proměnil dokumentovaný exit 3 v nediagnostikovaný exit 1 bez
+  jediné diagnostické věty.
 - **`Set-Content -Encoding UTF8` v PowerShellu 7 BOM nepřidává.** Ověřeno
   bajtově. Chování se liší od Windows PowerShellu 5.1, kde stejný parametr BOM
   přidával, takže tam, kde je vyžadováno „UTF-8 bez BOM", není potřeba žádná
@@ -387,6 +436,37 @@ Konvence, které nová sada musí dodržet:
   jednou pravdivá a podruhé ne — assertion texty byly reálně stripnuté na
   ASCII (`znacky`, `puvodni`, `prezila`…), což odhalil až grep na UTF-8
   diakritické bajty, který vrátil nulu.
+- **Asercie tvaru `(?m)^slovo$` proti textu zachycenému přes `2>&1 |
+  Out-String` (nebo jakýkoli capture-and-rejoin helper) potřebuje na
+  Windows `(?m)^slovo\r?$` — oprav to v regexu SADY, ne ve sdíleném capture
+  helperu.**
+  Proč: měřeno (`[regex]::IsMatch("launched`r`nfoo", "(?m)^launched$")` →
+  `False`) — PowerShell zachytí stdout nativního procesu po řádcích
+  s terminátorem už odstraněným, ale `Out-String` řádky ZASE SPOJÍ přes
+  `[Environment]::NewLine` (CRLF na Windows), a .NET vícořádkový `$` kotví
+  jen před holým `\n`, nikdy před `\r\n`. Je to artefakt capture-and-rejoin
+  tohoto helperu, ne vlastnost reálného stdout streamu skriptu — sdílený
+  helper na něm stojí i v jiných zelených sadách, které přesnou shodu na
+  konci řádku nikdy nepotřebovaly.
+- **Do `[pscustomobject]@{...}` literálu zahrň VŠECHNA pole, která bude
+  objekt někdy potřebovat, hned při konstrukci.** Pozdější přidání pole,
+  které při konstrukci chybělo (`$payload.cwd = …`), NENÍ jako přiřazení do
+  existujícího pole — potřebuje `Add-Member -NotePropertyName X
+  -NotePropertyValue Y`. Mutace hodnoty typu hashtable přes indexer
+  (`$payload.env[$n] = …`) tímto postižena není, protože mutuje vnitřní
+  hashtable, ne členy vnějšího pscustomobjectu.
+  Proč: `$o = [pscustomobject]@{a=1}; $o.c = 2` vyhodí
+  `SetValueInvocationException` („The property 'c' cannot be found on this
+  object"), ale výjimka je v tomto kontextu NEterminující — skript doběhl,
+  JSON se zapsal, pole jen tiše chybělo. Žádný pád, žádný vizuální příznak
+  kromě `$null` přečteného později.
+- **Obsah `.cmd`/`.bat` souborů — včetně komentářů `REM` — drž ve strojové
+  ASCII.** Dekódování aktivní codepage `cmd.exe` nad non-ASCII bajty uvnitř
+  batch souboru není spolehlivé ani v komentářovém řádku.
+  Proč: `REM` komentář s pomlčkou en/em dash rozbil parsování nesouvisejících
+  řádků NÍŽ v souboru (`'m' is not recognized as an internal or external
+  command`), reprodukovatelně, a zmizelo to úplně až po odstranění
+  veškerých non-ASCII bajtů ze souboru.
 - **Pod `Set-StrictMode -Version Latest` nevěř tomu, že úspěšný
   `ConvertFrom-Json` znamená objekt s vlastnostmi.** JSON dovoluje kořenové
   `null`, skalár i pole a všechny prolezou parserem beze chyby — `try/catch`
@@ -563,6 +643,21 @@ Konvence, které nová sada musí dodržet:
   develop` (skutečný push, guard musí zamítat), zatímco `./fakegit > push2
   origin develop` dalo `argv: origin develop` (žádný push) — rozdíl mezi
   nimi je jeden znak a bez sondy vypadají jako tentýž tvar.
+- **`Start-Process -ArgumentList` s tabulkovým (array) argumentem NEuvozuje
+  prvky obsahující mezery — na rozdíl od nativního volání `& $exe @array`.**
+  Než mu předáš pole, jehož prvek může nést mezeru (třeba víceslovný
+  prompt), změř to skriptem, který si vypíše vlastní `argv`; nikdy
+  nepředpokládej, že se chová jako `&`. Potřebuje-li prvek mezery, postav
+  pro `Start-Process` SAMOSTATNÉ pole s tím prvkem obaleným v doslovné
+  dvojici uvozovek (`'"' + $value + '"'`) — nikdy ho nedávej do sdíleného
+  pole, které se používá i pro nativní volání `&`, jinak se stejná cesta
+  uvozuje dvakrát.
+  Proč: měřeno proti reálnému `pwsh.exe` cíli — pole předané
+  `Start-Process -ArgumentList` se spojí do příkazové řádky potomka BEZ
+  uvozování, takže prvek s mezerou se na straně potomka rozpadne na jedno
+  slovo na mezeru, přestože stejné pole předané `& $exe @array` dorazí jako
+  jeden argument správně. Reprodukuje se i přes `.cmd` shim s `%*`, jakmile
+  je shim sám spuštěný přes `Start-Process`.
 - **Když má tokenizer nově rozpoznat shellový konstrukt uvnitř invokace,
   zjisti nejdřív, co s ním dělá SKUTEČNÝ shell: odstraní ho z argument listu
   (přesměrování, přiřazení), nebo ukončí příkaz (`;`, roura, `&&`)?**
@@ -879,6 +974,21 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   frázi s velkým počátečním písmenem (`Publication guarantee self-check`)
   — bez case-insensitive dokontroly by to vypadalo jako chyba revendoru,
   přestože overlay byl aplikován správně a šlo jen o casing v briefu.
+- **Grepová kontrola přítomnosti fráze v próze (Markdown, overlay fragment,
+  text kontraktu), která se může tvrdě zalomit, potřebuje před nahlášením
+  anchor-miss/nulového zásahu i variantu se ZTIŠTĚNÝM veškerým whitespace,
+  ne jen s nahrazenými novými řádky** — `tr -s '[:space:]' ' ' < soubor |
+  grep -o '<fráze>' | wc -l`. Prosté `tr '\n' ' '` nestačí: nahradí nový
+  řádek přesně jednou mezerou, ale odsazení pokračovacího řádku (typicky
+  dvě mezery) v textu zůstane a hledaný vzor čeká jednu mezeru, ne tři.
+  Proč: fráze `first-publication rule` existovala potřetí v souboru, ale
+  Markdown ji tvrdě zalomil přesně mezi dvěma slovy a odsazení pokračovacího
+  řádku dopadlo mezi ně — neviditelné pro jednořádkový grep (jiný důvod než
+  casing výše) a stále neviditelné i po `tr '\n' ' '`. Je to druhá,
+  nezávislá třída falešné příčiny vedle case-sensitivity — jedna schová
+  shodu hláskováním, druhá vloženým zalomením plus odsazením přímo doprostřed
+  fráze — a obě patří do sekvence dřív, než se anchor-miss nebo nulový
+  zásah nahlásí jako reálný.
 - **Regenerace nasazených (i monorepo) vendorovaných skillů po změně
   fragmentu bez upstream bumpu = plný jednoprůchodový revendor s pinovaným
   tagem (`revendor-superpowers.ps1 -Tag <pin>`), ne `-OverlaysOnly`.**
@@ -908,6 +1018,25 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   vlastní pořadí pro tutéž operaci a jen jeden byl prověřen; a `git rm -f`
   vyžadovaný kontraktem pro playbook-candidate soubor by bez jmenované
   výjimky přímo odporoval hlavičce `mb-harvest`.
+- **`allowed-tools` v hlavičce skillu RESTRINGUJE dostupné nástroje — než
+  přebereš navržený seznam pro nový skill, vypiš si napřed VŠECHNY nástroje,
+  které skill vlastními kroky používá** (i ty, ke kterým se dostane přes
+  jiný skill — `mb-git-commit` potřebuje `git add`/`git commit`, publikace
+  `git push`, jakýkoli zápis do ledgeru nebo dokumentu `Edit`) — a porovnej
+  seznam proti tomuto inventáři DŘÍV, než ho porovnáš proti próze zadání.
+  Seznam zúžený na POSTOJ skillu vůči CIZÍM workspace („read-only git vůči
+  slotům poolu") není totéž jako seznam, který kryje i vlastní zápisy
+  skillu doma; kde se ta dvě čtení pole rozcházejí o to, jestli skill vůbec
+  proběhne, řekni to v reportu, nerozšiřuj ani nenasazuj seznam mlčky.
+  Proč: briefovaný seznam pro `mb-epic-run` vynechal `Edit` a každé
+  git-zápisové sloveso, přestože krok 3 operace `spawn` edituje ledger,
+  commitne ho a publikuje větev — pod restringujícím výkladem pole by
+  centrální operace skillu nemohla běžet vůbec. Sémantika pole byla v této
+  vrstvě dřív bez precedentu (nikde v repozitáři, vendorované skilly
+  nevyjímaje — `grep -rl 'allowed-tools' --include=SKILL.md .` nulový
+  zásah); referenční dokumentace skillů v tomto stroji ji ale uvádí
+  jednoznačně jako „Restrict tool access", takže restringující výklad je
+  ten správný.
 - **Rys, který je git-faktem (tracked/foreign/published), testuj git
   příkazem nebo porovnáním CESTY — nikdy čtením obsahu souboru.** Derivovaný
   stav „nic k udělání", který gatuje krok sahající na git-IGNOROVANOU cestu,

@@ -48,7 +48,7 @@ reprodukovaný, žádný neblokuje provoz.
    s overlay bloky) je s `ums/.claude/` v souladu — obnovuje ji poslední
    úloha každého plánu. Monorepo je samostatná živá kopie a za `ums/.claude/`
    zaostává o celou publikační vrstvu (marker gate, pravidlo obsahu,
-   `MB_HUMAN_PUSH`, chaining cizího hooku, kontrakt v2.12): nástroj je
+   `MB_HUMAN_PUSH`, chaining cizího hooku, kontrakt v2.13): nástroj je
    `pwsh ums/sync-with-monorepo.ps1` a poté revendor v monorepu
    (`-NoOverlays` → `-OverlaysOnly`, postup v [playbook.md](playbook.md),
    sekce „Upgrade upstreamu"). Po nasazení znovu spustit
