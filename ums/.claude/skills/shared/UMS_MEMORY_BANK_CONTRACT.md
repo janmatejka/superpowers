@@ -2033,8 +2033,9 @@ requirement. Sessions outside any Memory Bank workflow are unaffected.
 ## Worktree Policy
 
 **Default: total ban.** Git worktrees must not be created by an agent in this
-monorepo. Enforced by: `permissions.deny` on `EnterWorktree`/`ExitWorktree`,
-`skillOverrides: using-git-worktrees: off`, and the CLAUDE.md ban. The
+monorepo. Enforced by: `permissions.deny` on `EnterWorktree`/`ExitWorktree`
+and `Bash(git worktree:*)`, `skillOverrides: using-git-worktrees: off`, and
+the CLAUDE.md ban. The
 superpowers isolation step resolves to **branch-in-place**: create a feature
 branch in the existing working directory (never work on main/master without
 explicit user consent).
@@ -2052,9 +2053,10 @@ across many tickets and hosts at most one session. The layer looks at it as a
 FOUND workspace — Workspace Discipline, the entry gate, `mb-park` /
 `mb-harvest` / `mb-abort`, the Publication Contract and the cross-clone
 collision check all apply to it unchanged. Agent-created worktrees stay
-banned; provisioning a slot is an operator action (`pool-provision.ps1`,
-which refuses to run under an agent-session marker without an explicit
-operator switch).
+banned; provisioning a slot is an operator action, forbidden mechanically as
+well as in prose: `permissions.deny` blocks `PowerShell(pool-provision.ps1:*)`
+outright, and the script itself (`pool-provision.ps1`) also refuses to run
+under an agent-session marker without an explicit operator switch.
 
 An idle slot is detached, or stands on a branch whose name equals the slot
 directory's name — but **IDLE is decided by the pin and never by a branch

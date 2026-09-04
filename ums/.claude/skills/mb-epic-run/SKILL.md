@@ -44,8 +44,10 @@ These are not style. Each one closes a measured failure.
    `pool-launch.ps1` returns `unavailable`; report it and stop.
 7. **Occupancy `unknown` is not free.** Without the harness signal, spawn only
    on the operator's explicit instruction, never on your own judgement.
-8. **Never provision a slot.** `pool-provision.ps1` is the operator's; it
-   refuses to run under an agent-session marker anyway.
+8. **Never provision a slot.** `pool-provision.ps1` is the operator's, and
+   provisioning is forbidden mechanically as well as in prose (contract,
+   Worktree Policy): `permissions.deny` blocks the script outright, and it
+   also refuses to run under an agent-session marker anyway.
 9. **Decide on `free`, never on a null pin.** In the JSON `pin == null` means
    IDLE — per the contract, "Active Work" for what IDLE is in `context.md`
    and "Worktree Policy" for the rule that IDLE is decided by the pin and

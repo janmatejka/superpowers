@@ -21,7 +21,17 @@ Superpowers skilly řídí workflow; Memory Bank je dokumentová vrstva. Tyto pr
 
 V tomto monorepu se **nesmí používat git worktree** — ani přes `EnterWorktree`/`ExitWorktree` (zablokováno v [.claude/settings.json](.claude/settings.json)), ani volbou `isolation: "worktree"` u nástrojů Agent nebo Workflow. Tuto volbu u těchto nástrojů nikdy nevybírej, i když by se pro paralelní/izolovanou práci jinak nabízela.
 
-Důvod: měřením — klon monorepa má 25 GB, z toho `.git` 4,1 GB; linked worktree sdílí jen `.git`, takže by ušetřil 16 % místa, což nevyváží náklad dalšího stromu, jeho build výstupů a instalace hooků. Izolace se řeší volbou workspace, kterou dělá uživatel (odrážka Práce na více tiketech). Pracuj přímo v existujícím pracovním adresáři — místo worktree vytvoř feature větev přímo v pracovním adresáři (branch-in-place), než začneš commitovat návrh či implementaci.
+Důvod: zákaz nestojí na disku — dřívější měření, které to tvrdilo, bylo
+vyvráceno (kontrakt, sekce **Worktree Policy**): linked worktree ušetří
+zhruba 70 %, ne 16 %, protože rozdíl je hlavně naakumulovaný build output, ne
+zdrojový strom (slot 7,7 GB, sdílený `.git` 4,4 GB, hlavní klon 27,2 GB).
+Zákaz stojí na modelu — jedna session na workspace a žádný workspace, který
+si session provizovala sama; jedinou výjimkou je pool slot, který založí
+a označí uživatel (kontrakt, tamtéž). Izolace se jinak řeší volbou workspace,
+kterou dělá uživatel (odrážka Práce na více tiketech). Pracuj přímo
+v existujícím pracovním adresáři — místo worktree vytvoř feature větev přímo
+v pracovním adresáři (branch-in-place), než začneš commitovat návrh či
+implementaci.
 
 ## WF engine (KicWorkflow) — BPMN a elementy
 
