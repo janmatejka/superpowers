@@ -85,17 +85,48 @@ git (`HEAD` v bloku i v gitu `02c293e91`) a — to je ta podstatná část —
 mezi přečtením výsledku subagenta a dispatchem dalšího. Dotaz „stojíš, nebo
 čekáš?" tím odpadl; blok bez ptaní řekl „čekám na report Tasku 5".
 
-**Poctivé hranice té evidence, tak jak je `ums01` samo vyjmenovalo:**
+**Opravná vlna: blok SÁM O SOBĚ ji nepřežil, blok S PRAVIDLEM ano.** Naměřeno
+u `ums01` 4. 9. 2026 kolem 15:15, a je to nejdůležitější výsledek celé této
+části. Blok převzalo druhé sezení od prvního a hned prošlo opravnou vlnou —
+a **zaostalo**, přesně jednou a přesně na predikovaném místě: vlna se vrátila,
+sezení dispatchlo scoped re-review a **teprve pak** blok přepsalo. To je právě
+to pořadí, které hlavička bloku zakazuje.
 
-- blok byl v době měření asi dvacet minut starý — **dva doklady, ne dvacet**;
-- **neprošel opravnou vlnou ani `mb-jira-update`/sklizní**, což jsou nejhustší
-  místa na kroky, tedy nejpravděpodobnější místa zastarání;
-- **žádný cizí čtenář ho zatím nezdědil** — a to je jeho hlavní účel. Autorem
-  pravidla i bloku je totéž sezení, které pravidlo předtím dvakrát porušilo.
+**Příčina ale nebyla v bloku.** Sezení si vzalo **artefakt bez pravidla, které
+ho drží pravdivý** — zkopírovalo tvar, ale ne tu větu o skládání dispatche z
+bloku. Vlastní diagnóza toho sezení: *„vzala jsem si nástroj bez disciplíny,
+která ho drží pravdivý."* Po doplnění pravidla blok při dvou nezávislých
+čteních seděl, včetně stavu „čekám na verdikt re-review".
 
-Z třetí odrážky plyne návrhové rozhodnutí: **množina položek bloku se volí pro
-cizího čtenáře**, ne pro autora. Test cizím čtenářem je ten, na kterém záleží,
-a je **neproveden** — patří do verifikace, ne do předpokladů.
+Z toho plyne návrhové rozhodnutí, které je pro tuto část zásadní: **strukturální
+spoušť není ozdoba popisu bloku — je to ta část.** Kdyby se do skillu dostal jen
+popis bloku a pravidlo zůstalo v poznámce pod čarou, **reprodukuje se přesně to
+selhání, které bylo právě naměřeno.** Blok a jeho pravidlo se nesmí dát převzít
+odděleně.
+
+**Hranice fáze naopak přežil.** Blok prvního sezení prošel fetchem, mergem
+báze, přeměřením baseline, posouzením průniku cest a dispatchem dalšího tasku —
+a byl aktuální. A při dvou `idle` řekl orchestrátorovi bez ptaní, jestli sezení
+stojí, nebo čeká na subagenta; jednou stálo, podruhé čekalo a v obou případech
+orchestrátor jednal správně napoprvé. **Předtím se musel ptát a ze čtyř odhadů
+byly všechny čtyři špatné.**
+
+**Kdo je skutečný adresát bloku — oprava původního zadání.** První verze tohoto
+návrhu psala, že se položky volí „pro cizího čtenáře". To je **špatně**, a
+opravilo to jedno z těch sezení: **cizí čtenář ten ledger nikdy neuvidí**,
+protože SDD workspace se na konci maže a nikdy se necommituje. Skutečným
+adresátem je **vlastní nástupkyně po pádu sezení** — a to sezení vzniklo přesně
+takhle, jeho předchůdkyně umřela uprostřed tasku. Formulace tedy je:
+
+> Množina položek bloku se volí **pro nástupce, který nemá tvůj kontext.**
+
+Je to užší, konkrétnější a v poolu s krátkou životností sezení je to ten
+skutečný případ. (Doplnění: mazání workspace je upstreamový default, který se
+dá vědomě přebít — v této session přebit byl, protože ledger nesl rozhodnutí,
+jež nikde jinde neexistují. Cizí čtenář tedy není nemožný, jen není ten hlavní.)
+
+**Co zůstává netestované:** sklizeň. Ani jedno sezení jí zatím neprošlo, obě
+jsou těsně před ní. `ums01` slíbilo výsledek poslat samo.
 
 ### 2. Protokol zpráv
 
@@ -358,6 +389,8 @@ zkouškou. **Uživatel rozhodl, že to NENÍ závazné kritérium tohoto návrhu
 je to tedy zapsaná evidence a doporučení, ne brána. Kde pravidlo spoušť nemá,
 stojí za to to přiznat.
 
+**Artefakt putuje, pravidlo ne — a je to naměřené.** Druhé sezení si vzalo blok `NOW` bez věty, která ho drží pravdivý, a blok okamžitě zaostal. Je to obecnější riziko než blok sám: kdykoli se z tohoto návrhu do skillu dostane TVAR (blok, značka pokyn/domněnka, výčet nezávislé práce) a jeho vynucující pravidlo zůstane vedle, převezme se jen tvar. Konkrétní důsledek pro plán: pravidlo patří do TÉHOŽ odstavce jako artefakt, ne do sousedního.
+
 **Unikátnost orchestrátora stojí na třech mechanismech, z nichž jeden je díra.**
 Git exkluzivita pokrývá pool, `mb-doc-index` pokrývá klony, a **dvě sezení v
 témže worktree nepokrývá nic než sebekontrola, kterou tento návrh zavádí** —
@@ -379,34 +412,40 @@ padá s ním celá bezpečnost epikové integrační větve.
    poolu stray interaktivní sezení, které uživatel nezadal, a to je přesně ten
    druh nepořádku, který pak někdo hodinu vyšetřuje. Správný úsudek, ne
    vynechání.
-2. **Blok `NOW` čtený cizím čtenářem.** Sezení, které blok nepsalo, se z něj
-   musí zorientovat na jedno přečtení — a to je ten test, na kterém záleží.
-   Neproveden.
-3. **Blok `NOW` v opravné vlně a ve sklizni.** Dvě nejhustší místa na kroky;
-   změřit, jestli tam zastará.
-4. **Rozpor bloku a `git log`.** Umělý rozpor musí být detekovatelný pravidlem
+2. **Blok `NOW` čtený nástupcem po pádu sezení.** Sezení, které blok nepsalo a
+   nemá kontext svého předchůdce, se z něj musí zorientovat na jedno přečtení.
+   **Částečně provedeno a s výsledkem:** převzetí druhým sezením proběhlo a
+   fungovalo — ale až po doplnění pravidla, viz bod 3.
+3. **Blok `NOW` v opravné vlně — PROVEDENO, a výsledek je podmíněný.** Blok bez
+   pravidla vlnu **nepřežil** (re-review dispatchnuto dřív než přepis bloku);
+   blok s pravidlem ano. Test se tedy neptá „přežije blok", ale **„dá se blok
+   převzít odděleně od pravidla?"** — a odpověď je, že nesmí. Negativně: převzetí
+   jen tvaru bez věty o skládání dispatche musí selhat, a selhalo.
+4. **Blok `NOW` ve sklizni.** Poslední z hustých míst; **netestováno**, obě
+   měřená sezení jsou těsně před ní.
+5. **Rozpor bloku a `git log`.** Umělý rozpor musí být detekovatelný pravidlem
    „blok je špatně", ne mlčky přehlédnutý.
-5. **Odmítnutí domněnky.** Agent, který dostane značenou domněnku a odmítne ji,
+6. **Odmítnutí domněnky.** Agent, který dostane značenou domněnku a odmítne ji,
    nesmí ji zapsat do ledgeru jako fakt — a odmítnutí nesmí být hlášeno jako
    konflikt.
-6. **Relay timing negativně.** Zpráva poslaná příjemci, který podle měněné
+7. **Relay timing negativně.** Zpráva poslaná příjemci, který podle měněné
    premisy právě nejedná, se má zadržet na hranici; test na to, že se
    nezadržuje ta, u které příjemce na spadnutí je.
-7. **Přeblokování.** Otázka pro člověka musí být doprovázená výčtem toho, co na
+8. **Přeblokování.** Otázka pro člověka musí být doprovázená výčtem toho, co na
    odpovědi nezávisí — a to nezávislé se má opravdu udělat, ne jen vyjmenovat.
-8. **Integrace do epikové větve.** Agent integruje sám při epikové bázi a
+9. **Integrace do epikové větve.** Agent integruje sám při epikové bázi a
    předává příkaz při hlavní; negativně: hlavní integrační větev se agentem
    nepushne ani omylem.
-9. **Epiková větev bez epiku** je nález `mb-epic-graph`, ne mlčení.
-10. **Unikátnost — git tier.** Fixtura se dvěma worktreei jednoho `.git`: druhý
+10. **Epiková větev bez epiku** je nález `mb-epic-graph`, ne mlčení.
+11. **Unikátnost — git tier.** Fixtura se dvěma worktreei jednoho `.git`: druhý
     checkout téže elaborační větve musí git odmítnout. Tohle je důkaz, že se na
     tu záruku smí spoléhat, ne že ji stavíme.
-11. **Unikátnost — sebekontrola.** Stub `claude agents --json --cwd <vlastní
+12. **Unikátnost — sebekontrola.** Stub `claude agents --json --cwd <vlastní
     cesta>` vrátí **dva** záznamy s `pid` → zapisující operace je STOP; jeden
     záznam → projde; nečitelný výstup → `unknown`, a `unknown` **není** „jsem
     sám". Negativně: odstranění sebekontroly musí ten dvouzáznamový případ
     zčervenat.
-12. **Unikátnost — čtecí operace neuzamčené.** `status` a `attach` musí projít i
+13. **Unikátnost — čtecí operace neuzamčené.** `status` a `attach` musí projít i
     tehdy, když sebekontrola najde druhé sezení; blokovat je by bylo omezení bez
     zisku.
 
