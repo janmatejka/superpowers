@@ -187,12 +187,27 @@ Blok navíc **jednou zavedl**: tvrdil běžící závěrečné review několik h
 poté, co se vrátilo se čtyřmi nálezy třídy Critical. Za dva dny jediný případ,
 ale právě ten nejdražší.
 
-**`--name` a jména peerů — dál NEOVĚŘENO, ale je nová indicie.** V tomto sezení
-`ListAgents` vypisuje peery jako `ums01-39`, `ums02-76`, `ums04-0b` a vlastní
-sezení jako `superpowers-5b` — tedy tvar `<jméno adresáře>-<sufix>` u všech
-čtyř. To odpovídá domněnce, že `--name` peer jméno nenastavuje, ale
-**nedokazuje ji**, protože není ověřené, že ta sezení byla spuštěná s `--name`.
-Test zůstává ve Verifikaci a adresování zpráv se na `--name` nestaví.
+**`--name` peer jméno NASTAVUJE — změřeno 7. 9. 2026, a je to opak toho, co
+tvrdil předchozí draft.** Sezení `ums01` test provedlo: `claude -n
+SKODASMS-999-NAMETEST -p "…"` na pozadí, a druhé sezení uvidělo v `ListAgents`
+peera pod tím jménem místo obvyklého tvaru `<jméno adresáře>-<sufix>`.
+Neinteraktivní běh sám skončil, takže v poolu nezůstalo stray sezení — přesně
+ta námitka, kvůli které se test předtím odmítl provést.
+
+Za pozornost stojí i to, **proč byl původní závěr špatný**: opíral se o to, že
+`claude --help` popisuje `-n, --name` jako display name pro prompt box,
+`/resume` picker a titulek terminálu, a `ListAgents` v tom výčtu není.
+**Nepřítomnost v neúplném výčtu se vzala jako popření.** Je to táž třída chyby,
+jakou tenhle návrh loví jinde: dokumentace neříká „a nic jiného", jen mlčí.
+
+Dvě věci ten test **neukázal** a jsou ve Verifikaci: jestli jméno přežije
+`--resume`, a co se stane při **kolizi dvou sezení téhož jména** — což je pro
+pool reálný případ (jeden tiket, dva pokusy o slot). Doručení na holé jméno
+tehdy podle dokumentace `SendMessage` vyžaduje rozlišení odkazem.
+
+Vedlejší pozorování z téhož běhu, které stojí za doměření, kdyby na něm někdo
+chtěl stavět: **položka `-p` běhu se v seznamu ukázala jako `interactive`**,
+takže ten sloupec nerozlišuje režim spuštění tak, jak by se dalo čekat.
 
 ## Technický návrh
 
@@ -446,6 +461,19 @@ je to poprvé kontrolovatelné, ne otázka ohleduplnosti), a **nepoužívat
 sezení. Správný tvar je **jeden živý odběr na peera, obnovený teprve poté, co
 sepne.**
 
+**Adresování je kód tiketu, a je to změřené.** `pool-launch.ps1` už dnes
+spouští sezení s `--name <TIKET>` a `mb-epic-run spawn` na tom staví
+mechanické ověření spuštění (`claude agents --json --cwd <slot>`). Teď je
+doložené, že totéž jméno je i **peer jméno v `ListAgents`** — takže adresa
+zprávy a důkaz spuštění **splývají** a správce oslovuje sezení kódem tiketu,
+ne dohledáváním podle adresáře. Předchozí draft to zakazoval jako
+neověřený předpoklad; ten předpoklad byl mezitím změřen a je opačný.
+
+Dvě hranice, které z toho plynou a nejsou změřené: **jméno po `--resume`** a
+**kolize dvou sezení téhož jména** (jeden tiket, dva pokusy o slot). Obojí je
+ve Verifikaci; do té doby platí, že adresování kódem tiketu je pohodlí, ne
+záruka doručení — správce si po neúspěšném doručení peera dohledá jako dnes.
+
 ### 7. Viditelnost — blok `NOW`
 
 Sezení ve slotu drží v hlavě svého SDD ledgeru blok se šesti položkami:
@@ -571,6 +599,7 @@ správce do slotu nezapisuje nic.
 | Příčina je domněnka, hranice smí být pokyn | Stejný příznak měl za jedno odpoledne dvě příčiny; doručené vysvětlení by druhé sezení poslalo špatným směrem. |
 | Blok `NOW` ohraničený strojově | Textová kotva trefila sama sebe hodinu po zavedení pravidla. |
 | Přepis bloku = smaž a rekonstruuj | v1–v5 byly formulace a všechny se porušily; z prázdna se nedá připisovat. |
+| Adresování zpráv kódem tiketu | Změřeno 7. 9. 2026, že `--name` nastavuje i peer jméno v `ListAgents` — adresa zprávy a důkaz spuštění tím splývají. Draft to zakazoval na základě neúplného výčtu v nápovědě, což byl nezměřený předpoklad, ne nález. |
 | Autonomie je routing eskalací, ne dvě osy | Rozhodnutí uživatele a odpovídá měření: „kdy" a „kolik zastavit" jsou pravidla, adresát je volba. |
 | Jira „Test" při integraci do epikové linie | Rozhodnutí uživatele. |
 | Kontrola IDLE je krok, ne nástroj | `mb-state` ten invariant má a mlčel, protože ho nikdo nespustil. |
@@ -701,10 +730,14 @@ oslabil, padá s ním celá bezpečnost epikové linie.
     úrovni *Dohled* k člověku a při *Sdílené* ke správci; dno se nezvedne
     žádnou úrovní.
 17. **Epiková linie bez epiku** je nález `mb-epic-graph`, ne mlčení.
-18. **Test `--name` — třicet sekund.** Spustit `claude -n SKODASMS-999`
-    a z jiného sezení zavolat `ListAgents`. Objeví-li se peer pod tím jménem
-    místo tvaru `<adresář>-<sufix>`, `--name` peer jméno nastavuje. Test patří
-    tam, kde nezůstane stray sezení v poolu.
+18. **Adresa přežije `--resume`.** Sezení spuštěné s `--name <TIKET>` a poté
+    obnovené musí být v `ListAgents` pořád pod tímtéž jménem; jinak se adresa
+    po pádu sezení ztrácí a správce musí peera dohledávat podle adresáře.
+    (Vlastní existence jména je už změřená, viz Evidence — netestuje se znovu.)
+19. **Kolize jmen v poolu.** Dvě sezení téhož `--name` (jeden tiket, dva pokusy
+    o slot): musí být poznatelná a doručení na holé jméno se nesmí tiše trefit
+    do jednoho z nich. Fail-closed odpověď je „rozliš odkazem", ne náhodný
+    příjemce.
 
 ## Pořadí úloh (návrh, ne plán)
 
