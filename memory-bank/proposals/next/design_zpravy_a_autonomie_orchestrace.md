@@ -3,8 +3,77 @@
 - **Jira:** (bez tiketu)
 - **Target MB:** memory-bank/
 - **Vytvořeno:** 2026-09-04
-- **Stav:** předběžný — čeká ve frontě, neaktivovaný
+- **Stav:** ⛔ **PŘEKONANÝ ještě před aktivací** — neaktivovat, viz blok níž
 - **Evidence:** praxe sezení `ums01` z 3. a 4. 9. 2026, které řídí epik SKODASMS-237 přes tři tiketová sezení **bez skillu**; jeho odpovědi jsou v této session a všechna čísla níž jsou „co se stalo", ne „co by mělo fungovat"
+
+## ⛔ PŘEKONÁNO — čti dřív než cokoli jiného
+
+**Tento draft neaktivuj a nestav podle jeho struktury.** 6. 9. 2026 uživatel
+vyslovil **topologii a role**, které tenhle návrh tiše předpokládal, aniž by je
+kdy pojmenoval — a na té úrovni brainstorming nikdy neproběhl. Návrh je tím
+překonaný jako **skelet**, ne jako evidence.
+
+### Model, který ho překonává (uživatel, 6. 9. 2026)
+
+1. **Epik má vlastní větev** — hlavní integrační linii po dobu vývoje epiku — a
+   právě jednoho agenta, **správce epiku**.
+2. **Do epikové větve zapisuje (merguje, pushuje) pouze správce epiku.** Ostatní
+   agenti ne.
+3. **Každý tiket epiku může mít jednoho agenta.** Tiketové větve se odštěpují
+   z epikové větve.
+4. Tiketový agent zapisuje do své větve a **during work i při dokončení do ní
+   merguje epikovou větev**, aby se synchronizoval s prací na epiku.
+5. **Správce posílá agentům pokyny**; obvyklým pokynem je „integruj si epikovou
+   větev".
+6. Když tiketový agent epikovou větev integroval **včetně ověření (kompilace,
+   testy)**, pošle zprávu správci. Ten provede **fast-forward epikové větve** a
+   případně informuje ostatní tiketové agenty, aby se ve vhodnou chvíli
+   synchronizovali.
+
+### Proč je ten model silnější než tento návrh
+
+- **Protokol si sám vyrábí předpoklad fast-forwardu.** Ověření běží u tiketového
+  agenta na sloučeném stromě, takže akce správce **nenese žádný nový obsah a
+  nemůže vyrobit konflikt**. Riziko je tam, kde je kontext.
+- **To je zároveň nejlepší argument pro agentní push do epikové větve**: ten push
+  je prokazatelně bezobsažný. U hlavních integračních větví to neplatí, a proto
+  tam zůstává člověk.
+- **Jediný zapisovatel řeší unikátnost strukturou**, ne sebekontrolou. Sekce
+  „Unikátnost orchestrátora epiku" níž tím klesá z nosníku na pojistku.
+- **Serializace integrací řeší i sémantický konflikt dvou zeleně ověřených
+  tiketů**: po integraci A dostane B pokyn resynchronizovat, takže integrace B
+  se ověřuje proti epiku *už s A*.
+
+### Co z tohoto návrhu PŘEŽÍVÁ (naměřené, na topologii nezávislé)
+
+- Nejednoznačné `idle` slévá „stojím" a „čekám na subagenta" — **čtyři chybné
+  závěry za jeden den**.
+- **Blok `NOW` a jeho výsledek z opravné vlny**: sám o sobě ji nepřežil, s
+  pravidlem ano — a příčinou bylo převzetí **artefaktu bez pravidla, které ho
+  drží pravdivý**. Adresátem je **nástupce bez tvého kontextu**, ne cizí čtenář.
+- **Zpráva neškodí přerušením, škodí autoritou zapsanou do ledgeru** → značení
+  *pokyn* / *domněnka* a právo domněnku odmítnout.
+- **Relay timing**: okamžitě jen tehdy, když příjemce právě jedná podle premisy,
+  kterou to mění. Rozhoduje bezprostřednost, ne důležitost.
+- **Autonomie má dvě osy** — „kdy zastavit" a „kolik zastavit" (přeblokování).
+- `--name` peer jméno pravděpodobně nenastavuje; **neověřeno**, test je ve
+  Verifikaci.
+
+### Co z něj NEPŘEŽÍVÁ
+
+Sekce „Epiková integrační větev" (byla postavená jako *kategorie oprávnění*,
+ne jako topologie) a „Unikátnost orchestrátora epiku" (self-check jako nosník).
+Obojí model výše nahrazuje lépe.
+
+### Tři věci, které model neříká a brainstorming je musí dořešit
+
+1. **Kudy epiková větev odchází** — epik → `develop` a že tenhle push je
+   člověka. Bez toho se ztrácí důvod, proč je agentní zápis do epikové větve
+   bezpečný.
+2. **Co když ověření u tiketového agenta selže** — čí je to problém, hlásí se
+   hned, nebo se opravuje mlčky?
+3. V bodě 4 měl uživatel překlep („merguje tiketovou větev") — myšlena je
+   **epiková**; bod 6 to potvrzuje. Zapsáno už opravené.
 
 ## Cíl
 
