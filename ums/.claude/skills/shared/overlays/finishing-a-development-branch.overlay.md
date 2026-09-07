@@ -30,8 +30,9 @@ After the user chooses and BEFORE executing the choice:
   resulting Memory Bank changes on this branch (Czech commit message) and push the
   ticket branch — the publication rule holds here as everywhere: the agent pushes
   its own ticket branch after every commit, announcing the branch and the outgoing
-  commits. Then execute the chosen option. For Option 1 the harvest is step 2 of
-  the integration sequence below, so a base sync precedes it.
+  commits. Then execute the chosen option. For Option 1 the harvest is the
+  **Harvest** phase of the integration sequence below, so the **Base sync** phase
+  precedes it.
   For a **bounded** work item (contract, "Brainstorming Paths") a missing
   plan half in `active/` is the EXPECTED shape — the harvest reports it and
   archives the design (its documented warning path); it is not unfinished
@@ -51,62 +52,142 @@ After the user chooses and BEFORE executing the choice:
   ```
 
   `$base.Ref` is `<effective base>` everywhere below, and `$base.Branch` is the
-  push destination of step 5 — take it from the helper, never derive it in your
-  head. Do NOT execute the upstream Option 1 block: no `git checkout
-  <base-branch>`, no `git pull`, no local merge, no `git branch -d`. The sequence
-  instead, per the contract's Publication Contract, subsection "Integration":
-  1. BEFORE the harvest, base sync at this phase boundary: `git fetch origin`,
-     then `git merge <effective base>` on the ticket branch, with the intersection
-     assessment and verification of the contract's "Base Sync & Drift Detection"
-     section.
-  2. Run the harvest above, commit its Memory Bank changes and push the ticket
-     branch.
-  3. `git fetch origin` and `git merge <effective base>` once more — the base may
-     have moved while the harvest ran — and push.
-  4. Green verification on the merged tree (build and the targeted tests of the
-     playbook). Red = STOP and report. The ticket branch is already on `origin`
-     (steps 2 and 3 each pushed it), so what is still untouched is **the base
-     ref** — nothing red has reached it. Do not try to un-publish the ticket
-     branch: force push is forbidden, and a red ticket branch on `origin` is
-     normal, visible work in progress. Fix forward with further commits.
-  5. Ask (Czech) „Integrovat větev do `$($base.Branch)` pushem?" and hand the user
-     the exact command with the outgoing commits enumerated:
-     `! git push origin HEAD:$($base.Branch)`, with
-     `$($base.Branch)` expanded to its value in both the question and the command.
-     The refspec form
-     is deliberate: integration pushes the ticket branch onto the base ref.
-  6. Re-verify reachability **from the base ref**: `git fetch origin`, then
-     `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the commit is
-     NOT on the base). Naming the base is the whole point: steps 2 and 3 already
-     pushed this commit to the ticket branch on `origin`, so a bare
-     `git branch -r --contains <sha>` reports that ticket branch, comes back
-     non-empty and would pass while the base has none of the code — the branch would
-     then be closed as integrated after a base push the user never ran or that was
-     rejected as non-fast-forward. Without a Jira ticket this is the ONLY gate;
-     `mb-jira-update`'s equivalent check never runs. A non-zero exit is a STOP:
-     report it in Czech and go back to step 5.
+  destination branch of the **Handoff** phase — take it from the helper, never
+  derive it in your head. Do NOT execute the upstream Option 1 block: no
+  `git checkout <base-branch>`, no `git pull`, no local merge, no
+  `git branch -d`. The sequence instead, per the contract's Publication
+  Contract, subsection "Integration" — **one procedure whatever the effective
+  base is**; refer to its phases by these names, never by number:
 
-  Step 3 is what makes the push a **fast-forward** — the ticket branch is a
-  descendant of `<effective base>`. The ticket branch left behind on `origin` is
-  **not deleted**; deleting a branch through a push stays forbidden, and the
-  document index keys by phase, so an integrated ticket no longer counts as
-  active work.
+  - **Base sync** (BEFORE the harvest, a phase boundary): `git fetch origin`,
+    then `git merge <effective base>` on the ticket branch, with the intersection
+    assessment and verification of the contract's "Base Sync & Drift Detection"
+    section.
+  - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
+    the ticket branch.
+  - **Base re-sync.** `git fetch origin` and `git merge <effective base>` once
+    more — the base may have moved while the harvest ran — and push.
+  - **Green verification** on the merged tree (build and the targeted tests of
+    the playbook). Red = STOP and report. The ticket branch is already on
+    `origin` (the **Harvest** and **Base re-sync** phases each pushed it), so
+    what is still untouched is **the base ref** — nothing red has reached it. Do
+    not try to un-publish the ticket branch: force push is forbidden, and a red
+    ticket branch on `origin` is normal, visible work in progress. Fix forward
+    with further commits.
+  - **Handoff gate.** The contract's three checks, run as ONE mechanical check
+    (never as items you tick off) on the commit about to be handed over:
+
+    ```powershell
+    . <mb-shared>/scripts/Test-UmsHandoffGate.ps1
+    $gate = Test-UmsHandoffGate -RepoRoot (git rev-parse --show-toplevel) `
+        -Sha (git rev-parse HEAD) -BaseRef $base.Ref
+    ```
+
+    Pass `-BaseRef $base.Ref` **explicitly**: with the parameter omitted the
+    script falls back to the raw `baseRef` configuration key, which is not the
+    effective base, so on an epic line or a maintenance branch the gate would
+    measure against the wrong base. The script fetches `origin` itself, prints
+    nothing and mutates nothing; the reporting is yours and it is Czech.
+
+    `$gate.Ok` false is a **STOP**. Report in Czech and name the failed check
+    from `$gate.Blocking` together with its `Detail` from `$gate.Checks` — the
+    remedy differs per name and a generic "brána selhala" hides it:
+    - `ancestor` — the commit is not a descendant of the freshly fetched base.
+      The remedy is a **return to the Base re-sync phase**, NOT a retry of the
+      push: retrying hands over the same commit and it bounces again.
+    - `active-pin` — the `context.md` of that commit is still ACTIVE, so the
+      harvest did not complete. Go back to the **Harvest** phase.
+    - `context-missing` / `context-unreadable` — STOP and report; never read
+      either as IDLE.
+    - `unpublished` — the commit is on no remote branch yet; push the ticket
+      branch (publication rule) and re-run the gate.
+
+    Only with `$gate.Ok` true does the **Handoff** phase begin.
+  - **Handoff.** Build ONE **handoff artifact** first, then render it. The
+    artifact carries exactly four things: the destination branch
+    (`$base.Branch`), the `<sha>` being handed over, the **enumerated** outgoing
+    commits, and the gate's verification commands quoted **verbatim with their
+    output** — so "ověřeno" is a claim the reader can compare, not an assurance.
+
+    Both renderings are built from that SAME artifact, and a **single
+    condition** picks between them: does `$base.Branch` match
+    `epicBranchPattern` from `<CTX_DIR>/ums-repo.json`? Read it mechanically,
+    never from memory of the topology:
+
+    ```powershell
+    . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
+    $cfg = Get-UmsRepoConfig (git rev-parse --show-toplevel)
+    ```
+
+    A missing, empty or non-string `$cfg.EpicBranchPattern` means **no epic
+    line** — never "every branch" (contract, Repository Configuration, "The
+    epic line") — and therefore the user rendering. The condition picks a
+    rendering, nothing else: every phase above and below runs identically in
+    both cases.
+    - **The base does NOT match** (no manager) → ask (Czech)
+      „Integrovat větev do `$($base.Branch)` pushem?" and hand the user the
+      exact command with the outgoing commits enumerated:
+      `! git push origin HEAD:$($base.Branch)`, with `$($base.Branch)` expanded
+      to its value in both the question and the command. The refspec form is
+      deliberate: integration pushes the ticket branch onto the base ref.
+    - **The base DOES match** (there is a manager) → the artifact is rendered as
+      a **message to the epic's manager**, the session holding the epic's
+      elaboration branch, who performs the fast-forward under the actor-rule
+      exception. The message carries the artifact and nothing else: destination
+      branch, `<sha>`, the enumerated outgoing commits, and the verification
+      commands with their output. Its exact wire protocol is the epic
+      orchestration's (`mb-epic-run`, integration mode) — do not invent one
+      here. **This session does not end its turn on a push**; it waits for the
+      manager's answer and continues with the **Confirmation** phase once the
+      manager reports the fast-forward landed.
+
+    On the matching base the session therefore does **NOT** do what the
+    non-matching rendering does, and saying so is the point: it does not ask the
+    user „Integrovat větev … pushem?", it does not hand over a
+    `! git push origin HEAD:<baseBranch>` command for the user to run, and it
+    does not treat handing that command over as the end of its work. Conversely,
+    on a non-matching base it sends no message to any manager. Exactly one
+    rendering happens — never both, never neither.
+  - **Confirmation.** Re-verify reachability **from the base ref** after the
+    push landed, whoever ran it: `git fetch origin`, then
+    `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the
+    commit is NOT on the base). Naming the base is the whole point: the
+    **Harvest** and **Base re-sync** phases already pushed this commit to the
+    ticket branch on `origin`, so a bare `git branch -r --contains <sha>`
+    reports that ticket branch, comes back non-empty and would pass while the
+    base has none of the code — the branch would then be closed as integrated
+    after a base push the user never ran, the manager never performed, or that
+    was rejected as non-fast-forward. Without a Jira ticket this is the ONLY
+    gate; `mb-jira-update`'s equivalent check never runs. A non-zero exit is a
+    STOP: report it in Czech and go back to the **Handoff** phase.
+
+  The **Base re-sync** phase is what makes the push a **fast-forward** — the
+  ticket branch is a descendant of `<effective base>`. The ticket branch left
+  behind on `origin` is **not deleted**; deleting a branch through a push stays
+  forbidden, and the document index keys by phase, so an integrated ticket no
+  longer counts as active work.
 - **The agent never pushes a shared branch and never sets `MB_HUMAN_PUSH`
-  itself** — the command handed over is the plain `! git push origin
-  HEAD:<baseBranch>` because a fast-forward whose tip is already reachable
-  from this clone's `refs/remotes/<remote>/*` is allowed by the `pre-push`
-  guard without any escape; if that push is instead rejected as non-fast-forward,
-  it is the human, not the agent, who decides whether to set `MB_HUMAN_PUSH=1`
-  and rerun it. Do NOT substitute `--no-verify`: it is a bypass of the guarantee,
-  not a way to publish, and it disables every hook in the repository.
+  itself** — the command handed over in the user rendering is the plain
+  `! git push origin HEAD:<baseBranch>` because a fast-forward whose tip is
+  already reachable from this clone's `refs/remotes/<remote>/*` is allowed by
+  the `pre-push` guard without any escape; if that push is instead rejected as
+  non-fast-forward, it is the human, not the agent, who decides whether to set
+  `MB_HUMAN_PUSH=1` and rerun it. Do NOT substitute `--no-verify`: it is a
+  bypass of the guarantee, not a way to publish, and it disables every hook in
+  the repository. On an epic line the fast-forward belongs to the epic's
+  manager under the actor-rule exception (contract, "The epic line") — still
+  never to this session.
 - **A push rejected as non-fast-forward** means the base moved while the sequence
-  ran: repeat from step 3 (`fetch`). **At most two failed rounds** — after the
-  second, STOP and report to the user instead of racing the base indefinitely.
+  ran: repeat from the **Base re-sync** phase (`fetch`). **At most two failed
+  rounds** — after the second, STOP and report to the user instead of racing the
+  base indefinitely.
 - **After a verified fast-forward push into the base ref** — reachability
-  re-verified in step 6 — and with a Jira ticket linked: invoke `mb-jira-update`
-  in **finalization mode**; after publishing the Czech summary comment it
+  re-verified in the **Confirmation** phase — and with a Jira ticket linked:
+  invoke `mb-jira-update` in **finalization mode**; after publishing the Czech
+  summary comment it
   transitions the ticket directly to "Test" (skipping "Review") and clears the
-  Flagged field if present. Until the commit is reachable on `origin`,
+  Flagged field if present. This runs in THIS ticket session on the ticket's own
+  branch, whoever performed the push. Until the commit is reachable on `origin`,
   finalization stops at its publication gate and the ticket does NOT move to
   „Test". Options 2 and 3 never change the ticket status.
 - **The discard path** ("If your human partner asks to discard the work") →
@@ -128,8 +209,9 @@ After the user chooses and BEFORE executing the choice:
   non-recoverable, and the agent never deletes non-recoverable content (contract,
   "Workspace Discipline"). And because every earlier commit was pushed, `origin`
   still carries this branch with an ACTIVE pin and the pair still in `active/`
-  until step 2 lands: `mb-doc-index` enumerates with declared intent over `origin`
-  and would keep reporting `KOLIZE AKTIVNÍ PRÁCE` (exit 2) for this ticket
+  until the commit-and-push of that move lands: `mb-doc-index` enumerates with
+  declared intent over `origin` and would keep reporting `KOLIZE AKTIVNÍ PRÁCE`
+  (exit 2) for this ticket
   indefinitely, blocking any later attempt to pin it. The exemption for an
   integrated branch does not help here — the index keys by phase, and `abandoned/`
   is not an active phase, which is exactly why the abandon move must reach
