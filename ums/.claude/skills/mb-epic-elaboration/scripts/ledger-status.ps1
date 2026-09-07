@@ -43,7 +43,7 @@ $lines = Get-Content -LiteralPath $LedgerFile
 # fail-closed error naming the path, not a silent fallback.
 $ledgerParserLoader = Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsEpicLedger.ps1'
 if (-not (Test-Path -LiteralPath $ledgerParserLoader -PathType Leaf)) {
-    Write-Error "Sdílený parser ledgeru chybí: $ledgerParserLoader"
+    Write-Error "Shared ledger parser not found: $ledgerParserLoader"
     exit 1
 }
 . $ledgerParserLoader

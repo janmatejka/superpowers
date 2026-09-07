@@ -69,10 +69,10 @@ Set-StrictMode -Version Latest
 
 # Cross-directory dot-source of the shared ledger parser. Mandatory, not
 # optional: this gate cannot function without it, so a missing file is a
-# fail-closed error naming the path, not a silent fallback (same idiom as
-# mb-epic-elaboration/scripts/ledger-status.ps1 — but that script's error
-# text is Czech, a known defect; this one is English, like every other
-# Write-Error/throw in this layer's scripts).
+# fail-closed error naming the path, not a silent fallback (same idiom, and
+# now the same English error text, as
+# mb-epic-elaboration/scripts/ledger-status.ps1 — layer scripts are
+# developer tooling and speak English, contract "Language Contract").
 $ledgerParserLoader = Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsEpicLedger.ps1'
 if (-not (Test-Path -LiteralPath $ledgerParserLoader -PathType Leaf)) {
     throw "Shared ledger parser not found: $ledgerParserLoader"

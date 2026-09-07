@@ -1,5 +1,6 @@
 #Requires -Version 7
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_assert.ps1')
 
 # This suite exercises the shared parser functions (Get-UmsEpicLedger.ps1)
