@@ -632,6 +632,14 @@ was recorded in the epic's ledger as prose, and it did not compile against what
 the other ticket had written — a parameter too many, a different parameter
 order, the wrong arity — caught only by chance, not by any mechanism.
 
+**The stub is authored on a ticket branch, like any other work, and reaches
+the epic line by the same fast-forward as everything else** — the manager
+performs that push but never authors the stub. Whose branch: the ticket that
+owns the interface, or, where neither owns it, one created for it during
+elaboration. "Committed before either implements against it" is therefore an
+ordering claim about the queue, not a licence to write the stub directly onto
+the epic line.
+
 **It belongs in `protectedBranches`**, so the invariant above — an integration
 branch is always a protected branch — holds for it literally, and both
 enforcement layers resolve its protection by their usual routes.
