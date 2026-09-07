@@ -441,9 +441,14 @@ zero and more than one match are each a STOP.
   check is the reason the fast-forward belongs to a manager at all; a
   contradiction is a STOP that goes back to the ticket session with what it
   contradicts.
-- **Handoff gate re-run.** The contract's three universal checks again, against
-  the freshly fetched tip: time passed between the handoff and this moment and
-  the base may have moved. Dot-source the shared script and pass `-BaseRef`
+- **Handoff gate re-run.** The three checks that depend on the freshly
+  fetched tip — `ancestor`, the context check and `unpublished` — run again,
+  against the freshly fetched tip: time passed between the handoff and this
+  moment and the base may have moved. **`verification-set` is deliberately
+  NOT re-run here**: the citation is a property of the artifact, not of the
+  tip, so it cannot have changed since the handoff — a citation contradicting
+  the epic's evidence is what the **Cross-cutting judgement check** above
+  already exists to catch. Dot-source the shared script and pass `-BaseRef`
   **explicitly** — omitted, it falls back to the raw `baseRef` configuration
   key, which on an epic line is not the effective base:
 
