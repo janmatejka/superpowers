@@ -6,6 +6,9 @@ function Assert-True([bool] $cond, [string] $msg) {
     $script:Total++
     if ($cond) { Write-Host "  ok  : $msg" } else { Write-Host "  FAIL: $msg"; $script:Failures++ }
 }
+function Assert-Match([string] $text, [string] $pattern, [string] $msg) {
+    Assert-True ([bool]([regex]::IsMatch($text, $pattern))) "$msg  [/$pattern/]"
+}
 function Assert-Eq($actual, $expected, [string] $msg) {
     Assert-True ($actual -eq $expected) "$msg  (got '$actual', want '$expected')"
 }
