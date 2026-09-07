@@ -4,11 +4,17 @@ Read-only status report over an epic evidence ledger (ledger.md) maintained by
 the mb-epic-elaboration skill.
 
 .DESCRIPTION
-Parses the ledger's Markdown tables (Položky, Tikety, Okna, Dirty-set), prints
-a Czech summary (item counts by state, per-ticket rollup cross-check, open
-windows, unresolved dirty rows) and suggests the next window per the window
-selection rule (dirty first, then leverage). Writes nothing; never touches
-Jira or git.
+Parses the ledger's Markdown tables (Položky, Tikety, Okna, Dirty-set,
+Rozjetí, Registr rozhodnutí) and its one fenced block (Ověřovací sada),
+prints a Czech summary (item counts by state, per-ticket rollup cross-check,
+open windows, unresolved dirty rows, the declared verification set, the
+decision registry) and suggests the next window per the window selection
+rule (dirty first, then leverage). Writes nothing; never touches Jira or
+git.
+
+The Markdown/fenced-block parsing itself lives in the shared
+Get-UmsEpicLedger.ps1 (ums/.claude/skills/shared/scripts/), because this
+script's ledger shape is consumed by more than this one skill.
 
 .PARAMETER LedgerFile
 Path to the ledger.md instantiated from ledger-template.md.
@@ -30,34 +36,27 @@ $script:ExitCode = 0
 if (-not (Test-Path -LiteralPath $LedgerFile)) { Write-Error "Ledger not found: $LedgerFile"; exit 1 }
 $lines = Get-Content -LiteralPath $LedgerFile
 
-function Get-SectionTable([string[]] $allLines, [string] $heading) {
-    # Returns rows (string[][]) of the first Markdown table after '## <heading>'.
-    $rows = @()
-    $inSection = $false; $inTable = $false; $headerSkipped = $false
-    foreach ($ln in $allLines) {
-        if ($ln -match '^##\s+(.*)$') {
-            if ($inSection) { break }
-            $inSection = ($Matches[1].Trim() -like "$heading*")
-            continue
-        }
-        if (-not $inSection) { continue }
-        if ($ln -match '^\s*\|') {
-            if (-not $inTable) { $inTable = $true; continue }            # header row
-            if (-not $headerSkipped) { $headerSkipped = $true; continue } # |---| row
-            $cells = @(($ln.Trim() -replace '^\||\|$', '') -split '\|' | ForEach-Object { $_.Trim() })
-            $rows += , $cells
-        } elseif ($inTable) { break }
-    }
-    return , $rows
+# Cross-directory dot-source of the shared ledger parser. Unlike the
+# optional-dependency loader idiom elsewhere in this layer (e.g.
+# mb-epic-run/scripts/pool-provision.ps1), this dependency is NOT optional:
+# the report cannot be produced without it, so a missing file is a clean
+# fail-closed error naming the path, not a silent fallback.
+$ledgerParserLoader = Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsEpicLedger.ps1'
+if (-not (Test-Path -LiteralPath $ledgerParserLoader -PathType Leaf)) {
+    Write-Error "Sdílený parser ledgeru chybí: $ledgerParserLoader"
+    exit 1
 }
+. $ledgerParserLoader
 
-$items   = Get-SectionTable $lines 'Položky'
-$tickets = Get-SectionTable $lines 'Členové'
+$items   = Get-UmsLedgerSectionTable $lines 'Položky'
+$tickets = Get-UmsLedgerSectionTable $lines 'Členové'
 $memberHeading = 'Členové'
-if (@($tickets).Count -eq 0) { $tickets = Get-SectionTable $lines 'Tikety'; $memberHeading = 'Tikety' }
-$windows = Get-SectionTable $lines 'Okna'
-$dirty   = Get-SectionTable $lines 'Dirty-set'
-$spawns  = Get-SectionTable $lines 'Rozjetí'
+if (@($tickets).Count -eq 0) { $tickets = Get-UmsLedgerSectionTable $lines 'Tikety'; $memberHeading = 'Tikety' }
+$windows = Get-UmsLedgerSectionTable $lines 'Okna'
+$dirty   = Get-UmsLedgerSectionTable $lines 'Dirty-set'
+$spawns  = Get-UmsLedgerSectionTable $lines 'Rozjetí'
+$verificationSet  = Get-UmsLedgerVerificationSet -LedgerPath $LedgerFile
+$decisionRegistry = Get-UmsLedgerDecisionRegistry -LedgerPath $LedgerFile
 
 $items   = @($items   | Where-Object { $_.Count -ge 4 -and $_[0] -and $_[0] -notmatch '^<' })
 $tickets = @($tickets | Where-Object { $_.Count -ge 2 -and $_[0] -and $_[0] -notmatch '^<' })
@@ -144,6 +143,17 @@ if ($spawns.Count -eq 0) { Write-Output '- žádné' }
 foreach ($s in $spawns) {
     $trap = if ($s.Count -ge 6 -and $s[5]) { " — pasti: $($s[5])" } else { '' }
     Write-Output ("- {0} ({1}): {2}, slot {3}{4}" -f $s[0], $s[1], $s[3], $s[2], $trap)
+}
+Write-Output ''
+Write-Output "## Ověřovací sada ($($verificationSet.Count))"
+if ($verificationSet.Count -eq 0) { Write-Output '- žádná (sada není deklarována)' }
+foreach ($cmd in $verificationSet) { Write-Output "- $cmd" }
+Write-Output ''
+Write-Output "## Registr rozhodnutí ($($decisionRegistry.Count))"
+if ($decisionRegistry.Count -eq 0) { Write-Output '- žádný' }
+foreach ($d in $decisionRegistry) {
+    $ack = if ([string]::IsNullOrWhiteSpace($d.AckSha)) { 'nepotvrzeno' } else { $d.AckSha }
+    Write-Output ("- {0} (vlastník {1}, předpokládá o {2}, {3}, {4}, potvrzeno: {5})" -f $d.Decision, $d.Owner, $d.AssumesAbout, $d.Kind, $d.State, $ack)
 }
 Write-Output ''
 if ($issuesFound.Count -gt 0) {
