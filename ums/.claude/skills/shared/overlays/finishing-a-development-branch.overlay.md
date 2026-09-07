@@ -96,7 +96,8 @@ After the user chooses and BEFORE executing the choice:
       The remedy is a **return to the Base re-sync phase**, NOT a retry of the
       push: retrying hands over the same commit and it bounces again.
     - `active-pin` — the `context.md` of that commit is still ACTIVE, so the
-      harvest did not complete. Go back to the **Harvest** phase.
+      harvest did not complete. STOP, report (Czech) which check blocked, then
+      return to the **Harvest** phase.
     - `context-missing` / `context-unreadable` — STOP and report; never read
       either as IDLE.
     - `unpublished` — the commit is on no remote branch yet; push the ticket
@@ -106,8 +107,12 @@ After the user chooses and BEFORE executing the choice:
   - **Handoff.** Build ONE **handoff artifact** first, then render it. The
     artifact carries exactly four things: the destination branch
     (`$base.Branch`), the `<sha>` being handed over, the **enumerated** outgoing
-    commits, and the gate's verification commands quoted **verbatim with their
-    output** — so "ověřeno" is a claim the reader can compare, not an assurance.
+    commits, and the verification commands of the **Green verification** phase
+    (the build and the targeted tests) quoted **verbatim with their output**.
+    The gate's own result may be reported alongside, but it is not that field:
+    `Test-UmsHandoffGate` returns `Name`/`Passed`/`Detail` and no command text
+    or command output at all, so a `$gate.Checks` detail string is never a
+    substitute for the verification evidence.
 
     Both renderings are built from that SAME artifact, and a **single
     condition** picks between them: does `$base.Branch` match
