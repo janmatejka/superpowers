@@ -1801,9 +1801,14 @@ asks which of them the base is, except the single condition of the Handoff phase
      umbrellas the work: an epic's own ledger
      (`memory-bank/epics/<epic_key_snake>/ledger.md`, section "Ověřovací
      sada") for a ticket that belongs to one — declared once for the whole
-     epic so every ticket measures the identical thing — the work item's own
-     plan otherwise. This is not an epic peculiarity; work outside an epic
-     declares a set too, just with the plan as its home instead of a ledger.
+     epic so every ticket measures the identical thing — **the work item's own
+     plan otherwise, under that SAME heading, `## Ověřovací sada`, in the SAME
+     shape**: a verbatim list of commands, one per line. This is not an epic
+     peculiarity; work outside an epic declares a set too, just with the plan
+     as its home instead of a ledger. A plan written before this rule existed
+     declares its set the same way any plan does — by gaining that section —
+     and until it does, the missing-set case below is fail-closed exactly as
+     stated, no differently for an old plan than for a new one.
      The comparison is TEXTUAL, not semantic: equal strings in equal order,
      never normalized and never reordered, because the entire point is that
      two measurements of "green" are measuring the identical thing. The check

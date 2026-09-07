@@ -89,10 +89,13 @@ After the user chooses and BEFORE executing the choice:
     A missing, empty or non-string `$cfg.EpicBranchPattern` means **no epic
     line** — never "every branch" (contract, Repository Configuration, "The
     epic line"). Use the SAME test — does `$base.Branch` match
-    `$cfg.EpicBranchPattern`? — to resolve the **declared verification set**
-    before calling the gate: the gate itself does not resolve this (contract,
+    `$cfg.EpicBranchPattern`? — to know where the **declared verification
+    set** comes from: the gate itself does not resolve this (contract,
     Publication Contract, "Integration") — it only compares what it is
-    handed, so finding the set's home is this step's job, not the gate's:
+    handed, so finding the set's home is this step's job, not the gate's.
+    The epic branch below reads it fresh, right here; the non-epic branch
+    cannot — read that branch's own timing note before assuming both work
+    the same way:
     - **The base matches** (a ticket that belongs to an epic) → the set lives
       in the epic's own ledger, declared once for the whole epic so every one
       of its tickets measures the identical thing:
@@ -107,8 +110,22 @@ After the user chooses and BEFORE executing the choice:
       lower-cased, with `-` turned to `_` — the same convention `mb-epic-run`
       uses for the ledger's directory name.
     - **The base does NOT match** (no epic) → the set lives in the work
-      item's own plan; read it from there, verbatim, the same list the
-      **Green verification** phase just ran.
+      item's own plan, under its own `## Ověřovací sada` heading — the SAME
+      heading and shape as the epic ledger's, so the SAME reader applies:
+
+      ```powershell
+      $verificationSet = Get-UmsLedgerVerificationSet `
+          -LedgerPath <PLAN_MB>/proposals/active/plan_<slug>.md
+      ```
+
+      **Read this BEFORE the Harvest phase runs, not here.** The **Harvest**
+      phase deletes `plan_<slug>.md` as part of `mb-harvest`, so by the time
+      this Handoff gate phase is reached the file this branch names may
+      already be gone — unlike the epic ledger, which belongs to the epic
+      line, not to this ticket's own document pair, and survives this
+      ticket's own harvest untouched. Capture `$verificationSet` once, at or
+      before the **Sync** phase, and reuse that captured value here; never
+      re-read it fresh at this point.
 
     Either way, finding **no declared set at all** — no such section in the
     ledger, or nothing declared in the plan — is itself a fail-closed **STOP**

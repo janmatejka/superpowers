@@ -26,6 +26,16 @@
   `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
   `Claude-Session: https://claude.ai/code/session_01WrUC7GqxzYNuzEyuC9EhJP`
 
+## Ověřovací sada
+
+Doslovný výčet příkazů, jeden na řádek. Co sada je a jak ji brána předání
+porovnává s citací v artefaktu předání, popisuje kontrakt, sekce
+„Integration" (Publication Contract).
+
+```
+for t in $(find ums -name "*.tests.ps1" | sort); do echo "== $t"; pwsh -NoProfile -File "$t" || echo "FAILED: $t"; done
+```
+
 ---
 
 ## Jak se plán vykonává — tři fáze, každá v čistém kontextu

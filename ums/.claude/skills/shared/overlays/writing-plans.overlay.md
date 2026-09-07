@@ -5,6 +5,10 @@
 <!-- ASSERT: **2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
+**The plan file itself carries a `## Ověřovací sada` section**, per the
+contract's Publication Contract, section "Integration" — add it before
+presenting the options below.
+
 **3. Fresh Session** (recommended for larger plans, or when the design
 discussion ran long) - I write a session intent baton and stop; you type
 `/clear`, and the next session starts on the plan with none of this
