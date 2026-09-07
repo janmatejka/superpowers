@@ -96,4 +96,9 @@ Assert-Match $rb.Out '## Rozjetí \(2\)' 'the four-cell row is dropped by the ro
 # UMS-5003 is still a MEMBER, so it appears in the members list; what must
 # not appear is a Rozjetí line for it.
 Assert-NotMatch $rb.Out 'UMS-5003.*rozjeto' 'a spawn row too short to carry the Autonomie column is not rendered at all'
+# ...but it is never dropped in SILENCE. A vanished row would read as "no such
+# spawn ever happened" to the successor session that reconstructs state from
+# this report, so the filter and a named inconsistency go together.
+Assert-Match $rb.Out 'Řádek rozjetí «UMS-5003» nemá dost sloupců' 'a row the filter removed is still reported by name'
+Assert-Match $rb.Out 'UMS-5003.*nalezeno: 4, potřeba nejméně 6' 'and the message says how many cells it found and how many are needed'
 Complete-Tests

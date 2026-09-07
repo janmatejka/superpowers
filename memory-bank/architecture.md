@@ -749,10 +749,10 @@ třetí druh pro tento účel. Místo toho: `pool-launch.ps1` spustí sezení
 s krátkým, jednořádkovým, zauvozovkovaným promptem na argv (co dělat, který
 tiket, která větev, kde číst zbytek) a `mb-epic-run spawn` zapíše **jeden
 řádek** do sekce `## Rozjetí` ledgeru epiku (`memory-bank/epics/<epic_snake>/ledger.md`,
-šest poziční sloupců: `Tiket`, `Datum`, `Slot`, `Verdikt`, `Draft (větev +
-cesta)`, `Pasti`), commitne a pushne na elaborační větvi — do pracovního
-stromu slotu se nezapisuje nic. Sezení ve slotu si zbytek (rozsah, blokátory,
-umístění draftu) najde samo v commitnutých dokumentech.
+sedm pozičních sloupců: `Tiket`, `Datum`, `Slot`, `Verdikt`, `Draft (větev +
+cesta)`, `Autonomie`, `Pasti`), commitne a pushne na elaborační větvi — do
+pracovního stromu slotu se nezapisuje nic. Sezení ve slotu si zbytek (rozsah,
+blokátory, umístění draftu) najde samo v commitnutých dokumentech.
 
 **Launcher čistí zděděné prostředí a ověřuje spuštění strojově.**
 `pool-launch.ps1` před spuštěním odebere devět proměnných zděděných od

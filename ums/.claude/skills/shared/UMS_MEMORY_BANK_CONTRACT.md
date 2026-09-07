@@ -2709,17 +2709,31 @@ artifact that does not exist.
 **The quantity an operator DOES set is who decides which KIND of escalation.**
 The list has three bands, and two of them are fixed.
 
-**Every kind below has an artifact form, and that form is a row with a state
-in a ledger.** The requirement is `## Message Protocol`'s — that the design of
-an escalation band has an artifact form — and this is where it is discharged.
-Concretely: inside an epic the kind stands as a row of the epic's evidence
-ledger — an item row of `## Položky` with its owner and its state, the
-ticket's `## Rozjetí` row, or a `## Registr rozhodnutí` row where the question
-is another ticket's behaviour; inside a plan's execution it stands in the SDD
-progress ledger, as the open question while it is held and as a `Ruling:` line
-once it is answered, with the `NOW` block carrying the WAIT. A kind escalated
-in a message and in no row has no addressee at all on a harness without
-messaging, and this layer uses no messaging tool anywhere today.
+**Every kind below has an artifact form, and the form differs by band because
+what the escalation DOES differs.** The requirement is `## Message Protocol`'s —
+that the design of an escalation band has an artifact form — and this is where
+it is discharged, for all three bands.
+
+- **For the two bands where somebody else decides while the work goes on, the
+  form is a row with a state in a ledger.** Inside an epic that is a row of the
+  epic's evidence ledger — an item row of `## Položky` with its owner and its
+  state, the ticket's `## Rozjetí` row, or a `## Registr rozhodnutí` row where
+  the question is another ticket's behaviour. Inside a plan's execution it is
+  the SDD progress ledger: the open question while it is held, a `Ruling:` line
+  once it is answered, and the `NOW` block carrying the WAIT. A state that
+  outlives the turn is exactly what these two bands need, because a stranger
+  must be able to pick the question up.
+- **For the floor the form is the STOP itself and the report that names it**,
+  and a row would be the wrong artifact rather than a missing one: these kinds
+  are refusals to proceed, so there is no continuing work to carry a state
+  about — what a reader needs is that the session STOPPED and why. Where the
+  work is a plan in execution, the wait is additionally the `NOW` block's
+  `waiting-for-human`, by the naming rule above. Fail-Closed Behavior owns the
+  STOPs themselves; this band owns only the answer to "who is asked".
+
+A kind escalated in a message and in neither form has no addressee at all on a
+harness without messaging, and this layer uses no messaging tool anywhere
+today.
 
 **The floor — always a human, and no autonomy level moves it off one**
 
@@ -2733,7 +2747,7 @@ messaging, and this layer uses no messaging tool anywhere today.
 
 **The floor is not a new set of stops.** Its rows are already covered by
 Fail-Closed Behavior and by the stop classes that section maps this layer onto;
-what the three bands add is who owns the kinds that are NOT stops.
+what this table adds is only that no autonomy level touches them.
 
 **The last row is not distrust**, and saying so matters because it reads as
 distrust otherwise: the threat model of "The epic line" is mistake and not

@@ -69,7 +69,12 @@ $dirty   = @($dirty   | Where-Object { $_.Count -ge 3 -and $_[0] })
 # and dropping it here is what keeps its old Pasti prose from being rendered
 # as a slot or a verdict. A SIX-cell leftover still passes this filter and is
 # caught loudly below, by the closed-vocabulary check on cell 5.
-$spawns  = @($spawns  | Where-Object { $_.Count -ge 6 -and $_[0] -and $_[0] -notmatch '^<' })
+# The un-filtered rows are kept, because a row this filter removes must still
+# be REPORTED: a spawn row that vanishes without a word is the one behaviour
+# this report must never have — it is the machine reader a successor uses to
+# reconstruct state, and silence there reads as "no such spawn ever happened".
+$spawnsRaw = @($spawns  | Where-Object { $_.Count -ge 1 -and $_[0] -and $_[0] -notmatch '^<' })
+$spawns    = @($spawnsRaw | Where-Object { $_.Count -ge 6 })
 
 $issuesFound = @()   # inconsistency messages
 
@@ -96,6 +101,11 @@ foreach ($ln in $lines) {
 if ($autonomyDeclared -match '^<') { $autonomyDeclared = '' }   # unfilled template placeholder
 if ($autonomyDeclared -and $autonomyLevels -notcontains $autonomyDeclared) {
     $issuesFound += "Epik deklaruje neznámou úroveň autonomie «$autonomyDeclared» — povolené jsou dohled, sdílená, delegovaná."
+}
+# Rows the seven-column filter removed: reported by name, never dropped in
+# silence. Read from $spawnsRaw for exactly that reason.
+foreach ($s in @($spawnsRaw | Where-Object { $_.Count -lt 6 })) {
+    $issuesFound += "Řádek rozjetí «$($s[0])» nemá dost sloupců (nalezeno: $($s.Count), potřeba nejméně 6 ze sedmi) — do přehledu Rozjetí se nedostal. Doplň chybějící sloupce, poslední dva jsou Autonomie a Pasti."
 }
 foreach ($s in $spawns) {
     # The Count guard is redundant while the row filter above stands at >= 6,
