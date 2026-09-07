@@ -683,7 +683,7 @@ flowchart LR
 | `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. Framing okna čte i poznámky zpětného toku z návrhů (dirty řádky `návrh <slug>`, `notes.md`). Uzávěrka okna (fáze 7, Close) po publikaci nabízí pool přes `mb-epic-run`. | ručně |
 | `mb-epic-graph` | Graf závislostí epiku z Jira linků nebo z hlaviček návrhů, plus orákulum konzistence text ↔ linky a `-IndexFile` findings o cizích větvích. Read-only skript. | z `mb-epic-elaboration`, nebo ručně |
 | `mb-doc-index` | Read-only index MB dokumentů napříč větvemi `origin` (model tahu); kolizní findings pro discovery, elaboraci i `mb-state`. | z brainstormingu (discovery), z `mb-epic-elaboration`, z `mb-state`, nebo ručně |
-| `mb-epic-run` | Mechanika poolu (sekce 6): derivovaný stav slotů, obě orákula připravenosti na jednom místě (`ready`), spuštění sezení na tiket do volného slotu se strojovým ověřením (`spawn`), dohledání slotu, který tiket drží (`attach`). Read-only vůči slotům; jediný trackovaný zápis je řádek záměru v ledgeru epiku na elaborační větvi. | z uzávěrky `mb-epic-elaboration` (nabídka), nebo ručně |
+| `mb-epic-run` | Mechanika poolu (sekce 6): derivovaný stav slotů, obě orákula připravenosti na jednom místě (`ready`), spuštění sezení na tiket do volného slotu se strojovým ověřením (`spawn`), dohledání slotu, který tiket drží (`attach`), a strana správce při předání tiketu (`integrate` — dvě epikové kontroly a fast-forward do epikové linie). Read-only vůči slotům; trackované zápisy jsou řádky v ledgeru epiku na elaborační větvi (záměr `spawn`, poznámka o integraci). | z uzávěrky `mb-epic-elaboration` (nabídka), z předání tiketového sezení, nebo ručně |
 | `mb-migrate-docs` | Migruje Memory Banky v zadaném rozsahu na aktuální sadu dokumentů — sloučí `product.md` do `brief.md`, přejmenuje `tasks.md` na `playbook.md`, přepíše relativní odkazy; MB s `KONFLIKT PLAYBOOKU` (`tasks.md` i `playbook.md` současně) přeskočí a nahlásí. | ručně, pro repozitáře ve starém tvaru |
 | `mb-plan`, `mb-act` | Deprecated stuby v1 — jen přesměrují na Superpowers workflow. | zpětná kompatibilita |
 
@@ -775,19 +775,22 @@ harnessu** (`claude agents --json --cwd <slot>` s přítomným jménem `--name
 vypnutém transcriptu, celý prompt v prvním vstupu) zůstávají záložní
 kontrolou, ne jedinou.
 
-**Skill `mb-epic-run`** má čtyři operace, všechny reportované česky (skripty
+**Skill `mb-epic-run`** má pět operací, všechny reportované česky (skripty
 jsou anglické vývojářské nástroje): `status` (tabulka stavu slotů + pohled
 epiku), `ready <EPIK>` (obě existující orákula — `mb-epic-graph` a
 `ledger-status.ps1` — vedle tabulky poolu, bez vlastního verdiktu), `spawn
 <TIKET>` (způsobilost → volba slotu → zápis řádku záměru → launch →
-mechanické ověření, v tomto pořadí) a `attach <TIKET>` (dohledá a **vytiskne**
-další akci, nespouští nic za operátora). `allowed-tools` v jeho frontmatteru
+mechanické ověření, v tomto pořadí), `attach <TIKET>` (dohledá a **vytiskne**
+další akci, nespouští nic za operátora) a `integrate <TIKET>` (strana správce:
+dvě epikové kontroly, průřezový úsudek, přeběhnutí brány předání a
+fast-forward refspecem do epikové linie). `allowed-tools` v jeho frontmatteru
 **restringuje** dostupné nástroje (ne jen je předschvaluje) — proto je
 záměrně širší než read-only, protože `spawn` píše, commitne a publikuje
 řádek ve VLASTNÍM repozitáři skillu, ne ve slotu. Bezpečnost slotů nese
-tělo skillu (deset železných pravidel — nikdy `cd` do slotu, nikdy zapisující
-git příkaz ve slotu, nikdy žádný zápis do slotu, nikdy spawn bez kolizní
-kontroly, STOP nechá slot přesně tak, jak ho našel, …), ne `allowed-tools`.
+tělo skillu (jedenáct železných pravidel — nikdy `cd` do slotu, nikdy
+zapisující git příkaz ve slotu, nikdy žádný zápis do slotu, nikdy spawn bez
+kolizní kontroly, STOP nechá slot přesně tak, jak ho našel, `integrate` nikdy
+nemerguje, …), ne `allowed-tools`.
 
 ## 7. Vendoring a nasazení
 

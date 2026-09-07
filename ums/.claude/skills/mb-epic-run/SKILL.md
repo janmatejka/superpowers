@@ -405,36 +405,75 @@ STOP:** report which one is missing and ask the ticket session to resend the
 artifact — the epic line stays untouched, as it does on every STOP here. What
 the artifact does NOT carry is the epic: derive it exactly as `spawn`'s eligibility step
 does, by scanning `memory-bank/epics/*/ledger.md` for the ticket code, where
-zero and more than one match are each a STOP.
+zero and more than one match are each a STOP. **The ledger that matched is the
+one this operation works with from here on: keep its path — the contract writes
+it `<MB_ROOT>/memory-bank/epics/<epic_key_snake>/ledger.md` — in `$ledgerPath`
+and pass THAT variable on.** The Epic checks step below re-deriving a path of
+its own is how a gate ends up reading a different file from the one that
+matched, and how a path that resolves to nothing turns into a trivial pass.
 
 - **Fetch and read the handoff.** `git fetch origin`, then read the artifact.
   Nothing is judged from a tip remembered from the message.
 - **Epic checks.** Two mechanical checks that bind the fast-forward to THIS
   epic and to its unconfirmed decisions (contract, Repository
   Configuration, "The epic line"). Dot-source this skill's own script and
-  call it against the ledger that matched in Input — `<epic_snake>` is
-  `<KLÍČ>` in lower snake case, the same directory-name convention
-  `spawn`'s eligibility step uses; never a value read from the artifact,
-  which carries no epic at all:
+  call it against `$ledgerPath` — **the path the Input step matched, passed
+  as that variable and never re-derived here** — with `<KLÍČ>` the epic
+  Input derived, never a value read from the artifact, which carries no
+  epic at all:
 
       . <this skill>/scripts/epic-gate.ps1
       $epicGate = Test-UmsEpicGate `
-          -LedgerPath memory-bank/epics/<epic_snake>/ledger.md `
+          -RepoRoot (git rev-parse --show-toplevel) `
+          -LedgerPath $ledgerPath `
           -Ticket <TIKET> -Epic <KLÍČ>
+
+  **`-RepoRoot` is load-bearing, not ceremony** (the sibling
+  `Test-UmsHandoffGate` takes one for the same reason): a relative
+  `-LedgerPath` is resolved against it instead of against the process
+  working directory. Both checks pass TRIVIALLY when the ledger file is
+  absent — by design, because a check without input must not stop anything
+  — so a path that merely fails to resolve would come back `Ok` and let the
+  fast-forward through.
 
   The script reads only that one ledger file, prints nothing and mutates
   nothing; the Czech reporting is yours. `$epicGate.Ok` false is a STOP:
   name the blocking check from `$epicGate.Blocking` with its `Detail` from
-  `$epicGate.Checks`. `spawn-epic` means this ledger's `## Rozjetí` either
-  declares a DIFFERENT epic than `<KLÍČ>`, or has no spawn row for
-  `<TIKET>` at all — the remedy is to re-derive the epic (Input) and
-  re-check which pool the ticket actually ran in, never to edit the ledger
-  until the mismatch disappears. `decision-ack` means some OTHER ticket's
-  row in `## Registr rozhodnutí` still assumes something about `<TIKET>`
-  that nobody has confirmed by commit — the remedy belongs to the ticket
-  session named in that row's Vlastník (tiket), not to this operation:
-  report the decision and its owner, and wait for its `Potvrzeno (SHA)`
-  before retrying.
+  `$epicGate.Checks`. Each blocking name has BOTH a remedy and an owner:
+
+  - **`spawn-epic`** compares the ledger's own **header line**
+    `- **Epic:**` against `<KLÍČ>`, and then looks for a `## Rozjetí` row
+    whose `Tiket` cell is `<TIKET>`. It has three failing shapes, and the
+    `Detail` says which one:
+    - **the header names a DIFFERENT epic** — this is not the ledger of
+      `<KLÍČ>`, so the Input step matched the wrong file. Remedy and owner
+      are HERE: re-derive the epic (Input) and re-check which pool the
+      ticket actually ran in. Never edit the ledger until the mismatch
+      disappears.
+    - **there is no `- **Epic:**` header line at all** — the ledger cannot
+      say which epic it belongs to, which is a malformed ledger rather than
+      a mismatch. The owner is the epic's manager (this session) and the
+      remedy is ordinary ledger maintenance on the ELABORATION branch:
+      restore the header line from `ledger-template.md`, commit it with
+      `mb-git-commit`, publish, and re-run `integrate`. Never pass the
+      check by supplying `<KLÍČ>` from memory.
+    - **no `## Rozjetí` row for `<TIKET>`** — this ticket was never spawned
+      into THIS epic's pool. Owner: this session; remedy: re-derive the
+      epic and check which pool the ticket actually ran in. Never add a
+      spawn row to make the check pass — the row is `spawn`'s record of
+      something that happened, not a permission slip.
+  - **`decision-ack`** means a row in `## Registr rozhodnutí` assumes
+    something about `<TIKET>` that no commit has confirmed. **The remedy
+    belongs to the integrating ticket session — `<TIKET>` itself**, the
+    ticket named in that row's `Předpokládá o (tiket)`: it owes the
+    confirming commit (a TEST asserting the behaviour where `Druh` is
+    `chování`, a reading where it is `text`) and then its own SHA in
+    `Potvrzeno (SHA)` (contract, "The epic line", the decision registry).
+    `Vlastník (tiket)` is **context to report** — whose decision is waiting
+    — never the actor to wait for: no commit of the owner can satisfy a
+    column defined as a commit of `<TIKET>`, and the owner's session may be
+    finished and closed. So report the decision AND its owner, and send the
+    remedy to the session that handed the artifact over.
 - **Cross-cutting judgement check.** By judgement, because nothing mechanical
   covers it: does the handoff contradict anything in the epic's own evidence —
   the ledger, its neighbouring tickets, what the epic already decided? This
@@ -529,7 +568,7 @@ no manager.
 | The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a resend |
 | Answer the handing-over ticket session | mandatory, both on a landed fast-forward and on a STOP; without it that session's Confirmation phase never runs |
 | Re-run the handoff gate | `Test-UmsHandoffGate -RepoRoot … -Sha … -BaseRef origin/epic/<KLÍČ>` — `-BaseRef` always explicit |
-| Run the epic checks | `Test-UmsEpicGate -LedgerPath … -Ticket <TIKET> -Epic <KLÍČ>` — `spawn-epic` and `decision-ack`, both mechanical, both pure (contract, "The epic line") |
+| Run the epic checks | `Test-UmsEpicGate -RepoRoot … -LedgerPath $ledgerPath -Ticket <TIKET> -Epic <KLÍČ>` — the path Input matched, `-RepoRoot` always passed; `spawn-epic` and `decision-ack`, both mechanical, both pure (contract, "The epic line") |
 | Source side of the integration refspec | the raw 40-hex `<SHA>`, never `HEAD`, never a branch name (contract, "The epic line", condition four) |
 | Is a branch checked out anywhere | ticket code as a case-sensitive SUBSTRING of the union of `slots[].branch` and `excluded[].branch` — never `git worktree list`, never equality |
 | Which epic owns a ticket | scan `memory-bank/epics/*/ledger.md` for the code; zero or more than one is a STOP |

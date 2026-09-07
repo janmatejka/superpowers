@@ -43,6 +43,14 @@
     punish a ledger that legitimately has no decision registry yet, or a
     caller deriving a path that turns out not to exist.
 
+    -LedgerPath IS RESOLVED AGAINST -RepoRoot when it is relative, exactly
+    as Test-UmsHandoffGate takes a -RepoRoot: Test-Path resolves a relative
+    path against the PROCESS CWD, so without this the manager's pwsh
+    standing anywhere but the repository root turned a real, blocking
+    ledger into "ledger neexistuje - prochazi trivialne" and let the
+    fast-forward through. An absolute -LedgerPath is used as given. Every
+    Detail names the RESOLVED path, so a remaining absence is legible.
+
     Ticket/epic-key comparisons are case-sensitive (-ceq/-cne), matching
     this layer's convention for values that come from an external key
     space rather than free text.
@@ -82,10 +90,17 @@ if (-not (Test-Path -LiteralPath $ledgerParserLoader -PathType Leaf)) {
 
 function Test-UmsEpicGate {
     param(
+        [Parameter(Mandatory = $true)] [string] $RepoRoot,
         [Parameter(Mandatory = $true)] [string] $LedgerPath,
         [Parameter(Mandatory = $true)] [string] $Ticket,
         [Parameter(Mandatory = $true)] [string] $Epic
     )
+
+    # Resolve BEFORE any Test-Path: a relative -LedgerPath must mean the
+    # same file whatever the caller's working directory is. Without this,
+    # a wrong CWD silently became "no input, trivial pass" for BOTH checks.
+    $ledger = if ([System.IO.Path]::IsPathRooted($LedgerPath)) { $LedgerPath }
+              else { Join-Path $RepoRoot $LedgerPath }
 
     $checks = [System.Collections.Generic.List[object]]::new()
     $add = {
@@ -93,13 +108,13 @@ function Test-UmsEpicGate {
         $checks.Add([pscustomobject]@{ Name = $name; Passed = $passed; Detail = $detail })
     }
 
-    if (-not (Test-Path -LiteralPath $LedgerPath -PathType Leaf)) {
-        & $add 'spawn-epic' $true "ledger $LedgerPath neexistuje - kontrola nemá vstup, prochází triviálně"
-        & $add 'decision-ack' $true "ledger $LedgerPath neexistuje - kontrola nemá vstup, prochází triviálně"
+    if (-not (Test-Path -LiteralPath $ledger -PathType Leaf)) {
+        & $add 'spawn-epic' $true "ledger $ledger neexistuje - kontrola nemá vstup, prochází triviálně"
+        & $add 'decision-ack' $true "ledger $ledger neexistuje - kontrola nemá vstup, prochází triviálně"
         return [pscustomobject]@{ Ok = $true; Checks = @($checks); Blocking = @() }
     }
 
-    $lines = @(Get-Content -LiteralPath $LedgerPath)
+    $lines = @(Get-Content -LiteralPath $ledger)
 
     # 1. spawn-epic. Header line format per ledger-template.md:
     # '- **Epic:** <EPIC-KEY> (https://...)'.
@@ -111,10 +126,10 @@ function Test-UmsEpicGate {
         }
     }
     if ([string]::IsNullOrWhiteSpace($declaredEpic)) {
-        & $add 'spawn-epic' $false "ledger $LedgerPath nemá řádek '- **Epic:**' - nelze určit, kterému epiku patří"
+        & $add 'spawn-epic' $false "ledger $ledger nemá řádek '- **Epic:**' - nelze určit, kterému epiku patří"
     }
     elseif ($declaredEpic -cne $Epic) {
-        & $add 'spawn-epic' $false "ledger $LedgerPath je ledgerem epiku $declaredEpic, ne $Epic"
+        & $add 'spawn-epic' $false "ledger $ledger je ledgerem epiku $declaredEpic, ne $Epic"
     }
     else {
         $rozjetiRows = Get-UmsLedgerSectionTable $lines 'Rozjetí'
@@ -140,14 +155,14 @@ function Test-UmsEpicGate {
     # because the function's own 'return , @($result)' already emits a
     # single pipeline object; measured empirically (a zero-row ledger gave
     # Count 1, not 0, when wrapped at the call site).
-    $decisionsRaw = Get-UmsLedgerDecisionRegistry -LedgerPath $LedgerPath
+    $decisionsRaw = Get-UmsLedgerDecisionRegistry -LedgerPath $ledger
     $decisions = @($decisionsRaw)
     $unconfirmed = @($decisions | Where-Object {
             $_.AssumesAbout -ceq $Ticket -and [string]::IsNullOrWhiteSpace($_.AckSha)
         })
     if ($unconfirmed.Count -eq 0) {
         if ($decisions.Count -eq 0) {
-            & $add 'decision-ack' $true "ledger $LedgerPath nemá (neprázdnou) sekci Registr rozhodnutí - kontrola nemá vstup, prochází triviálně"
+            & $add 'decision-ack' $true "ledger $ledger nemá (neprázdnou) sekci Registr rozhodnutí - kontrola nemá vstup, prochází triviálně"
         }
         else {
             & $add 'decision-ack' $true "žádný nepotvrzený řádek registru nejmenuje tiket $Ticket ve sloupci Předpokládá o (tiket)"
