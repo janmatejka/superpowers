@@ -52,13 +52,32 @@
     exactly Test-UmsHandoffGate's shape, so the manager's skill can report
     both gates' findings together.
 
+    This gate lives here, in mb-epic-run's own scripts/ (not shared/), because
+    it has exactly one consumer — mb-epic-run's `integrate` operation — unlike
+    Get-UmsEpicLedger.ps1 and Test-UmsHandoffGate.ps1, each consumed by two or
+    more skills. It still reaches across into shared/scripts/ for the ledger
+    parser, guarded below the same way ledger-status.ps1
+    (mb-epic-elaboration/scripts/) already does for the same dependency: this
+    one is NOT optional, so a missing parser is a fail-closed throw naming the
+    path, not a silent skip.
+
     Dot-source this file (it dot-sources Get-UmsEpicLedger.ps1 itself),
     then call Test-UmsEpicGate.
 #>
 #Requires -Version 7
 Set-StrictMode -Version Latest
 
-. (Join-Path $PSScriptRoot 'Get-UmsEpicLedger.ps1')
+# Cross-directory dot-source of the shared ledger parser. Mandatory, not
+# optional: this gate cannot function without it, so a missing file is a
+# fail-closed error naming the path, not a silent fallback (same idiom as
+# mb-epic-elaboration/scripts/ledger-status.ps1 — but that script's error
+# text is Czech, a known defect; this one is English, like every other
+# Write-Error/throw in this layer's scripts).
+$ledgerParserLoader = Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsEpicLedger.ps1'
+if (-not (Test-Path -LiteralPath $ledgerParserLoader -PathType Leaf)) {
+    throw "Shared ledger parser not found: $ledgerParserLoader"
+}
+. $ledgerParserLoader
 
 function Test-UmsEpicGate {
     param(

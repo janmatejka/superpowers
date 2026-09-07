@@ -417,7 +417,7 @@ zero and more than one match are each a STOP.
   eligibility step uses; never a value read from the artifact, which
   carries no epic at all:
 
-      . <mb-shared>/scripts/Test-UmsEpicGate.ps1
+      . <this skill>/scripts/epic-gate.ps1
       $epicGate = Test-UmsEpicGate `
           -LedgerPath memory-bank/epics/<epic_snake>/ledger.md `
           -Ticket <TIKET> -Epic <KLÍČ>

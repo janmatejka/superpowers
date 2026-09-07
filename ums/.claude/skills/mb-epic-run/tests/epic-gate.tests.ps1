@@ -3,15 +3,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_assert.ps1')
 
-# Test-UmsEpicGate lives under shared/scripts (a "shared-style helper", not an
-# mb-epic-run-local script) because it is a pure function mirroring
-# Test-UmsHandoffGate's return shape, and Get-UmsEpicLedger.ps1's own
-# docstring already names "the epic fast-forward gate" as one of its shared
-# consumers. This suite lives here (mb-epic-run/tests/), the owning skill for
-# the `integrate` operation, exactly as ledger-evidence.tests.ps1 tests
-# Get-UmsEpicLedger.ps1 from mb-epic-elaboration/tests/ even though that
-# script also lives in shared/scripts.
-. (Join-Path $PSScriptRoot '..\..\shared\scripts\Test-UmsEpicGate.ps1')
+# Test-UmsEpicGate lives in THIS skill's own scripts/ (epic-gate.ps1), not
+# shared/scripts/: it has exactly one consumer, mb-epic-run's `integrate`
+# operation, unlike Get-UmsRepoConfig.ps1/Test-UmsHandoffGate.ps1/
+# Get-UmsEpicLedger.ps1, each consumed by two or more skills. It still
+# dot-sources the shared ledger parser internally (guarded, cross-directory).
+. (Join-Path $PSScriptRoot '..\scripts\epic-gate.ps1')
 
 $fx = Join-Path $PSScriptRoot 'fixtures'
 $Ticket = 'UMS-1234'
