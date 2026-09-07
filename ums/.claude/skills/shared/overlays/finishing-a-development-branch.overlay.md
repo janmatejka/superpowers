@@ -31,7 +31,7 @@ After the user chooses and BEFORE executing the choice:
   ticket branch — the publication rule holds here as everywhere: the agent pushes
   its own ticket branch after every commit, announcing the branch and the outgoing
   commits. Then execute the chosen option. For Option 1 the harvest is the
-  **Harvest** phase of the integration sequence below, so the **Base sync** phase
+  **Harvest** phase of the integration sequence below, so the **Sync** phase
   precedes it.
   For a **bounded** work item (contract, "Brainstorming Paths") a missing
   plan half in `active/` is the EXPECTED shape — the harvest reports it and
@@ -59,17 +59,17 @@ After the user chooses and BEFORE executing the choice:
   Contract, subsection "Integration" — **one procedure whatever the effective
   base is**; refer to its phases by these names, never by number:
 
-  - **Base sync** (BEFORE the harvest, a phase boundary): `git fetch origin`,
+  - **Sync** (BEFORE the harvest, a phase boundary): `git fetch origin`,
     then `git merge <effective base>` on the ticket branch, with the intersection
     assessment and verification of the contract's "Base Sync & Drift Detection"
     section.
   - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
     the ticket branch.
-  - **Base re-sync.** `git fetch origin` and `git merge <effective base>` once
+  - **Publish.** `git fetch origin` and `git merge <effective base>` once
     more — the base may have moved while the harvest ran — and push.
   - **Green verification** on the merged tree (build and the targeted tests of
     the playbook). Red = STOP and report. The ticket branch is already on
-    `origin` (the **Harvest** and **Base re-sync** phases each pushed it), so
+    `origin` (the **Harvest** and **Publish** phases each pushed it), so
     what is still untouched is **the base ref** — nothing red has reached it. Do
     not try to un-publish the ticket branch: force push is forbidden, and a red
     ticket branch on `origin` is normal, visible work in progress. Fix forward
@@ -92,8 +92,11 @@ After the user chooses and BEFORE executing the choice:
     `$gate.Ok` false is a **STOP**. Report in Czech and name the failed check
     from `$gate.Blocking` together with its `Detail` from `$gate.Checks` — the
     remedy differs per name and a generic "brána selhala" hides it:
-    - `ancestor` — the commit is not a descendant of the freshly fetched base.
-      The remedy is a **return to the Base re-sync phase**, NOT a retry of the
+    - `fetch-failed` — `origin` could not be reached, so no base tip is fresh.
+      Retry, check the network or the remote, then re-run the gate.
+    - `ancestor` — the epic line (or whatever the effective base is) moved: the
+      commit is not a descendant of the freshly fetched base. The remedy is a
+      return to the **Publish** phase, NOT a retry of the
       push: retrying hands over the same commit and it bounces again.
     - `active-pin` — the `context.md` of that commit is still ACTIVE, so the
       harvest did not complete. STOP, report (Czech) which check blocked, then
@@ -143,8 +146,10 @@ After the user chooses and BEFORE executing the choice:
       commands with their output. Its exact wire protocol is the epic
       orchestration's (`mb-epic-run`, integration mode) — do not invent one
       here. **This session does not end its turn on a push**; it waits for the
-      manager's answer and continues with the **Confirmation** phase once the
-      manager reports the fast-forward landed.
+      manager's answer — which the manager owes on both outcomes (contract,
+      Publication Contract, "Integration", the Handoff phase) — and continues
+      with the **Confirmation** phase once the manager reports the fast-forward
+      landed.
 
     On the matching base the session therefore does **NOT** do what the
     non-matching rendering does, and saying so is the point: it does not ask the
@@ -157,7 +162,7 @@ After the user chooses and BEFORE executing the choice:
     push landed, whoever ran it: `git fetch origin`, then
     `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the
     commit is NOT on the base). Naming the base is the whole point: the
-    **Harvest** and **Base re-sync** phases already pushed this commit to the
+    **Harvest** and **Publish** phases already pushed this commit to the
     ticket branch on `origin`, so a bare `git branch -r --contains <sha>`
     reports that ticket branch, comes back non-empty and would pass while the
     base has none of the code — the branch would then be closed as integrated
@@ -166,7 +171,7 @@ After the user chooses and BEFORE executing the choice:
     gate; `mb-jira-update`'s equivalent check never runs. A non-zero exit is a
     STOP: report it in Czech and go back to the **Handoff** phase.
 
-  The **Base re-sync** phase is what makes the push a **fast-forward** — the
+  The **Publish** phase is what makes the push a **fast-forward** — the
   ticket branch is a descendant of `<effective base>`. The ticket branch left
   behind on `origin` is **not deleted**; deleting a branch through a push stays
   forbidden, and the document index keys by phase, so an integrated ticket no
@@ -183,7 +188,7 @@ After the user chooses and BEFORE executing the choice:
   manager under the actor-rule exception (contract, "The epic line") — still
   never to this session.
 - **A push rejected as non-fast-forward** means the base moved while the sequence
-  ran: repeat from the **Base re-sync** phase (`fetch`). **At most two failed
+  ran: repeat from the **Publish** phase (`fetch`). **At most two failed
   rounds** — after the second, STOP and report to the user instead of racing the
   base indefinitely.
 - **After a verified fast-forward push into the base ref** — reachability

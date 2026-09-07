@@ -12,7 +12,7 @@ metadata:
 # Command: mb-jira-update
 
 **Action:** Extract implementation status and deployment instructions from active proposals and publish a summary comment to Jira.
-**Precondition:** `- **Jira:** <ID>` must exist in the active design document's header, in `<CTX_DIR>/context.md`, or be provided in the user prompt.
+**Precondition:** `- **Jira:** <ID>` must exist in the design document's header — the active one in `<PLAN_MB>/proposals/active/`, or, after the harvest, the archived one in `<PLAN_MB>/proposals/completed/` — in `<CTX_DIR>/context.md`, or be provided in the user prompt, in that order.
 
 **Model selection:** producing the Czech Jira note is summarization work — if invoked as a delegated/isolated session (e.g. offered by `mb-harvest` from the finishing-a-development-branch harvest gate), run it on the cheapest capable tier (see [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy").
 
@@ -143,6 +143,11 @@ Scope lock remains active until command completion.
   legacy `(bez tiketu)` variants). This is the primary source — see
   `context.md` Schema & Writers, "IDLE state", for why `context.md` no longer
   carries the ticket after harvest.
+- If missing, check the same header line of the ARCHIVED design document in
+  `<PLAN_MB>/proposals/completed/` (`design_<slug>.md`, legacy
+  `proposal_<slug>-design.md`) — the harvest moves the design there and the
+  finalization mode runs after the harvest, so in that mode this is the source
+  that actually carries the ticket.
 - If missing, check `<CTX_DIR>/context.md` for `- **Jira:** <ID>` (same exclusions).
 - If still missing, check the user prompt using regex `[A-Z]{2,10}-\d+`.
 - If no valid Jira ID is found, STOP and ask the user to provide the Ticket ID.
@@ -253,7 +258,7 @@ Scope lock remains active until command completion.
 Invoked EXPLICITLY by the finishing-a-development-branch overlay **after a
 verified fast-forward push of the ticket branch into the base ref** — the
 integration path that replaces the upstream local-merge option (contract,
-Publication Contract, subsection "Integration"; it is the last step of that
+Publication Contract, subsection "Integration"; it is the last phase of that
 sequence) — with a linked ticket. Never self-selected, never in standalone
 invocations (standalone runs NEVER change ticket status).
 

@@ -90,7 +90,9 @@ three in the ORCHESTRATOR's own repository: that needs `Edit`, `Skill` and
 all. `integrate` needs the same three plus `git fetch` and `pwsh` for the
 handoff gate, and its fast-forward by refspec is a `git push` as well — a field
 narrowed to this skill's read-only STANCE towards foreign workspaces would make
-the central operation of the epic's manager impossible to run. Narrowing the field back would break `spawn` and buy nothing for slot
+the central operation of the epic's manager impossible to run.
+
+Narrowing the field back would break `spawn` and buy nothing for slot
 safety, because a tool pattern at the granularity of `Bash(git commit:*)`
 **cannot tell `git -C <slot> commit` from a local invocation**. Every
 slot-facing call in this skill is read-only and `-C`-scoped by rules 1 and 2;
@@ -429,12 +431,15 @@ zero and more than one match are each a STOP.
 
   The script fetches `origin` itself, prints nothing and mutates nothing; the
   Czech reporting is yours. `$gate.Ok` false is a STOP: name the blocking check
-  from `$gate.Blocking` with its `Detail` from `$gate.Checks` — `ancestor`,
-  `active-pin`, `context-missing`, `context-unreadable`, `unpublished` each
-  have a different remedy and all of them belong to the TICKET session, not
-  here. `ancestor` in particular means the epic line moved under the handoff:
-  the ticket resynchronizes and verifies again, and no amount of retrying the
-  push from here changes it.
+  from `$gate.Blocking` with its `Detail` from `$gate.Checks` — `fetch-failed`,
+  `ancestor`, `active-pin`, `context-missing`, `context-unreadable`,
+  `unpublished` each have a different remedy, and all of them except
+  `fetch-failed` belong to the TICKET session, not here. `fetch-failed` means
+  `origin` could not be reached from this clone — retry, check the network or
+  the remote, then re-run the gate; it is the one name whose remedy is local.
+  `ancestor` means the epic line moved under the handoff: the ticket
+  resynchronizes and verifies again, and no amount of retrying the push from
+  here changes it.
 - **Fast-forward by refspec.** From THIS clone:
 
       git push origin <SHA>:refs/heads/epic/<KLÍČ>
@@ -457,16 +462,12 @@ zero and more than one match are each a STOP.
   ELABORATION branch per the contract's Publication Contract.
 
   **Then answer the session that handed the artifact over — mandatory, not a
-  courtesy.** In the finishing skill's epic rendering that session does not end
-  its turn on the handoff: it waits for the manager's answer and only starts its
-  Confirmation phase once the manager reports the fast-forward landed
-  (`finishing-a-development-branch`, its Handoff phase; contract, Publication
-  Contract, "Integration"). No answer means its Confirmation phase never runs
-  and the ticket hangs. The answer carries that the fast-forward landed, the
-  target branch and the epic line's new tip SHA; **on a STOP the same answer is
-  owed**, naming the blocking check, so that session knows what to fix rather
-  than waiting. The wire protocol is the epic orchestration's own and arrives
-  with it — do not invent a format here; the obligation to answer is not one.
+  courtesy** (contract, Publication Contract, "Integration", the Handoff phase:
+  the manager owes that session an answer on both outcomes). The answer carries
+  that the fast-forward landed, the target branch and the epic line's new tip
+  SHA; **on a STOP the same answer is owed**, naming the blocking check. The
+  wire protocol is the epic orchestration's own and arrives with it — do not
+  invent a format here; the obligation to answer is not one.
 
   Then prompt the OTHER sessions to resynchronize: the epic line has moved, so
   every other ticket branch cut from it is now behind, and a ticket that

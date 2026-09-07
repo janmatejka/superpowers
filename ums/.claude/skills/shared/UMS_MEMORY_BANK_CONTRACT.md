@@ -1,7 +1,12 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.15
-- Supersedes v2.14 (states which `baseRef` spellings the epic-line exception
+- **Contract-Version:** 2.16
+- Supersedes v2.15 (Integration measures against the effective base rather than
+  the raw `baseRef` key, gains the `Harvest` phase and states the Publish
+  phase's re-merge, makes the epic manager's answer to the handing-over session
+  an obligation of the Handoff phase, and resolves `<CTX_DIR>` by its definition
+  instead of "from the configuration").
+- v2.15 superseded v2.14 (states which `baseRef` spellings the epic-line exception
   accepts and that an unusable one yields no exception rather than the default
   base, and qualifies the `origin/develop` fallback accordingly).
 - v2.14 superseded v2.13 (adds the epic line — the code integration branch of an
@@ -1744,8 +1749,10 @@ tool.
 Integrating finished work is a **fast-forward push of the ticket branch onto the
 base ref**, not a local merge into a local base branch. The base has already been
 merged into the ticket branch at the last phase boundary (Base Sync & Drift
-Detection), so the ticket branch is a descendant of `<baseRef>` and the
-push is a fast-forward.
+Detection), so the ticket branch is a descendant of `<effective base>` and the
+push is a fast-forward. `<effective base>` below is always the resolved base of
+this work item (Repository Configuration, "The effective base of a work item"),
+never the raw `baseRef` configuration key.
 
 **ONE procedure, whatever the effective base is.** A delivery line, a maintenance
 branch of a release series and an epic line (Repository Configuration, "The epic
@@ -1753,21 +1760,28 @@ line") are integrated through the same phases in the same order; nothing below
 asks which of them the base is, except the single condition of the Handoff phase
 — and that condition picks a rendering, not a step. The phases, in order:
 
-- **Sync.** `git fetch origin`, then `git merge <baseRef>` on the ticket branch.
-- **Green verification.** Build and targeted tests.
-- **Publish.** The agent pushes its own ticket branch, announcing the outgoing
-  commits — the publication rule, as after every commit.
+- **Sync.** `git fetch origin`, then `git merge <effective base>` on the ticket
+  branch.
+- **Harvest.** The knowledge harvest and the IDLE reset of `context.md` (Harvest
+  Contract; in `finishing-a-development-branch` it is the UMS Harvest Gate),
+  committed on the ticket branch. It precedes the Handoff gate because that
+  gate's context check is what the reset leaves behind.
+- **Publish.** `git fetch origin` and `git merge <effective base>` once more —
+  the base may have moved while the harvest ran — then the agent pushes its own
+  ticket branch, announcing the outgoing commits: the publication rule, as after
+  every commit.
+- **Green verification.** Build and targeted tests, on the merged tree.
 - **Handoff gate.** Three checks, and they run as one mechanical check rather
   than as items somebody ticks off, **after a fresh `git fetch origin`** —
-  against the freshly fetched `<baseRef>`, never against a tip remembered from
+  against the freshly fetched `<effective base>`, never against a tip remembered from
   the Sync phase. A remembered tip passes in exactly the case the gate exists
   for, and whoever pushes is then handed a command that bounces:
   1. `git merge-base --is-ancestor <freshly fetched base> <sha>` — the commit
      being handed over carries the CURRENT base;
   2. the `context.md` of that same commit is IDLE, which is what the harvest's
      reset leaves behind (Harvest Contract) — so the harvest precedes the
-     handoff. Read `<CTX_DIR>` from the configuration, never from a hard-coded
-     path, and use this contract's own predicate (`context.md` Schema &
+     handoff. Resolve `<CTX_DIR>` per its definition (`<MB_ROOT>/memory-bank/`),
+     never from a path unrelated to `MB_ROOT`, and use this contract's own predicate (`context.md` Schema &
      Writers): a `Target MB Pin` together with a `Work item` slug is ACTIVE. A
      **missing file is a fail-closed STOP, not "IDLE"** — `git show` on a path
      that does not exist exits 128, and that exit reads all too easily as "no
@@ -1789,10 +1803,13 @@ asks which of them the base is, except the single condition of the Handoff phase
     the session holding the epic's elaboration branch, who performs the
     fast-forward under the actor-rule exception ("The epic line"). Only a manager
     performs that fast-forward; where there is none, no agent does it either and
-    the artifact falls back to the human-command rendering above.
+    the artifact falls back to the human-command rendering above. **The manager
+    owes the handing-over session an answer on both outcomes** — landed: the
+    target branch and the new tip SHA; STOP: the blocking check — because that
+    session's Confirmation phase is gated on it and never runs without it.
 - **Confirmation.** After the push lands — whoever ran it — the TICKET session,
   on the ticket's own branch, re-verifies reachability **from the base ref**:
-  `git fetch origin`, then `git merge-base --is-ancestor <sha> <baseRef>`
+  `git fetch origin`, then `git merge-base --is-ancestor <sha> <effective base>`
   (non-zero exit = not on the
   base). A bare `git branch -r --contains <sha>` is NOT sufficient here — the
   publication rule has already pushed that commit to the ticket branch on

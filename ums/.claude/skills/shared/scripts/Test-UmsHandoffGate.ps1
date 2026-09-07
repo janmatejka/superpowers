@@ -7,7 +7,13 @@
     Three checks, in this fetch-first order:
 
       1. `ancestor`  - `git merge-base --is-ancestor <base> <Sha>` against the
-                       base as it stands AFTER `git fetch origin`.
+                       base as it stands AFTER `git fetch origin`. The fetch is
+                       a precondition of this check, not a check of its own in
+                       the contract; when it fails, this script reports the
+                       blocking name `fetch-failed` (Detail: the git error)
+                       instead of `ancestor`, so that the remedy - reach
+                       `origin` - is not read as "the base moved". That fourth
+                       NAME is local to this script.
       2. the context check - `git show <Sha>:<CTX_DIR>/context.md`, judged per
                        contract, "`context.md` Schema & Writers". Findings:
                        `active-pin`; `context-missing` (git exit 128);
@@ -15,9 +21,10 @@
                        block.
       3. `unpublished` - `git branch -r --contains <Sha>` came back empty.
 
-    `<CTX_DIR>` is derived per the contract's definition of it (see "Repository
-    Configuration"), the same way Get-UmsEffectiveBase derives it. The base
-    comes from configuration: with -BaseRef omitted, `baseRef`.
+    `<CTX_DIR>` is resolved per its definition in the contract,
+    `<MB_ROOT>/memory-bank/` - never from configuration and never from a path
+    unrelated to MB_ROOT. The base, by contrast, does come from configuration:
+    with -BaseRef omitted, `baseRef`.
 
     The check whose identity depends on its outcome is the context one: its
     Name is the FINDING name when it fails and `context-idle` when it passes,
@@ -55,7 +62,7 @@ function Test-UmsHandoffGate {
     $fetchOut = (& git -C $RepoRoot fetch origin --quiet 2>&1) -join ' '
     $fetchFailed = $LASTEXITCODE -ne 0
     if ($fetchFailed) {
-        & $add 'ancestor' $false "git fetch origin selhal, bázi $BaseRef nelze považovat za čerstvou: $fetchOut"
+        & $add 'fetch-failed' $false "git fetch origin selhal, bázi $BaseRef nelze považovat za čerstvou: $fetchOut"
     }
     else {
         $ancestorOut = (& git -C $RepoRoot merge-base --is-ancestor $BaseRef $Sha 2>&1) -join ' '

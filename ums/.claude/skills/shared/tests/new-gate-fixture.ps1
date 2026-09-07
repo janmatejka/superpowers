@@ -175,6 +175,13 @@ function Move-GateBase($Fixture) {
         'push', 'origin', "refs/remotes/origin/base-next:refs/heads/$($Fixture.BaseBranch)") | Out-Null
 }
 
+# Repoints the first clone's `origin` URL. With a path that does not exist the
+# gate's `git fetch origin` fails offline and deterministically — no network,
+# no timeout — which is the only way to exercise the fetch precondition.
+function Set-GateOriginUrl($Fixture, [string] $Url) {
+    Invoke-GateGit $Fixture.Clone @('remote', 'set-url', 'origin', $Url) | Out-Null
+}
+
 function Remove-GateFixture($Fixture) {
     if ($Fixture -and $Fixture.Root -and (Test-Path -LiteralPath $Fixture.Root)) {
         Remove-Item -LiteralPath $Fixture.Root -Recurse -Force -ErrorAction SilentlyContinue

@@ -65,6 +65,25 @@ try {
     Write-Host "== bez -BaseRef se báze bere z konfigurace"
     $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.ActiveSha
     Assert-Eq ($r.Blocking -join ',') 'active-pin' 'konfigurační báze dává týž výsledek jako explicitní'
+
+    # NEGATIVNÍ: selhaný `git fetch`. Není to „báze se pohnula" — origin je
+    # nedosažitelný a náprava je lokální (síť, remote), takže má vlastní
+    # blokující jméno. Kdyby se hlásil jako `ancestor`, poslal by řešitele
+    # zpět do fáze Publish, kde není co spravit.
+    Write-Host "== nedosažitelný origin: blokuje vlastní jméno fetch-failed"
+    $deadUrl = Join-Path $f.Root 'origin-neexistuje.git'
+    Set-GateOriginUrl $f $deadUrl
+    try {
+        $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.MergedSha -BaseRef $f.BaseRef
+        Assert-True (-not $r.Ok) 'selhaný fetch je STOP (fail-closed)'
+        Assert-Eq ($r.Blocking -join ',') 'fetch-failed' 'selhaný fetch má vlastní jméno fetch-failed, ne ancestor'
+        $fetchDetail = "$(@($r.Checks | Where-Object { $_.Name -eq 'fetch-failed' } |
+                ForEach-Object { $_.Detail }) -join ' ')"
+        Assert-Match $fetchDetail 'fetch' 'nález selhaného fetche nese chybu gitu'
+    }
+    finally {
+        Set-GateOriginUrl $f $f.Origin
+    }
 }
 finally {
     Remove-GateFixture $f

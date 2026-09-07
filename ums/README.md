@@ -39,7 +39,7 @@ ums/
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
-        ├── shared/           ← contract v2.15, manifest, VENDORED_FROM.md, overlays/*.overlay.md
+        ├── shared/           ← contract v2.16, manifest, VENDORED_FROM.md, overlays/*.overlay.md
         ├── mb-epic-run/      ← pool status/launch/provision (see its own README.md)
         │   ├── SKILL.md
         │   ├── scripts/      ← pool-status.ps1, pool-launch.ps1, pool-provision.ps1

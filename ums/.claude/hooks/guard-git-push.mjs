@@ -172,10 +172,9 @@ const loadProtected = (cwd) => {
   return BUILTIN_PROTECTED.map(globToRe);
 };
 
-// The exception is NARROW on purpose: it is the only place in this layer
-// where the actor rule stops being categorical. A missing, empty or
-// non-string value yields no exception at all, which is the same
-// safer-side degradation loadProtected follows.
+// Reads `epicBranchPattern` and derives `<baseBranch>` from `baseRef`; a
+// missing, empty or non-string value of either yields no exception (null).
+// See UMS_MEMORY_BANK_CONTRACT.md, "The epic line".
 const loadEpicRule = (cwd) => {
   try {
     const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
