@@ -12,7 +12,7 @@ metadata:
 # Command: mb-jira-update
 
 **Action:** Extract implementation status and deployment instructions from active proposals and publish a summary comment to Jira.
-**Precondition:** `- **Jira:** <ID>` must exist in `<CTX_DIR>/context.md` (or be provided in the user prompt).
+**Precondition:** `- **Jira:** <ID>` must exist in the active design document's header, in `<CTX_DIR>/context.md`, or be provided in the user prompt.
 
 **Model selection:** producing the Czech Jira note is summarization work — if invoked as a delegated/isolated session (e.g. offered by `mb-harvest` from the finishing-a-development-branch harvest gate), run it on the cheapest capable tier (see [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy").
 
@@ -137,8 +137,14 @@ Before any Memory Bank write operation:
 Scope lock remains active until command completion.
 
 ### 1. Jira Ticket Check
-- Check `<CTX_DIR>/context.md` for `- **Jira:** <ID>` (excluding empty, `(no ticket)`, and legacy `(bez tiketu)` variants).
-- If missing, check the user prompt using regex `[A-Z]{2,10}-\d+`. 
+- Check the `- **Jira:** <ID>` header line of the active design document in
+  `<PLAN_MB>/proposals/active/` (`design_<slug>.md`, legacy
+  `proposal_<slug>-design.md`) for `<ID>` (excluding empty, `(no ticket)`, and
+  legacy `(bez tiketu)` variants). This is the primary source — see
+  `context.md` Schema & Writers, "IDLE state", for why `context.md` no longer
+  carries the ticket after harvest.
+- If missing, check `<CTX_DIR>/context.md` for `- **Jira:** <ID>` (same exclusions).
+- If still missing, check the user prompt using regex `[A-Z]{2,10}-\d+`.
 - If no valid Jira ID is found, STOP and ask the user to provide the Ticket ID.
 - Do NOT proceed without a valid Ticket ID.
 

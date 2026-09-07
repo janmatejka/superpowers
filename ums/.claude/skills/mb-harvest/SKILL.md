@@ -196,11 +196,11 @@ it and `mb-init`/the next brainstorming recreate it on demand.
 
 **Only if every affected MB update succeeded**, overwrite
 `<CTX_DIR>/context.md` with the IDLE baseline per the contract schema
-(`context.md` Schema & Writers): `## Active Work` →
-`(No active work - IDLE phase)`, keeping the `- **Jira:** …` and
-`- **Báze:** …` lines of the finished work item exactly as that section
-specifies. On partial failure, leave `context.md` unchanged and report which
-MBs failed.
+(`context.md` Schema & Writers, "IDLE state"): `## Active Work` →
+`(No active work - IDLE phase)`; drop the `- **Jira:** …` line of the
+finished work item; keep its `- **Báze:** …` line (nothing to keep if the
+work item had none). See that section for why. On partial failure, leave
+`context.md` unchanged and report which MBs failed.
 
 - Invalidate the session intent baton (contract, "Session Intent Baton"). Local
   point: this belongs to the SAME success condition as the reset above — on a
