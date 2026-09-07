@@ -4,34 +4,26 @@
     operator) as an integration push?
 
 .DESCRIPTION
-    Three checks, in this order, always preceded by `git fetch origin` so the
-    base is FRESH — a base ref remembered before someone else pushed is exactly
-    the failure the gate exists for:
+    Three checks, in this fetch-first order:
 
-      1. `ancestor`  — `git merge-base --is-ancestor <base> <Sha>`: the SHA must
-                       descend from the base as it stands AFTER the fetch.
-      2. the context check — `git show <Sha>:<CTX_DIR>/context.md`, per contract
-                       "`context.md` Schema & Writers". ACTIVE is `Target MB Pin`
-                       TOGETHER WITH `Work item`; that is `active-pin`. Git exit
-                       128 (the path does not exist at that SHA) is
-                       `context-missing` and NEVER "IDLE"; any other nonzero exit
-                       is `context-unreadable`. All three are blocking — an
-                       unreadable answer fails CLOSED.
-      3. `unpublished` — `git branch -r --contains <Sha>` empty means the commit
-                       exists nowhere but this machine.
+      1. `ancestor`  - `git merge-base --is-ancestor <base> <Sha>` against the
+                       base as it stands AFTER `git fetch origin`.
+      2. the context check - `git show <Sha>:<CTX_DIR>/context.md`, judged per
+                       contract, "`context.md` Schema & Writers". Findings:
+                       `active-pin`; `context-missing` (git exit 128);
+                       `context-unreadable` (any other nonzero exit). All three
+                       block.
+      3. `unpublished` - `git branch -r --contains <Sha>` came back empty.
 
-    `<CTX_DIR>` is not hardcoded and not a config key either: the contract
-    ("Repository Configuration") DEFINES it as `<MB_ROOT>/memory-bank/`, which
-    is how Get-UmsEffectiveBase resolves it too. What DOES come from
-    configuration is the base: with -BaseRef omitted, `baseRef` is used.
+    `<CTX_DIR>` is derived per the contract's definition of it (see "Repository
+    Configuration"), the same way Get-UmsEffectiveBase derives it. The base
+    comes from configuration: with -BaseRef omitted, `baseRef`.
 
     The check whose identity depends on its outcome is the context one: its
-    Name is the FINDING name when it fails (`active-pin`, `context-missing`,
-    `context-unreadable`) and `context-idle` when it passes, so that Blocking
-    is exactly "the names of the failed checks" and each name says what is
-    wrong without the caller re-deriving it.
+    Name is the FINDING name when it fails and `context-idle` when it passes,
+    so that Blocking is exactly "the names of the failed checks".
 
-    The function never mutates anything, never pushes and prints nothing —
+    The function never mutates anything, never pushes and prints nothing -
     reporting (in Czech) belongs to the calling skill. `git fetch` is the only
     call that touches the network and it only updates remote-tracking refs.
 
@@ -76,7 +68,9 @@ function Test-UmsHandoffGate {
     }
 
     # 2. context.md at that SHA. CTX_DIR per contract, "Repository
-    # Configuration": <MB_ROOT>/memory-bank/.
+    # Configuration"; ACTIVE (and the mandated legacy alias `- **Proposal:**`)
+    # per contract, "`context.md` Schema & Writers". Same regex shape as the
+    # layer's other two readers of this field.
     $ctxRel = 'memory-bank/context.md'
     $ctxOut = (& git -C $RepoRoot show "${Sha}:$ctxRel" 2>&1) -join "`n"
     $ctxExit = $LASTEXITCODE
@@ -86,8 +80,9 @@ function Test-UmsHandoffGate {
     elseif ($ctxExit -ne 0) {
         & $add 'context-unreadable' $false "$ctxRel v commitu $Sha nelze přečíst (git skončil s kódem $ctxExit): $ctxOut"
     }
-    elseif ($ctxOut -match '(?m)^\s*-\s*\*\*Target MB Pin:' -and $ctxOut -match '(?m)^\s*-\s*\*\*Work item:') {
-        & $add 'active-pin' $false "$ctxRel v commitu $Sha je ACTIVE (Target MB Pin spolu s Work item) — práce není sklizená"
+    elseif ($ctxOut -match '(?m)^\s*-\s*\*\*Target MB Pin:' -and
+        $ctxOut -match '(?m)^\s*-\s+\*\*(?:Work item|Proposal):\*\*\s*(?<v>\S+)\s*$') {
+        & $add 'active-pin' $false "$ctxRel v commitu $Sha je ACTIVE (Target MB Pin spolu s Work item/Proposal) — práce není sklizená"
     }
     else {
         & $add 'context-idle' $true "$ctxRel v commitu $Sha je IDLE"

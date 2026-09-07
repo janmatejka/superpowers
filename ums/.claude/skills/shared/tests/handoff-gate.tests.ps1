@@ -32,6 +32,14 @@ try {
     Assert-True (-not $r.Ok) 'brána zamítne commit s ACTIVE pinem'
     Assert-Eq ($r.Blocking -join ',') 'active-pin' 'ACTIVE pin blokuje POUZE kontrolu contextu'
 
+    # NEGATIVNÍ: ACTIVE pin zapsaný starým jménem pole. Kontrakt
+    # („`context.md` Schema & Writers") čtenářům přikazuje `- **Proposal:**`
+    # přijímat jako alias `- **Work item:**`; bez toho brána pustí nesklizenou
+    # práci ze starého context.md rovnou do integračního pushe.
+    Write-Host "== ACTIVE pin starým jménem pole (Proposal): blokuje jen kontrola contextu"
+    $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.LegacyActiveSha -BaseRef $f.BaseRef
+    Assert-Eq ($r.Blocking -join ',') 'active-pin' 'legacy alias Proposal je ACTIVE stejně jako Work item'
+
     # NEGATIVNÍ: nepublikovaný commit.
     Write-Host "== nepublikovaný commit: blokuje jen kontrola publikace"
     $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.UnpushedSha -BaseRef $f.BaseRef

@@ -7,13 +7,14 @@
 #
 #   MergedSha     descends from the base commit, IDLE context.md, pushed
 #                 -> everything green until Move-GateBase moves the base
-#   ActiveSha     descends from the MOVED base, pushed, ACTIVE context.md
-#   UnpushedSha   descends from the MOVED base, IDLE context.md, NOT pushed
-#   NoContextSha  descends from the MOVED base, pushed, context.md DELETED
+#   ActiveSha       descends from the MOVED base, pushed, ACTIVE context.md
+#   LegacyActiveSha the same, with the legacy `- **Proposal:**` field name
+#   UnpushedSha     descends from the MOVED base, IDLE context.md, NOT pushed
+#   NoContextSha    descends from the MOVED base, pushed, context.md DELETED
 #
-# The three negative branches are cut from the commit that Move-GateBase later
+# The negative branches are all cut from the commit that Move-GateBase later
 # makes the base, so moving the base does NOT also break their ancestry — that
-# would give the ancestor check an alibi for all three findings.
+# would give the ancestor check an alibi for every one of those findings.
 #
 # Move-GateBase pushes the base from a SECOND clone, so the first clone's
 # refs/remotes/origin/<base> stays stale until something fetches. That is what
@@ -50,6 +51,9 @@ function Set-GateContext([string] $RepoDir, [string] $State, [string] $Slug) {
         )
     }
     else {
+        # 'legacy-active' uses `- **Proposal:**`, the mandated legacy alias of
+        # `- **Work item:**` (contract, "`context.md` Schema & Writers").
+        $itemLine = if ($State -eq 'legacy-active') { "- **Proposal:** $Slug" } else { "- **Work item:** $Slug" }
         $body = @(
             '# Context'
             ''
@@ -57,7 +61,7 @@ function Set-GateContext([string] $RepoDir, [string] $State, [string] $Slug) {
             ''
             '- **Jira:** UMS-9999 (https://jira.datasys.cz/browse/UMS-9999)'
             '- **Target MB Pin:** memory-bank/'
-            "- **Work item:** $Slug"
+            $itemLine
             '- **Started:** 2026-09-07'
         )
     }
@@ -113,6 +117,15 @@ function New-GateFixture {
     Invoke-GateGit $clone @('push', 'origin', 'UMS-2-aktivni') | Out-Null
     $activeSha = (Invoke-GateGit $clone @('rev-parse', 'HEAD')).Trim()
 
+    # ACTIVE pin written with the legacy alias `- **Proposal:**` (a context.md
+    # left over from contract v2.0). Same branch point as the other negatives,
+    # so again only the context check may redden it.
+    Invoke-GateGit $clone @('checkout', '-b', 'UMS-5-legacy-pin', 'base-next') | Out-Null
+    Set-GateContext $clone 'legacy-active' 'stara_prace'
+    Invoke-GateGit $clone @('commit', '-m', 'rozdělaná práce se starým jménem pole') | Out-Null
+    Invoke-GateGit $clone @('push', 'origin', 'UMS-5-legacy-pin') | Out-Null
+    $legacyActiveSha = (Invoke-GateGit $clone @('rev-parse', 'HEAD')).Trim()
+
     # context.md missing at that SHA: `git show` exits 128 there.
     Invoke-GateGit $clone @('checkout', '-b', 'UMS-3-bez-contextu', 'base-next') | Out-Null
     Invoke-GateGit $clone @('rm', '--quiet', 'memory-bank/context.md') | Out-Null
@@ -147,6 +160,7 @@ function New-GateFixture {
         BaseRef      = "origin/$script:GateBaseBranch"
         MergedSha    = $mergedSha
         ActiveSha    = $activeSha
+        LegacyActiveSha = $legacyActiveSha
         UnpushedSha  = $unpushedSha
         NoContextSha = $noContextSha
     }
