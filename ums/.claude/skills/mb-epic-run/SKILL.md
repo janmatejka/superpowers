@@ -394,13 +394,14 @@ that artifact and performs the fast-forward under the actor-rule exception
 (contract, Repository Configuration, "The epic line"). Six steps, referred to
 below by these names and never by number.
 
-**Input — the handoff artifact, and only what it carries.** Four fields:
-the destination branch, the `<SHA>` being handed over, the ENUMERATED outgoing
-commits, and the verification commands quoted verbatim WITH their output. Read
-those four out of the artifact as given; do not reconstruct a field the ticket
+**Input — the handoff artifact, and only what it carries.** Its four fields are
+the contract's (Publication Contract, "Integration", the Handoff phase). Read
+them out of the artifact as given: do not reconstruct a field the ticket
 session did not send, and do not accept a summary in place of the verification
-output — comparability is the whole reason that field exists. What the artifact
-does NOT carry is the epic: derive it exactly as `spawn`'s eligibility step
+output (same section, for why that field is what it is). **A missing field is a
+STOP:** report which one is missing and ask the ticket session to resend the
+artifact — the epic line stays untouched, as it does on every STOP here. What
+the artifact does NOT carry is the epic: derive it exactly as `spawn`'s eligibility step
 does, by scanning `memory-bank/epics/*/ledger.md` for the ticket code, where
 zero and more than one match are each a STOP.
 
@@ -453,10 +454,23 @@ zero and more than one match are each a STOP.
   and the columns are parsed positionally, so the fact goes into `Pasti` as a
   sentence naming the integrated `<SHA>` — never as a new column, a new verdict
   word or a reordering. Commit it with `mb-git-commit` and publish the
-  ELABORATION branch per the contract's Publication Contract. Then prompt the
-  other sessions to resynchronize: the epic line has moved, so every other
-  ticket branch cut from it is now behind, and a ticket that verified against
-  the previous tip is no longer a fast-forward.
+  ELABORATION branch per the contract's Publication Contract.
+
+  **Then answer the session that handed the artifact over — mandatory, not a
+  courtesy.** In the finishing skill's epic rendering that session does not end
+  its turn on the handoff: it waits for the manager's answer and only starts its
+  Confirmation phase once the manager reports the fast-forward landed
+  (`finishing-a-development-branch`, its Handoff phase; contract, Publication
+  Contract, "Integration"). No answer means its Confirmation phase never runs
+  and the ticket hangs. The answer carries that the fast-forward landed, the
+  target branch and the epic line's new tip SHA; **on a STOP the same answer is
+  owed**, naming the blocking check, so that session knows what to fix rather
+  than waiting. The wire protocol is the epic orchestration's own and arrives
+  with it — do not invent a format here; the obligation to answer is not one.
+
+  Then prompt the OTHER sessions to resynchronize: the epic line has moved, so
+  every other ticket branch cut from it is now behind, and a ticket that
+  verified against the previous tip is no longer a fast-forward.
 
 **A STOP in this operation leaves the epic line exactly as it was**, which iron
 rule 11 makes trivially true for every step before Fast-forward by refspec.
@@ -468,9 +482,9 @@ integruj" is given to one ticket at a time, and why nothing here tries to
 combine two handoffs.
 
 **An unusable `baseRef` in this clone's `ums-repo.json` is a STOP, not an
-obstacle to route around.** Missing, empty, non-string or `refs/`-prefixed, it
-declines the exception outright (contract, "The epic line"), so the guard denies
-the push. The remedy is to fix the configuration — with the operator, as
+obstacle to route around.** An unusable value declines the exception outright —
+which values those are is the contract's list (Repository Configuration, "The
+epic line"), not restated here — so the guard denies the push. The remedy is to fix the configuration — with the operator, as
 configuration always is. Not to rewrite the refspec, not to reach for the
 human-escape variable, and not to hand the command to the user as if there were
 no manager.
@@ -484,7 +498,8 @@ no manager.
 | Start a ticket in a slot | `spawn <TIKET>` |
 | Where does a ticket run | `attach <TIKET>` |
 | Land a finished ticket in the epic line | `integrate <TIKET>` |
-| The four fields of a handoff artifact | destination branch, `<SHA>`, enumerated outgoing commits, verification commands WITH their output |
+| The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a resend |
+| Answer the handing-over ticket session | mandatory, both on a landed fast-forward and on a STOP; without it that session's Confirmation phase never runs |
 | Re-run the handoff gate | `Test-UmsHandoffGate -RepoRoot … -Sha … -BaseRef origin/epic/<KLÍČ>` — `-BaseRef` always explicit |
 | Source side of the integration refspec | the raw 40-hex `<SHA>`, never `HEAD`, never a branch name (contract, "The epic line", condition four) |
 | Is a branch checked out anywhere | ticket code as a case-sensitive SUBSTRING of the union of `slots[].branch` and `excluded[].branch` — never `git worktree list`, never equality |
