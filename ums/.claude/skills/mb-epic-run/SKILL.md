@@ -411,11 +411,11 @@ zero and more than one match are each a STOP.
   Nothing is judged from a tip remembered from the message.
 - **Epic checks.** Two mechanical checks that bind the fast-forward to THIS
   epic and to its unconfirmed decisions (contract, Repository
-  Configuration, "The epic line"). Dot-source the shared script and call it
-  against the ledger that matched in Input — `<epic_snake>` is `<KLÍČ>` in
-  lower snake case, the same directory-name convention `spawn`'s
-  eligibility step uses; never a value read from the artifact, which
-  carries no epic at all:
+  Configuration, "The epic line"). Dot-source this skill's own script and
+  call it against the ledger that matched in Input — `<epic_snake>` is
+  `<KLÍČ>` in lower snake case, the same directory-name convention
+  `spawn`'s eligibility step uses; never a value read from the artifact,
+  which carries no epic at all:
 
       . <this skill>/scripts/epic-gate.ps1
       $epicGate = Test-UmsEpicGate `

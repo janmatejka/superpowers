@@ -694,7 +694,7 @@ ever, and every base choice keeps offering an unrelated epic's line as a base.
 **An unconfirmed decision-registry row naming the integrating ticket blocks the
 epic fast-forward, and the ticket's spawn row in the epic's own ledger must
 belong to this epic** — enforced mechanically, ahead of the push, by
-`mb-epic-run`'s `integrate` operation (`Test-UmsEpicGate`, shared scripts).
+`mb-epic-run`'s `integrate` operation.
 
 ## Base Sync & Drift Detection
 
