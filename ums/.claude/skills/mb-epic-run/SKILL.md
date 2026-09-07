@@ -142,6 +142,39 @@ skill's job.
 
 | Slot | Větev / detached | Pin | Postup v plánu | Špinavé | Nepushnuté | Sezení | Volný |
 
+   `Postup v plánu` renders `progress`.
+   - **`progress == null`** means the slot carries no ACTIVE pin — the `Pin`
+     column already says so; leave this cell empty.
+   - **`progress.now` is not `null`** — the actionable case, and the reason
+     this column exists at all: lead the cell with `now.state` translated
+     through the Czech mapping the contract fixes (contract, section "The
+     `NOW` Block": `stalled` → stojím, `waiting-for-subagent` → čekám na
+     subagenta, `waiting-for-human` → čekám na člověka, `waiting-for-manager`
+     → čekám na správce), and append **`(po termínu)`** when `now.late` is
+     `true`. **`po termínu` is COMPUTED, never read**: the script derives it
+     from `dueAt` against its own clock at the moment it ran, and nothing in
+     the ledger can set it — contrast this with today, where the only way to
+     learn a session has stalled is to open that slot's ledger and read it.
+     If you also print the due time itself: `ConvertFrom-Json` turns `dueAt`
+     back into a `[datetime]`, not a string — re-format it
+     (`Get-Date $now.dueAt -Format 'yyyy-MM-ddTHH:mm:ssZ'`) rather than assume
+     it is already spelled that way; the same trap applies to `items.since`
+     and `items.due`.
+   - **`progress.now` is `null`** — the contract makes "no block" and "a
+     malformed block" the same answer on purpose (contract, section "The
+     `NOW` Block"); render this as **`bez bloku`**, never as a claim about the
+     session ("stalled", "unknown" or similar), and fall back to the plain
+     signal: `lines` — the same `-1` unreadable-sentinel exception as
+     `Špinavé`/`Nepushnuté` below applies here too, render it as `nečitelné`,
+     never as `-1` — and `lastLine`. Render an empty `lastLine` as
+     **`(bez výstupu)`**, never as "no lines" or "ledger empty": the empty
+     string is the JSON's answer for two different, indistinguishable
+     situations — no non-empty line exists at all, or the last line was
+     rejected by the reader's character-class check (measured as common on a
+     real ledger, typically an `<PLAN_MB>`-style placeholder, not a
+     theoretical edge case) — and a renderer must not present `""` as a fact
+     about the ledger's content.
+
    `Sezení` renders `session.state` as `běží (pid …)` / `žádné` / `neznámé`,
    and the pids in that first form come from `session.pids`.
    `Špinavé` and `Nepushnuté` render `dirtyCount` and `unpushedCount`, with
@@ -152,10 +185,27 @@ skill's job.
    **epic-relative**: the script then adds a reason for a slot holding a
    ticket branch of that epic, so a slot free for one epic can be non-free
    for another.
-5. Print `excluded` as a separate short list (why a worktree is not a slot),
+5. **A `Postup v plánu` cell says where to look, never what to do about it.**
+   Two rules follow from the state class, both about the READER of this
+   table, not about `pool-status.ps1`:
+   - **`čekám na subagenta` is not a reason to prod the session it names.**
+     Interrupting a session that is waiting on a dispatched subagent is one of
+     two things this layer has measured as actively harmful, and it is worth
+     stating as a rule only now: before this column existed, leaving a
+     waiting session alone was a matter of courtesy — nobody could tell a slow
+     subagent from a stalled one without opening the ledger. With `now.late`
+     computed, "still within its due time" and "past due" are for the first
+     time CHECKABLE, so leaving it alone is a decision made on evidence
+     instead of a guess.
+   - **The table decides where to look, never whether to integrate.** The
+     contract fixes this boundary for the block itself (contract, section
+     "The `NOW` Block") and it applies unchanged to this rendering: a
+     fast-forward rests on the Handoff gate and on the checks of
+     `mb-epic-run integrate`, never on what this column says.
+6. Print `excluded` as a separate short list (why a worktree is not a slot),
    and the repository-wide `stash` count as ONE line that is explicitly NOT a
    property of any slot.
-6. When an epic is in play, add the epic view: for every ticket in its ledger,
+7. When an epic is in play, add the epic view: for every ticket in its ledger,
    whether some slot holds it.
 
 ### `ready <EPIK>`
