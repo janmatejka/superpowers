@@ -426,6 +426,123 @@ this plan" instruction published to `origin` is a live hazard for every resuming
 session. There is therefore no exception here, and the Playbook Contract's "one
 named exception to the git-ignored rule" stays true.
 
+### The `NOW` Block
+
+**The `NOW` block records what is being WAITED ON RIGHT NOW**, so that a
+stalled session is visible without anyone reading its transcript. **It is not
+a second Session Intent Baton:** the baton carries what a NEW session must do
+after a restart, the block carries what the CURRENT session is waiting for.
+
+**It lives at the top of `.superpowers/sdd/<plan-basename>/progress.md`** —
+the SDD progress ledger that Fail-Closed Behavior already names as legal
+git-ignored scratch — directly under that file's title line, exactly one
+marker pair per ledger. It is AI-facing scratch and therefore English
+(Language Contract), its state class included; `mb-epic-run status` translates
+on render, the same translate-on-presentation split as `Ruling:` lines.
+
+**It has two readers and they take different items from it:** the session's
+own successor after this one dies — that is where the SHAPE of the items comes
+from — and the epic manager looking in from outside through `mb-epic-run
+status`, which is where the state class and the due time come from. A block
+written for only one of the two omits precisely what the other came for.
+
+**The boundary is MACHINE, not a heading**, and that is the first rule:
+comment markers, because a section inserted before a TEXTUAL anchor once
+landed inside the very paragraph that talked about that anchor. Prose between
+the markers that looks like a heading therefore changes nothing — the region
+is the markers and only the markers.
+
+**Rewriting the block is an OPERATION, and that operation stands in this same
+paragraph as the artifact deliberately: it is measured that the shape gets
+taken over without the rule, and the block falls behind within the hour. The
+operation is: DELETE everything between the two markers, then RECONSTRUCT the
+six items from `git log`, the plan's task table and the ledger's ruling index
+— never "write it again" over the text standing there. From an empty region
+there is nothing to append to, which is the entire reason for deleting first.
+And the necessary condition that makes reconstruction possible at all: the
+block is NEVER the only home of any fact.** This is the artifact:
+```
+<!-- UMS-NOW BEGIN -->
+State: waiting-for-subagent
+Waiting on: implementer of task 12, dispatched, no report yet
+Since: 2026-09-07T09:12:00Z
+Due: 2026-09-07T09:42:00Z
+Task: 12 — Handoff gate, the three universal checks
+Look at: .superpowers/sdd/plan_ums_3505/task-12-brief.md; git log -3 --oneline
+<!-- UMS-NOW END -->
+```
+
+**Six items, all six required, one `Key: value` line each, in this order.**
+The key is everything before the first colon; the value is the rest of the
+line, trimmed. A missing item, an unknown key, a line outside the `Key: value`
+shape or a duplicated key makes the block malformed.
+
+- **`State:`** — the state class, one of the four values below and nothing
+  else.
+- **`Waiting on:`** — the awaited thing named concretely enough for a stranger
+  to act on it: which subagent, which question and to whom, which decision of
+  the manager. Never a mood and never "work in progress".
+- **`Since:`** — ISO-8601 UTC, when THIS wait began.
+- **`Due:`** — ISO-8601 UTC, the expected time of the next report. Lateness is
+  COMPUTED by the reader against its own clock and is never written into the
+  block; a written lateness would be a fact whose only home is here.
+- **`Task:`** — `<number>, <title>` of the plan task in flight, copied from
+  the plan's task table.
+- **`Look at:`** — where the next reader looks FIRST: paths and git refs,
+  separated by `; `. Pointers only, which is what keeps this item from
+  becoming the home of a fact.
+
+**The state class is a CLOSED enum of exactly four values.** This is the
+`idle` ambiguity a manager guessed wrong four times; it is an enumerated
+field, not prose, and any other value makes the block malformed:
+
+| Written in the block | Rendered by `mb-epic-run status` |
+|---|---|
+| `stalled` | stojím |
+| `waiting-for-subagent` | čekám na subagenta |
+| `waiting-for-human` | čekám na člověka |
+| `waiting-for-manager` | čekám na správce |
+
+`stalled` is the honest value when nothing is running and nothing has been
+asked. It is the value that makes a stall visible, so a session that CAN name
+what it waits for must never write it.
+
+**The trigger is structural, and that is the fourth rule:** the next dispatch
+is composed FROM this block, so a block nobody rewrote is a dispatch nobody
+can compose. The control sentence: **when the block and `git log` disagree,
+the block is wrong.**
+
+**Reader safety is the baton's, named rather than restated.** `pool-status.ps1`
+parses this git-ignored file in a FOREIGN working tree — one that implementer
+subagents write into routinely — and `mb-epic-run status` renders the result
+into the manager's context. That is the exposure the Session Intent Baton
+already has, so every reader rule of that subsection applies here unchanged
+and is not re-derived: the format is CLOSED, the reader NEVER emits the body
+as it lies but parses the known items and RE-RENDERS them, it bounds the size
+of what it reads and of what it renders, and it rejects a value by CHARACTER
+CLASS rather than by any one tag's spelling. Marker behaviour is defined
+rather than left to chance: the region runs from the FIRST begin marker to the
+FIRST end marker after it; a further begin marker inside that region, or a
+begin marker with no end marker after it, makes the block MALFORMED; a
+duplicated end marker lies outside the region and is ignored. **A malformed
+block is treated exactly as an ABSENT one** — no block, no error, nothing
+rendered.
+
+**The boundary the block must never cross: it decides WHERE TO LOOK, never
+WHETHER TO INTEGRATE.** It once claimed a running final review for hours after
+that review had come back with four Critical findings. The fast-forward rests
+on the Handoff gate and on the checks of `mb-epic-run integrate` (Publication
+Contract, "Integration"), and on nothing this block says.
+
+**Where the block does NOT exist, and that is a limitation rather than a
+property.** Its home is deleted when subagent-driven-development finishes, and
+`pool-status.ps1` renders it only while the slot carries an ACTIVE pin. During
+brainstorming, writing-plans, design review and the whole of finishing —
+integration included — there is therefore NO block. A rule about ending a turn
+may name the block only where the block exists; elsewhere the wait is named in
+the report instead. Giving the block the lifetime of a work item is a
+follow-up item, not part of this contract.
+
 ### Link Conventions
 
 - **Relative to the containing file, always.** A link in a Memory Bank document

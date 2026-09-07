@@ -76,6 +76,14 @@
 - **Rulings vs playbook candidates:** a ruling is a decision, a candidate is
   a procedure — a ruling becomes a candidate only when it carries `Happened`
   evidence reaching beyond this work item (contract, "Playbook Contract").
+- **The `NOW` block:** the progress ledger opens with it, per
+  `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "The `NOW` Block" — the markers,
+  the six items, the closed state class, the marker behaviour and the reader's
+  rules live THERE and are not repeated here. What is local to this loop is
+  WHEN: write the block before the first dispatch, and rewrite it at every
+  point where what you are waiting on changes — at each dispatch, at each
+  report that comes back, and before every end of turn. Rewrite it by the
+  OPERATION that section defines; the block is never edited in place.
 - **Finish:** `rm -rf <workspace>` removes `.superpowers/sdd/<plan-basename>/`
   only. The playbook-candidate file lives in
   `.superpowers/playbook-candidates/`, OUTSIDE the plan workspace, and
