@@ -47,6 +47,14 @@ healthy-looking report and then exit 1 with no file.
 Harness executable used for the occupancy probe. Empty (the default) resolves
 `claude` through Get-Command; tests point it at a stub. Never hardcode a path.
 
+.PARAMETER NowUtc
+The instant this run reads as "now", as ISO-8601 UTC. Empty (the default) is
+the real clock. The `late` flag of a slot's NOW block is COMPUTED against this
+value (contract, "The `NOW` Block": lateness is never written into the block),
+so without an injectable clock no test of that flag could assert anything —
+one that derived its expectation from [datetime]::UtcNow the same way the
+script does would assert nothing at all. Validated BEFORE any work, like -Json.
+
 .OUTPUTS
 English summary on stdout. Exit: 0 = OK, 1 = input/script failure,
 3 = the repository has no pool (no marked worktree).
@@ -56,13 +64,48 @@ param(
     [string] $RepoPath = '',
     [string] $Epic = '',
     [string] $Json = '',
-    [string] $ClaudeCommand = ''
+    [string] $ClaudeCommand = '',
+    [string] $NowUtc = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+
+# --- NOW block constants (contract, "The `NOW` Block") -----------------------
+# The markers are HTML comments and not a heading, so nothing that merely LOOKS
+# like a heading can move the region boundary.
+$NowBegin  = '<!-- UMS-NOW BEGIN -->'
+$NowEnd    = '<!-- UMS-NOW END -->'
+# Six items, all required, in this order. The set is CLOSED: an unknown key is
+# malformed, so this array is also the whitelist.
+$NowKeys   = @('State', 'Waiting on', 'Since', 'Due', 'Task', 'Look at')
+$NowStates = @('stalled', 'waiting-for-subagent', 'waiting-for-human', 'waiting-for-manager')
+# Bound on what is RENDERED out of the ledger — a block value and any other
+# excerpt alike.
+$LedgerMaxRender = 200
+# Bound on what is READ. The ledger is a git-ignored scratch file in a foreign
+# working tree that implementer subagents write into routinely; a status
+# command must not pull an unbounded one into memory.
+$LedgerMaxBytes = 1048576
+$IsoUtcPattern = '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$'
+
+# Returns a [datetimeoffset], or $null when the text is not ISO-8601 UTC. The
+# regex runs FIRST because TryParse alone accepts a great deal that this closed
+# format does not (a bare date, a local-time spelling, a culture-shaped date).
+function ConvertTo-UtcInstant([string] $Text) {
+    if ($Text -notmatch $IsoUtcPattern) { return $null }
+    $parsed = [datetimeoffset]::MinValue
+    if (-not [datetimeoffset]::TryParse(
+            $Text,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal,
+            [ref] $parsed)) {
+        return $null
+    }
+    return $parsed
+}
 
 # Never name a function `Git`: PowerShell command discovery prefers a function
 # over an application, case-insensitively, so `& git ...` inside it would
@@ -105,6 +148,16 @@ if ($Json) {
     $jsonDir = Split-Path -Parent ([IO.Path]::GetFullPath($Json))
     if (-not (Test-Path -LiteralPath $jsonDir -PathType Container)) {
         Write-Error "-Json target directory does not exist: $jsonDir"; exit 1
+    }
+}
+# One clock for the whole run: the report's own timestamp and every `late`
+# derivation read the same instant, so a slot cannot be judged against a
+# different moment than the one the report claims to describe.
+$clockUtc = [datetimeoffset]::UtcNow
+if ($NowUtc) {
+    $clockUtc = ConvertTo-UtcInstant $NowUtc
+    if ($null -eq $clockUtc) {
+        Write-Error "-NowUtc is not an ISO-8601 UTC timestamp (yyyy-MM-ddTHH:mm:ssZ): $NowUtc"; exit 1
     }
 }
 
@@ -273,7 +326,118 @@ function Get-SlotPin([string] $SlotPath) {
     return @{ Pin = $pin; Unreadable = $false }
 }
 
-function Get-SlotProgress([string] $SlotPath, [string] $Slug) {
+# --- the ledger is UNTRUSTED input ------------------------------------------
+# Contract, "The `NOW` Block": the READER-SAFETY rules of the Session Intent
+# Baton apply here unchanged, and they bind everything this reader emits OUT OF
+# THIS FILE — not only the marker region. The rules are stated there, once, and
+# are not re-derived here; what follows is only their mechanics.
+
+# The class check, shared by the block's values and by every other excerpt, so
+# there is exactly one place where "what may leave this file" is decided.
+function Test-LedgerText([string] $Text) {
+    if ($null -eq $Text) { return $false }
+    if ($Text -match '[<>]') { return $false }
+    if ($Text -match '\p{Cc}') { return $false }
+    return $true
+}
+
+# A block value: rejected text yields $null (which makes the block malformed,
+# and malformed reads as absent); over-long text is bounded, not rejected.
+function ConvertTo-NowValue([string] $Text) {
+    $t = ([string] $Text).Trim()
+    if (-not (Test-LedgerText $t)) { return $null }
+    if ($t.Length -gt $LedgerMaxRender) { return $t.Substring(0, $LedgerMaxRender) }
+    return $t
+}
+
+# Any OTHER excerpt lifted out of the same file (today: the last non-empty
+# line). Same class, same bound; rejected text renders as nothing, because
+# there is no "malformed" state for a bare excerpt to fall into.
+function ConvertTo-LedgerExcerpt([string] $Text) {
+    $t = ([string] $Text).Trim()
+    if (-not (Test-LedgerText $t)) { return '' }
+    if ($t.Length -gt $LedgerMaxRender) { return $t.Substring(0, $LedgerMaxRender) }
+    return $t
+}
+
+function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
+    # Returns the parsed block, or $null. ABSENT and MALFORMED are deliberately
+    # the same answer (contract: "A malformed block is treated exactly as an
+    # ABSENT one"), and absence sends the reader to go and look at the slot.
+    $begins = @()
+    $ends = @()
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $t = ([string] $Lines[$i]).Trim()
+        if ($t -ceq $NowBegin) { $begins += $i; continue }
+        if ($t -ceq $NowEnd) { $ends += $i }
+    }
+    if ($begins.Count -eq 0) { return $null }
+    # MORE THAN ONE begin marker is malformed either way, and the two shapes
+    # collapse here rather than being told apart: a second begin INSIDE the
+    # region is a nested marker, and one after the region is either a second
+    # complete pair (the signature of a writer that appended instead of
+    # rewriting) or a begin with no end. A duplicated END after the region is
+    # the one shape that is defined and NOT malformed — it lies outside the
+    # region, so nothing below ever looks at it.
+    if ($begins.Count -gt 1) { return $null }
+    $b = [int] $begins[0]
+    $after = @($ends | Where-Object { $_ -gt $b })
+    if ($after.Count -eq 0) { return $null }
+    $e = [int] $after[0]
+
+    $fields = [ordered] @{}
+    for ($i = $b + 1; $i -lt $e; $i++) {
+        $line = [string] $Lines[$i]
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        # The key is everything before the FIRST colon; the value is the rest of
+        # the line, trimmed, and no reader splits it further — which is what
+        # keeps the em dash of `Task:` the writer's problem and never the
+        # parser's.
+        $m = [regex]::Match($line, '^(?<k>[A-Za-z][A-Za-z ]*):(?<v>.*)$')
+        if (-not $m.Success) { return $null }
+        $key = $m.Groups['k'].Value
+        if ($NowKeys -cnotcontains $key) { return $null }
+        if ($fields.Contains($key)) { return $null }
+        $value = ConvertTo-NowValue $m.Groups['v'].Value
+        if ($null -eq $value -or $value -eq '') { return $null }
+        $fields[$key] = $value
+    }
+    foreach ($key in $NowKeys) { if (-not $fields.Contains($key)) { return $null } }
+
+    # The state class is a CLOSED enum and the comparison is case-sensitive:
+    # any other value makes the block malformed.
+    $stateIndex = -1
+    for ($i = 0; $i -lt $NowStates.Count; $i++) { if ($NowStates[$i] -ceq $fields['State']) { $stateIndex = $i } }
+    if ($stateIndex -lt 0) { return $null }
+
+    # Ruling: a `Since:`/`Due:` that is not ISO-8601 UTC is malformed. The
+    # contract fixes the spelling of both and forbids an empty, `-` or
+    # `unknown` Due precisely so that lateness always computes; a value that
+    # cannot be a timestamp is the same class of defect as a State outside the
+    # enum, and this reader is fail-closed everywhere else.
+    if ($null -eq (ConvertTo-UtcInstant $fields['Since'])) { return $null }
+    $due = ConvertTo-UtcInstant $fields['Due']
+    if ($null -eq $due) { return $null }
+
+    return [pscustomobject] @{
+        # Re-rendered from the enum's own array, never echoed from the file.
+        state = $NowStates[$stateIndex]
+        dueAt = $due.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        # COMPUTED here and nowhere else. Nothing in the file can set it: an
+        # extra `Late:` line is an unknown key and makes the block malformed.
+        late  = [bool] ($Now -gt $due)
+        items = [pscustomobject] @{
+            state     = $NowStates[$stateIndex]
+            waitingOn = $fields['Waiting on']
+            since     = $fields['Since']
+            due       = $fields['Due']
+            task      = $fields['Task']
+            lookAt    = $fields['Look at']
+        }
+    }
+}
+
+function Get-SlotProgress([string] $SlotPath, [string] $Slug, [datetimeoffset] $Now) {
     # Paired to the slug the PIN names, never to "the first directory found
     # under sdd/": a slot can carry the leftover ledger of earlier work, and a
     # leftover slug can sort first.
@@ -281,7 +445,14 @@ function Get-SlotProgress([string] $SlotPath, [string] $Slug) {
     $rel = ".superpowers/sdd/plan_$Slug/progress.md"
     $full = Join-Path $SlotPath ($rel -replace '/', [IO.Path]::DirectorySeparatorChar)
     if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
-        return [pscustomobject] @{ path = $rel; exists = $false; lines = 0; lastLine = '' }
+        return [pscustomobject] @{ path = $rel; exists = $false; lines = 0; lastLine = ''; now = $null }
+    }
+    # Bound the READ before anything is read. `lines = -1` is this script's own
+    # convention for an unreadable per-worktree signal (see `dirty` and
+    # `unpushed`), so an over-size ledger reports as unread rather than as an
+    # empty one.
+    if ((Get-Item -LiteralPath $full).Length -gt $LedgerMaxBytes) {
+        return [pscustomobject] @{ path = $rel; exists = $true; lines = -1; lastLine = ''; now = $null }
     }
     $lines = @(Get-Content -LiteralPath $full -Encoding utf8)
     $last = @($lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 1)
@@ -289,7 +460,8 @@ function Get-SlotProgress([string] $SlotPath, [string] $Slug) {
         path     = $rel
         exists   = $true
         lines    = $lines.Count
-        lastLine = if ($last.Count -gt 0) { ([string] $last[0]).Trim() } else { '' }
+        lastLine = if ($last.Count -gt 0) { ConvertTo-LedgerExcerpt ([string] $last[0]) } else { '' }
+        now      = (Get-NowBlock $lines $Now)
     }
 }
 
@@ -341,7 +513,7 @@ foreach ($c in $candidates) {
         unpushedCount  = $unpushed
         unpushedSource = $unpSource
         pin            = $pin
-        progress       = if ($null -ne $pin) { Get-SlotProgress $c.Path $pin.slug } else { $null }
+        progress       = if ($null -ne $pin) { Get-SlotProgress $c.Path $pin.slug $clockUtc } else { $null }
         session        = [pscustomobject] @{ state = $session.state; pids = @($session.pids) }
         free           = ($reasons.Count -eq 0)
         reasons        = @($reasons)
@@ -358,7 +530,7 @@ $stash = @(if ($stashRes.Code -eq 0) { $stashRes.Out | Where-Object { -not [stri
 
 $state = [pscustomobject] @{
     repoRoot        = $repoAbs
-    generatedAt     = [datetimeoffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    generatedAt     = $clockUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
     occupancySource = $occupancySource
     stashCount      = $stash.Count
     slots           = @($slots)
