@@ -1819,7 +1819,10 @@ asks which of them the base is, except the single condition of the Handoff phase
 — and that condition picks a rendering, not a step. The phases, in order:
 
 - **Sync.** `git fetch origin`, then `git merge <effective base>` on the ticket
-  branch.
+  branch. **The declared verification set (fourth check of the Handoff gate
+  below) is resolved in THIS phase**, in whichever of its two homes applies:
+  the Harvest phase deletes the plan, which is one of them, and a set learned
+  after the Green verification has run cannot be the set that run measured.
 - **Harvest.** The knowledge harvest and the IDLE reset of `context.md` (Harvest
   Contract; in `finishing-a-development-branch` it is the UMS Harvest Gate),
   committed on the ticket branch. It precedes the Handoff gate because that
@@ -1828,7 +1831,11 @@ asks which of them the base is, except the single condition of the Handoff phase
   the base may have moved while the harvest ran — then the agent pushes its own
   ticket branch, announcing the outgoing commits: the publication rule, as after
   every commit.
-- **Green verification.** Build and targeted tests, on the merged tree.
+- **Green verification.** The declared verification set, run VERBATIM and in
+  its declared order, on the merged tree. That run is what "green" means for
+  this work item, and its commands are what the Handoff artifact cites;
+  running a build and tests chosen here instead, and then citing the declared
+  set, is precisely the incomparability the set exists to remove.
 - **Handoff gate.** Four checks, and they run as one mechanical check rather
   than as items somebody ticks off, **after a fresh `git fetch origin`** —
   against the freshly fetched `<effective base>`, never against a tip
@@ -1850,36 +1857,46 @@ asks which of them the base is, except the single condition of the Handoff phase
      anyway; the gate carries it so the error arrives earlier and legibly.
   4. the commands the Handoff artifact is about to quote match, AS TEXT, the
      verification set declared for this work item. **The verification set is
-     a verbatim list of commands, declared once**, and its home is whatever
-     umbrellas the work: an epic's own ledger
-     (`memory-bank/epics/<epic_key_snake>/ledger.md`, section "Ověřovací
-     sada") for a ticket that belongs to one — declared once for the whole
-     epic so every ticket measures the identical thing — **the work item's own
-     plan otherwise, under that SAME heading, `## Ověřovací sada`, in the SAME
-     shape**: a verbatim list of commands, one per line. This is not an epic
-     peculiarity; work outside an epic declares a set too, just with the plan
-     as its home instead of a ledger. A plan written before this rule existed
-     declares its set the same way any plan does — by gaining that section —
-     and until it does, the missing-set case below is fail-closed exactly as
-     stated, no differently for an old plan than for a new one.
+     a verbatim list of commands, one per line, declared once**, and its home
+     is whatever umbrellas the work:
+     - **a ticket that belongs to an epic** — the epic's own ledger, section
+       "Ověřovací sada", declared once for the whole epic so every ticket
+       measures the identical thing. **That ledger is on the epic's
+       ELABORATION branch**, `memory-bank/epics/<epic_key_snake>/ledger.md`,
+       and a ticket branch does not carry it: a ticket branch is cut from the
+       epic LINE, which carries code and harvested documents and none of the
+       elaboration branch's documents ("The epic line"). The ticket session
+       therefore reads it BY REF — `git show <elaboration branch>:<that
+       path>` — after a fetch, never from its own working tree, where the
+       path does not exist and its absence would read as "nothing declared".
+       Name the branch wherever this path is named; the branch is a value the
+       session was given (`mb-epic-run`'s spawn prompt names branch and path
+       together) or asks the epic's manager for.
+     - **anything else** — **the work item's own plan, under that SAME
+       heading, `## Ověřovací sada`, in the SAME shape**. This is not an epic
+       peculiarity; work outside an epic declares a set too, just with the
+       plan as its home instead of a ledger. A plan written before this rule
+       existed declares its set the same way any plan does — by gaining that
+       section — and until it does, the missing-set case below is fail-closed
+       exactly as stated, no differently for an old plan than for a new one.
      The comparison is TEXTUAL, not semantic: equal strings in equal order,
      never normalized and never reordered, because the entire point is that
      two measurements of "green" are measuring the identical thing. The check
      activates only where a set IS declared — with nothing declared there is
      nothing to compare against, so it is skipped rather than fabricating a
-     pass or a fail — but resolving the set is a separate, earlier step from
-     running this comparison, and **a missing declared set at that resolution
-     step is itself fail-closed** (Fail-Closed Behavior): the first
-     integration of a ticket whose umbrella declares no verification set at
-     all is a STOP, not a silent pass, because without one, "green" means
-     something different every time and the Handoff artifact would then quote
-     output with nothing to compare it against.
+     pass or a fail — but resolving the set happens EARLIER, in the Sync
+     phase, and **a missing declared set at that resolution step is itself
+     fail-closed** (Fail-Closed Behavior): the first integration of a ticket
+     whose umbrella declares no verification set at all is a STOP, not a
+     silent pass, because without one, "green" means something different every
+     time and the Handoff artifact would then quote output with nothing to
+     compare it against.
 - **Handoff.** ONE artifact — the destination branch, `<sha>`, the enumerated
-  outgoing commits, and the verification commands of the **Green
-  verification** phase, quoted verbatim **with their output** — the SAME
-  commands, in the SAME order, that the Handoff gate's fourth check just
-  compared as text against the declared verification set — so "verified" is a
-  claim the reader can compare rather than an assurance. It has **two
+  outgoing commits, and the commands the **Green verification** phase ran —
+  the declared set — quoted verbatim **with their output**, the SAME commands
+  in the SAME order that the Handoff gate's fourth check just compared as text
+  against that set — so "verified" is a claim the reader can compare rather
+  than an assurance. It has **two
   renderings**, and the single condition of the whole
   procedure decides between them — **is there a manager?**, answered by whether
   the effective base is an epic line:

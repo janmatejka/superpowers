@@ -63,23 +63,17 @@ After the user chooses and BEFORE executing the choice:
     then `git merge <effective base>` on the ticket branch, with the intersection
     assessment and verification of the contract's "Base Sync & Drift Detection"
     section.
-  - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
-    the ticket branch.
-  - **Publish.** `git fetch origin` and `git merge <effective base>` once
-    more — the base may have moved while the harvest ran — and push.
-  - **Green verification** on the merged tree (build and the targeted tests of
-    the playbook). Red = STOP and report. The ticket branch is already on
-    `origin` (the **Harvest** and **Publish** phases each pushed it), so
-    what is still untouched is **the base ref** — nothing red has reached it. Do
-    not try to un-publish the ticket branch: force push is forbidden, and a red
-    ticket branch on `origin` is normal, visible work in progress. Fix forward
-    with further commits.
-  - **Handoff gate.** The contract's four checks, run as ONE mechanical check
-    (never as items you tick off) on the commit about to be handed over.
 
-    Before calling it, resolve the repository configuration ONCE — the same
-    `$cfg` is reused below, in the **Handoff** phase, to pick that phase's
-    rendering, so it is derived here rather than twice:
+    **Resolve the declared verification set in THIS phase** and keep it in
+    `$verificationSet`: the **Green verification** phase runs exactly it, and
+    the **Handoff gate** phase compares against it. Here and nowhere later,
+    for two reasons that both bite: the **Harvest** phase DELETES
+    `plan_<slug>.md`, which is one of the set's two homes, and a set learned
+    after the verification already ran cannot be what the verification ran.
+
+    Resolve the repository configuration once, here — the same `$cfg` is
+    reused by the **Handoff gate** and **Handoff** phases below, so it is
+    derived once rather than three times:
 
     ```powershell
     . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
@@ -88,23 +82,55 @@ After the user chooses and BEFORE executing the choice:
 
     A missing, empty or non-string `$cfg.EpicBranchPattern` means **no epic
     line** — never "every branch" (contract, Repository Configuration, "The
-    epic line"). Use the SAME test — does `$base.Branch` match
-    `$cfg.EpicBranchPattern`? — to know where the **declared verification
-    set** comes from: the gate itself does not resolve this (contract,
-    Publication Contract, "Integration") — it only compares what it is
-    handed, so finding the set's home is this step's job, not the gate's.
-    The epic branch below reads it fresh, right here; the non-epic branch
-    cannot — read that branch's own timing note before assuming both work
-    the same way:
+    epic line"). One test — does `$base.Branch` match
+    `$cfg.EpicBranchPattern`? — picks the set's home here and the artifact's
+    rendering in the **Handoff** phase. The gate itself never resolves this
+    (contract, Publication Contract, "Integration"): it only compares what it
+    is handed, so finding the set's home is this phase's job, not the gate's.
     - **The base matches** (a ticket that belongs to an epic) → the set lives
       in the epic's own ledger, declared once for the whole epic so every one
-      of its tickets measures the identical thing:
+      of its tickets measures the identical thing. **That ledger sits on the
+      epic's ELABORATION branch, and this working tree does not carry it** —
+      this branch was cut from the epic LINE, which carries code and harvested
+      documents and none of the elaboration branch's documents (contract,
+      "The epic line"). Read it BY REF, after the `git fetch origin` this
+      phase has already run:
 
       ```powershell
       . <mb-shared>/scripts/Get-UmsEpicLedger.ps1
-      $verificationSet = Get-UmsLedgerVerificationSet `
-          -LedgerPath memory-bank/epics/<epic_key_snake>/ledger.md
+      New-Item -ItemType Directory -Force -Path .superpowers | Out-Null
+      $elabRef    = 'origin/<elaboration branch>'
+      $ledgerRel  = 'memory-bank/epics/<epic_key_snake>/ledger.md'
+      $ledgerCopy = '.superpowers/epic-ledger-<epic_key_snake>.md'
+      git show "${elabRef}:$ledgerRel" > $ledgerCopy
+      $verificationSet = Get-UmsLedgerVerificationSet -LedgerPath $ledgerCopy
       ```
+
+      A non-zero `$LASTEXITCODE` from that `git show` is a **STOP**, checked
+      before the parse: the branch name or the path is wrong, the copy is then
+      EMPTY, and an empty copy reads as "nothing declared" — the fail-closed
+      STOP below would fire with a misleading reason. Report it in Czech and
+      ask the manager for the branch. Reading that path out of the working
+      tree instead is the same failure with no error at all: the file is
+      simply not there, on any ticket branch of any epic.
+
+      `Get-UmsLedgerVerificationSet` takes a PATH, so the ref's content has to
+      reach it as a file; `.superpowers/` is git-ignored scratch and the copy
+      is a throwaway. The parser keeps its single copy — nothing here reads
+      the ledger by hand. (Measured: `git show <ref> > <file>` under pwsh 7
+      reproduces the blob byte for byte, diacritics included, which matters
+      because the heading the parser looks for is `## Ověřovací sada`.)
+
+      **`<elaboration branch>` is a value this session was GIVEN, never one to
+      invent.** `mb-epic-run`'s `spawn` prompt names the branch and the path
+      together for exactly this reason (`… v ledgeru epiku <EPIK> na větvi
+      <elaborační větev>, cesta memory-bank/epics/<epic_snake>/ledger.md …`).
+      A session that does not have it — resumed, or started some other way —
+      **asks the epic's manager**, the session holding that branch: on this
+      path a manager always exists, and it is the same session the **Handoff**
+      phase will send the artifact to. Do not guess a branch name, and do not
+      fall back to the epic line — the epic line does not carry the ledger
+      either.
 
       `<epic_key_snake>` is `$base.Branch` with its `epic/` prefix stripped,
       lower-cased, with `-` turned to `_` — the same convention `mb-epic-run`
@@ -114,32 +140,81 @@ After the user chooses and BEFORE executing the choice:
       heading and shape as the epic ledger's, so the SAME reader applies:
 
       ```powershell
+      . <mb-shared>/scripts/Get-UmsEpicLedger.ps1
       $verificationSet = Get-UmsLedgerVerificationSet `
           -LedgerPath <PLAN_MB>/proposals/active/plan_<slug>.md
       ```
 
-      **Read this BEFORE the Harvest phase runs, not here.** The **Harvest**
-      phase deletes `plan_<slug>.md` as part of `mb-harvest`, so by the time
-      this Handoff gate phase is reached the file this branch names may
-      already be gone — unlike the epic ledger, which belongs to the epic
-      line, not to this ticket's own document pair, and survives this
-      ticket's own harvest untouched. Capture `$verificationSet` once, at or
-      before the **Sync** phase, and reuse that captured value here; never
-      re-read it fresh at this point.
+      The plan is still on disk at this phase and will not be after the
+      **Harvest** phase, which deletes it as part of `mb-harvest`. That is the
+      second reason this resolution lives in the **Sync** phase.
 
     Either way, finding **no declared set at all** — no such section in the
-    ledger, or nothing declared in the plan — is itself a fail-closed **STOP**
-    (contract, Publication Contract, "Integration"; Fail-Closed Behavior):
-    report it and do not proceed. Calling the gate with an empty set and
-    reading its silence as a pass would be exactly the silent downgrade this
-    layer forbids — the gate's own activation-only behaviour exists so that
-    IT never fabricates that pass, not so a caller can shrug past a set that
-    was never declared anywhere.
+    ledger, nothing declared in the plan, or no plan file at all (the expected
+    shape for a **bounded** work item, where `Get-UmsLedgerVerificationSet`
+    throws `Ledger not found`) — is itself a fail-closed **STOP** (contract,
+    Publication Contract, "Integration"; Fail-Closed Behavior). Running some
+    verification of your own choosing and citing that later would be exactly
+    the silent downgrade this layer forbids — the gate's own activation-only
+    behaviour exists so that IT never fabricates a pass, not so a caller can
+    shrug past a set that was never declared anywhere.
 
-    Once the set is resolved, call the gate with it — `-CitedCommands` is the
-    SAME commands, in the SAME order, that the **Green verification** phase
-    ran and that the **Handoff** phase below will quote verbatim in the
-    artifact:
+    **The remedy is to have the set declared, then restart this phase.**
+    Report in Czech which home was consulted and what was missing, and say who
+    declares it: on the epic path the epic's **manager**, in the ledger on the
+    elaboration branch; otherwise **this session**, by adding the
+    `## Ověřovací sada` section to `plan_<slug>.md` — it is still on disk in
+    this phase — with the commands agreed with your human partner, committed
+    and pushed like any other change. Never invent a set later, at the gate.
+  - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
+    the ticket branch.
+  - **Publish.** `git fetch origin` and `git merge <effective base>` once
+    more — the base may have moved while the harvest ran — and push.
+  - **Green verification** on the merged tree: **run `$verificationSet` —
+    those commands, verbatim, in that order.** That is what "green" means for
+    this work item; it is not "the build and tests you would have picked", and
+    running anything else here is what makes the **Handoff gate** phase's
+    verification-set check unpassable a few lines further down. What you ran
+    is what the artifact cites, so record it as such:
+
+    ```powershell
+    $citedCommands = $verificationSet
+    ```
+
+    Red = STOP and report. The ticket branch is already on
+    `origin` (the **Harvest** and **Publish** phases each pushed it), so
+    what is still untouched is **the base ref** — nothing red has reached it. Do
+    not try to un-publish the ticket branch: force push is forbidden, and a red
+    ticket branch on `origin` is normal, visible work in progress. Fix forward
+    with further commits.
+  - **Handoff gate.** The contract's four checks, run as ONE mechanical check
+    (never as items you tick off) on the commit about to be handed over.
+
+    **This phase resolves nothing.** It consumes the values earlier phases
+    assigned — `$verificationSet` from the **Sync** phase, `$citedCommands`
+    from the **Green verification** phase, and `$cfg` from the **Sync** phase,
+    which the **Handoff** phase below reuses to pick its rendering.
+    Re-deriving any of them here is how a gate ends up comparing a set against
+    itself and proving nothing.
+
+    **If you arrive here without `$verificationSet`** — a session resumed
+    mid-sequence, or a sequence begun before this overlay was read — do NOT
+    skip the check and do NOT fill the set in from whatever you happened to
+    run. Recover it, then re-run the **Green verification** phase against what
+    you recovered, because the citation has to be what was actually run:
+    - **epic home:** repeat the **Sync** phase's `git show` of the ledger by
+      ref. It lives on the elaboration branch and this ticket's harvest never
+      touched it, so it is still exactly where it was.
+    - **plan home:** `plan_<slug>.md` is gone from disk but not from history.
+      Read it from the commit BEFORE the harvest commit —
+      `git show <pre-harvest sha>:<PLAN_MB>/proposals/active/plan_<slug>.md`,
+      where `<pre-harvest sha>` is that harvest commit's parent (`git log` on
+      this ticket branch names the harvest commit). No such section there
+      either is the **Sync** phase's fail-closed STOP, arriving late.
+
+    Call the gate with both — `-CitedCommands` is what the **Green
+    verification** phase actually ran, and what the **Handoff** phase below
+    quotes verbatim in the artifact:
 
     ```powershell
     . <mb-shared>/scripts/Test-UmsHandoffGate.ps1
@@ -173,17 +248,20 @@ After the user chooses and BEFORE executing the choice:
     - `verification-set` — the cited commands do not match the declared set
       textually, either because none were cited or because they differ from a
       declared line onward (`$gate.Checks`' `Detail` for this name says which).
-      The remedy belongs to whoever is about to build the **Handoff**
-      artifact, not to the declared set itself: quote the **Green
-      verification** phase's commands again, verbatim and in the declared
-      order, then re-run the gate.
+      The remedy is to **run the DECLARED set on the merged tree** — the
+      **Green verification** phase again, `$verificationSet` verbatim and in
+      its order — and to cite THAT run. Re-quoting what was run before cannot
+      fix it: the comparison is textual, and different commands stay different
+      however carefully they are quoted. Never edit the declared set to match
+      what was run; its whole purpose is that every ticket measures the
+      identical thing.
 
     Only with `$gate.Ok` true does the **Handoff** phase begin.
   - **Handoff.** Build ONE **handoff artifact** first, then render it. The
     artifact carries exactly four things: the destination branch
     (`$base.Branch`), the `<sha>` being handed over, the **enumerated** outgoing
-    commits, and the verification commands of the **Green verification** phase
-    (the build and the targeted tests) quoted **verbatim with their output** —
+    commits, and the commands the **Green verification** phase ran — the
+    declared set — quoted **verbatim with their output** —
     the SAME `$citedCommands` the **Handoff gate** phase above just compared,
     as TEXT, against the declared verification set, so "verified" is a claim
     the reader can compare rather than an assurance. The gate's own result may
@@ -193,10 +271,11 @@ After the user chooses and BEFORE executing the choice:
     verification evidence.
 
     Both renderings are built from that SAME artifact, and a **single
-    condition** picks between them — the SAME `$cfg`/`$base.Branch` test
-    already resolved in the **Handoff gate** phase above, reused here rather
-    than re-derived: does `$base.Branch` match `epicBranchPattern` from
-    `<CTX_DIR>/ums-repo.json`? The condition picks a
+    condition** picks between them — the SAME `$cfg`/`$base.Branch` test the
+    **Sync** phase already ran to find the verification set's home, reused
+    here rather than re-derived: does `$base.Branch` match
+    `$cfg.EpicBranchPattern` (`epicBranchPattern` in
+    `<CTX_DIR>/ums-repo.json`)? The condition picks a
     rendering, nothing else: every phase above and below runs identically in
     both cases.
     - **The base does NOT match** (no manager) → ask (Czech)
