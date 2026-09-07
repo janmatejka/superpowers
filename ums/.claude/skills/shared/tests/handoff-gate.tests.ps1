@@ -66,10 +66,9 @@ try {
     $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.ActiveSha
     Assert-Eq ($r.Blocking -join ',') 'active-pin' 'konfigurační báze dává týž výsledek jako explicitní'
 
-    # NEGATIVNÍ: selhaný `git fetch`. Není to „báze se pohnula" — origin je
-    # nedosažitelný a náprava je lokální (síť, remote), takže má vlastní
-    # blokující jméno. Kdyby se hlásil jako `ancestor`, poslal by řešitele
-    # zpět do fáze Publish, kde není co spravit.
+    # NEGATIVNÍ: selhaný `git fetch` je fail-closed a hlásí se pod vlastním
+    # blokujícím jménem `fetch-failed`, ne jako `ancestor` (proč: hlavička
+    # Test-UmsHandoffGate.ps1).
     Write-Host "== nedosažitelný origin: blokuje vlastní jméno fetch-failed"
     $deadUrl = Join-Path $f.Root 'origin-neexistuje.git'
     Set-GateOriginUrl $f $deadUrl
