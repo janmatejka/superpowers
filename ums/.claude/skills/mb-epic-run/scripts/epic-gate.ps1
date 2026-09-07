@@ -28,9 +28,10 @@
                          ticket that MADE the decision, reported but never
                          matched against -Ticket). Confirmation is keyed on
                          AckSha being non-empty, NEVER on the Stav word -
-                         the ledger template says so outright, and a row
-                         whose Stav claims 'zavřeno' with an empty AckSha
-                         still fails this check.
+                         the contract says so outright (section "The epic
+                         line", the decision registry), and a row whose
+                         Stav claims 'zavřeno' with an empty AckSha still
+                         fails this check.
 
     BOTH CHECKS PASS TRIVIALLY WHEN THEIR INPUT IS ABSENT: a ledger file
     that does not exist, or a ledger with no '## Registr rozhodnutí'

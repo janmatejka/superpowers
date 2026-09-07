@@ -112,7 +112,16 @@ Wait for confirmation or narrowing. The human always decides the agenda.
 7. **Impact on neighbors:** enumerate every other ticket this window changed
    the premises of (moved item, changed/new dependency, corrected claim, new
    ticket) → dirty-set rows (`Zašpiněno oknem` = this window, with reason).
-   Do NOT chase them.
+   **And where a decision this window took rests on another ticket's behaviour
+   or code, that decision gets a `## Registr rozhodnutí` row as well:**
+   `Vlastník (tiket)` = the ticket that took it, `Předpokládá o (tiket)` = the
+   ticket whose behaviour or code it assumes, `Druh` = `text` or `chování`,
+   `Stav` = `otevřeno`, `Potvrzeno (SHA)` left empty. This step is the only
+   producer of those rows — nothing downstream writes one — and everything
+   else about them (what `Druh` decides, who fills the SHA and with what, why
+   an unconfirmed row blocks the epic fast-forward) is the contract's, section
+   "The epic line".
+   Do NOT chase either kind.
 8. **Write & reconcile (close):** see §3.
 
 ## 3. Window closure (exit gate)

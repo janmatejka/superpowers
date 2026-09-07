@@ -21,7 +21,8 @@
         before this file existed.
 
       - Get-UmsLedgerVerificationSet: reads the '## Ověřovací sada' fenced
-        code block (one shell command per line, per the template) and
+        code block (one shell command per line, per the CONTRACT's
+        Publication Contract, section "Integration") and
         returns the commands, IN FILE ORDER, as a flat string array. Lines
         that are angle-bracket template placeholders (e.g.
         '<příkaz 1: build>') are dropped — the same rule the table reader's
@@ -36,10 +37,11 @@
         Decision, Owner, AssumesAbout, Kind, State, AckSha — read
         POSITIONALLY from the six columns in that order (Rozhodnutí,
         Vlastník (tiket), Předpokládá o (tiket), Druh, Stav, Potvrzeno
-        (SHA)). AckSha is the load-bearing field: per the template, an empty
-        'Potvrzeno (SHA)' cell means unconfirmed regardless of what Stav
-        says, so a row with fewer than six cells still yields an object with
-        an empty AckSha rather than throwing. The template's own example row
+        (SHA)). AckSha is the load-bearing field: per the CONTRACT ("The
+        epic line", the decision registry), an empty 'Potvrzeno (SHA)' cell
+        means unconfirmed regardless of what Stav says, so a row with fewer
+        than six cells still yields an object with an empty AckSha rather
+        than throwing. The template's own example row
         (first cell starting with '<') is dropped, same rule as above.
 
     None of the three functions print anything, mutate anything, or touch

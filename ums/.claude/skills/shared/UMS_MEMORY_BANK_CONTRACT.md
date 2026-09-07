@@ -722,6 +722,33 @@ epic fast-forward, and the ticket's spawn row in the epic's own ledger must
 belong to this epic** — enforced mechanically, ahead of the push, by
 `mb-epic-run`'s `integrate` operation.
 
+**The decision registry** is the `## Registr rozhodnutí` section of the epic's
+evidence ledger, and its rules live HERE rather than in the ledger template,
+because three different actors act on them: the elaboration window that writes
+a row, the ticket session that confirms one, and the manager's `integrate`,
+which reads them.
+
+- **Who writes a row.** A decision that rests on ANOTHER ticket's behaviour or
+  code IS a row of that registry, naming that ticket in `Předpokládá o
+  (tiket)`, with `Vlastník (tiket)` the ticket that took the decision. The
+  elaboration window that took it writes the row (`mb-epic-elaboration`, its
+  Impact on neighbors step), which is what makes the registry mechanical: the
+  row exists by procedure, not because somebody remembered.
+- **`Druh` decides what evidence may close the row**, and that is the column's
+  whole job: a `text` row closes on a READING, a `chování` row closes on a
+  TEST asserting that behaviour. Reading code proves its current value, never
+  that it behaves the way the decision assumes.
+- **`Stav` runs `otevřeno` → `zavřeno`, and confirmation is not keyed on
+  it.** A row closes only with a non-empty `Potvrzeno (SHA)`, whatever `Stav`
+  says; a row whose `Stav` claims `zavřeno` over an empty SHA still blocks.
+- **Who fills `Potvrzeno (SHA)`: the ticket named in `Předpokládá o
+  (tiket)`**, with the SHA of ITS OWN commit carrying that evidence. That is
+  also the ticket whose handoff the block fires on, so **the remedy belongs to
+  that integrating session** and to no other. No commit of `Vlastník (tiket)`
+  can satisfy a column defined as a commit of the assumed-about ticket, and that
+  owner's session may be finished and closed; the owner is context to REPORT —
+  whose decision is waiting — never the actor to wait for.
+
 ## Base Sync & Drift Detection
 
 The base ref is merged into the ticket branch at **phase boundaries** only:
