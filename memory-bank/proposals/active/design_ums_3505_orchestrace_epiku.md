@@ -22,25 +22,44 @@ Kontraktový pojem „integrační větev" (= báze pracovní položky, vždy ch
 zahrnuje **obojí** — epikovou linii i dodávkovou linii. Kde záleží na tom
 která, používá tento návrh jména z tabulky, nikdy ten obecný pojem.
 
-## Aditivnost — režim jednotlivých tiketů se nemění
+## Jedna procedura, dva příjemci
 
-Nadřazený požadavek, který přebíjí všechno ostatní v tomto dokumentu:
+Nadřazený požadavek: **práce na samostatném tiketu, kde do chráněné integrační
+větve pushuje člověk, musí dál fungovat.** První verze tohoto návrhu to řešila
+slibem „mimo epikový režim se nemění nic" — a byla to falešná ochrana. Průchod
+návrhem našel **patnáct míst, kde se chování větvilo, a deset z nich nemělo
+s epikem nic společného.** Dvě z nich jsou přímo měřené vady, které se staly
+**mimo** epikový režim:
 
-> **Práce na samostatném tiketu, kde do chráněné integrační větve pushuje
-> člověk, musí fungovat přesně jako dnes.** Nic z tohoto návrhu se jí nesmí
-> dotknout.
+- ACTIVE pin tiketu 242 unikl 4. 9. do **dodávkové linie** — epiková větev
+  tehdy ještě neexistovala, vznikla 5. 9.;
+- 244 dvakrát přepisovala výčet odchozích commitů, protože se pohnula
+  **dodávková** báze.
 
-Přepínačem je jediná otázka, položená v jednom místě: **odpovídá efektivní báze
-pracovní položky vzoru `epicBranchPattern`?** Když ne, neplatí nic z toho, co
-je níž — `mb-harvest` zachovává řádek `Jira:` jako dnes, integrace je příprava
-příkazu pro člověka jako dnes, žádná integrační brána neběží, žádný registr
-rozhodnutí se nečte a žádná ověřovací sada se nevyžaduje. Epikový režim je
-**přístavba, ne přestavba**, a to je testovatelné tvrzení, ne slib — viz
-Verifikace, bod 3.
+Zmrazit chování mimo epik by tedy znamenalo opravit obě vady jen tam, kde se
+nestaly. Návrh proto **sjednocuje proceduru a dělí práci podle aktéra, ne podle
+režimu.**
 
-Praktický důsledek pro plán: každá nová brána, každý nový STOP a každá odchylka
-od kontraktu popsaná níž musí být uvnitř té jedné podmínky. Kde by se dala
-vyslovit tak, že platí obecně, je to vada.
+**Tiketový agent má jednu proceduru pro oba režimy.** Liší se jediná věc —
+**komu se práce předává** — a je to jedna podmínka na jednom místě:
+
+> **Předání integrace je jeden artefakt** (cílová větev, SHA, výčet odchozích
+> commitů, ověřovací příkazy a jejich výstup), kterému vždy předchází **jedna
+> brána**. Vykreslí se buď jako příkaz pro člověka, nebo jako zpráva správci.
+
+**Správcova práce je vlastní skill**, ne druhá varianta téže procedury —
+operace `mb-epic-run integrate` vedle `status`, `ready`, `spawn` a `attach`.
+V jednotiketovém režimu ten skill **prostě neexistuje**; není co degradovat a
+není druhá formulace, která by se rozešla s první.
+
+Rozhraní mezi nimi je ten artefakt předání. Co je nad ním navíc epikové, jsou
+**dvě kontroly, které bez ledgeru epiku nemají vstup** a projdou triviálně.
+
+**A jedna hranice, kterou je potřeba držet:** registr rozhodnutí, stub
+sdíleného rozhraní a deklarovaná ověřovací sada se váží na **epik**, ne na
+epikovou **linii**. Tiket, který patří do epiku a integruje se přímo do
+dodávkové linie, je má taky — jeho sousedé existují bez ohledu na topologii
+větví.
 
 ## Cíl
 
@@ -59,8 +78,11 @@ tabulkou**, která říká, co řeší správce a co člověk.
 
 - **Dvě větve na epik** — epiková linie a řídicí větev — a podmínka, za které
   epiková linie vůbec vzniká.
-- **Protokol integrace tiketu** do epikové linie, se strojovými branami místo
-  položek v checklistu.
+- **Jedna procedura integrace pro oba režimy** — brána předání a artefakt
+  předání se dvěma vykresleními, strojové brány místo položek v checklistu.
+- **Správcova strana jako vlastní skill** (`mb-epic-run integrate`), ne druhá
+  varianta téže procedury.
+- **Zrušení nabídky inline elaborace epiku** na hranici fáze tiketového sezení.
 - **Východ epiku** do dodávkové linie a to, proč právě on licencuje agentní
   zápis do epikové linie.
 - **Vynucení** — `epic/*` mezi chráněnými větvemi, klíč `epicBranchPattern`
@@ -273,25 +295,32 @@ výjimce podle aktéra (část 4) by prošel oběma vrstvami, kdykoli by to byl
 fast-forward na publikované commity. Kontrakt to odpojení už vyžaduje; tady
 přestává být hygienou a stává se bezpečnostním krokem.
 
-**Kanonický IDLE — jedna definice, jedno místo, jeden zapisovatel.**
-Rozdělení větví konflikt v `context.md` **neodstraní samo**: epiková linie ho
-zdědí z toho, co se do ní integruje. Invariant, který ho odstraní, je:
+**Kanonický IDLE — jedna definice, jedno místo, jeden zapisovatel, a platí
+všude.** Rozdělení větví konflikt v `context.md` **neodstraní samo**: každá
+integrační větev ho zdědí z toho, co se do ní integruje. Invariant, který ho
+odstraní:
 
-> **Post-harvest `context.md` všech tiketů jednoho epiku je bajt po bajtu
-> stejný.** Obsahuje IDLE marker a řádek `Báze: origin/epic/<KLÍČ>`, a
-> **neobsahuje řádek `Jira:`.**
+> **Post-harvest `context.md` všech tiketů, které integrují do téže větve, je
+> bajt po bajtu stejný.** Obsahuje IDLE marker a řádek `Báze:` té větve (nebo
+> ho neobsahuje, když je bází `baseRef`), a **neobsahuje řádek `Jira:`.**
 
 Pak je čistý příspěvek tiketu do toho souboru nulový a trojcestný merge ho bere
-bez konfliktu; nový tiket odštěpený z epikové linie navíc zdědí správnou bázi.
-Zapisuje to **`mb-harvest` ve svém existujícím resetu**, na tiketové větvi,
-**před** hlášením — žádný čtvrtý zapisovatel `context.md` nevzniká.
+bez konfliktu; nový tiket odštěpený z té větve navíc zdědí správnou bázi.
+Zapisuje to **`mb-harvest` ve svém existujícím resetu**, na tiketové větvi —
+žádný čtvrtý zapisovatel `context.md` nevzniká.
+
+**Není to epikové pravidlo a nesmí být napsané jako epikové.** Zbytkový `Jira:`
+sbírá každá sdílená větev, do které integruje víc tiketů — a je to jeden ze
+dvou měřených zdrojů opakovaného konfliktu, přičemž ten druhý (ACTIVE pin 242)
+se stal na **dodávkové** lince. Napsat tuhle opravu jen pro epikový režim by
+znamenalo opravit ji tam, kde se ta chyba nestala.
 
 Vypuštění řádku `Jira:` je vědomá **odchylka od kontraktu**, který ho v IDLE
 zachovává jako „poslední pracovní položku". Na větvi, do které integruje mnoho
-tiketů, ale ta věta nedává smysl — je to ten, kdo integroval naposled, a právě
-tenhle řádek byl jedním ze dvou zdrojů opakovaného konfliktu. Identita tiketu
-je v ledgeru a v hlavičce návrhu, ne ve zbytkovém řádku. Odchylka platí **jen
-tam, kde je efektivní bází epiková linie**.
+tiketů, ta věta nedává smysl — je to ten, kdo integroval naposled. Identita
+tiketu je v hlavičce návrhu a v ledgeru, ne ve zbytkovém řádku; **plán musí
+ověřit, odkud `mb-jira-update` bere klíč po harvestu**, protože dnes ho může
+brát právě odtud.
 
 **Vlastní báze epikové linie není v jejím `context.md`.** Je v ledgeru epiku,
 protože epiková linie žádnou pracovní položku nemá. Kdyby se odvozovala
@@ -307,50 +336,68 @@ nemůže; všude jinde ji návrh nahrazuje bránou (část 5).
 
 **Tiketový agent** je jedno sezení na jednu tiketovou větev.
 
-**Protokol integrace tiketu** (nahrazuje Option 1 v `finishing`, když je
-efektivní bází epiková linie):
+#### Procedura tiketového agenta — jedna, pro oba režimy
+
+Nahrazuje Option 1 v `finishing`. `<BÁZE>` je efektivní báze pracovní položky:
+dodávková linie, servisní větev nebo epiková linie — procedura mezi nimi
+nerozlišuje.
 
 1. tiket dokončí; **harvest**, včetně kanonického IDLE — **před integrací**;
-2. `git fetch origin`, `git merge origin/epic/<KLÍČ>`, ověření **deklarovanou
-   ověřovací sadou epiku**. Konflikty typu sjednocení v projektových souborech
-   řeší sám; rozhodnutí patřící cizímu tiketu eskaluje (část 5);
+2. `git fetch origin`, `git merge <BÁZE>`, ověření **deklarovanou ověřovací
+   sadou**. Konflikty typu sjednocení v projektových souborech řeší sám;
+   rozhodnutí patřící cizímu tiketu eskaluje (část 5);
 3. push vlastní větve — dnešní povinnost po každém commitu;
-4. hlášení správci: **SHA**, epikový tip, proti kterému byl merge dělaný, a
-   **doslovný výpis příkazů ověřovací sady s jejich výsledkem**;
-5. správce spustí **integrační bránu — skript, ne položky v checklistu**.
-   Skript nejdřív `git fetch origin` a pak porovnává proti **čerstvě staženému
-   `origin/epic/<KLÍČ>`**, nikdy proti hodnotě z hlášení. Kontroluje:
-   - `git merge-base --is-ancestor <čerstvý tip> <SHA>` — merge nese aktuální
-     epik. Proti nahlášené hodnotě tahle kontrola projde přesně v tom případě,
-     kvůli kterému existuje;
-   - `context.md` integrovaného commitu je IDLE — čteno z `<CTX_DIR>`
+4. **brána předání — skript, ne položky v checklistu.** Nejdřív `git fetch
+   origin`, pak porovnává proti **čerstvě staženému `<BÁZE>`**, nikdy proti
+   hodnotě, kterou si zapamatoval z kroku 2. Tři kontroly, všechny univerzální:
+   - `git merge-base --is-ancestor <čerstvá báze> <SHA>` — merge nese aktuální
+     bázi. Proti zapamatované hodnotě projde přesně v tom případě, kvůli
+     kterému existuje, a člověk pak dostane příkaz, který se odrazí (244 kvůli
+     tomu dvakrát přepisovala výčet commitů);
+   - `context.md` commitu, který se integruje, je IDLE — čteno z `<CTX_DIR>`
      odvozeného z konfigurace, ne z natvrdo zapsané cesty. **Predikát je
      kontraktový:** ACTIVE je přítomnost `Target MB Pin` spolu s `Work item`.
      **Chybějící soubor je fail-closed STOP, ne „IDLE"** — `git show` na
      neexistující cestu končí kódem 128 a ten se dá snadno přečíst jako „není
-     ACTIVE";
+     ACTIVE". Tohle je ta kontrola, kterou u 242 zachytila jen pozornost;
    - `<SHA>` je dosažitelné na `origin`. Tuhle podmínku vynutí i hook při
-     pushi; ve skriptu je proto, aby chyba přišla dřív a srozumitelněji, ne
-     jako jediná zábrana;
+     pushi; v bráně je proto, aby chyba přišla dřív a srozumitelněji;
+5. **artefakt předání** — cílová větev, `<SHA>`, výčet odchozích commitů,
+   a **doslovný výpis příkazů ověřovací sady s jejich výstupem**. Jeden
+   artefakt, dvě vykreslení, a rozhoduje o nich **jediná podmínka celé
+   procedury**:
+   - **není správce** → příkaz pro člověka, `! git push origin
+     HEAD:<baseBranch>`, jako dnes;
+   - **je správce** (efektivní bází je epiková linie) → zpráva správci;
+6. **po landnutí pushe** — ať ho udělal člověk, nebo správce — tiketové sezení
+   ověří dosažitelnost **z báze** (`git merge-base --is-ancestor <SHA>
+   <BÁZE>`) a teprve pak spustí `mb-jira-update`. Životní cyklus běží na větvi
+   toho tiketu, jak vyžaduje kontrakt; tahle brána platí i bez Jira tiketu.
+
+#### Operace správce — vlastní skill, ne druhá varianta téhož
+
+`mb-epic-run integrate`, vedle `status`, `ready`, `spawn` a `attach`. Vstupem
+je artefakt předání. V jednotiketovém režimu tenhle skill neexistuje
+a není co degradovat.
+
+1. `git fetch origin`, přečtení předání;
+2. **dvě epikové kontroly navíc** — obě bez ledgeru epiku nemají vstup a
+   projdou triviálně:
    - **řádek `Rozjetí` tohoto tiketu patří tomuto epiku** — bez toho nic
      neváže fast-forward na *vlastní* epik a agent by směl posunout kteroukoli
      existující `epic/*` větev;
    - **žádný nepotvrzený řádek registru rozhodnutí nejmenuje tento tiket**
      (část 5);
-
-   a **jednu věc posoudí správce úsudkem**, protože mechanicky nejde: že
-   hlášení neodporuje ničemu v evidenci epiku. To je ta průřezová kontrola,
-   kvůli které fast-forward dělá správce;
-6. `git push origin <SHA>:refs/heads/epic/<KLÍČ>`. **Předpoklad, který se dá
+3. **jedna věc úsudkem**, protože mechanicky nejde: že hlášení neodporuje
+   ničemu v evidenci epiku. To je ta průřezová kontrola, kvůli které
+   fast-forward dělá správce;
+4. přeběhnutí tří univerzálních kontrol brány předání proti čerstvě staženému
+   tipu — mezi předáním a pushem uběhl čas a báze se mohla pohnout;
+5. `git push origin <SHA>:refs/heads/epic/<KLÍČ>`. **Předpoklad, který se dá
    přehlédnout:** hook posuzuje dosažitelnost z remote-tracking refů *tohoto
    klonu*, takže správce musí mít po pushi tiketového agenta fetchnuto. V poolu
    sdílených worktreí je to zdarma, v odděleném klonu ne;
-7. zápis do ledgeru a pokyn ostatním sezením k resynchronizaci;
-8. **zbytek dokončí tiketové sezení na vlastní větvi**, jak vyžaduje kontrakt
-   (životní cyklus běží na větvi toho tiketu): po pushi správce ověří
-   dosažitelnost **z epikové linie** (`git merge-base --is-ancestor <SHA>
-   origin/epic/<KLÍČ>`) a teprve pak spustí `mb-jira-update` a posune tiket do
-   „Test".
+6. zápis do ledgeru a pobídka ostatním sezením k resynchronizaci.
 
 **Serializace je fronta, ne merge.** Když dva tikety ověří proti témuž
 epikovému tipu a první se integruje, druhý **už není fast-forward** a musí se
@@ -361,13 +408,18 @@ správce v jednu chvíli u jednoho tiketu**. Dávkování s bisekcí je dokument
 správce nikdy neautoruje obsah, který autorovat nesmí. Podmínka spuštění a
 odhadovaný strop jsou v Rizicích.
 
-**„Ověřeno" musí být porovnatelné tvrzení.** Epik deklaruje **jednou** ve svém
-ledgeru ověřovací sadu jako **doslovný výčet příkazů**; hlášení je cituje
-doslova a brána je porovnává jako text. **Epik bez deklarované sady je
-fail-closed STOP** — bez ní znamená „zelené" pokaždé něco jiného a brána nemá
-co porovnávat. Ve vrstvě pro to dnes není žádný precedent; kontrakt zná jen
-„green verification (build and targeted tests)". Bez build serveru je tohle
-jediná věc, která z „ověřeno" dělá srovnatelný údaj.
+**„Ověřeno" musí být porovnatelné tvrzení, a to v obou režimech.** Ověřovací
+sada je **doslovný výčet příkazů**; artefakt předání je cituje i s výstupem.
+Domov má podle toho, co práci zastřešuje: **u tiketu v epiku je to ledger
+epiku** (deklarováno jednou pro celý epik, aby všechny tikety měřily totéž),
+**jinak plán pracovní položky**, který build a testy jmenuje už dnes.
+**Chybějící sada je fail-closed STOP** — bez ní znamená „zelené" pokaždé něco
+jiného a nemá se co porovnávat.
+
+Ve vrstvě pro to dnes není žádný precedent; kontrakt zná jen „green
+verification (build and targeted tests)". Bez build serveru je tohle jediná
+věc, která z „ověřeno" dělá srovnatelný údaj — a proto se nepíše jako epiková
+zvláštnost.
 
 **Kdo smí fast-forwardovat.** Mechanicky nikdo neodliší správce od tiketového
 agenta, a git nesprávné pořadí odmítne sám — takže „do epikové linie zapisuje
@@ -550,10 +602,29 @@ o chování *jiného* tiketu mohlo bydlet — má `Položky`, `Členy`, `Okna`,
 `Rozhodnutí | Vlastník (tiket) | Předpokládá o (tiket) | Stav | Potvrzeno (SHA)`.
 Rozhodnutí, které stojí na chování jiného tiketu, **je řádek jmenující ten
 tiket**, a ten ho musí potvrdit commitem. **Nepotvrzený řádek jmenující
-integrovaný tiket je mechanická zábrana fast-forwardu** (brána kroku 5), ne
+integrovaný tiket je mechanická zábrana fast-forwardu** (kontroluje ji operace `integrate`), ne
 věc, na kterou si má někdo vzpomenout. Případ (a) je přesně takový řádek:
 *„po výpadku se neobsluhuje z prošlých dat; léčbou je delší okno"* s vlastníkem
 244 a předpokladem o 243.
+
+**Elaborace epiku se tiketovému sezení přestává nabízet.** Dnes Epic Backflow
+check na hranici fáze **nabídne inline elaborační okno** — přepnutí na
+elaborační větev a rozpracování epiku uprostřed práce na tiketu. To se ruší:
+
+> **Tiketové sezení nález zapíše a pokračuje. Elaboraci epiku otevírá jedině
+> jeho správce.**
+
+Tři důvody, všechny už v tomto návrhu jinde: rozpracování epiku je **průřezová
+práce**, a ta patří tomu, kdo drží průřezovou paměť; nabídka je **zastavení
+navíc** přesně tam, kde bylo naměřeno deset zbytečných zastavení; a přepnutí
+větve uprostřed tiketu je práce na dvou pracovních položkách zároveň, což
+kontrakt jinde nedovoluje.
+
+Zaniká tím jen **nabídka**, ne nález. Zápis do ledgeru zůstává — to je ten
+artefakt, kterým se nález doručí. Bez správce (jednotiketový režim tiketu, který
+do epiku patří) řádek prostě čeká na příští elaborační okno, stejně jako dnes
+čeká dirty-set; nic se neztrácí, jen se to odkládá. Platí to **v obou režimech**,
+protože důvod je vlastnictví práce, ne topologie větví.
 
 **A kde je předpoklad o chování, potvrzuje se testem.** Řádek registru se
 u behaviorálního předpokladu nezavírá přečtením, ale testem, který to chování
@@ -675,7 +746,7 @@ zdvojené nebo vnořené koncové značce musí být definované.
 
 **Hranice, kterou blok nesmí překročit:** jednou zavedl, a právě v tu nejdražší
 chvíli. Proto **blok slouží k rozhodnutí, kam se podívat, nikdy k rozhodnutí
-integrovat** — fast-forward stojí na bráně kroku 5.
+integrovat** — fast-forward stojí na bráně předání a na kontrolách operace `integrate`.
 
 **Kde blok NEEXISTUJE, a je to omezení, ne vlastnost.** Žije v
 `.superpowers/sdd/<plan>/progress.md`, který SDD na konci maže, a
@@ -753,7 +824,7 @@ je řeší kdokoli.
 | Tiket se **opouští**, ne dokončuje | `mb-abort` na tiketové větvi, publikovaný — nepublikované opuštění nechá na `origin` ACTIVE pin a trvalou `KOLIZE AKTIVNÍ PRÁCE`. Do epikové linie se nic neintegruje; správce uzavře řádek `Rozjetí` a řádky registru, které tiket vlastnil. |
 | Tiketové sezení **umře mezi krokem 3 a 4** | Práce je na `origin` (publikuje se po každém commitu), hlášení chybí. Nástupkyně ho složí z vlastní větve a ledgeru; správce to pozná ze sloupce „po termínu". |
 | **Umře správce** | Epiková linie se nehýbe, což je bezpečný stav. Novým správcem je sezení, které vyzvedne řídicí větev — git exkluzivitou je to nejvýš jedno v rámci poolu. Fronta se rekonstruuje z ledgeru. |
-| Sezení dostane pokyn integrovat, ale **mezitím se epiková linie pohnula** | Brána kroku 5 to odmítne proti čerstvě staženému tipu a vyžádá resynchronizaci. Strop dvě neúspěšná kola, pak STOP a report. |
+| Sezení dostane pokyn integrovat, ale **mezitím se epiková linie pohnula** | Brána předání to odmítne proti čerstvě staženému tipu a vyžádá resynchronizaci. Strop dvě neúspěšná kola, pak STOP a report. |
 | Epik **nemá deklarovanou ověřovací sadu** | Fail-closed STOP u první integrace. |
 | Pracovní položka **nemá Jira tiket** | Řádky ledgeru se klíčují slugem; krok 8 přeskočí finalizaci a ověření dosažitelnosti proběhne i tak — jeho brána na Jiře nezávisí. |
 
@@ -764,14 +835,17 @@ je řeší kdokoli.
 | Dvě větve na epik | Jedna větev nesla dvě role a stálo to čtyři opakované konflikty a dva úniky ACTIVE pinu. |
 | Řídicí větev je existující elaborační větev, bez pinu | Elaborace je definovaná jako práce bez pinu; nová větev by rozdvojila místo, kde spuštěná sezení hledají ledger. |
 | Post-harvest `context.md` je bajt po bajtu stejný napříč tikety epiku | To je ten invariant, který konflikt odstraňuje; samotné rozdělení větví ho neodstraní. |
-| Vypuštění řádku `Jira:` v epikovém režimu | Na větvi, kam integruje mnoho tiketů, „poslední pracovní položka" nedává smysl a je to jeden ze dvou měřených zdrojů konfliktu. Vědomá odchylka od kontraktu. |
+| Vypuštění řádku `Jira:`, a to univerzálně | Na každé větvi, kam integruje mnoho tiketů, „poslední pracovní položka" nedává smysl. Je to jeden ze dvou měřených zdrojů opakovaného konfliktu a druhý z nich se stal na dodávkové lince — psát tu opravu jen pro epik by ji zavedlo tam, kde se ta chyba nestala. Vědomá odchylka od kontraktu. |
 | `epic/*` do `protectedBranches`, `epicBranchPattern` jen pro výjimku | Změřeno, že samotný nový klíč nefunguje ani v jednom směru: základna nejde zvolit a guard mlčí. |
-| Epikový režim je aditivní, přepnutý jedinou podmínkou | Nadřazený požadavek uživatele: práce na samostatném tiketu s lidským pushem do chráněné větve musí fungovat přesně jako dnes. |
+| Jedna procedura pro oba režimy, dělení podle AKTÉRA | Rozhodnutí uživatele: dvě odlišné složité formulace v jednom skillu nejsou efektivní. Průchod návrhem našel patnáct větvení a deset z nich s epikem nesouviselo. Správcova práce je vlastní skill, protože je to jiná role, ne druhá varianta téhož. |
+| Brána a kanonický IDLE platí univerzálně | Obě měřené vady, které opravují (únik ACTIVE pinu u 242, dvakrát přepsaný výčet commitů u 244), se staly MIMO epikový režim. |
+| Předání integrace je jeden artefakt se dvěma vykresleními | Jediná podmínka celé procedury je „je správce?"; všechno ostatní je společné. |
+| Elaborace epiku se tiketovému sezení přestává nabízet | Rozhodnutí uživatele: rozpracování epiku přísluší jeho správci. Navíc je to zastavení navíc přesně tam, kde bylo naměřeno deset zbytečných, a přepnutí větve uprostřed tiketu je práce na dvou položkách zároveň. Zaniká nabídka, ne nález — zápis do ledgeru zůstává. |
 | `epicBranchPattern` se čte z pracovního stromu, bez zvláštního zacházení | Rozhodnutí uživatele: nepočítá se s diverzí agenta, konfigurace ani skripty se před agenty nechrání. Vrstva brání omylu, ne úmyslu — týž model důvěry jako u `MB_HUMAN_PUSH`. Čtení z báze bylo zvažováno a zamítnuto jako složitost, která za tohoto předpokladu nekupuje nic. |
 | Výjimka podmíněná i tvarem pushe (surové SHA) | `switch -c` nastaví upstream na epikovou linii; bez toho by holý `git push` prošel oběma vrstvami. |
 | Chráněnost kupuje dvě věci, ne čtyři | Zákaz mazání a force pushe platí na každé větvi. Nafouknutý výčet oslaboval správné rozhodnutí. |
 | Třetí kategorie se přiznává | Vzniká „chráněná větev, do které agent smí" — jen v aktérské vrstvě místo ve volbě báze. |
-| Brána kroku 5 je skript, ne checklist | `mb-state` ten invariant měl a mlčel, protože ho nikdo nespustil. Táž vada o aktéra dál. |
+| Brána předání je skript, ne checklist | `mb-state` ten invariant měl a mlčel, protože ho nikdo nespustil. Táž vada o aktéra dál. |
 | Brána porovnává proti čerstvě staženému tipu | Proti nahlášené hodnotě projde přesně v tom případě, kvůli kterému existuje. |
 | Registr rozhodnutí s potvrzením jako mechanická zábrana | Jediný měřený záchyt třídy 3 stál na tom, že si správce náhodou vzpomněl. |
 | Behaviorální předpoklad se zavírá testem | Oponentura vrátila čistý zápor: žádný levnější nástroj to nechytí. |
@@ -786,11 +860,13 @@ je řeší kdokoli.
 
 ## Dopady
 
-**Na kontrakt.** Epiková linie, její protokol a brána; `epic/*` mezi chráněnými
-větvemi a nový klíč `epicBranchPattern` s jediným konzumentem a čtením z báze;
-odchylka IDLE resetu v epikovém režimu; registr rozhodnutí; eskalační tabulka a
-tři úrovně autonomie; a přiznání třetí kategorie v aktérské vrstvě. Je to větší
-zásah do Publication Contract než UMS-3488.
+**Na kontrakt.** Sekce Integration dostává **bránu předání a artefakt předání
+se dvěma vykresleními** — a to je největší dopad celého návrhu, protože platí
+pro **každou** integraci v repu, ne jen epikovou. Dál: epiková linie a její
+protokol; `epic/*` mezi chráněnými větvemi a klíč `epicBranchPattern`
+s jediným konzumentem; odchylka IDLE resetu (univerzální); registr rozhodnutí;
+eskalační tabulka a tři úrovně autonomie; a přiznání třetí kategorie
+v aktérské vrstvě. Je to větší zásah do Publication Contract než UMS-3488.
 
 **Na `guard-git-push.mjs`.** Trojnásobně podmíněná výjimka, jeden nový klíč
 čtený týmž způsobem jako `protectedBranches`, oprava case-insensitivity
@@ -798,18 +874,26 @@ v `stripRef` a negativní testy. Je to 732řádkový soubor s 1104 řádky test�
 zásah do něj je sám o sobě riziko.
 
 **Na `mb-harvest`.** Kanonický IDLE v existujícím resetu — žádný nový
-zapisovatel `context.md` — a **jen v epikovém režimu**; mimo něj se reset
-nemění vůbec.
+zapisovatel `context.md`. **Platí univerzálně**, ne jen v epikovém režimu.
+Plán musí ověřit, odkud `mb-jira-update` po harvestu bere klíč tiketu.
 
-**Na `finishing-a-development-branch`.** Rozdvojení podle druhu báze: při
-epikové lince hlášení správci se SHA a ověřovací sadou, při dodávkové lince
-příkaz člověku **beze změny proti dnešku**. Tohle rozdvojení je to jediné
-místo, kde se ta podmínka vyhodnocuje pro dokončení práce — a proto je to
-místo, kde se aditivnost buď udrží, nebo poruší.
+**Na `finishing-a-development-branch`.** Jedna procedura pro oba režimy:
+brána předání, artefakt předání, a **jediná podmínka** rozhodující o jeho
+vykreslení (příkaz člověku / zpráva správci). Overlay se nerozdvojuje na dvě
+sekvence — to je celý smysl tohohle uspořádání.
+
+**Na `mb-epic-run`.** Nová operace `integrate` — správcova strana předání.
+Nese dvě epikové kontroly, úsudkovou kontrolu proti ledgeru a fast-forward
+refspecem. Její `allowed-tools` musí krýt `git push`, `Edit` a git zápisová
+slovesa ve VLASTNÍM repozitáři skillu; pole restringuje, ne jen předschvaluje.
 
 **Na `mb-epic-elaboration`.** Ledger dostává sekci registru rozhodnutí a
 deklaraci ověřovací sady; uzávěrka okna nabízí založení epikové linie
 připraveným příkazem **v tvaru s `MB_HUMAN_PUSH=1`**.
+
+**Na overlay `brainstorming`.** Epic Backflow check **přestává nabízet inline
+elaborační okno**; zapíše nález do ledgeru a pokračuje. Nabídka se ruší
+v obou režimech, protože důvod je vlastnictví práce, ne topologie větví.
 
 **Na UMS-3488.** `pool-status.ps1` dostává pole `progress.now` se stavovou
 třídou, výpočet sloupce „po termínu" a čtenářská bezpečnostní pravidla; řádek
@@ -826,6 +910,13 @@ harnessu, kde nedorazí (kontrakt jmenuje Kilo Code), nemá epiková linie žád
 mechanickou ochranu.
 
 ## Rizika
+
+**Dosah je širší, než na kolik je evidence.** Brána předání a kanonický IDLE
+platí pro **každou** integraci v repu, ne jen epikovou — a je to vědomé, protože
+obě vady, které opravují, se staly mimo epikový režim. Ale je to zásah do cesty,
+kterou dnes projde všechno; regrese tam se neprojeví na epiku, nýbrž na běžné
+práci. **Aditivní varianta byla zvažována a zamítnuta** (opravovala by vady tam,
+kde se nestaly), takže tohle riziko je cena za to rozhodnutí, ne přehlédnutí.
 
 **Celá topologie je neověřená.** Model „tikety odštěpené z epikové linie a
 fast-forward" nikdy neběžel. Naměřená je bolest, kterou má léčit, ne lék.
@@ -900,21 +991,23 @@ tří obchvatů výše.
    větve jako zdroj**.
 2. **Agentní push do dodávkové linie neprojde ani omylem** — ani jako
    fast-forward, který by hook pustil.
-3. **ADITIVNOST — nejdůležitější test celého návrhu.** Pracovní položka, jejíž
-   efektivní báze neodpovídá `epicBranchPattern`, projde celým cyklem
-   **beze změny proti dnešku**: harvest zachová řádek `Jira:`, integrace je
-   příprava příkazu pro člověka, a **žádná nová brána, žádný STOP a žádná
-   odchylka od kontraktu z tohoto návrhu se nesmí spustit**. Negativně:
-   odstranění té podmínky z kteréhokoli nového místa musí ten test zčervenat.
-   Chybějící nebo nečitelný `epicBranchPattern` znamená, že epikový režim
-   neexistuje vůbec — tedy dnešní chování pro všechno.
+3. **JEDNA PROCEDURA — nejdůležitější test celého návrhu.** Tentýž průchod
+   `finishing` musí projít pro pracovní položku s dodávkovou bází i pro
+   položku s epikovou bází, a **jediné, co se liší, je vykreslení artefaktu
+   předání** — příkaz pro člověka proti zprávě správci. Negativně: jakákoli
+   druhá podmínka na režim, která se do procedury dostane, musí ten test
+   zčervenat. Brána předání, kanonický IDLE a deklarovaná ověřovací sada běží
+   v obou případech; jediné, co se v jednotiketovém režimu neděje, je operace
+   `integrate` — protože není správce, kdo by ji spustil.
+   Chybějící nebo nečitelný `epicBranchPattern` znamená, že epiková linie
+   neexistuje, tedy příkaz pro člověka pro všechno — nikdy chybu.
 4. **`epicBranchPattern` mimo `protectedBranches` je chyba konfigurace.**
    Kontrola běží na jménech existujících větví na `origin` a proti
    repozitářovému `baseRef`, ne proti efektivní bázi — negativně: **legitimní
    epikový tiket nesmí tuhle kontrolu rozsvítit.**
 5. **`Get-UmsBaseCandidates` nabídne epikovou linii** a víceúrovňový glob
    funguje; odvození cíle pushe z `origin/epic/<KLÍČ>` dá `epic/<KLÍČ>`.
-6. **Brána kroku 5 čte čerstvý tip.** Fixtura: epiková linie se posune mezi
+6. **Brána předání čte čerstvý tip.** Fixtura: epiková linie se posune mezi
    hlášením a fast-forwardem — brána musí odmítnout. Negativně: brána krmená
    hodnotou z hlášení musí ten případ propustit, což je důkaz, že na tom
    pořadí záleží.
@@ -961,21 +1054,28 @@ tří obchvatů výše.
 24. **Epiková linie bez epiku** je nález `mb-doc-index`, ne mlčení.
 25. **`stripRef` v `guard-git-push.mjs` je case-insensitive** —
     `refs/HEADS/<chráněná>` musí být zamítnuto, stejně jako to dělá hook.
+26. **Epic Backflow nenabízí elaboraci.** Nález na hranici fáze skončí jako
+    řádek v ledgeru a sezení pokračuje; negativně: sezení se nesmí zeptat,
+    nesmí přepnout větev a nesmí zastavit. A ten řádek musí být pro příští
+    elaborační okno viditelný — jinak se nález ztratil, ne odložil.
 
 ## Pořadí úloh (návrh, ne plán)
 
-1. **Topologie, vynucení a protokol** — kontrakt, `epic/*` mezi chráněnými,
+1. **Topologie a vynucení** — kontrakt, `epic/*` mezi chráněnými,
    `epicBranchPattern` čtený z báze, výjimka a její negativní testy, kanonický
    IDLE v `mb-harvest`, rozdvojení ve `finishing`. Předpoklad všeho ostatního a
    část s mechanickými testy.
-2. **Integrační brána** — skript, který nese pět kontrol kroku 5. Závisí na 1.
+2. **Brána a artefakt předání** — skript se třemi univerzálními kontrolami a jedno předání se dvěma vykresleními, ve `finishing`. Dvě epikové kontroly patří operaci `integrate`. Závisí na 1.
 3. **Registr rozhodnutí a ověřovací sada** — sekce ledgeru a brána nad nimi.
    Závisí na 2, protože do ní přidává kontrolu.
 4. **Blok `NOW`** — ohraničení, stavová třída, termín, čtenářská bezpečnost,
    sloupec v `pool-status.ps1`. Nezávislý na 1 až 3.
-5. **Zprávy a eskalační tabulka** — artefaktová forma pásem, značení, relay
-   timing, tři úrovně autonomie. Poslední, protože adresáta i viditelnost bere
-   z předchozích.
+5. **Operace `mb-epic-run integrate`** — správcova strana předání: dvě epikové
+   kontroly, úsudková kontrola proti ledgeru, fast-forward refspecem. Závisí na
+   2 (spotřebovává artefakt předání) a na 3 (čte registr).
+6. **Zprávy a eskalační tabulka** — artefaktová forma pásem, značení, relay
+   timing, tři úrovně autonomie, a zrušení nabídky elaborace v Epic Backflow.
+   Poslední, protože adresáta i viditelnost bere z předchozích.
 
 Otevřená otázka pro plán: **jestli je to jeden tiket, nebo víc.** Body 1 až 3
 jsou kontrakt a vynucovací mechanika; body 4 a 5 jsou chování skillů.
