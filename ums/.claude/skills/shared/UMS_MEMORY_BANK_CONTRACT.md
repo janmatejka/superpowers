@@ -1,7 +1,15 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.13
-- Supersedes v2.12 (adds the pool-slot exception to the Worktree Policy and
+- **Contract-Version:** 2.14
+- Supersedes v2.13 (adds the epic line — the code integration branch of an
+  epic, its membership in `protectedBranches`, and the `epicBranchPattern` key
+  whose only consumer is the actor-rule exception in `guard-git-push.mjs`;
+  rewrites Integration into ONE procedure for every effective base, with a
+  handoff gate of three checks against a freshly fetched base and a single
+  handoff artifact in two renderings; and drops the `Jira:` line from the IDLE
+  reset, so the post-harvest `context.md` of every ticket integrating into the
+  same branch is byte-for-byte identical).
+- v2.13 superseded v2.12 (adds the pool-slot exception to the Worktree Policy and
   rewrites that policy's disk measurement; corrects the derivation of "a free
   workspace" for a shared-`.git` pool — which signals are per-worktree, that a
   stash cannot be attributed to a slot, and that a LIVE SESSION in a slot is a
@@ -463,6 +471,7 @@ introduced:**
 |---|---|
 | `baseRef` | `mb-doc-index`, ticket-branch creation, base sync, integration |
 | `protectedBranches` | the `pre-push` hook (through the generated list below), `guard-git-push.mjs` |
+| `epicBranchPattern` | `guard-git-push.mjs` (the actor-rule exception) |
 | `ticketPattern` | `mb-state`, the entry gate, `mb-architect-review` |
 | `projectMarkers`, `sharedRoots` | the intersection heuristic (see Base Sync & Drift Detection) |
 
@@ -592,6 +601,74 @@ topology. The first version needs no approval (the same exception, for the same
 reason, as the first `playbook.md` — there is nothing yet to overwrite and the
 detected values are verifiable against the repository itself); every later change
 does.
+
+### The epic line
+
+**The epic line is the code integration branch of an epic**, named
+`epic/<EPIC-KEY>`, and it is the effective base of every ticket branch cut for
+that epic. It carries code and the harvested documents of those tickets; the
+epic's elaboration branch is a different branch and carries none of that. The
+epic itself integrates one level further out, into the **delivery line** — the
+shared branch the epic ultimately delivers into, and the base every ticket would
+have had without an epic line.
+
+**It belongs in `protectedBranches`**, so the invariant above — an integration
+branch is always a protected branch — holds for it literally, and both
+enforcement layers resolve its protection by their usual routes.
+
+**`epicBranchPattern` does NOT govern protection.** Its one job is the
+actor-rule exception that lets the agent's own tool call fast-forward such a
+branch (Publication Contract). A missing, empty or non-string value therefore
+means **no exception at all** — never "every branch" — which is the same
+safer-side degradation the keys above follow.
+
+**The exception holds only where all FOUR conditions hold**, and
+`guard-git-push.mjs` is the only place that evaluates them:
+
+1. the destination matches `epicBranchPattern`;
+2. the destination IS protected;
+3. the destination is NOT `<baseBranch>`, the branch derived from `baseRef`;
+4. the SOURCE side of the refspec is a raw 40-character hex SHA — not `HEAD`,
+   not a branch name, not an absent source.
+
+Each condition closes its own hole. Without the protected test, configuration
+would grant push rights over a namespace nothing guards. Without the
+`baseBranch` exclusion, a pattern of `*` would swallow the base itself. And the
+raw-SHA test is what keeps the inherited upstream out: the `switch -c` that cuts
+a ticket branch from `origin/epic/<EPIC-KEY>` sets the new branch's upstream to
+the epic LINE (measured), so the `git branch --unset-upstream` required with it
+stops being hygiene here and becomes the step that keeps a bare push from
+reaching the exception.
+
+**The threat model is stated because the choice rests on it.** The pattern lives
+in a file the agent may edit, so this exception defends against **mistake, not
+intent** — the same trust model the rest of this contract runs on, where an agent
+never setting `MB_HUMAN_PUSH=1` is likewise a rule and not a mechanism. Reading
+the pattern from the base instead was weighed and dropped as complexity that buys
+nothing under that assumption.
+
+**A human creates the branch.** On a first publication `remote_sha` is zero, so
+the content rule cannot find the tip already reachable and `pre-push` rejects the
+push; the rejection hands over the ESCAPE spelling, and the plain integration
+spelling would be rejected there again (the two spellings are deliberately
+different — see Publication Contract).
+
+**What licenses an agentic write here at all is the single exit.** Not that the
+push is contentless — it is not. The epic line reaches the delivery line only
+through a human fast-forward, so the rule that the moment of integration belongs
+to the human keeps holding where it decides anything.
+
+**A third category does exist:** "a protected branch an agent may push to". What
+the epic line changes is where the category sits — it moved out of the question
+WHAT MAY BE A BASE into the question WHO MAY PUSH WHAT, which is the smaller of
+the two and the better guarded.
+
+**An epic line comes into being only where the tickets of an epic are not
+individually deliverable into the delivery line**; where they are, every ticket
+integrates on its own, as everywhere else. **And it ends:** once the epic has
+reached the delivery line the branch is deleted, which is a human act because
+deleting a branch through a push is forbidden. Left behind it stays protected for
+ever, and every base choice keeps offering an unrelated epic's line as a base.
 
 ## Base Sync & Drift Detection
 
@@ -1193,12 +1270,28 @@ superpowers workflow MUST NOT continue past brainstorming (no writing-plans);
 the correct continuation is `mb-architect-review` (resume).
 
 IDLE state: replace the `## Active Work` items with
-`(No active work - IDLE phase)`; keep the `- **Jira:** …` line of the last
-work item if it existed, and keep the `- **Báze:** …` line for the same reason
-with a sharper edge: the harvest resets `context.md` in its own `context.md`
-reset step, but the INTEGRATION that follows still needs `<baseBranch>`. Dropping
-the line there would silently send the integration command at the default base —
-the one branch the work was deliberately not targeting.
+`(No active work - IDLE phase)`. The `- **Jira:** …` line of the last work item
+is **NOT** kept; the `- **Báze:** …` line **is**. `Báze:` stays because the
+harvest resets `context.md` in its own `context.md` reset step, but the
+INTEGRATION that follows still needs `<baseBranch>`: dropping the line there
+would silently send the integration command at the default base — the one branch
+the work was deliberately not targeting.
+
+**`Jira:` goes because of the invariant this reset exists to keep: the
+post-harvest `context.md` of every ticket integrating into the same branch is
+byte-for-byte identical.** That is what makes the integration merge
+conflict-free — the ticket's net contribution to the file is nothing, so the
+three-way merge has nothing to reconcile. A residual `Jira:` line breaks it,
+because on a branch many tickets integrate into every ticket writes a different
+value into that one line, and "the last work item" then names not an identity but
+whoever integrated most recently. The ticket's identity lives in the design
+document's header; it was never this line's job. The rule is **not**
+epic-specific: every shared branch that more than one ticket integrates into
+collects that residue.
+
+Note for whoever changes this reset: `mb-jira-update` runs after the harvest
+(Publication Contract, "Integration"), so the change must verify where
+`mb-jira-update` takes the ticket key from at that point.
 
 **ACTIVE and IDLE are state NAMES, not tokens in the file.** The word `ACTIVE`
 never appears in `context.md`, so no skill may look for it — a grep for it
@@ -1419,9 +1512,10 @@ lets the agent publish its own ticket branch unassisted, so it can make any
 commit reachable on `origin` and then fast-forward the base onto it. The rule
 that the MOMENT of integration belongs to the human is carried by the
 PreToolUse layer alone — therefore only in harnesses that have one, and only
-for command shapes it can parse. Elsewhere it is a contract obligation like
-every other rule of this layer, and server-side branch permissions remain the
-real backstop.
+for command shapes it can parse; the epic line is its one deliberate carve-out
+(Repository Configuration, "The epic line"). Elsewhere it is a contract
+obligation like every other rule of this layer, and server-side branch
+permissions remain the real backstop.
 
 Read the reachability claim narrowly: the hook never contacts the remote. It
 asks whether the pushed tip is reachable from THIS CLONE's own
@@ -1635,31 +1729,71 @@ Integrating finished work is a **fast-forward push of the ticket branch onto the
 base ref**, not a local merge into a local base branch. The base has already been
 merged into the ticket branch at the last phase boundary (Base Sync & Drift
 Detection), so the ticket branch is a descendant of `<baseRef>` and the
-push is a fast-forward. Sequence:
+push is a fast-forward.
 
-1. `git fetch origin`,
-2. `git merge <baseRef>` on the ticket branch,
-3. green verification (build and targeted tests),
-4. the agent prepares the human command with the outgoing commits enumerated —
-   the PLAIN spelling, per the two spellings above,
-5. the user runs it — the base ref is a protected branch and the moment of
-   integration belongs to the human, so the agent never pushes it itself, not
-   even as the fast-forward the `pre-push` hook would accept,
-6. the agent re-verifies reachability **from the base ref**: `git fetch origin`,
-   then `git merge-base --is-ancestor <sha> <baseRef>` (non-zero exit = not on the
-   base). A bare `git branch -r --contains <sha>` is NOT sufficient here — the
-   publication rule has already pushed that commit to the ticket branch on
-   `origin`, so `--contains` reports the ticket branch, the result is non-empty and
-   the check passes while the base carries none of the code. That is exactly the
-   state this step exists to catch: the user never ran step 5, or it was rejected
-   as non-fast-forward and nobody retried. The check must name the base, and it
-   must run with **no** Jira ticket too — `mb-jira-update`'s own gate does not
-   exist then,
-7. `mb-jira-update` finalization.
+**ONE procedure, whatever the effective base is.** A delivery line, a maintenance
+branch of a release series and an epic line (Repository Configuration, "The epic
+line") are integrated through the same phases in the same order; nothing below
+asks which of them the base is, except the single condition of the Handoff phase
+— and that condition picks a rendering, not a step. The phases, in order:
 
-A push rejected as **non-fast-forward** means the base moved while the sequence
-ran: repeat from step 1. **At most two failed rounds** — after the second, STOP
-and report to the user instead of racing the base indefinitely.
+- **Sync.** `git fetch origin`, then `git merge <baseRef>` on the ticket branch.
+- **Green verification.** Build and targeted tests.
+- **Publish.** The agent pushes its own ticket branch, announcing the outgoing
+  commits — the publication rule, as after every commit.
+- **Handoff gate.** Three checks, and they run as one mechanical check rather
+  than as items somebody ticks off, **after a fresh `git fetch origin`** —
+  against the freshly fetched `<baseRef>`, never against a tip remembered from
+  the Sync phase. A remembered tip passes in exactly the case the gate exists
+  for, and whoever pushes is then handed a command that bounces:
+  1. `git merge-base --is-ancestor <freshly fetched base> <sha>` — the commit
+     being handed over carries the CURRENT base;
+  2. the `context.md` of that same commit is IDLE, which is what the harvest's
+     reset leaves behind (Harvest Contract) — so the harvest precedes the
+     handoff. Read `<CTX_DIR>` from the configuration, never from a hard-coded
+     path, and use this contract's own predicate (`context.md` Schema &
+     Writers): a `Target MB Pin` together with a `Work item` slug is ACTIVE. A
+     **missing file is a fail-closed STOP, not "IDLE"** — `git show` on a path
+     that does not exist exits 128, and that exit reads all too easily as "no
+     pin found";
+  3. `<sha>` is reachable on `origin`. The hook enforces this at push time
+     anyway; the gate carries it so the error arrives earlier and legibly.
+- **Handoff.** ONE artifact — the destination branch, `<sha>`, the enumerated
+  outgoing commits, and the verification commands quoted verbatim **with their
+  output**, so "verified" is a claim the reader can compare rather than an
+  assurance. It has **two renderings**, and the single condition of the whole
+  procedure decides between them — **is there a manager?**, answered by whether
+  the effective base is an epic line:
+  - **no manager** → the artifact is rendered as the PLAIN human command with the
+    outgoing commits enumerated (per the two spellings above). The user runs it:
+    the base is a protected branch and the moment of integration belongs to the
+    human, so the agent never pushes it itself, not even as the fast-forward the
+    `pre-push` hook would accept.
+  - **a manager** → the artifact is rendered as a message to the epic's manager,
+    the session holding the epic's elaboration branch, who performs the
+    fast-forward under the actor-rule exception ("The epic line"). Only a manager
+    performs that fast-forward; where there is none, no agent does it either and
+    the artifact falls back to the human-command rendering above.
+- **Confirmation.** After the push lands — whoever ran it — the TICKET session,
+  on the ticket's own branch, re-verifies reachability **from the base ref**:
+  `git fetch origin`, then `git merge-base --is-ancestor <sha> <baseRef>`
+  (non-zero exit = not on the
+  base). A bare `git branch -r --contains <sha>` is NOT sufficient here — the
+  publication rule has already pushed that commit to the ticket branch on
+  `origin`, so `--contains` reports the ticket branch, the result is non-empty and
+  the check passes while the base carries none of the code. That is exactly the
+  state this phase exists to catch: the push was never run, or it was rejected
+  as non-fast-forward and nobody retried. The check must name the base, and it
+  must run with **no** Jira ticket too — `mb-jira-update`'s own gate does not
+  exist then.
+- **`mb-jira-update` finalization**, in that same ticket session on that same
+  branch, whoever performed the push. The ticket's life cycle runs on the
+  ticket's own branch, so a push performed by somebody else moves nothing about
+  where the finalization belongs.
+
+A push rejected as **non-fast-forward** means the base moved while the procedure
+ran: repeat from the Sync phase. **At most two failed rounds** — after the
+second, STOP and report to the user instead of racing the base indefinitely.
 
 The ticket branch left behind on `origin` is **not deleted** (deleting a branch
 through a push stays forbidden) and it is not reported as a collision: the

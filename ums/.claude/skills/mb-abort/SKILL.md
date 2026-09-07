@@ -67,8 +67,8 @@ unchanged. Never touch proposals of other Memory Banks.
 
 Overwrite `<CTX_DIR>/context.md` with the IDLE baseline per the contract
 schema (`context.md` Schema & Writers): `## Active Work` →
-`(No active work - IDLE phase)`, keeping the `- **Jira:** …` and
-`- **Báze:** …` lines of the abandoned work item exactly as that section
+`(No active work - IDLE phase)`, keeping the `- **Báze:** …` line of the
+abandoned work item and NOT its `- **Jira:** …` line, exactly as that section
 specifies. Do not preserve any other section or history.
 
 - Invalidate the session intent baton (contract, "Session Intent Baton"). The
