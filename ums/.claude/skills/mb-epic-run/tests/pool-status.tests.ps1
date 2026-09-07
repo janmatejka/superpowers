@@ -425,6 +425,7 @@ try {
     Assert-True ((Get-ObjField $now1 'late') -is [bool]) 'late is a [bool], not a string'
     Assert-Eq (Get-ObjField $now1 'late') $false 'a clock BEFORE Due is not late'
     Assert-Match ([string](Get-ProgressField (Get-NowSlot $r 'slot01') 'lastLine')) 'Ruling R7' 'the ledger excerpt is still reported beside the block'
+    Assert-NotMatch (((Get-NowSlot $r 'slot01').reasons) -join ' ') 'ledger not read' 'a ledger UNDER the size ceiling adds no reason of its own'
 
     $now2 = Get-SlotNow (Get-NowSlot $r 'slot02')
     Assert-Eq (Get-ObjField $now2 'state') 'stalled' 'stalled is a writable state class, not a malformed one'
@@ -522,6 +523,11 @@ try {
     Assert-Eq (Get-ProgressField $s6 'lines') -1 'SECURITY: a ledger over the size ceiling is not read at all (-1, the unreadable convention of this script)'
     Assert-Eq ([string](Get-ProgressField $s6 'lastLine')) '' 'SECURITY: nothing is excerpted from an over-size ledger'
     Assert-True ($null -eq (Get-SlotNow $s6)) 'SECURITY: no block is parsed out of an over-size ledger'
+    # A -1 sentinel with no matching reason string would make an over-size
+    # ledger invisible to a renderer — the slot would read as an ordinary one.
+    Assert-Match (($s6.reasons) -join ' ') 'progress ledger not read' 'the over-size ledger is NAMED in reasons, like every other unreadable signal of this script'
+    Assert-Match (($s6.reasons) -join ' ') 'ACTIVE pin' 'the slot already carried the ACTIVE pin reason: the ledger is read only for a pinned slot, so this new reason can never be the first one and cannot flip free'
+    Assert-Eq $s6.free $false 'an over-size ledger is reported on a slot that was already not free'
 }
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 

@@ -491,6 +491,18 @@ foreach ($c in $candidates) {
     if ($pinResult.Unreadable) { $reasons += 'pin unreadable (fail-closed)' }
     if ($null -ne $pin) { $reasons += "ACTIVE pin: $($pin.slug)" }
 
+    # Every unreadable per-worktree signal in this script is named in `reasons`
+    # (`status unreadable`, `unpushed count unreadable`, `pin unreadable
+    # (fail-closed)`, `occupancy unknown (fail-closed)`), and a `-1` sentinel
+    # without one would be invisible to a renderer — an over-size ledger would
+    # read as an ordinary slot. This reason can never be the FIRST one and
+    # therefore cannot change any slot's freedom: the ledger is read only when
+    # a pin exists, and a pin has already added `ACTIVE pin: <slug>` above.
+    $progress = if ($null -ne $pin) { Get-SlotProgress $c.Path $pin.slug $clockUtc } else { $null }
+    if ($null -ne $progress -and $progress.lines -eq -1) {
+        $reasons += 'progress ledger not read (over the size ceiling)'
+    }
+
     $session = Get-SlotSession $claude $c.Path
     if ($session.state -eq 'live') { $reasons += "live session (pid $($session.pids -join ', '))" }
     if ($session.state -eq 'unknown') { $reasons += 'occupancy unknown (fail-closed)' }
@@ -513,7 +525,7 @@ foreach ($c in $candidates) {
         unpushedCount  = $unpushed
         unpushedSource = $unpSource
         pin            = $pin
-        progress       = if ($null -ne $pin) { Get-SlotProgress $c.Path $pin.slug $clockUtc } else { $null }
+        progress       = $progress
         session        = [pscustomobject] @{ state = $session.state; pids = @($session.pids) }
         free           = ($reasons.Count -eq 0)
         reasons        = @($reasons)

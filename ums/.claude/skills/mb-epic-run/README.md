@@ -65,7 +65,19 @@ and `attach` operations all read it. As emitted by the script today:
       "unpushedCount": <int>,
       "unpushedSource": "upstream" | "head-not-remotes",
       "pin": null | { "targetMb": "...", "slug": "...", "jira": "..." },
-      "progress": null | { "path": "...", "exists": true|false, "lines": <int>, "lastLine": "..." },
+      "progress": null | {
+        "path": "<slot-relative path of the SDD progress ledger>",
+        "exists": true | false,
+        "lines": <int>,
+        "lastLine": "<re-rendered excerpt, at most 200 characters>",
+        "now": null | {
+          "state": "stalled" | "waiting-for-subagent" | "waiting-for-human" | "waiting-for-manager",
+          "dueAt": "<UTC timestamp, yyyy-MM-ddTHH:mm:ssZ>",
+          "late": true | false,
+          "items": { "state": "...", "waitingOn": "...", "since": "...",
+                     "due": "...", "task": "...", "lookAt": "..." }
+        }
+      },
       "session": { "state": "live" | "none" | "unknown", "pids": [<int>, ...] },
       "free": true | false,
       "reasons": ["..."]
@@ -80,10 +92,40 @@ and `attach` operations all read it. As emitted by the script today:
 
 Notes on fields that are easy to misread:
 
-- **`dirtyCount` and `unpushedCount` of `-1` is an unreadable sentinel, not a
-  count.** It means the underlying `git` call failed, and the matching reason
-  string (`status unreadable` / `unpushed count unreadable`) is added to
-  `reasons`. Never render `-1` as a literal count.
+- **`dirtyCount`, `unpushedCount` and `progress.lines` of `-1` is a sentinel,
+  not a count.** For the first two it means the underlying `git` call failed;
+  for `progress.lines` it means the ledger was over the size ceiling and was
+  deliberately NOT read (it is a git-ignored file in a foreign working tree,
+  and a status command does not pull an unbounded one into memory). Never
+  render `-1` as a literal count.
+- **Which sentinels carry a `reasons` entry, and which do not** — a reader
+  must not have to infer this:
+
+  | Sentinel | `reasons` entry |
+  |---|---|
+  | `dirtyCount == -1` | `status unreadable` |
+  | `unpushedCount == -1` | `unpushed count unreadable` |
+  | `progress.lines == -1` | `progress ledger not read (over the size ceiling)` |
+  | `pin == null` after an unreadable read | `pin unreadable (fail-closed)` |
+  | `session.state == "unknown"` | `occupancy unknown (fail-closed)` |
+  | `progress.now == null` | **none** |
+  | `progress.lastLine == ""` | **none** |
+
+  The last two are deliberate. `progress.now == null` means "no block OR a
+  malformed one" — the contract makes those the same answer, and absence is
+  not a reason a slot is unfree; it sends the reader to go and look at the
+  slot. `progress.lastLine == ""` means EITHER "the ledger has no non-empty
+  line" OR "the last line was rejected by the reader's character-class check";
+  the two are not distinguishable from the JSON, so a renderer must not
+  present `""` as a fact about the ledger's content.
+- **`progress.now` is the `NOW` block of the slot's ledger** (contract,
+  section "The `NOW` Block"). `late` is COMPUTED by the script against its own
+  clock — strictly `clock > dueAt` — and is never read from the file;
+  `-NowUtc` pins that clock for a whole run and exists so the derivation can be
+  asserted deterministically. Every string that leaves the ledger (the six
+  `items`, and `lastLine`) is re-rendered, bounded at 200 characters, and
+  rejected by character class, because the ledger is untrusted input.
+  `progress.now == null` is also what a MALFORMED block yields.
 - **`session.state` is exactly one of `live`, `none` or `unknown`.** `unknown`
   is fail-closed: the occupancy probe (`claude agents --json --cwd <slot>`)
   was unreadable, malformed, or shaped in a way the script does not trust —
