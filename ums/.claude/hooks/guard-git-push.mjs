@@ -183,24 +183,19 @@ const loadEpicRule = (cwd) => {
     if (!parsed || typeof parsed !== 'object') return null;
     const pat = parsed.epicBranchPattern;
     if (typeof pat !== 'string' || pat.trim() === '') return null;
-    // TRIMMED FIRST, then judged. Surrounding whitespace makes a correct
-    // value work rather than declining it, and it must come off BEFORE the
-    // derivation: `"origin/develop "` would otherwise derive `"develop "`,
-    // which no real destination ever equals (measured: the guard allowed a
-    // raw-SHA push to the delivery line on that value alone).
+    // Trimmed BEFORE it is judged and before the derivation below, so
+    // `"origin/develop "` yields `develop` and not `"develop "`.
     const baseRef = (typeof parsed.baseRef === 'string' ? parsed.baseRef : '').trim();
-    // `refs/`-prefixed spellings are DECLINED, not parsed. The contract's
-    // accepted shape is `origin/<branch>`, without the `refs/remotes/`
-    // prefix (contract: "Repository Configuration"), and the derivation
-    // below would turn `refs/remotes/origin/develop` into
-    // `remotes/origin/develop` — again a name nothing equals.
+    // A `refs/`-prefixed spelling (`refs/remotes/origin/develop`) is
+    // DECLINED, not parsed: the accepted shape is `origin/<branch>`
+    // (contract: "Repository Configuration").
     if (/^refs\//i.test(baseRef)) return null;
     // <baseBranch> = baseRef minus the remote and the SINGLE following slash.
     const baseBranch = baseRef.replace(/^[^/]+\//, '');
     // No usable base name (absent, empty, non-string, whitespace-only, or a
-    // `origin/` that reduces to nothing) -> no exception, and never a guessed
-    // base: the condition that keeps the pattern off the base cannot bite
-    // against an empty string (contract: "The epic line").
+    // `origin/` that reduces to nothing) -> no exception, and never a
+    // guessed base. Why declining is the right degradation here: see
+    // UMS_MEMORY_BANK_CONTRACT.md, "The epic line".
     if (baseBranch === '') return null;
     return { re: globToRe(pat), baseBranch };
   } catch { return null; }
