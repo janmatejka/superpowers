@@ -140,11 +140,10 @@ položky). Zásahy do architektonické cesty:
 - **Epic Backflow check** po finálním schválení návrhu (kontrakt, sekce „Epic
   Backflow (design → epic)"): s tiketem a dostupnou Jirou se spustí
   `mb-epic-graph -Check`; nález k tomuto tiketu vždy zafrontuje poznámku do
-  dirty-setu ledgeru epiku (bez ledgeru do `notes.md` vedle něj) a nabídne
-  inline elaborační okno na hranici fáze (přepnutí na elaborační větev
-  z `<baseRef>`, po uzávěrce návrat na tiketovou větev), nebo odklad. Krok je
-  fail-open, elaborace se nikdy nespouští bez rozhodnutí uživatele; proběhlo-li
-  review, krok patří do resume `mb-architect-review`, ne sem.
+  dirty-setu ledgeru epiku (bez ledgeru do `notes.md` vedle něj) a tiketové
+  sezení pak pokračuje dál — krok nic nenabízí, nepřepíná větev a elaboraci
+  epiku otevírá jedině jeho správce. Krok je fail-open; proběhlo-li review,
+  krok patří do resume `mb-architect-review`, ne sem.
 
 ### Overlay 2 — `subagent-driven-development`
 
@@ -681,7 +680,7 @@ flowchart LR
 | `mb-git-message` / `mb-git-commit` | Návrh commit message / scoped commit. Nikdy nepushují. | ručně, z `mb-harvest`, z `mb-migrate-docs` |
 | `mb-sync` | Dosynchronizuje MB dokumenty s realitou kódu mimo workflow; drift `playbook.md` jen navrhuje ke schválení, nezapisuje ho sám. | ručně |
 | `mb-scan` | Read-only hloubková analýza projektu. | ručně |
-| `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. Framing okna čte i poznámky zpětného toku z návrhů (dirty řádky `návrh <slug>`, `notes.md`). Uzávěrka okna (fáze 7, Close) po publikaci nabízí pool přes `mb-epic-run`. | ručně, nebo inline okno z Epic Backflow kroku |
+| `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. Framing okna čte i poznámky zpětného toku z návrhů (dirty řádky `návrh <slug>`, `notes.md`). Uzávěrka okna (fáze 7, Close) po publikaci nabízí pool přes `mb-epic-run`. | ručně |
 | `mb-epic-graph` | Graf závislostí epiku z Jira linků nebo z hlaviček návrhů, plus orákulum konzistence text ↔ linky a `-IndexFile` findings o cizích větvích. Read-only skript. | z `mb-epic-elaboration`, nebo ručně |
 | `mb-doc-index` | Read-only index MB dokumentů napříč větvemi `origin` (model tahu); kolizní findings pro discovery, elaboraci i `mb-state`. | z brainstormingu (discovery), z `mb-epic-elaboration`, z `mb-state`, nebo ručně |
 | `mb-epic-run` | Mechanika poolu (sekce 6): derivovaný stav slotů, obě orákula připravenosti na jednom místě (`ready`), spuštění sezení na tiket do volného slotu se strojovým ověřením (`spawn`), dohledání slotu, který tiket drží (`attach`). Read-only vůči slotům; jediný trackovaný zápis je řádek záměru v ledgeru epiku na elaborační větvi. | z uzávěrky `mb-epic-elaboration` (nabídka), nebo ručně |
