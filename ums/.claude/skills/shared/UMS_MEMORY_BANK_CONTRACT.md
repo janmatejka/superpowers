@@ -436,7 +436,8 @@ after a restart, the block carries what the CURRENT session is waiting for.
 **It lives at the top of `.superpowers/sdd/<plan-basename>/progress.md`** —
 the SDD progress ledger that Fail-Closed Behavior already names as legal
 git-ignored scratch — directly under that file's title line, exactly one
-marker pair per ledger. It is AI-facing scratch and therefore English
+marker pair per ledger; a second pair is not a variant but a malformed block
+(Marker behaviour below). It is AI-facing scratch and therefore English
 (Language Contract), its state class included; `mb-epic-run status` translates
 on render, the same translate-on-presentation split as `Ruling:` lines.
 
@@ -486,8 +487,12 @@ shape or a duplicated key makes the block malformed.
 - **`Due:`** — ISO-8601 UTC, the expected time of the next report. Lateness is
   COMPUTED by the reader against its own clock and is never written into the
   block; a written lateness would be a fact whose only home is here.
-- **`Task:`** — `<number>, <title>` of the plan task in flight, copied from
-  the plan's task table.
+- **`Task:`** — the plan task in flight: its number, an em dash, then its
+  title, copied from the plan's task table — `Task: 12 — Handoff gate`, an em
+  dash and never a comma, so a title carrying a comma of its own stays
+  readable. The separator is the WRITER's problem and never the parser's: the
+  value is everything after the first colon, trimmed, and no reader splits it
+  further.
 - **`Look at:`** — where the next reader looks FIRST: paths and git refs,
   separated by `; `. Pointers only, which is what keeps this item from
   becoming the home of a fact.
@@ -496,37 +501,74 @@ shape or a duplicated key makes the block malformed.
 `idle` ambiguity a manager guessed wrong four times; it is an enumerated
 field, not prose, and any other value makes the block malformed:
 
-| Written in the block | Rendered by `mb-epic-run status` |
-|---|---|
-| `stalled` | stojím |
-| `waiting-for-subagent` | čekám na subagenta |
-| `waiting-for-human` | čekám na člověka |
-| `waiting-for-manager` | čekám na správce |
+| Written in the block | Rendered by `mb-epic-run status` | `Waiting on:` |
+|---|---|---|
+| `stalled` | stojím | `nothing outstanding` and what would unblock it |
+| `waiting-for-subagent` | čekám na subagenta | the subagent and its task |
+| `waiting-for-human` | čekám na člověka | the question and to whom it went |
+| `waiting-for-manager` | čekám na správce | the decision asked of the manager |
 
-`stalled` is the honest value when nothing is running and nothing has been
-asked. It is the value that makes a stall visible, so a session that CAN name
-what it waits for must never write it.
+**`stalled` must be WRITABLE, or the artifact fails at the one thing it exists
+for.** It is the honest value when nothing is running and nothing has been
+asked, so a session that CAN name what it waits for must never write it — but
+all six items stay required, and a stalled session that simply left one out
+would render as NO BLOCK, which is precisely the invisibility this block
+exists to prevent. Its two values are therefore fixed rather than left to
+invention: `Waiting on:` opens with the literal `nothing outstanding`,
+followed by ` — ` and what would unblock the session — never empty, never a
+mood, never "work in progress"; and `Due:` keeps its ISO-8601 UTC spelling but
+means the time the STALL IS TO BE RE-CHECKED rather than a promised report —
+never empty, never `-` and never `unknown`, so lateness still computes and a
+stall nobody came back to goes late by itself.
 
 **The trigger is structural, and that is the fourth rule:** the next dispatch
 is composed FROM this block, so a block nobody rewrote is a dispatch nobody
 can compose. The control sentence: **when the block and `git log` disagree,
 the block is wrong.**
 
-**Reader safety is the baton's, named rather than restated.** `pool-status.ps1`
-parses this git-ignored file in a FOREIGN working tree — one that implementer
-subagents write into routinely — and `mb-epic-run status` renders the result
-into the manager's context. That is the exposure the Session Intent Baton
-already has, so every reader rule of that subsection applies here unchanged
-and is not re-derived: the format is CLOSED, the reader NEVER emits the body
-as it lies but parses the known items and RE-RENDERS them, it bounds the size
-of what it reads and of what it renders, and it rejects a value by CHARACTER
-CLASS rather than by any one tag's spelling. Marker behaviour is defined
-rather than left to chance: the region runs from the FIRST begin marker to the
-FIRST end marker after it; a further begin marker inside that region, or a
-begin marker with no end marker after it, makes the block MALFORMED; a
-duplicated end marker lies outside the region and is ignored. **A malformed
-block is treated exactly as an ABSENT one** — no block, no error, nothing
-rendered.
+**Reader safety is the baton's SAFETY rules, named rather than restated.**
+`pool-status.ps1` parses this git-ignored file in a FOREIGN working tree — one
+that implementer subagents write into routinely — and `mb-epic-run status`
+renders the result into the manager's context. That is the exposure the
+Session Intent Baton already has, so the READER-SAFETY rules of that
+subsection apply here unchanged and are not re-derived: the format is CLOSED,
+the reader NEVER emits what it read as it lies but parses it and RE-RENDERS
+it, it bounds the size of what it reads and of what it renders, and it rejects
+a value by CHARACTER CLASS rather than by any one tag's spelling.
+
+**Those rules bind everything a reader emits OUT OF THIS FILE, not only the
+marker region.** The untrusted thing is the FILE — a git-ignored ledger in
+someone else's working tree — and never one field of it, so ANY other excerpt
+a reader lifts out of the ledger and renders into a human's or a model's
+context (the last line, a heading, a ruling, a count) passes the same parse,
+re-render, size bound and character-class check as the block itself. A reader
+that sanitizes the block and then emits a raw line from three lines below it
+has sanitized nothing.
+
+**What does NOT carry over from the baton, and why** — the quantifier above is
+bounded on purpose. **Consume-on-read does not:** the baton is a one-shot
+instruction renamed away the moment it is emitted, while the `NOW` block is a
+STANDING artifact re-read on every look, and renaming a live progress ledger
+would destroy the execution it reports on. Neither does the `Instruction`
+skill-name validation, nor the `Branch`/`Slug` origin binding, nor the rule
+that the reader exits 0 silently on every failure path: those are the baton's
+DELIVERY and identity rules, owned by a `SessionStart` hook that must never
+stop a session from starting. This block's reader is a status command and may
+fail loudly like any other.
+
+**Marker behaviour is defined rather than left to chance.** The region runs
+from the FIRST begin marker to the FIRST end marker after it. A further begin
+marker inside that region, or a begin marker with no end marker after it,
+makes the block MALFORMED. A duplicated end marker after the region lies
+outside it and is ignored. **A SECOND COMPLETE PAIR anywhere in the file also
+makes the block malformed**, and that is the fail-closed answer on purpose: a
+second pair is the signature of a writer that APPENDED instead of rewriting,
+so the first pair is stale while the second may be a fragment, and neither can
+be shown to be the current one — rendering either would produce a confidently
+stale block, the failure that once claimed a running review for hours.
+**A malformed block is treated exactly as an ABSENT one** — no block, no
+error, nothing rendered — and absence sends the reader to go and look at the
+slot, which is what this block is for.
 
 **The boundary the block must never cross: it decides WHERE TO LOOK, never
 WHETHER TO INTEGRATE.** It once claimed a running final review for hours after
