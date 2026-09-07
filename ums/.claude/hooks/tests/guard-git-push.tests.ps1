@@ -366,6 +366,57 @@ Assert-Eq $fullBadStdin.Code 0 'exit 0: nerozparsovatelný vstup nezpůsobí pá
 Assert-Eq $fullBadStdin.Err '' 'žádný stderr: nerozparsovatelný vstup nevyhodí nezachycenou výjimku'
 
 # ---------------------------------------------------------------------------
+# Epiková výjimka podle aktéra. Čtyři podmínky, každá s vlastním negativem.
+# ---------------------------------------------------------------------------
+$SHA = '0123456789abcdef0123456789abcdef01234567'
+$cfgEpic = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
+
+# POZITIVNÍ: přesně tvar protokolu.
+Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: refspec se surovým SHA do epic/* projde výjimkou'
+
+# NEGATIVNÍ 1 — zdroj není surové SHA. Tohle zavírá past se zděděným
+# upstreamem: switch -c z origin/epic/<KLÍČ> nastaví upstream na epikovou
+# linii, takže holý push by jinak prošel.
+Assert-Match (Test-Cmd 'git push origin HEAD:refs/heads/epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: HEAD jako zdroj není surové SHA'
+Assert-Match (Test-Cmd 'git push origin UMS-3400-x:refs/heads/epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: jméno větve jako zdroj není surové SHA'
+Assert-Match (Test-Cmd 'git push origin epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: refspec bez zdroje výjimku neotevírá'
+
+# NEGATIVNÍ 2 — cíl neodpovídá epikovému vzoru.
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: surové SHA do develop výjimku nedostane'
+
+# NEGATIVNÍ 2b — TOHLE JE VLASTNÍ NEGATIV PODMÍNKY O VZORU, a v briefu
+# chyběl: v NEGATIVNÍM 2 je `develop` současně bází, takže tu asercii drží
+# podmínka o bázi a odebrání podmínky o vzoru by nezčervenalo nic. Cíl
+# `main` je tady chráněný, není bází a vzoru neodpovídá — jediný tvar, kde
+# rozhoduje právě a jen podmínka o vzoru. Měřeno: bez ní tenhle push projde.
+$cfgOther = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "epic/*", "main"], "epicBranchPattern": "epic/*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/main" $cfgOther) 'permissionDecision.*deny' 'zamítnuto: surové SHA do chráněné větve mimo epikový vzor výjimku nedostane'
+Remove-Item -Recurse -Force $cfgOther
+
+# NEGATIVNÍ 3 — cíl je větev odvozená z baseRef. Zavírá epicBranchPattern
+# nastavený tak široce, že by pohltil bázi.
+$cfgWide = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgWide) 'permissionDecision.*deny' 'zamítnuto: vzor pohlcující bázi výjimku neotevírá'
+Remove-Item -Recurse -Force $cfgWide
+
+# NEGATIVNÍ 4 — cíl odpovídá vzoru, ale NENÍ chráněný. Výjimka se vztahuje
+# jen na chráněné větve; jinak by konfigurace udělovala právo na jmenný
+# prostor, který nikdo nehlídá.
+$cfgUnprot = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "epic/*" }'
+Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgUnprot) 'permissionDecision.*deny' 'povoleno: nechráněná větev nebyla zamítnutá ani předtím — výjimka tu nic nemění'
+Remove-Item -Recurse -Force $cfgUnprot
+
+# BEZ KLÍČE: výjimka neexistuje vůbec.
+$cfgNoKey = New-ConfigFixture '{ "protectedBranches": ["develop", "epic/*"] }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgNoKey) 'permissionDecision.*deny' 'zamítnuto: chybějící epicBranchPattern znamená žádnou výjimku'
+Remove-Item -Recurse -Force $cfgNoKey
+
+# TÝŽ TVAR V POWERSHELLOVÉM ZÁPISU — guard je registrovaný na Bash|PowerShell.
+Assert-NotMatch (Test-CmdPs "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: výjimka platí i na PowerShell toolu'
+
+Remove-Item -Recurse -Force $cfgEpic
+
+# ---------------------------------------------------------------------------
 # MB_HUMAN_PUSH=1 — the human escape the pre-push hook honours, DENIED here.
 # These assertions used to pin the opposite (the escape passes through),
 # which was right while the hook's escape was narrow and this layer carried no

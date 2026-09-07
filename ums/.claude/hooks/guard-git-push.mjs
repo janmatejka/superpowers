@@ -172,8 +172,44 @@ const loadProtected = (cwd) => {
   return BUILTIN_PROTECTED.map(globToRe);
 };
 
+// The exception is NARROW on purpose: it is the only place in this layer
+// where the actor rule stops being categorical. A missing, empty or
+// non-string value yields no exception at all, which is the same
+// safer-side degradation loadProtected follows.
+const loadEpicRule = (cwd) => {
+  try {
+    const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const pat = parsed.epicBranchPattern;
+    if (typeof pat !== 'string' || pat.trim() === '') return null;
+    const baseRef = typeof parsed.baseRef === 'string' ? parsed.baseRef : '';
+    // <baseBranch> = baseRef minus the remote and the SINGLE following slash.
+    const baseBranch = baseRef.replace(/^[^/]+\//, '');
+    return { re: globToRe(pat), baseBranch };
+  } catch { return null; }
+};
+
+const RAW_SHA_RE = /^[0-9a-fA-F]{40}$/;
+
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//i, '');
 const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
+
+// The actor-rule exception for the epic line (contract: "The epic line").
+// FOUR conditions, and every one of them closes a measured or reasoned
+// hole. Dropping any of them widens the exception past what the contract
+// grants: the pattern alone would let a configured `feature/*` grant
+// push rights over a namespace nobody protects; without the protected
+// test the exception would apply where there was nothing to except;
+// without the base test an `epicBranchPattern` of `*` would swallow the
+// integration branch; and without the raw-SHA test a bare `git push`
+// on a branch whose upstream `switch -c` set to the epic line would pass.
+const isEpicFastForward = (dest, src, patterns, epic) =>
+  epic !== null &&
+  src !== null && RAW_SHA_RE.test(src) &&
+  epic.re.test(stripRef(dest)) &&
+  isProtected(dest, patterns) &&
+  stripRef(dest).toLowerCase() !== epic.baseBranch.toLowerCase();
 
 // Hands over the PLAIN command on purpose, with no escape in front of it: an
 // integration whose commits are already published on the remote is exactly
@@ -415,8 +451,10 @@ const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 // itself below rather than summarised here.
 //
 // `atCommandPosition` DEFAULTS TO TRUE so a stale call site omitting it
-// degrades toward more protection, the same rule loadProtected follows.
-function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
+// degrades toward more protection, the same rule loadProtected follows. `epic`
+// DEFAULTS TO NULL for the same reason read the other way round: a call site
+// that does not pass the epic rule gets no exception, never a wider one.
+function evaluatePush(args, cwd, patterns, atCommandPosition = true, epic = null) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
@@ -429,10 +467,18 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   const note = (what, tokens) => problems.push({ what, tokens });
 
   const targets = [];
+  // Index-parallel to `targets`: the refspec SOURCE each destination came
+  // from, or null where the invocation names none. The epic exception
+  // (isEpicFastForward) asks WHAT is being pushed and not only where, and this
+  // collection used to answer the second question alone — the destination was
+  // kept and the source dropped on the floor. Both arrays are written ONLY
+  // through addTarget, which is what keeps the two indices aligned.
+  const sources = [];
+  const addTarget = (dest, src = null) => { targets.push(dest); sources.push(src); };
   // A current branch that cannot be resolved contributes NO target rather than
   // a guessed one: an unguessable branch is not a recognized protected target,
   // and denying there would block legitimate work from a detached HEAD.
-  const addCurrent = () => { const c = currentBranch(cwd); if (c) targets.push(c); };
+  const addCurrent = () => { const c = currentBranch(cwd); if (c) addTarget(c); };
 
   const badFlags = flags.filter((f) => !PUSH_ALLOWED_FLAGS.has(f));
   if (badFlags.length > 0) note('neznámý přepínač', badFlags);
@@ -447,7 +493,18 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
     } else {
       for (const r of refspecs) {
         const bare = unquote(r);
-        if (REFSPEC_RE.test(bare)) targets.push(bare.includes(':') ? bare.split(':').pop() : bare);
+        // Cut at the LAST colon, which is where `bare.split(':').pop()` took
+        // the destination from before the source was kept as well: whatever a
+        // refspec with more than one colon means, both halves have to be read
+        // off the same separator or they would describe different refspecs.
+        // REFSPEC_RE admits at most one colon today, so nothing currently
+        // exercises the difference — that is precisely why the shape is
+        // preserved rather than rewritten to `[1]`.
+        if (REFSPEC_RE.test(bare)) {
+          const cut = bare.lastIndexOf(':');
+          if (cut === -1) addTarget(bare);
+          else addTarget(bare.slice(cut + 1), bare.slice(0, cut));
+        }
       }
       // The RAW token decides "cleanly written", the unquoted one decided
       // "names a destination" above - so a quoted branch yields a readable
@@ -490,9 +547,18 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   // permission — it was spelled out. Read out of one this file could not fully
   // parse, it only counts as a destination if the `git` was a command in the
   // first place; otherwise `develop` in a heredoc body would be a push target.
+  //
+  // A destination that satisfies isEpicFastForward is STEPPED OVER here — the
+  // one narrow exception to the actor rule (contract: "The epic line").
   if (problems.length === 0 || atCommandPosition) {
-    const hit = targets.find((t) => isProtected(t, patterns));
-    if (hit) return { deny: true, reason: sharedBranchMessage(stripRef(hit)) };
+    // An INDEX, not the value: the source that decides the exception is only
+    // reachable through the position the destination was found at.
+    const hitIndex = targets.findIndex(
+      (t, i) => isProtected(t, patterns) && !isEpicFastForward(t, sources[i], patterns, epic),
+    );
+    if (hitIndex !== -1) {
+      return { deny: true, reason: sharedBranchMessage(stripRef(targets[hitIndex])) };
+    }
   }
 
   // A problem blocks where the invocation is one this file may judge at all,
@@ -586,6 +652,9 @@ process.stdin.on('end', () => {
   // silently receive `undefined` and match nothing, i.e. a guard that never
   // guards.
   const patterns = loadProtected(cwd);
+  // Read once, beside the protected list and from the same file: the epic-line
+  // exception is configuration, not a property of an individual invocation.
+  const epic = loadEpicRule(cwd);
 
   // Context-free substring check: `--no-verify` next to `push` (in a command
   // that also mentions `git`, so e.g. `npm run push -- --no-verify` does not
@@ -720,7 +789,7 @@ process.stdin.on('end', () => {
     }
 
     if (subcommand === 'push') {
-      const r = evaluatePush(args, cwd, patterns, atCommandPosition);
+      const r = evaluatePush(args, cwd, patterns, atCommandPosition, epic);
       if (r.deny) deny(r.reason);
     } else if (subcommand === 'fetch') {
       const r = evaluateFetch(args, patterns);
