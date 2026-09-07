@@ -2627,21 +2627,36 @@ measured in this project that a rule with no trigger gets broken even by its own
 author, so the status of each is stated instead of implied:
 
 - **Recommendations** — nothing detects a breach and nothing fails when one
-  happens: marking a message at all, the relay-timing rule, one live
-  subscription per peer, not prodding a session that waits on a subagent, and
-  "a nudge is not a delivery guarantee".
+  happens: marking a message at all; WHICH of the two marks is right ("a cause
+  is ALWAYS a conjecture; a boundary MAY be an instruction"); the relay-timing
+  rule; one live subscription per peer; not prodding a session that waits on a
+  subagent; and "a nudge is not a delivery guarantee". The mark-choice rule is
+  the sharpest thing in this section and is therefore the likeliest to be
+  re-encoded downstream as an enforced gate. It is not one, and there is
+  nothing in this layer to enforce it with.
 - **A right of the recipient**, exercised by the recipient alone and never
   granted message by message: refusing a conjecture.
+- **A reading default of the recipient**, applied by it and by nothing else: an
+  unmarked message — and one whose content contradicts its own mark — is read
+  as a conjecture.
 - **Duties of the recipient**, just as undetected and just as binding on it:
   refusing an instruction that contradicts a written rule, and keeping a
   conjecture out of the ledger as fact.
 - **A requirement on the DESIGN of an escalation band**, checked when the band
   is written and never at runtime: that the band has an artifact form.
-- **One rule named here IS binding, and it is binding somewhere else:** the ban
-  on merging the base in the middle of a task belongs to Base Sync & Drift
-  Detection and holds whatever any message says. What this section adds about
-  it — that a nudge does not establish the order — is a recommendation; the ban
-  is not.
+- **A bound on the scope of everything above rather than a rule of its own:**
+  the other direction carries no mark, so none of the duties, rights and
+  defaults listed here attach to a report, a correction or a handoff artifact
+  travelling back up.
+- **Rules named here that ARE binding — and are binding somewhere else:**
+  - the ban on merging the base in the middle of a task belongs to Base Sync &
+    Drift Detection and holds whatever any message says; what this section adds
+    about it — that a nudge does not establish the order — is a recommendation,
+    the ban is not;
+  - the mark being WRITTEN in English and RENDERED to the user as *pokyn* /
+    *domněnka* belongs to the Language Contract, which decides the language of
+    every artifact in this layer; what this section adds is only which token a
+    message carries.
 
 ## Fail-Closed Behavior
 
