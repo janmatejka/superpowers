@@ -258,8 +258,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # and the protected-name check are two halves of one rule, so they must
     # agree about case: a case-sensitive gate let `refs/HEADS/develop` skip
     # the guard entirely, even though the check below would have caught it.
-    # (guard-git-push.mjs is case-insensitive here too - the layers must not
-    # disagree either.)
+    # (guard-git-push.mjs's stripRef was measured case-sensitive and disagreeing
+    # with this hook - refs/HEADS/develop passed it while this hook rejected it
+    # - and was fixed to match: it now strips refs/heads/ case-insensitively too,
+    # so the two layers agree about branch membership.)
     remote_ref_lc=$(to_lower "$remote_ref")
 
     # Out of scope: only refs/heads/* (branches) are policed by this loop's

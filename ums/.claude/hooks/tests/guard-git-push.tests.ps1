@@ -305,6 +305,17 @@ Assert-Eq (Test-Cmd 'git push origin releaseX1' $cfgDot) '' 'povoleno: literáln
 Assert-Match (Test-Cmd 'git push origin release.1' $cfgDot) 'permissionDecision.*deny' 'zamítnuto: přesná shoda s literálním vzorem release.1'
 Remove-Item -Recurse -Force $cfgDot
 
+# stripRef case-insensitivity, parity with pre-push. The hook lower-cases the
+# WHOLE ref before stripping refs/heads/ (to_lower, then the prefix regex is
+# already case-agnostic against the lower-cased text); this file must strip
+# the prefix case-insensitively too, or the two layers disagree about branch
+# membership. Measured: refs/HEADS/develop passed this guard while pre-push
+# rejected it (fixed by this suite's own regression).
+$cfgCase = New-ConfigFixture '{ "protectedBranches": ["develop"] }'
+Assert-Match (Test-Cmd 'git push origin UMS-1:refs/HEADS/develop' $cfgCase) 'permissionDecision.*deny' 'zamítnuto: refs/HEADS/ se strippuje case-insensitive stejně jako v hooku'
+Assert-Match (Test-Cmd 'git push origin UMS-1:Refs/Heads/develop' $cfgCase) 'permissionDecision.*deny' 'zamítnuto: smíšená velikost písmen v prefixu refs/heads/'
+Remove-Item -Recurse -Force $cfgCase
+
 # invalid / nonexistent cwd must not throw, and must degrade toward the
 # built-in list like every other unreadable-configuration case
 $cfgProof = New-ConfigFixture '{ "protectedBranches": ["Branches/*"] }'

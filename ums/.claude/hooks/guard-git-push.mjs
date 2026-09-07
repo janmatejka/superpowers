@@ -172,7 +172,7 @@ const loadProtected = (cwd) => {
   return BUILTIN_PROTECTED.map(globToRe);
 };
 
-const stripRef = (ref) => String(ref).replace(/^refs\/heads\//, '');
+const stripRef = (ref) => String(ref).replace(/^refs\/heads\//i, '');
 const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
 
 // Hands over the PLAIN command on purpose, with no escape in front of it: an
