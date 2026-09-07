@@ -1776,7 +1776,7 @@ asks which of them the base is, except the single condition of the Handoff phase
   ticket branch, announcing the outgoing commits: the publication rule, as after
   every commit.
 - **Green verification.** Build and targeted tests, on the merged tree.
-- **Handoff gate.** Three checks, and they run as one mechanical check rather
+- **Handoff gate.** Four checks, and they run as one mechanical check rather
   than as items somebody ticks off, **after a fresh `git fetch origin`** —
   against the freshly fetched `<effective base>`, never against a tip
   remembered from the Sync phase. A remembered tip passes in exactly the case
@@ -1795,10 +1795,34 @@ asks which of them the base is, except the single condition of the Handoff phase
      pin found";
   3. `<sha>` is reachable on `origin`. The hook enforces this at push time
      anyway; the gate carries it so the error arrives earlier and legibly.
+  4. the commands the Handoff artifact is about to quote match, AS TEXT, the
+     verification set declared for this work item. **The verification set is
+     a verbatim list of commands, declared once**, and its home is whatever
+     umbrellas the work: an epic's own ledger
+     (`memory-bank/epics/<epic_key_snake>/ledger.md`, section "Ověřovací
+     sada") for a ticket that belongs to one — declared once for the whole
+     epic so every ticket measures the identical thing — the work item's own
+     plan otherwise. This is not an epic peculiarity; work outside an epic
+     declares a set too, just with the plan as its home instead of a ledger.
+     The comparison is TEXTUAL, not semantic: equal strings in equal order,
+     never normalized and never reordered, because the entire point is that
+     two measurements of "green" are measuring the identical thing. The check
+     activates only where a set IS declared — with nothing declared there is
+     nothing to compare against, so it is skipped rather than fabricating a
+     pass or a fail — but resolving the set is a separate, earlier step from
+     running this comparison, and **a missing declared set at that resolution
+     step is itself fail-closed** (Fail-Closed Behavior): the first
+     integration of a ticket whose umbrella declares no verification set at
+     all is a STOP, not a silent pass, because without one, "green" means
+     something different every time and the Handoff artifact would then quote
+     output with nothing to compare it against.
 - **Handoff.** ONE artifact — the destination branch, `<sha>`, the enumerated
-  outgoing commits, and the verification commands quoted verbatim **with their
-  output**, so "verified" is a claim the reader can compare rather than an
-  assurance. It has **two renderings**, and the single condition of the whole
+  outgoing commits, and the verification commands of the **Green
+  verification** phase, quoted verbatim **with their output** — the SAME
+  commands, in the SAME order, that the Handoff gate's fourth check just
+  compared as text against the declared verification set — so "verified" is a
+  claim the reader can compare rather than an assurance. It has **two
+  renderings**, and the single condition of the whole
   procedure decides between them — **is there a manager?**, answered by whether
   the effective base is an epic line:
   - **no manager** → the artifact is rendered as the PLAIN human command with the
@@ -2271,7 +2295,11 @@ When anything important is missing or ambiguous:
   older than v2, or fails EITHER half of the synthetic-pipe check run in this
   session's own environment — the protected-branch line it must reject and the
   ticket-branch line it must accept (Workspace Discipline); a failing
-  `git fetch origin` in phase 0 of the entry gate.
+  `git fetch origin` in phase 0 of the entry gate; a missing declared
+  verification set at a work item's first integration (Publication Contract,
+  "Integration", the Handoff gate) — its umbrella (an epic's ledger, or the
+  work item's own plan otherwise) naming no set at all is a STOP, not a silent
+  pass.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
   `.superpowers/sdd/<plan-basename>/progress.md` ledger; an absolute

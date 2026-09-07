@@ -13,6 +13,63 @@ try {
     Assert-Eq (@($r.Checks).Count) 3 'brána vrací právě tři kontroly'
     Assert-Eq (@($r.Blocking).Count) 0 'u průchodu není nic blokující'
 
+    # Čtvrtá kontrola, `verification-set`, je čistě textové srovnání dvou
+    # parametrů (-VerificationSet = deklarovaná sada, -CitedCommands = co
+    # artefakt cituje). Testuje se TADY, dokud je $f.MergedSha ještě zeleným
+    # potomkem NEPOSUNUTÉ báze — Move-GateBase o pár řádků níž bázi posune
+    # a od té chvíle by MergedSha sám o sobě zablokoval kontrolu `ancestor`,
+    # což by kontaminovalo asercie „blokuje POUZE verification-set".
+    $declared = @('pwsh ./build.ps1', 'pwsh ./test.ps1')
+
+    Write-Host "== verification-set: citace odpovídá deklarované sadě"
+    $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.MergedSha -BaseRef $f.BaseRef `
+        -VerificationSet $declared -CitedCommands $declared
+    Assert-True $r.Ok 'shodná citace nic neblokuje'
+    Assert-Eq (@($r.Checks).Count) 4 's deklarovanou sadou přibývá čtvrtá kontrola'
+    Assert-Eq (@($r.Blocking).Count) 0 'shodná citace neblokuje nic'
+    # Ok/Blocking samotné by prošly i vacuous (kdyby čtvrtá kontrola vůbec
+    # neexistovala) — tahle asercie potřebuje, aby kontrola verification-set
+    # SKUTEČNĚ existovala a SKUTEČNĚ prošla.
+    Assert-Eq (@(@($r.Checks | Where-Object { $_.Name -eq 'verification-set' -and $_.Passed -eq $true })).Count) 1 `
+        'čtvrtá kontrola je pojmenovaná verification-set a sama prošla'
+
+    # NEGATIVNÍ: bez sady se kontrola vůbec nepřidá — nesmí fabrikovat ani
+    # průchod, ani selhání tam, kde není co porovnávat.
+    Write-Host "== bez deklarované sady se kontrola verification-set nepřidává"
+    $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.MergedSha -BaseRef $f.BaseRef `
+        -CitedCommands $declared
+    Assert-Eq (@($r.Checks).Count) 3 'bez deklarované sady zůstávají jen tři kontroly'
+    Assert-Eq (@(@($r.Checks | Where-Object { $_.Name -eq 'verification-set' })).Count) 0 `
+        'kontrola verification-set se bez deklarované sady vůbec neobjeví'
+
+    # NEGATIVNÍ: chybějící citace u deklarované sady je blokující nález.
+    Write-Host "== verification-set: chybějící citace blokuje, když je sada deklarovaná"
+    $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.MergedSha -BaseRef $f.BaseRef `
+        -VerificationSet $declared -CitedCommands @()
+    Assert-True (-not $r.Ok) 'chybějící citace blokuje, když je sada deklarovaná'
+    Assert-Eq ($r.Blocking -join ',') 'verification-set' 'chybějící citace blokuje POUZE kontrolu verification-set'
+
+    # NEGATIVNÍ: citace odlišná od deklarované sady je blokující nález a
+    # hláška jmenuje první rozdílný řádek — srovnání je TEXTOVÉ, ne sémantické.
+    Write-Host "== verification-set: odlišná citace blokuje a hláška jmenuje první rozdílný řádek"
+    $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.MergedSha -BaseRef $f.BaseRef `
+        -VerificationSet $declared -CitedCommands @('pwsh ./build.ps1', 'pwsh ./jiny-test.ps1')
+    Assert-True (-not $r.Ok) 'odlišná citace blokuje'
+    Assert-Eq ($r.Blocking -join ',') 'verification-set' 'odlišná citace blokuje POUZE kontrolu verification-set'
+    $diffDetail = "$(@($r.Checks | Where-Object { $_.Name -eq 'verification-set' } |
+            ForEach-Object { $_.Detail }) -join ' ')"
+    Assert-Match $diffDetail 'jiny-test\.ps1' 'nález jmenuje odlišně citovaný řádek'
+    Assert-Match $diffDetail 'test\.ps1' 'nález jmenuje i deklarovaný řádek, se kterým se liší'
+
+    # NEGATIVNÍ, case-sensitivní komparátor (-cne) potřebuje vlastní případ:
+    # dvě hodnoty lišící se JEN velikostí písmen musí být vyhodnoceny jako
+    # rozdílné, protože srovnání je textové, ne sémantické.
+    Write-Host "== verification-set: rozdíl jen ve velikosti písmen je taky blokující (textové, ne sémantické srovnání)"
+    $r = Test-UmsHandoffGate -RepoRoot $f.Clone -Sha $f.MergedSha -BaseRef $f.BaseRef `
+        -VerificationSet @('pwsh ./Build.ps1') -CitedCommands @('pwsh ./build.ps1')
+    Assert-True (-not $r.Ok) 'rozdíl jen ve velikosti písmen blokuje'
+    Assert-Eq ($r.Blocking -join ',') 'verification-set' 'case-rozdíl blokuje POUZE kontrolu verification-set'
+
     # NEGATIVNÍ: báze se pohnula po zapamatování tipu. Tohle je ta kontrola,
     # kvůli které brána vůbec existuje — 244 kvůli tomu dvakrát přepisovala
     # výčet odchozích commitů. Bázi posouvá druhý klon, takže dokud brána

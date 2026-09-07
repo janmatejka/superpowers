@@ -74,13 +74,61 @@ After the user chooses and BEFORE executing the choice:
     not try to un-publish the ticket branch: force push is forbidden, and a red
     ticket branch on `origin` is normal, visible work in progress. Fix forward
     with further commits.
-  - **Handoff gate.** The contract's three checks, run as ONE mechanical check
-    (never as items you tick off) on the commit about to be handed over:
+  - **Handoff gate.** The contract's four checks, run as ONE mechanical check
+    (never as items you tick off) on the commit about to be handed over.
+
+    Before calling it, resolve the repository configuration ONCE — the same
+    `$cfg` is reused below, in the **Handoff** phase, to pick that phase's
+    rendering, so it is derived here rather than twice:
+
+    ```powershell
+    . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
+    $cfg = Get-UmsRepoConfig (git rev-parse --show-toplevel)
+    ```
+
+    A missing, empty or non-string `$cfg.EpicBranchPattern` means **no epic
+    line** — never "every branch" (contract, Repository Configuration, "The
+    epic line"). Use the SAME test — does `$base.Branch` match
+    `$cfg.EpicBranchPattern`? — to resolve the **declared verification set**
+    before calling the gate: the gate itself does not resolve this (contract,
+    Publication Contract, "Integration") — it only compares what it is
+    handed, so finding the set's home is this step's job, not the gate's:
+    - **The base matches** (a ticket that belongs to an epic) → the set lives
+      in the epic's own ledger, declared once for the whole epic so every one
+      of its tickets measures the identical thing:
+
+      ```powershell
+      . <mb-shared>/scripts/Get-UmsEpicLedger.ps1
+      $verificationSet = Get-UmsLedgerVerificationSet `
+          -LedgerPath memory-bank/epics/<epic_key_snake>/ledger.md
+      ```
+
+      `<epic_key_snake>` is `$base.Branch` with its `epic/` prefix stripped,
+      lower-cased, with `-` turned to `_` — the same convention `mb-epic-run`
+      uses for the ledger's directory name.
+    - **The base does NOT match** (no epic) → the set lives in the work
+      item's own plan; read it from there, verbatim, the same list the
+      **Green verification** phase just ran.
+
+    Either way, finding **no declared set at all** — no such section in the
+    ledger, or nothing declared in the plan — is itself a fail-closed **STOP**
+    (contract, Publication Contract, "Integration"; Fail-Closed Behavior):
+    report it and do not proceed. Calling the gate with an empty set and
+    reading its silence as a pass would be exactly the silent downgrade this
+    layer forbids — the gate's own activation-only behaviour exists so that
+    IT never fabricates that pass, not so a caller can shrug past a set that
+    was never declared anywhere.
+
+    Once the set is resolved, call the gate with it — `-CitedCommands` is the
+    SAME commands, in the SAME order, that the **Green verification** phase
+    ran and that the **Handoff** phase below will quote verbatim in the
+    artifact:
 
     ```powershell
     . <mb-shared>/scripts/Test-UmsHandoffGate.ps1
     $gate = Test-UmsHandoffGate -RepoRoot (git rev-parse --show-toplevel) `
-        -Sha (git rev-parse HEAD) -BaseRef $base.Ref
+        -Sha (git rev-parse HEAD) -BaseRef $base.Ref `
+        -VerificationSet $verificationSet -CitedCommands $citedCommands
     ```
 
     Pass `-BaseRef $base.Ref` **explicitly**: with the parameter omitted the
@@ -105,31 +153,33 @@ After the user chooses and BEFORE executing the choice:
       either as IDLE.
     - `unpublished` — the commit is on no remote branch yet; push the ticket
       branch (publication rule) and re-run the gate.
+    - `verification-set` — the cited commands do not match the declared set
+      textually, either because none were cited or because they differ from a
+      declared line onward (`$gate.Checks`' `Detail` for this name says which).
+      The remedy belongs to whoever is about to build the **Handoff**
+      artifact, not to the declared set itself: quote the **Green
+      verification** phase's commands again, verbatim and in the declared
+      order, then re-run the gate.
 
     Only with `$gate.Ok` true does the **Handoff** phase begin.
   - **Handoff.** Build ONE **handoff artifact** first, then render it. The
     artifact carries exactly four things: the destination branch
     (`$base.Branch`), the `<sha>` being handed over, the **enumerated** outgoing
     commits, and the verification commands of the **Green verification** phase
-    (the build and the targeted tests) quoted **verbatim with their output**.
-    The gate's own result may be reported alongside, but it is not that field:
-    `Test-UmsHandoffGate` returns `Name`/`Passed`/`Detail` and no command text
-    or command output at all, so a `$gate.Checks` detail string is never a
-    substitute for the verification evidence.
+    (the build and the targeted tests) quoted **verbatim with their output** —
+    the SAME `$citedCommands` the **Handoff gate** phase above just compared,
+    as TEXT, against the declared verification set, so "verified" is a claim
+    the reader can compare rather than an assurance. The gate's own result may
+    be reported alongside, but it is not that field: `Test-UmsHandoffGate`
+    returns `Name`/`Passed`/`Detail` and no command text or command output at
+    all, so a `$gate.Checks` detail string is never a substitute for the
+    verification evidence.
 
     Both renderings are built from that SAME artifact, and a **single
-    condition** picks between them: does `$base.Branch` match
-    `epicBranchPattern` from `<CTX_DIR>/ums-repo.json`? Read it mechanically,
-    never from memory of the topology:
-
-    ```powershell
-    . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
-    $cfg = Get-UmsRepoConfig (git rev-parse --show-toplevel)
-    ```
-
-    A missing, empty or non-string `$cfg.EpicBranchPattern` means **no epic
-    line** — never "every branch" (contract, Repository Configuration, "The
-    epic line") — and therefore the user rendering. The condition picks a
+    condition** picks between them — the SAME `$cfg`/`$base.Branch` test
+    already resolved in the **Handoff gate** phase above, reused here rather
+    than re-derived: does `$base.Branch` match `epicBranchPattern` from
+    `<CTX_DIR>/ums-repo.json`? The condition picks a
     rendering, nothing else: every phase above and below runs identically in
     both cases.
     - **The base does NOT match** (no manager) → ask (Czech)

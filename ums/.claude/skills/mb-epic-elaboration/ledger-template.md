@@ -70,20 +70,17 @@ sloupci `Pasti`.
 
 ## Ověřovací sada
 
-Doslovný výčet příkazů, jeden na řádek, deklarovaný **jednou pro celý epik**.
-Domov má tady, ne v plánu jednotlivého tiketu, právě proto, aby všechny
-tikety epiku měřily svým „zelené" totéž — tiketový plán jmenuje build a
-testy jen pro sebe, epik potřebuje jednu společnou míru napříč tikety.
+Doslovný výčet příkazů, jeden na řádek. Co sada je, kde má obecně domov, jak
+ji brána porovnává s citací v artefaktu předání a proč je chybějící sada
+fail-closed STOP, popisuje kontrakt, sekce „Integration" (Publication
+Contract) — zdejší je jen to, co je čistě lokální: epik ji deklaruje
+**jednou pro celý epik**, právě proto, aby všechny jeho tikety měřily svým
+„zelené" totéž.
 
 ```
 <příkaz 1: build>
 <příkaz 2: cílené testy>
 ```
-
-**Chybějící sada je fail-closed STOP u první integrace do epikové linie, ne
-tichý průchod.** Bez deklarované sady znamená „zelené" pokaždé něco jiného —
-artefakt předání integrace by pak citoval výstup, se kterým není co
-porovnat, a brána by ověření jen předstírala.
 
 ## Registr rozhodnutí
 

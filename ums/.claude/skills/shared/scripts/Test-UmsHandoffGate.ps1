@@ -4,7 +4,7 @@
     operator) as an integration push?
 
 .DESCRIPTION
-    Three checks, in this fetch-first order:
+    Four checks, in this fetch-first order:
 
       1. `ancestor`  - `git merge-base --is-ancestor <base> <Sha>` against the
                        base as it stands AFTER `git fetch origin`. The fetch is
@@ -20,6 +20,31 @@
                        `context-unreadable` (any other nonzero exit). All three
                        block.
       3. `unpublished` - `git branch -r --contains <Sha>` came back empty.
+      4. `verification-set` - compares -CitedCommands (what the handoff
+                       artifact quotes) against -VerificationSet (what was
+                       declared) as TEXT: equal strings in equal order, never
+                       normalized (no whitespace trimming beyond what the
+                       caller already did, no reordering) and never read
+                       semantically - two callers are only measuring the same
+                       thing if their commands are spelled identically. This
+                       check is a PURE comparison: it does not resolve where
+                       the declared set lives, does not read a ledger or a
+                       plan, and does not know what an epic is. Resolving the
+                       set's home (an epic's ledger for a ticket that belongs
+                       to one, the work item's plan otherwise) is entirely the
+                       CALLER's job. The check activates ONLY when
+                       -VerificationSet is non-empty: with nothing declared
+                       there is nothing to compare against, so this check is
+                       skipped altogether rather than fabricating a pass or a
+                       fail (and both parameters stay optional, so every
+                       existing caller and every pre-existing assertion keeps
+                       working unchanged). Once active, an empty
+                       -CitedCommands is itself a blocking finding - a
+                       declared set with nothing cited means the artifact
+                       claims verification it does not evidence - and a
+                       citation that differs from the declared set is a
+                       blocking finding whose Detail names the first
+                       differing line (1-based).
 
     `<CTX_DIR>` is resolved per its definition in the contract,
     `<MB_ROOT>/memory-bank/` - never from configuration and never from a path
@@ -45,7 +70,9 @@ function Test-UmsHandoffGate {
     param(
         [Parameter(Mandatory)] [string] $RepoRoot,
         [Parameter(Mandatory)] [string] $Sha,
-        [string] $BaseRef
+        [string] $BaseRef,
+        [string[]] $CitedCommands,
+        [string[]] $VerificationSet
     )
 
     if (-not $BaseRef) { $BaseRef = (Get-UmsRepoConfig $RepoRoot).BaseRef }
@@ -109,6 +136,53 @@ function Test-UmsHandoffGate {
     }
     else {
         & $add 'unpublished' $false "commit $Sha není na žádné vzdálené větvi — není publikovaný"
+    }
+
+    # 4. Verification set. A PURE text comparison: this function does not
+    # resolve where the declared set lives (epic ledger vs. work item plan is
+    # the caller's decision), does not read a ledger, and does not learn what
+    # an epic is. Activates ONLY when a set was declared - with $VerificationSet
+    # empty there is nothing to compare against, so no finding is added at all
+    # (never a fabricated pass or fail), which is also what keeps every
+    # pre-existing caller and assertion working unchanged.
+    # $null wrapped in @() is a ONE-element array holding $null, not an empty
+    # array (measured: @($null).Count -eq 1) - so the null check must happen
+    # BEFORE wrapping, never `@($VerificationSet).Count -gt 0` alone, or an
+    # omitted -VerificationSet would wrongly activate this check. And the
+    # null-vs-array branch itself must be wrapped from THE OUTSIDE
+    # (`$x = @(if (...) {...} else {...})`), never only inside each branch -
+    # an `if` whose taken branch is the literal `@()` yields zero output
+    # objects for the whole statement, which unwraps to $null on assignment
+    # exactly like the empty-pipeline case this layer's playbook documents
+    # (measured: without the outer @(), `Test-P` above returns $null, not an
+    # empty array, for both the omitted and the explicit-@() case).
+    $declaredSet = @(if ($null -eq $VerificationSet) { @() } else { @($VerificationSet) })
+    if ($declaredSet.Count -gt 0) {
+        $citedSet = @(if ($null -eq $CitedCommands) { @() } else { @($CitedCommands) })
+        if ($citedSet.Count -eq 0) {
+            & $add 'verification-set' $false "artefakt předání necituje žádné ověřovací příkazy, ale ověřovací sada je deklarovaná ($($declaredSet.Count) příkazů)"
+        }
+        else {
+            # Textual comparison, position by position, equal order required.
+            # Never normalize whitespace and never reorder - the whole point
+            # of the declared set is that two tickets measure the identical
+            # thing, so a "helpful" normalization here would defeat it.
+            $maxLen = [Math]::Max($declaredSet.Count, $citedSet.Count)
+            $mismatchIndex = -1
+            for ($i = 0; $i -lt $maxLen; $i++) {
+                $expected = if ($i -lt $declaredSet.Count) { $declaredSet[$i] } else { $null }
+                $actual = if ($i -lt $citedSet.Count) { $citedSet[$i] } else { $null }
+                if ($expected -cne $actual) { $mismatchIndex = $i; break }
+            }
+            if ($mismatchIndex -ge 0) {
+                $expectedLine = if ($mismatchIndex -lt $declaredSet.Count) { $declaredSet[$mismatchIndex] } else { '(chybí)' }
+                $actualLine = if ($mismatchIndex -lt $citedSet.Count) { $citedSet[$mismatchIndex] } else { '(chybí)' }
+                & $add 'verification-set' $false "citované příkazy se od deklarované ověřovací sady liší od řádku $($mismatchIndex + 1): citováno '$actualLine', deklarováno '$expectedLine'"
+            }
+            else {
+                & $add 'verification-set' $true "citované příkazy odpovídají deklarované ověřovací sadě ($($declaredSet.Count) příkazů)"
+            }
+        }
     }
 
     $blocking = @($checks | Where-Object { -not $_.Passed } | ForEach-Object { $_.Name })
