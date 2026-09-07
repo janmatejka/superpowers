@@ -183,14 +183,25 @@ const loadEpicRule = (cwd) => {
     if (!parsed || typeof parsed !== 'object') return null;
     const pat = parsed.epicBranchPattern;
     if (typeof pat !== 'string' || pat.trim() === '') return null;
-    const baseRef = typeof parsed.baseRef === 'string' ? parsed.baseRef : '';
+    // TRIMMED FIRST, then judged. Surrounding whitespace makes a correct
+    // value work rather than declining it, and it must come off BEFORE the
+    // derivation: `"origin/develop "` would otherwise derive `"develop "`,
+    // which no real destination ever equals (measured: the guard allowed a
+    // raw-SHA push to the delivery line on that value alone).
+    const baseRef = (typeof parsed.baseRef === 'string' ? parsed.baseRef : '').trim();
+    // `refs/`-prefixed spellings are DECLINED, not parsed. The contract's
+    // accepted shape is `origin/<branch>`, without the `refs/remotes/`
+    // prefix (contract: "Repository Configuration"), and the derivation
+    // below would turn `refs/remotes/origin/develop` into
+    // `remotes/origin/develop` — again a name nothing equals.
+    if (/^refs\//i.test(baseRef)) return null;
     // <baseBranch> = baseRef minus the remote and the SINGLE following slash.
     const baseBranch = baseRef.replace(/^[^/]+\//, '');
-    // No usable base name (absent, empty, non-string, or a `origin/` that
-    // reduces to nothing) -> no exception, and never a guessed base: the
-    // condition that keeps the pattern off the base cannot bite against an
-    // empty string (contract: "The epic line").
-    if (baseBranch.trim() === '') return null;
+    // No usable base name (absent, empty, non-string, whitespace-only, or a
+    // `origin/` that reduces to nothing) -> no exception, and never a guessed
+    // base: the condition that keeps the pattern off the base cannot bite
+    // against an empty string (contract: "The epic line").
+    if (baseBranch === '') return null;
     return { re: globToRe(pat), baseBranch };
   } catch { return null; }
 };
@@ -200,15 +211,20 @@ const RAW_SHA_RE = /^[0-9a-fA-F]{40}$/;
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//i, '');
 const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
 
-// The actor-rule exception for the epic line (contract: "The epic line").
-// FOUR conditions, and every one of them closes a measured or reasoned
-// hole. Dropping any of them widens the exception past what the contract
-// grants: the pattern alone would let a configured `feature/*` grant
-// push rights over a namespace nobody protects; without the protected
-// test the exception would apply where there was nothing to except;
-// without the base test an `epicBranchPattern` of `*` would swallow the
-// integration branch; and without the raw-SHA test a bare `git push`
-// on a branch whose upstream `switch -c` set to the epic line would pass.
+// The actor-rule exception for the epic line. The contract's FOUR
+// conditions, ANDed, behind a fifth clause that only asks whether a usable
+// epic rule was read from the configuration at all. In evaluation order:
+//
+//   0. `epic !== null` — a usable rule exists;
+//   1. the refspec names a SOURCE and it is a raw 40-hex SHA;
+//   2. the destination matches `epicBranchPattern`;
+//   3. the destination IS protected;
+//   4. the destination is not `<baseBranch>` (compared case-insensitively,
+//      the same way stripRef and the pre-push hook compare branch names).
+//
+// Why each condition is there, and what the exception is for, is written
+// once — see UMS_MEMORY_BANK_CONTRACT.md, "The epic line". Not restated
+// here, because a rule has exactly one home.
 const isEpicFastForward = (dest, src, patterns, epic) =>
   epic !== null &&
   src !== null && RAW_SHA_RE.test(src) &&
@@ -434,10 +450,13 @@ const EXPANSION_RE = /[$`]/;
 // questions about the same token, deliberately answered differently.
 const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 
-// Reads an invocation TWICE over, because the two answers are independent:
+// Reads an invocation THREE ways over, because the answers are independent:
 //
 //   targets  — every destination this push can be read to name. An unreadable
 //              token blinds the guard to THAT destination, not to the others.
+//   sources  — index-parallel to `targets`: the refspec source each
+//              destination came from, or null where the invocation names
+//              none. Only the epic exception asks this question.
 //   problems — a LIST of what could not be read, each with the tokens that
 //              made it unreadable. A list, because one problem being excused
 //              says nothing about the next one.

@@ -437,6 +437,33 @@ $cfgRemoteOnlyBase = New-ConfigFixture '{ "baseRef": "origin/", "protectedBranch
 Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgRemoteOnlyBase) 'permissionDecision.*deny' 'zamítnuto: baseRef "origin/" se redukuje na prázdno, tedy žádná výjimka'
 Remove-Item -Recurse -Force $cfgRemoteOnlyBase
 
+# `refs/remotes/origin/develop` je taky validní string, ale kontrakt tenhle
+# tvar pro `baseRef` nepřipouští (sekce "Repository Configuration": baseRef je
+# `origin/<větev>`, tedy BEZ prefixu `refs/remotes/`). Odebrání remote a jednoho
+# lomítka z něj udělá `remotes/origin/develop` — jméno, které se žádné skutečné
+# bázi nikdy nerovná, takže podmínka o bázi je trvale splněná. Měřeno: přesně
+# tenhle tvar guard propouštěl.
+$cfgRefsBase = New-ConfigFixture '{ "baseRef": "refs/remotes/origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgRefsBase) 'permissionDecision.*deny' 'zamítnuto: baseRef s prefixem refs/ se neparsuje, znamená žádnou výjimku'
+Remove-Item -Recurse -Force $cfgRefsBase
+
+# Bílé znaky okolo hodnoty: `"origin/develop "` by bez trimu dalo jméno
+# `"develop "`, které se `develop` nerovná — tedy zase trvale splněná podmínka
+# o bázi. Měřeno: i tenhle tvar guard propouštěl.
+$cfgSpaceBase = New-ConfigFixture '{ "baseRef": "origin/develop ", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgSpaceBase) 'permissionDecision.*deny' 'zamítnuto: baseRef s koncovou mezerou nesmí odzbrojit podmínku o bázi'
+Remove-Item -Recurse -Force $cfgSpaceBase
+
+# KONTROLA opačným směrem: trim udělá z nedbale zapsané, ale správné hodnoty
+# hodnotu funkční — nezamítne ji. Táž konfigurace tedy chrání bázi A ZÁROVEŇ
+# pouští legitimní epikový fast-forward. Vzor je schválně `*`, aby o zamítnutí
+# báze rozhodovala JEDINĚ podmínka o bázi, tedy právě ten trim; s `epic/*` by
+# ji zamítla už podmínka o vzoru a fixture by o trimu nic nedokazovala.
+$cfgTrimBase = New-ConfigFixture '{ "baseRef": " origin/develop ", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgTrimBase) 'permissionDecision.*deny' 'zamítnuto: obalený baseRef se po trimu pozná jako báze'
+Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgTrimBase) 'permissionDecision.*deny' 'povoleno: obalený baseRef výjimku pro epikovou linii neruší'
+Remove-Item -Recurse -Force $cfgTrimBase
+
 # TÝŽ TVAR V POWERSHELLOVÉM ZÁPISU — guard je registrovaný na Bash|PowerShell.
 Assert-NotMatch (Test-CmdPs "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: výjimka platí i na PowerShell toolu'
 

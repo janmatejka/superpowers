@@ -1,7 +1,10 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.14
-- Supersedes v2.13 (adds the epic line — the code integration branch of an
+- **Contract-Version:** 2.15
+- Supersedes v2.14 (states which `baseRef` spellings the epic-line exception
+  accepts and that an unusable one yields no exception rather than the default
+  base, and qualifies the `origin/develop` fallback accordingly).
+- v2.14 superseded v2.13 (adds the epic line — the code integration branch of an
   epic, its membership in `protectedBranches`, and the `epicBranchPattern` key
   whose only consumer is the actor-rule exception in `guard-git-push.mjs`;
   rewrites Integration into ONE procedure for every effective base, with a
@@ -509,8 +512,10 @@ remainder against `protectedBranches`, where `origin/develop` appears nowhere.
 named in its remote-tracking form.
 
 **A missing file is not an error, and the degradation leans to the safer
-side:** `baseRef` falls back to `origin/develop`; `protectedBranches` falls back
-to the built-in list, i.e. to *more* protection, never less; and without
+side:** `baseRef` falls back to `origin/develop` — except for the epic-line
+exception, which declines rather than falls back (see The epic line);
+`protectedBranches` falls back to the built-in list, i.e. to *more* protection,
+never less; and without
 `projectMarkers` / `sharedRoots` the verification after a base merge is offered
 for **every** non-empty incoming diff rather than for none.
 
@@ -621,6 +626,17 @@ actor-rule exception that lets the agent's own tool call fast-forward such a
 branch (Publication Contract). A missing, empty or non-string value therefore
 means **no exception at all** — never "every branch" — which is the same
 safer-side degradation the keys above follow.
+
+**An unusable `baseRef` likewise means no exception**, and the fallback to
+`origin/develop` does NOT apply here. Missing, non-string, empty, whitespace
+only, `refs/`-prefixed (`refs/remotes/origin/develop` — the accepted spelling is
+`origin/<branch>`, Repository Configuration), or reducing to an empty branch
+name (`origin/`): each of these declines the exception. Surrounding whitespace
+is trimmed off first, so a sloppy but correct value still works. Declining is
+fail-closed and guessing a base is not: condition 3 below compares the
+destination AGAINST the base name, so a base name that is merely wrong — rather
+than absent — is a name no destination equals, and the condition can never
+bite.
 
 **The exception holds only where all FOUR conditions hold**, and
 `guard-git-push.mjs` is the only place that evaluates them:
