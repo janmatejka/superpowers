@@ -659,9 +659,9 @@ Očekávané: všechny zelené.
 
 **Předpoklady:**
 
-- [ ] Fáze 1 je hotová a zaškrtaná v tomhle souboru; poslední commit fáze 1 je na `origin`
-- [ ] Jsi na `UMS-3505-orchestrace-epiku`, strom čistý, baseline testů zelená
-- [ ] Existuje `Test-UmsHandoffGate.ps1` se třemi kontrolami a operace `mb-epic-run integrate`
+- [x] Fáze 1 je hotová a zaškrtaná v tomhle souboru; poslední commit fáze 1 je na `origin`
+- [x] Jsi na `UMS-3505-orchestrace-epiku`, strom čistý, baseline testů zelená
+- [x] Existuje `Test-UmsHandoffGate.ps1` se třemi kontrolami a operace `mb-epic-run integrate`
 
 **Co si přečti:** návrh, části 2 (podsekce o ověřovací sadě) a 5 celá; kontrakt, sekce „Epic Backflow (design → epic)"; `ums/.claude/skills/mb-epic-elaboration/ledger-template.md` a `scripts/ledger-status.ps1`.
 
@@ -677,11 +677,11 @@ Očekávané: všechny zelené.
 **Interfaces:**
 - Produces: dvě nové sekce s pozičními sloupci, které parsuje Task 10
 
-- [ ] **Step 1: Přidej sekci `## Ověřovací sada`**
+- [x] **Step 1: Přidej sekci `## Ověřovací sada`**
 
 Doslovný výčet příkazů, jeden na řádek, deklarovaný jednou pro celý epik. Do textu sekce zapiš, že **chybějící sada je fail-closed STOP u první integrace** a proč: bez ní znamená „zelené" pokaždé něco jiného.
 
-- [ ] **Step 2: Přidej sekci `## Registr rozhodnutí`**
+- [x] **Step 2: Přidej sekci `## Registr rozhodnutí`**
 
 Sloupce, pozičně, **neměnit ani nepřehazovat** (stejná poznámka jako u `Rozjetí`):
 
@@ -691,7 +691,7 @@ Sloupce, pozičně, **neměnit ani nepřehazovat** (stejná poznámka jako u `Ro
 
 Do textu sekce dej měřený příklad, protože abstraktní popis by se špatně poznával: rozhodnutí 244 „po výpadku se neobsluhuje z prošlých dat, léčbou je delší okno", vlastník 244, předpokládá o 243, druh `chování` — a TTL toho okna bylo v kódu 243 natvrdo 60 s bez konfiguračního klíče.
 
-- [ ] **Step 3: Commit a push**
+- [x] **Step 3: Commit a push**
 
 ---
 
@@ -705,23 +705,23 @@ Do textu sekce dej měřený příklad, protože abstraktní popis by se špatn�
 - Consumes: tvar sekcí z Tasku 9
 - Produces: `VerificationSet` (pole řetězců) a `DecisionRegistry` (pole objektů s poli `Decision`, `Owner`, `AssumesAbout`, `Kind`, `State`, `AckSha`). Čte je Task 11 a Task 12.
 
-- [ ] **Step 1: Napiš padající testy nad fixturou ledgeru**
+- [x] **Step 1: Napiš padající testy nad fixturou ledgeru**
 
 Asercie, které musí existovat: sada se načte jako pole příkazů v pořadí; chybějící sekce dá prázdné pole (ne chybu); řádek registru bez `Potvrzeno (SHA)` se objeví s prázdným `AckSha`; **řádek šablony s hranatými placeholdery se do výsledku nepočítá** — jinak by šablona sama blokovala každou integraci.
 
-- [ ] **Step 2: Spusť a ověř, že padají**
+- [x] **Step 2: Spusť a ověř, že padají**
 
-- [ ] **Step 3: Implementuj parsování**
+- [x] **Step 3: Implementuj parsování**
 
 Pozičně, stejnou technikou, jakou skript už používá pro `Rozjetí` a `Dirty-set`.
 
-- [ ] **Step 4: Spusť a ověř, že prochází**
+- [x] **Step 4: Spusť a ověř, že prochází**
 
-- [ ] **Step 5: Ověř negativitu** — smaž filtr placeholderových řádků a zkontroluj, že zčervená právě jeho asercie. Obnov.
+- [x] **Step 5: Ověř negativitu** — smaž filtr placeholderových řádků a zkontroluj, že zčervená právě jeho asercie. Obnov.
 
-- [ ] **Step 6: Ověř proti skutečnému ledgeru**, pokud v repu nějaký je; jinak zapiš do reportu, že tenhle krok nešel provést a proč.
+- [x] **Step 6: Ověř proti skutečnému ledgeru**, pokud v repu nějaký je; jinak zapiš do reportu, že tenhle krok nešel provést a proč.
 
-- [ ] **Step 7: Commit a push**
+- [x] **Step 7: Commit a push**
 
 ---
 
@@ -736,25 +736,25 @@ Pozičně, stejnou technikou, jakou skript už používá pro `Rozjetí` a `Dirt
 - Consumes: `DecisionRegistry` a řádky `Rozjetí` (Task 10)
 - Produces: `Test-UmsEpicGate -LedgerPath <cesta> -Ticket <TIKET> -Epic <EPIK>` → objekt s `Ok` a `Blocking` ve stejném tvaru, jaký vrací `Test-UmsHandoffGate`, aby je skill mohl reportovat společně
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 Čtyři asercie: řádek `Rozjetí` tiketu patřící **jinému** epiku je blokující nález; nepotvrzený řádek registru jmenující tenhle tiket je blokující nález; potvrzený řádek projde; **ledger bez registru projde triviálně** — bez ledgeru ta kontrola nemá vstup a nesmí zastavovat.
 
-- [ ] **Step 2: Spusť a ověř, že padají**
+- [x] **Step 2: Spusť a ověř, že padají**
 
-- [ ] **Step 3: Implementuj skript**
+- [x] **Step 3: Implementuj skript**
 
-- [ ] **Step 4: Spusť a ověř, že prochází**
+- [x] **Step 4: Spusť a ověř, že prochází**
 
-- [ ] **Step 5: Ověř negativitu obou kontrol zvlášť**
+- [x] **Step 5: Ověř negativitu obou kontrol zvlášť**
 
-- [ ] **Step 6: Zapoj kontroly do sekce `integrate`**
+- [x] **Step 6: Zapoj kontroly do sekce `integrate`**
 
 Nahraď poznámku „přibývají ve fázi 2" z Tasku 8 skutečným voláním. Grepni sekci na tu poznámku, ať nezůstane.
 
 Příkaz: `grep -n "fázi 2\|phase 2" ums/.claude/skills/mb-epic-run/SKILL.md`
 
-- [ ] **Step 7: Commit a push**
+- [x] **Step 7: Commit a push**
 
 ---
 
@@ -769,25 +769,25 @@ Příkaz: `grep -n "fázi 2\|phase 2" ums/.claude/skills/mb-epic-run/SKILL.md`
 - Consumes: `VerificationSet` (Task 10)
 - Produces: čtvrtou kontrolu brány, `verification-set`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 Tři asercie: citované příkazy shodné s deklarovanou sadou projdou; **chybějící citace je blokující nález**; citace, která se od sady liší, je blokující nález a hláška jmenuje první rozdílný řádek. Porovnává se jako **text**, ne sémanticky.
 
-- [ ] **Step 2: Spusť a ověř, že padají**
+- [x] **Step 2: Spusť a ověř, že padají**
 
-- [ ] **Step 3: Rozšiř skript o parametr `-CitedCommands` a čtvrtou kontrolu**
+- [x] **Step 3: Rozšiř skript o parametr `-CitedCommands` a čtvrtou kontrolu**
 
 Kontrola se aktivuje jen tam, kde je sada deklarovaná; kde není a práce patří do epiku, je to STOP podle Tasku 9. Kde práce do epiku nepatří, domovem je plán a chování je stejné.
 
-- [ ] **Step 4: Spusť a ověř, že prochází**
+- [x] **Step 4: Spusť a ověř, že prochází**
 
-- [ ] **Step 5: Ověř negativitu**
+- [x] **Step 5: Ověř negativitu**
 
-- [ ] **Step 6: Doplň citaci do artefaktu předání v overlay**
+- [x] **Step 6: Doplň citaci do artefaktu předání v overlay**
 
 Artefakt už pole na ověřovací příkazy má (Task 7); tady se doplní, že se **cituje doslova** a že je brána porovnává jako text.
 
-- [ ] **Step 7: Commit a push**
+- [x] **Step 7: Commit a push**
 
 ---
 
@@ -802,21 +802,21 @@ Artefakt už pole na ověřovací příkazy má (Task 7); tady se doplní, že s
 
 Doc-only task; ověření je studené čtení a grep konzumentů.
 
-- [ ] **Step 1: Napiš pravidlo do kontraktu**
+- [x] **Step 1: Napiš pravidlo do kontraktu**
 
 Když dva tikety sdílejí rozhraní, epiková linie nese jeho **stub commitnutý dřív, než proti němu kterýkoli z nich implementuje**. Překladač se tím stává orákulem a merge mění sémantický konflikt na textový.
 
 Do textu dej měřený případ, protože bez něj to zní jako obecná rada: signatura `EmployeeResolver` zapsaná v ledgeru jako próza se nepřekládala — parametr navíc, jiné pořadí, špatná arita — a zachytila to náhoda.
 
-- [ ] **Step 2: Odkaž z `mb-epic-elaboration`**
+- [x] **Step 2: Odkaž z `mb-epic-elaboration`**
 
 Jen odkaz na sekci kontraktu plus to, co je čistě lokální (kdy se ve fázích elaborace stub zakládá). Žádná parafráze důvodu.
 
-- [ ] **Step 3: Grep konzumentů**
+- [x] **Step 3: Grep konzumentů**
 
 Příkaz: `grep -rn "stub" ums/.claude/skills/`
 
-- [ ] **Step 4: Commit a push**
+- [x] **Step 4: Commit a push**
 
 ---
 
@@ -829,7 +829,7 @@ Příkaz: `grep -rn "stub" ums/.claude/skills/`
 **Interfaces:**
 - Consumes: nic; je to samostatné odebrání nabídky
 
-- [ ] **Step 1: Přepiš sekci Epic Backflow v kontraktu**
+- [x] **Step 1: Přepiš sekci Epic Backflow v kontraktu**
 
 Krok „Queue the note, always" **zůstává beze změny**. Krok „Offer, never launch" se ruší celý včetně varianty (a) s inline oknem: tiketové sezení nález zapíše a pokračuje; elaboraci epiku otevírá jedině správce epiku.
 
@@ -837,23 +837,23 @@ Napiš tam tři důvody, protože bez nich to vypadá jako ubrání funkce: rozp
 
 A jmenovitě: **zaniká nabídka, ne nález.** Bez správce řádek čeká na příští elaborační okno, stejně jako dnes čeká dirty-set.
 
-- [ ] **Step 2: Uprav overlay `brainstorming`**
+- [x] **Step 2: Uprav overlay `brainstorming`**
 
 Odstraň nabídku a **jmenovitě neguj** starý postup — fragment nahrazuje upstream text, takže bez negace zůstane starý vedle nového vypadat platně.
 
-- [ ] **Step 3: Grepni celou vrstvu na zbytky nabídky**
+- [x] **Step 3: Grepni celou vrstvu na zbytky nabídky**
 
 Příkaz: `grep -rn "inline elaborační\|inline window\|elaborate now" ums/`
 
 Očekávané: žádný výskyt, který by nabídku popisoval jako živou.
 
-- [ ] **Step 4: Studený průchod**
+- [x] **Step 4: Studený průchod**
 
 Přečti sekci Epic Backflow jako chladný čtenář a projdi obě větve — nález je, nález není. Ani jedna nesmí vést k otázce pro uživatele.
 
-- [ ] **Step 5: Commit a push**
+- [x] **Step 5: Commit a push**
 
-- [ ] **Konec tasku.** `task-brief` končí až u dalšího nadpisu `Task`, takže
+- [x] **Konec tasku.** `task-brief` končí až u dalšího nadpisu `Task`, takže
   brief tohohle tasku nese navíc i uzávěrku fáze a vstupní brief fáze další.
   **Nic z toho tenhle task nevykonává** — uzávěrku dělá řídicí sezení, ne
   implementátor tasku.
@@ -862,10 +862,10 @@ Přečti sekci Epic Backflow jako chladný čtenář a projdi obě větve — n�
 
 ## Výstup fáze 2
 
-- [ ] Ověření celé vrstvy smyčkou z playbooku; porovnání s baseline
-- [ ] Obnova nasazené kopie
-- [ ] Report česky včetně rozlišení regresních zámků od důkazů opravy
-- [ ] Zaškrtání kroků, commit, push
+- [x] Ověření celé vrstvy smyčkou z playbooku; porovnání s baseline
+- [x] Obnova nasazené kopie
+- [x] Report česky včetně rozlišení regresních zámků od důkazů opravy
+- [x] Zaškrtání kroků, commit, push
 
 **Prompt pro spuštění fáze 3 v čistém kontextu:**
 
