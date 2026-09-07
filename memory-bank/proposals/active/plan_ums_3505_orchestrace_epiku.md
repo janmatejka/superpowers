@@ -63,11 +63,11 @@ do epikové linie i do dodávkové linie, a rozdíl je jediné vykreslení před
 
 **Předpoklady, ověř je než začneš:**
 
-- [ ] Jsi na větvi `UMS-3505-orchestrace-epiku`. Ověř: `git branch --show-current`
-- [ ] Strom je čistý. Ověř: `git status --porcelain` (prázdný výstup)
-- [ ] `memory-bank/context.md` nese pin `ums_3505_orchestrace_epiku` a Jira `UMS-3505`
-- [ ] Publikační záruka platí v tomhle sezení. Ověř podle instrukce v hlavičce sezení (`SessionStart` hook); syntetický pipe na chráněnou větev musí skončit nenulově
-- [ ] Baseline testů vrstvy je zelená **před první změnou**. Spusť smyčku ze sekce „Testy vrstvy" v [playbook.md](../../playbook.md) a zapiš počty; červená sada existující před tvou prací se řeší nebo reportuje PŘEDEM, ne uprostřed tasku
+- [x] Jsi na větvi `UMS-3505-orchestrace-epiku`. Ověř: `git branch --show-current`
+- [x] Strom je čistý. Ověř: `git status --porcelain` (prázdný výstup)
+- [x] `memory-bank/context.md` nese pin `ums_3505_orchestrace_epiku` a Jira `UMS-3505`
+- [x] Publikační záruka platí v tomhle sezení. Ověř podle instrukce v hlavičce sezení (`SessionStart` hook); syntetický pipe na chráněnou větev musí skončit nenulově
+- [x] Baseline testů vrstvy je zelená **před první změnou**. Spusť smyčku ze sekce „Testy vrstvy" v [playbook.md](../../playbook.md) a zapiš počty; červená sada existující před tvou prací se řeší nebo reportuje PŘEDEM, ne uprostřed tasku
 
 **Co si přečti (v tomhle pořadí):**
 
@@ -91,19 +91,19 @@ Pravidlo má jeden domov a ten je tady. Žádný skill se v této fázi neupravu
 **Interfaces:**
 - Produces: pojmy `epic line` / `epiková linie`, `epicBranchPattern`, `handoff gate`, `handoff artifact` — každý další task na ně odkazuje jménem sekce, ne číslem.
 
-- [ ] **Step 1: Přečti sekci Repository Configuration a najdi tabulku klíčů**
+- [x] **Step 1: Přečti sekci Repository Configuration a najdi tabulku klíčů**
 
 Spusť: `grep -n "| Key | Consumers |" -A 8 ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`
 
 Očekávané: tabulka se čtyřmi řádky (`baseRef`, `protectedBranches`, `ticketPattern`, `projectMarkers`/`sharedRoots`).
 
-- [ ] **Step 2: Přidej řádek klíče do tabulky**
+- [x] **Step 2: Přidej řádek klíče do tabulky**
 
 Do tabulky klíčů přidej právě jeden řádek. Kontrakt vyžaduje, aby klíč bez jmenovaného konzumenta nevznikl — konzument je jediný:
 
 | `epicBranchPattern` | `guard-git-push.mjs` (the actor-rule exception) |
 
-- [ ] **Step 3: Napiš podsekci o epikové linii**
+- [x] **Step 3: Napiš podsekci o epikové linii**
 
 Za odstavec o efektivní bázi přidej podsekci `### The epic line`. Musí obsahovat, každé jednou větou nebo dvěma:
 
@@ -115,7 +115,7 @@ Za odstavec o efektivní bázi přidej podsekci `### The epic line`. Musí obsah
 - že vzniká **třetí kategorie** — „chráněná větev, do které agent smí pushovat" — a že se přesunula z otázky co smí být bází do otázky kdo smí pushovat co;
 - že epiková linie **vzniká jen tam, kde tikety epiku nejsou samostatně dodatelné do dodávkové linie**, a po východu epiku se maže (lidský úkon, mazání přes push je zakázané).
 
-- [ ] **Step 4: Přepiš podsekci Integration na jednu proceduru**
+- [x] **Step 4: Přepiš podsekci Integration na jednu proceduru**
 
 V podsekci `### Integration` nahraď dnešní sedmikrokovou sekvenci sjednocenou procedurou podle části 2 návrhu. Musí být zřejmé, že:
 
@@ -124,11 +124,11 @@ V podsekci `### Integration` nahraď dnešní sedmikrokovou sekvenci sjednocenou
 - **artefakt předání** je jeden (cílová větev, SHA, výčet odchozích commitů, doslovné ověřovací příkazy s výstupem) a má **dvě vykreslení**, o kterých rozhoduje jediná podmínka „existuje správce?";
 - po landnutí pushe ověřuje dosažitelnost **z báze** a spouští `mb-jira-update` **tiketové sezení na vlastní větvi**, ať push provedl kdokoli.
 
-- [ ] **Step 5: Zapiš odchylku kanonického IDLE**
+- [x] **Step 5: Zapiš odchylku kanonického IDLE**
 
 V sekci `## \`context.md\` Schema & Writers` uprav popis IDLE stavu: řádek `Jira:` se **nezachovává**; zachovává se jen `Báze:`. Napiš tam invariant slovy: post-harvest `context.md` všech tiketů integrujících do téže větve je bajt po bajtu stejný — to je to, co dělá merge bezkonfliktním. A poznámku, že plán musí ověřit, odkud `mb-jira-update` po harvestu bere klíč tiketu.
 
-- [ ] **Step 6: Bumpni verzi kontraktu a projdi konzumenty**
+- [x] **Step 6: Bumpni verzi kontraktu a projdi konzumenty**
 
 Zvyš verzi kontraktu na `2.14` všude, kde je uvedená.
 
@@ -138,13 +138,13 @@ Příkaz: `grep -rn "2\.13" ums/ memory-bank/ CLAUDE.md`
 
 Očekávané: každý výskyt je buď historická zmínka (nechat), nebo pin verze (aktualizovat). Rozhodnutí zapiš do commit message.
 
-- [ ] **Step 7: Grep na charakteristické tokeny nového pravidla**
+- [x] **Step 7: Grep na charakteristické tokeny nového pravidla**
 
 Příkaz: `grep -rn "epicBranchPattern\|epic line\|epiková linie\|handoff gate" ums/ memory-bank/`
 
 Očekávané: výskyty jen v kontraktu a v návrhu. Kdekoli jinde by to znamenalo restatement, který se rozejde.
 
-- [ ] **Step 8: Commit a push**
+- [x] **Step 8: Commit a push**
 
 Příkaz: `git add ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md && git commit` s českou zprávou o zavedení epikové linie a klíče, a `git push origin UMS-3505-orchestrace-epiku`.
 
@@ -160,7 +160,7 @@ Příkaz: `git add ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md && git 
 - Consumes: pojem `epicBranchPattern` z Tasku 1
 - Produces: `$cfg.EpicBranchPattern` — `[string]`, výchozí prázdný řetězec `''` (žádná epiková linie). Čtou ho tasky fáze 2 a 3.
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 Do `repo-config.tests.ps1` přidej čtyři asercie. Prázdná hodnota je výchozí, protože chybějící vzor musí znamenat „žádná výjimka", nikdy „všechno":
 
@@ -185,13 +185,13 @@ Remove-Item -Recurse -Force $r
 
 Pokud sada helper `New-ConfigFixture` nemá, zkopíruj jeho tvar z `ums/.claude/hooks/tests/guard-git-push.tests.ps1` a přizpůsob ho.
 
-- [ ] **Step 2: Spusť testy a ověř, že padají**
+- [x] **Step 2: Spusť testy a ověř, že padají**
 
 Příkaz: `pwsh -NoProfile -File ums/.claude/skills/shared/tests/repo-config.tests.ps1`
 
 Očekávané: FAIL, hláška o chybějící vlastnosti `EpicBranchPattern`.
 
-- [ ] **Step 3: Přidej klíč do loaderu**
+- [x] **Step 3: Přidej klíč do loaderu**
 
 V `Get-UmsRepoConfig.ps1` přidej do výchozího `$cfg` položku `EpicBranchPattern = ''` a hned za blok pro `ticketPattern` přidej stejně tvarovanou podmínku. Tvar je záměrně stejný jako u `ticketPattern` (jeden řetězec), ne jako u seznamových klíčů:
 
@@ -203,17 +203,17 @@ V `Get-UmsRepoConfig.ps1` přidej do výchozího `$cfg` položku `EpicBranchPatt
 
 Test `-is [string]` je load-bearing: bez něj by `42` prošlo stringifikací na vzor `"42"`, což je táž třída chyby, jakou komentáře v tomhle souboru už jednou popisují u seznamových klíčů.
 
-- [ ] **Step 4: Spusť testy a ověř, že prochází**
+- [x] **Step 4: Spusť testy a ověř, že prochází**
 
 Příkaz: `pwsh -NoProfile -File ums/.claude/skills/shared/tests/repo-config.tests.ps1`
 
 Očekávané: PASS, řádek `<N> passed`, exit 0.
 
-- [ ] **Step 5: Ověř negativitu testu**
+- [x] **Step 5: Ověř negativitu testu**
 
 Dočasně smaž podmínku `-is [string]` z kroku 3, spusť sadu znovu a zkontroluj, že zčervená právě asercie o nestringové hodnotě. Pak soubor obnov a potvrď prázdný `git diff` na něm.
 
-- [ ] **Step 6: Commit a push**
+- [x] **Step 6: Commit a push**
 
 ---
 
@@ -229,7 +229,7 @@ Samostatná oprava existující vady, nalezená oponenturou a změřená. Dělá
 **Interfaces:**
 - Produces: `stripRef` shodně case-insensitivní s hookem. Task 4 na tom staví.
 
-- [ ] **Step 1: Napiš padající test**
+- [x] **Step 1: Napiš padající test**
 
 ```powershell
 # Hook lower-casuje celý ref, guard musí odpovědět stejně — jinak vrstvy
@@ -241,29 +241,29 @@ Assert-Match (Test-Cmd 'git push origin UMS-1:Refs/Heads/develop' $cfgCase) 'per
 Remove-Item -Recurse -Force $cfgCase
 ```
 
-- [ ] **Step 2: Spusť sadu a ověř, že nové asercie padají**
+- [x] **Step 2: Spusť sadu a ověř, že nové asercie padají**
 
 Příkaz: `pwsh -NoProfile -File ums/.claude/hooks/tests/guard-git-push.tests.ps1`
 
 Očekávané: FAIL na obou nových aserciích — guard je pustí.
 
-- [ ] **Step 3: Oprav `stripRef`**
+- [x] **Step 3: Oprav `stripRef`**
 
 ```javascript
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//i, '');
 ```
 
-- [ ] **Step 4: Spusť sadu a ověř, že prochází**
+- [x] **Step 4: Spusť sadu a ověř, že prochází**
 
 Očekávané: PASS, `<N> passed`, exit 0.
 
-- [ ] **Step 5: Oprav nepravdivý komentář v `pre-push`**
+- [x] **Step 5: Oprav nepravdivý komentář v `pre-push`**
 
 V `ums/.claude/hooks/pre-push` najdi větu tvrdící, že `guard-git-push.mjs` je v porovnání jmen taky case-insensitive. Ta věta byla nepravdivá do tohoto tasku. Přepiš ji tak, aby tvrdila, co teď platí, a **jmenovitě zmiň, že to bylo změřeno a opraveno** — jinak příští čtenář neví, jestli je to zase jen tvrzení.
 
 Příkaz na dohledání: `grep -n "case-insensitive" ums/.claude/hooks/pre-push`
 
-- [ ] **Step 6: Commit a push**
+- [x] **Step 6: Commit a push**
 
 ---
 
@@ -277,7 +277,7 @@ Příkaz na dohledání: `grep -n "case-insensitive" ums/.claude/hooks/pre-push`
 - Consumes: `epicBranchPattern` z `ums-repo.json` (Task 1 ho zavedl v kontraktu; guard si ho čte sám, ne přes PowerShell loader)
 - Produces: chování, na které se odkazuje `finishing` overlay a `mb-epic-run integrate`
 
-- [ ] **Step 1: Napiš padající testy — pozitivní i všechny čtyři negativní**
+- [x] **Step 1: Napiš padající testy — pozitivní i všechny čtyři negativní**
 
 Negativní půlka je tu důležitější než pozitivní: výjimka, která je širší, než se myslí, je přesně ta vada, kvůli které tenhle návrh vznikl.
 
@@ -325,11 +325,11 @@ Assert-NotMatch (Test-CmdPs "git push origin ${SHA}:refs/heads/epic/UMS-3400" $c
 Remove-Item -Recurse -Force $cfgEpic
 ```
 
-- [ ] **Step 2: Spusť sadu a ověř, že padá pozitivní asercie**
+- [x] **Step 2: Spusť sadu a ověř, že padá pozitivní asercie**
 
 Očekávané: FAIL na pozitivní aserci (guard dnes zamítá vše) a PASS na negativních — což je správně, protože negativní půlka popisuje stav, který má zůstat.
 
-- [ ] **Step 3: Zaveď čtení epikového pravidla**
+- [x] **Step 3: Zaveď čtení epikového pravidla**
 
 Vedle `loadProtected` přidej funkci, která ze stejného souboru přečte `epicBranchPattern` a `baseRef`. Degradace vždy k větší ochraně — nečitelná hodnota znamená žádnou výjimku:
 
@@ -355,11 +355,11 @@ const loadEpicRule = (cwd) => {
 const RAW_SHA_RE = /^[0-9a-fA-F]{40}$/;
 ```
 
-- [ ] **Step 4: Zachovej zdroj refspecu, ne jen cíl**
+- [x] **Step 4: Zachovej zdroj refspecu, ne jen cíl**
 
 V `evaluatePush` dnes řádek `targets.push(bare.includes(':') ? bare.split(':').pop() : bare)` **zdroj zahazuje**. Bez zdroje nejde vyhodnotit podmínka o surovém SHA. Uprav sběr tak, aby vedle cíle nesl i zdroj (nebo `null`, když refspec zdroj nemá), a nechej `targets` dál obsahovat cíle, aby se zbytek funkce nemusel měnit.
 
-- [ ] **Step 5: Zaveď výjimku na místě, kde se zamítá**
+- [x] **Step 5: Zaveď výjimku na místě, kde se zamítá**
 
 V místě, kde `evaluatePush` hledá `hit` mezi cíli, přeskoč cíl, který splňuje **všechny čtyři** podmínky. Napiš to jako jednu funkci s vlastním komentářem, ne jako podmínku v řádku:
 
@@ -382,17 +382,17 @@ const isEpicFastForward = (dest, src, patterns, epic) =>
 
 Předej `epic` do `evaluatePush` stejnou cestou jako `patterns` (spočítej ho v hlavním vstupním bodě vedle `loadProtected`).
 
-- [ ] **Step 6: Spusť sadu a ověř, že prochází celá**
+- [x] **Step 6: Spusť sadu a ověř, že prochází celá**
 
 Příkaz: `pwsh -NoProfile -File ums/.claude/hooks/tests/guard-git-push.tests.ps1`
 
 Očekávané: PASS, `<N> passed`, exit 0. Zkontroluj, že `<N>` vzrostlo přesně o počet nových asercií — žádná stará nesmí zmizet.
 
-- [ ] **Step 7: Ověř negativitu — čtyřikrát**
+- [x] **Step 7: Ověř negativitu — čtyřikrát**
 
 Postupně odeber z `isEpicFastForward` vždy **jednu** ze čtyř podmínek, spusť sadu a zapiš, které asercie zčervenaly. Každé odebrání musí zčervenat právě svou negativní aserci. Podmínka, jejíž odebrání nezčervená nic, nic nehlídá a patří do reportu jako nález. Po každém kole soubor obnov.
 
-- [ ] **Step 8: Ověř, že hook pustí přesně tentýž tvar**
+- [x] **Step 8: Ověř, že hook pustí přesně tentýž tvar**
 
 Napiš sondu **nástrojem Write do souboru** (ne jako literál v příkazu — hlídka blokuje literální `git push` v příkazové řádce) do `$CLAUDE_JOB_DIR/tmp/epic-probe.sh`. Sonda postaví dočasný repozitář s bare „origin", publikovanou epikovou linií a tiketovou větví, zapíše `epic/*` do `<git-common-dir>/ums-protected-branches` a napipuje do nainstalovaného hooku syntetickou čtveřici refů s `MB_AGENT_SESSION=1`.
 
@@ -400,7 +400,7 @@ Očekávané: hook vypíše hlášku o povoleném fast-forwardu a skončí kóde
 
 Tenhle krok je důkaz, že obě vrstvy dávají na týž push shodnou odpověď. Bez něj je Task 4 jen tvrzení.
 
-- [ ] **Step 9: Commit a push**
+- [x] **Step 9: Commit a push**
 
 ---
 
@@ -415,27 +415,27 @@ Tenhle krok je důkaz, že obě vrstvy dávají na týž push shodnou odpověď.
 
 Tenhle task nemá strojový test — `mb-harvest` je instrukční Markdown. Ověření je proto dokumentované a studené.
 
-- [ ] **Step 1: Najdi krok resetu**
+- [x] **Step 1: Najdi krok resetu**
 
 Příkaz: `grep -n "Reset context.md" -A 12 ums/.claude/skills/mb-harvest/SKILL.md`
 
-- [ ] **Step 2: Přepiš instrukci resetu**
+- [x] **Step 2: Přepiš instrukci resetu**
 
 Instrukce musí říct právě tohle a nic navíc: `## Active Work` → `(No active work - IDLE phase)`; **řádek `Jira:` se NEZACHOVÁVÁ**; řádek `Báze:` se zachovává. A jednu větu proč, s odkazem na sekci kontraktu, ne s vlastním zdůvodněním — parafráze důvodu ve skillu je budoucí rozchod.
 
-- [ ] **Step 3: Dohledej, odkud `mb-jira-update` bere klíč tiketu**
+- [x] **Step 3: Dohledej, odkud `mb-jira-update` bere klíč tiketu**
 
 Příkaz: `grep -n "Jira:" ums/.claude/skills/mb-jira-update/SKILL.md`
 
 Pokud klíč čte z `context.md`, je to **blokující nález**: reset by mu ho vzal. Řešení zapiš jako ruling a proveď ho v tomhle tasku — klíč se bere z hlavičky návrhu v `proposals/active/`, kde je vždy.
 
-- [ ] **Step 4: Studený test tvaru**
+- [x] **Step 4: Studený test tvaru**
 
 Vezmi `memory-bank/context.md` z tohohle repa, zapiš si jeho aktuální obsah, ručně na něm proveď reset podle nové instrukce a porovnej výsledek s tvarem, který instrukce popisuje. Pak obnov původní obsah a potvrď prázdný `git diff` na tom souboru.
 
 Tenhle krok je náhrada za test: instrukce, kterou nejde jednou provést podle písmene, je vada.
 
-- [ ] **Step 5: Commit a push**
+- [x] **Step 5: Commit a push**
 
 ---
 
@@ -450,11 +450,11 @@ Tenhle krok je náhrada za test: instrukce, kterou nejde jednou provést podle p
 - Consumes: `Get-UmsRepoConfig` (pro `CTX_DIR` a `baseRef`), kanonický IDLE z Tasku 5
 - Produces: `Test-UmsHandoffGate -RepoRoot <cesta> -Sha <sha> -BaseRef <ref>` → objekt s poli `Ok` (`[bool]`), `Checks` (pole objektů `Name`/`Passed`/`Detail`) a `Blocking` (pole jmen neúspěšných kontrol). Volají ho Task 7 (`finishing`) a Task 8 (`mb-epic-run integrate`); fáze 2 do něj přidá porovnání ověřovací sady.
 
-- [ ] **Step 1: Napiš fixturu**
+- [x] **Step 1: Napiš fixturu**
 
 `new-gate-fixture.ps1` postaví dočasný repozitář: bare „origin", pracovní klon, bázi s IDLE `context.md`, tiketovou větev s commitem, a vrátí cesty a SHA. Musí umět vyrobit i variantu s **ACTIVE** `context.md` a variantu s **nepublikovaným** commitem — bez nich nejdou napsat negativní asercie.
 
-- [ ] **Step 2: Napiš padající testy**
+- [x] **Step 2: Napiš padající testy**
 
 ```powershell
 . (Join-Path $PSScriptRoot '_assert.ps1')
@@ -491,13 +491,13 @@ Remove-GateFixture $f
 Complete-Tests
 ```
 
-- [ ] **Step 3: Spusť testy a ověř, že padají**
+- [x] **Step 3: Spusť testy a ověř, že padají**
 
 Příkaz: `pwsh -NoProfile -File ums/.claude/skills/shared/tests/handoff-gate.tests.ps1`
 
 Očekávané: FAIL — skript neexistuje.
 
-- [ ] **Step 4: Napiš skript**
+- [x] **Step 4: Napiš skript**
 
 Tři kontroly, v tomhle pořadí, a **vždy nejdřív `git fetch origin`**:
 
@@ -507,19 +507,19 @@ Tři kontroly, v tomhle pořadí, a **vždy nejdřív `git fetch origin`**:
 
 Skript nikdy nic nemění a nikdy nepushuje. Reportuje česky jen tehdy, když ho volá skill; sám vrací objekt.
 
-- [ ] **Step 5: Spusť testy a ověř, že prochází**
+- [x] **Step 5: Spusť testy a ověř, že prochází**
 
 Očekávané: PASS, `<N> passed`, exit 0.
 
-- [ ] **Step 6: Ověř negativitu**
+- [x] **Step 6: Ověř negativitu**
 
 Postupně vyřaď každou ze tří kontrol a zkontroluj, že zčervená právě její asercie. Obnov soubor.
 
-- [ ] **Step 7: Ověř proti skutečnému repozitáři**
+- [x] **Step 7: Ověř proti skutečnému repozitáři**
 
 Spusť bránu proti tomuhle repu s SHA aktuálního `HEAD` a bází `origin/ums-memory-bank`. Read-only, takže je to bezpečné. Fixtura dokazuje, že kód dělá, co jsi do fixtury napsal; skutečné repo dokazuje, že to funguje na reálném tvaru.
 
-- [ ] **Step 8: Commit a push**
+- [x] **Step 8: Commit a push**
 
 ---
 
@@ -532,15 +532,15 @@ Spusť bránu proti tomuhle repu s SHA aktuálního `HEAD` a bází `origin/ums-
 - Consumes: `Test-UmsHandoffGate.ps1` (Task 6), kanonický IDLE (Task 5), pojmy z kontraktu (Task 1)
 - Produces: artefakt předání ve tvaru, který spotřebovává `mb-epic-run integrate` (Task 8)
 
-- [ ] **Step 1: Přečti současnou sekvenci**
+- [x] **Step 1: Přečti současnou sekvenci**
 
 Příkaz: `grep -n "Do NOT execute the upstream Option 1" -A 45 ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md`
 
-- [ ] **Step 2: Vlož bránu předání jako nový krok**
+- [x] **Step 2: Vlož bránu předání jako nový krok**
 
 Mezi zelené ověření a předání vlož krok volající `Test-UmsHandoffGate.ps1`. Blokující nález je STOP s českou hláškou jmenující kontrolu; u nálezu `ancestor` je náprava návrat k mergi báze, ne opakování pushe.
 
-- [ ] **Step 3: Přepiš krok předání na artefakt se dvěma vykresleními**
+- [x] **Step 3: Přepiš krok předání na artefakt se dvěma vykresleními**
 
 Krok, který dnes rovnou nabízí příkaz člověku, přepiš tak, aby nejdřív sestavil **artefakt předání** (cílová větev, SHA, výčet odchozích commitů, doslovné ověřovací příkazy s výstupem) a teprve pak ho vykreslil podle jediné podmínky:
 
@@ -549,23 +549,23 @@ Krok, který dnes rovnou nabízí příkaz člověku, přepiš tak, aby nejdří
 
 **Negace starých příkazů je povinná**, ne volitelná: fragment nahrazuje upstream krok, takže musí jmenovitě říct, co se NEDĚLÁ — jinak zůstane starý text vedle nového vypadat platně.
 
-- [ ] **Step 4: Ověř, že fragment má kotvu a projde vendoringem**
+- [x] **Step 4: Ověř, že fragment má kotvu a projde vendoringem**
 
 Příkaz: `grep -n "ANCHOR-BEFORE\|ASSERT:" ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md`
 
 Očekávané: kotvy a `ASSERT` direktivy odpovídají větám, které v upstream souboru pořád jsou. Anchor-miss je detektor driftu upstreamu, ne chyba k obejití.
 
-- [ ] **Step 5: Grep na čísla kroků**
+- [x] **Step 5: Grep na čísla kroků**
 
 Příkaz: `grep -nEi "steps? [0-9]|krok(u|y|ů)? [0-9]" ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md`
 
 Očekávané: žádný odkaz nemíří na krok, který se vložením posunul. Kde odkaz je, přepiš ho na jméno fáze.
 
-- [ ] **Step 6: Studený průchod tabulkou**
+- [x] **Step 6: Studený průchod tabulkou**
 
 Projdi fragment jako chladný čtenář **dvakrát**, jednou pro každý režim, s proměnnou „odpovídá báze epikovému vzoru?" jako sloupcem. Obě čtení musí dát úplnou a neprotiřečící si sekvenci. Tohle je jediný test, který tenhle task má.
 
-- [ ] **Step 7: Commit a push**
+- [x] **Step 7: Commit a push**
 
 ---
 
@@ -579,11 +579,11 @@ Projdi fragment jako chladný čtenář **dvakrát**, jednou pro každý režim,
 - Consumes: artefakt předání (Task 7), `Test-UmsHandoffGate.ps1` (Task 6)
 - Produces: operace `integrate`; fáze 2 do ní přidá dvě epikové kontroly
 
-- [ ] **Step 1: Vypiš inventář nástrojů, které operace používá**
+- [x] **Step 1: Vypiš inventář nástrojů, které operace používá**
 
 Než přebereš jakýkoli navržený seznam, vypiš **všechny** nástroje, které `integrate` vlastními kroky potřebuje: `git fetch`, čtení předání, spuštění brány (`pwsh`), `git push` s refspecem, `Edit` pro zápis do ledgeru, `git add`/`git commit`/`git push` na elaborační větvi. Pole `allowed-tools` **restringuje**, ne jen předschvaluje — seznam zúžený na postoj skillu vůči cizím workspace by centrální operaci znemožnil.
 
-- [ ] **Step 2: Napiš padající test na `allowed-tools`**
+- [x] **Step 2: Napiš padající test na `allowed-tools`**
 
 ```powershell
 $fm = Get-Content -Raw (Join-Path $PSScriptRoot '..' 'SKILL.md')
@@ -591,31 +591,31 @@ Assert-Match $fm 'allowed-tools:.*git push' 'allowed-tools kryje git push — in
 Assert-Match $fm 'allowed-tools:.*Edit' 'allowed-tools kryje Edit — integrate zapisuje do ledgeru'
 ```
 
-- [ ] **Step 3: Spusť sadu a ověř stav**
+- [x] **Step 3: Spusť sadu a ověř stav**
 
 Příkaz: `pwsh -NoProfile -File ums/.claude/skills/mb-epic-run/tests/pool-status.tests.ps1`
 
 Očekávané: `git push` i `Edit` v poli už jsou (viz frontmatter), takže asercie projdou hned — jsou to **regresní zámky**, ne důkaz opravy, a tak je i označ v reportu.
 
-- [ ] **Step 4: Napiš sekci operace**
+- [x] **Step 4: Napiš sekci operace**
 
 Sekce `### \`integrate <TIKET>\`` popisuje šest kroků podle části 2 návrhu, podsekce „Operace správce": `fetch` a přečtení předání; dvě epikové kontroly (**v téhle fázi zapsané jako „přibývají ve fázi 2", ne implementované**); úsudková kontrola proti evidenci epiku; přeběhnutí tří univerzálních kontrol brány proti čerstvě staženému tipu; fast-forward refspecem; zápis do ledgeru a pobídka k resynchronizaci.
 
 Uveď **předpoklad, který se dá přehlédnout**: hook posuzuje dosažitelnost z remote-tracking refů tohoto klonu, takže správce musí mít po pushi tiketového agenta fetchnuto.
 
-- [ ] **Step 5: Přidej operaci do železných pravidel**
+- [x] **Step 5: Přidej operaci do železných pravidel**
 
 `integrate` **nikdy** nesahá do pracovního stromu slotu a **nikdy** nemerguje. Jediný zápis mimo vlastní repozitář je fast-forward refspecem. Zapiš to mezi železná pravidla skillu, ne jen do popisu operace.
 
-- [ ] **Step 6: Spusť celou sadu skillu**
+- [x] **Step 6: Spusť celou sadu skillu**
 
 Příkaz: `for t in ums/.claude/skills/mb-epic-run/tests/*.tests.ps1; do pwsh -NoProfile -File "$t"; done`
 
 Očekávané: všechny zelené.
 
-- [ ] **Step 7: Commit a push**
+- [x] **Step 7: Commit a push**
 
-- [ ] **Konec tasku.** `task-brief` končí až u dalšího nadpisu `Task`, takže
+- [x] **Konec tasku.** `task-brief` končí až u dalšího nadpisu `Task`, takže
   brief tohohle tasku nese navíc i uzávěrku fáze a vstupní brief fáze další.
   **Nic z toho tenhle task nevykonává** — uzávěrku dělá řídicí sezení, ne
   implementátor tasku.
@@ -624,10 +624,10 @@ Očekávané: všechny zelené.
 
 ## Výstup fáze 1
 
-- [ ] **Ověření celé vrstvy.** Spusť smyčku ze sekce „Testy vrstvy" v playbooku. Porovnej počty s baseline zapsanou ve vstupu fáze. Každý rozdíl vysvětli.
-- [ ] **Nasazení obnov**, ať sezení pracuje s tím, co je ve zdroji: postup je v [playbook.md](../../playbook.md), sekce „Obnova nasazené kopie v tomto repu".
-- [ ] **Report** česky: co je hotové, které asercie jsou regresní zámky a ne důkaz opravy, jaké rulingy jsi udělal, a co zůstalo otevřené.
-- [ ] **Zaškrtej hotové kroky** v tomhle souboru, commitni a pushni.
+- [x] **Ověření celé vrstvy.** Spusť smyčku ze sekce „Testy vrstvy" v playbooku. Porovnej počty s baseline zapsanou ve vstupu fáze. Každý rozdíl vysvětli.
+- [x] **Nasazení obnov**, ať sezení pracuje s tím, co je ve zdroji: postup je v [playbook.md](../../playbook.md), sekce „Obnova nasazené kopie v tomto repu".
+- [x] **Report** česky: co je hotové, které asercie jsou regresní zámky a ne důkaz opravy, jaké rulingy jsi udělal, a co zůstalo otevřené.
+- [x] **Zaškrtej hotové kroky** v tomhle souboru, commitni a pushni.
 
 **Prompt pro spuštění fáze 2 v čistém kontextu** — předej ho uživateli k vložení:
 
