@@ -235,9 +235,10 @@ Adjustments to the checklist above:
   it here only when no review takes place (no ticket → the whole step is
   skipped silently; review declined but ticket linked → run it after the
   user's spec approval). On a finding concerning this ticket: queue the
-  ledger note, then offer the inline elaboration window or deferral — never
-  launch elaboration unasked. Fail-open: an oracle failure or missing Jira
-  skips the step with a one-line announcement.
+  ledger note and continue — the step does NOT offer an inline elaboration
+  window, does NOT switch branches, and does NOT put anything to the user;
+  only the epic's manager opens elaboration. Fail-open: an oracle failure or
+  missing Jira skips the step with a one-line announcement.
   On the **bounded** path this check does NOT run for now — bounded is by
   definition a bounded change of an existing flow, so a scope or dependency
   shift of its ticket is unlikely; `mb-epic-graph -Check` stays available on

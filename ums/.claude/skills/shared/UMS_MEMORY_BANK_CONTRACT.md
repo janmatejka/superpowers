@@ -1,11 +1,19 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.16
-- Supersedes v2.15 (Integration measures against the effective base rather than
-  the raw `baseRef` key, gains the `Harvest` phase and states the Publish
-  phase's re-merge, makes the epic manager's answer to the handing-over session
-  an obligation of the Handoff phase, and resolves `<CTX_DIR>` by its definition
-  instead of "from the configuration").
+- **Contract-Version:** 2.17
+- Supersedes v2.16 (adds the decision registry and the ticket's spawn row as
+  preconditions of the epic fast-forward; adds the verification set — a
+  verbatim list of commands whose home is whatever umbrellas the work, with
+  a missing set fail-closed — together with the Handoff gate's fourth check;
+  adds the shared-interface stub carried on the epic line and names who
+  authors it; and removes the offered inline elaboration window from Epic
+  Backflow, which now only queues the ledger note before the ticket session
+  continues).
+- v2.16 superseded v2.15 (Integration measures against the effective base
+  rather than the raw `baseRef` key, gains the `Harvest` phase and states the
+  Publish phase's re-merge, makes the epic manager's answer to the
+  handing-over session an obligation of the Handoff phase, and resolves
+  `<CTX_DIR>` by its definition instead of "from the configuration").
 - v2.15 superseded v2.14 (states which `baseRef` spellings the epic-line exception
   accepts and that an unusable one yields no exception rather than the default
   base, and qualifies the `origin/develop` fallback accordingly).
@@ -2151,44 +2159,51 @@ ticket is the trigger; findings about other tickets are printed and left
 alone. An oracle failure skips the step with an announcement — the step is
 fail-open and never blocks an approved design.
 
-**On a finding, in this order:**
+**On a finding:**
 
-1. **Queue the note, always.** Append a dirty-set row to the epic's ledger
-   (`<MB_ROOT>/memory-bank/epics/<epic_key_snake>/ledger.md`):
-   „Položka/Tiket" = this ticket, „Zašpiněno oknem" = `návrh <slug>` (the
-   dirt came from a design, not a window), „Důvod" = one line
-   `návrh <slug> změnil <co>; okno by mělo přehodnotit <co>`. When no ledger
-   exists, write the same line into
-   `<MB_ROOT>/memory-bank/epics/<epic_key_snake>/notes.md` (created with the
-   heading `# Poznámky pro elaboraci — <EPIC>`); the next elaboration window
-   reads it at framing time. The note is committed on the ticket branch like
-   any other commit of this work item — it is this work item's record, so it
-   legitimately rides the ticket branch into the base at integration.
-2. **Offer, never launch** (the user decides; "the graph is inconsistent" is
-   exactly the situation where an agent slides into "just reconciling it"):
-   - **(a) elaborate now — an inline window in this session.** The step
-     stands at a phase boundary with a clean tree, so switching branches is
-     legal: switch to an elaboration branch created from `<baseRef>`
-     (explicit start point, after `git fetch origin`), run the window
-     interactively per `mb-epic-elaboration` (the human window is preserved —
-     subagents inside the window are a dispatch detail), close it with the
-     window's single commit, push, switch back to the ticket branch and
-     continue with writing-plans. Returning to the ticket branch is part of
-     the step, not a follow-up.
-   - **(b) keep the note and continue** — the human window is deferred to
-     when the human wants it.
+**Queue the note, always.** Append a dirty-set row to the epic's ledger
+(`<MB_ROOT>/memory-bank/epics/<epic_key_snake>/ledger.md`):
+„Položka/Tiket" = this ticket, „Zašpiněno oknem" = `návrh <slug>` (the
+dirt came from a design, not a window), „Důvod" = one line
+`návrh <slug> změnil <co>; okno by mělo přehodnotit <co>`. When no ledger
+exists, write the same line into
+`<MB_ROOT>/memory-bank/epics/<epic_key_snake>/notes.md` (created with the
+heading `# Poznámky pro elaboraci — <EPIC>`); the next elaboration window
+reads it at framing time. The note is committed on the ticket branch like
+any other commit of this work item — it is this work item's record, so it
+legitimately rides the ticket branch into the base at integration.
 
-Elaboration artifacts therefore never land on the ticket branch: a window
-closes with one commit on its own branch, and on a ticket branch that commit
-would ride the fast-forward integration into the base as part of the ticket —
-two units of work in one history. `mb-park` is NOT a prerequisite of this
-step: parking remains the general workspace tool, but an inline window at a
-phase boundary needs no second session.
+**The ticket session then continues — there is no offer and no choice left
+to make here.** The step does NOT offer an inline elaboration window, does
+NOT switch branches, and does NOT put anything to the user on a finding.
+Only the epic's manager opens elaboration. Three reasons this offer is gone
+for good, not the finding it used to gate:
 
-A dirty-set row whose concern an inline window has already resolved (the row
-lives on the ticket branch, the window on its own branch — neither sees the
-other until both reach the base) is cleaned by the first window that sees
-both; dirty rows are never deleted, cleaning is recorded (ledger maintenance
+- elaborating an epic is **cross-cutting work** and belongs to whoever holds
+  the cross-cutting memory — the manager's elaboration branch, not a ticket
+  session that sees only its own slice;
+- the offer was **one more stop exactly where ten needless stops were
+  already measured** — a question here would reintroduce the cost the rest
+  of this plan spends removing;
+- switching branches mid-ticket is **working on two work items at once**,
+  which this contract forbids everywhere else (Active Work Item, Worktree
+  Policy) — the inline window was the one place that exception lived.
+
+**The OFFER dies here, not the finding.** Without a manager, the queued row
+simply waits for the next elaboration window — exactly as a dirty-set row
+waits today. Nothing is lost; it is deferred.
+
+Elaboration artifacts never land on the ticket branch, and that matters more
+than ever now: a window closes with one commit on its own branch, while a
+ticket branch's commits ride the fast-forward integration into the base as
+part of the ticket — two units of work in one history. That mismatch is
+exactly what made switching branches mid-ticket the wrong shape (the third
+reason above), not merely inconvenient.
+
+A dirty-set row whose concern a window has already resolved (the row lives
+on the ticket branch, the window on its own branch — neither sees the other
+until both reach the base) is cleaned by the first window that sees both;
+dirty rows are never deleted, cleaning is recorded (ledger maintenance
 rules).
 
 ## Dispatch Model Policy

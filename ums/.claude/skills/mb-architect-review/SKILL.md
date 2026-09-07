@@ -266,8 +266,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    (brainstorming-style dialog over the architect's points, update the design
    file) → after user approval run the **Epic Backflow check** per the
    contract's "Epic Backflow (design → epic)" section (the design is finally
-   approved here, which is that step's trigger point; fail-open, offer only)
-   → then invoke writing-plans.
+   approved here, which is that step's trigger point; fail-open) → then
+   invoke writing-plans.
 
 ## Mode: oppose (standalone opposition)
 
