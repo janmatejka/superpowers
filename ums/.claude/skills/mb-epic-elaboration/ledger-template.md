@@ -90,11 +90,11 @@ porovnat, a brána by ověření jen předstírala.
 Řádek nese tvrzení o chování nebo faktu **cizího** tiketu, na kterém staví
 rozhodnutí vlastníka řádku — ne nález o vlastním kódu. Vlastník je tiket,
 který rozhodnutí udělal; `Předpokládá o (tiket)` jmenuje tiket, jehož chování
-nebo kód se předpokládá, a ten ho musí potvrdit commitem. **Nepotvrzený
-řádek jmenující integrovaný tiket je mechanická zábrana fast-forwardu**
-(kontroluje operace `integrate` skillu `mb-epic-run`), ne věc, na kterou si
-má někdo vzpomenout. Sloupce **neměnit ani nepřehazovat**, parsuje je
-`scripts/ledger-status.ps1` pozičně — stejná poznámka jako u `Rozjetí`.
+nebo kód se předpokládá, a ten ho musí potvrdit commitem. Mechanickou
+zábranu fast-forwardu z nepotvrzeného řádku popisuje kontrakt, sekce „The
+epic line" — zdejší tabulka nese jen sloupce, které ji dokládají. Sloupce
+**neměnit ani nepřehazovat**, parsuje je `scripts/ledger-status.ps1`
+pozičně — stejná poznámka jako u `Rozjetí`.
 
 `Druh` je `text`, nebo `chování`. Stavy řádku: `otevřeno` → `zavřeno`. Řádek
 druhu `text` se zavírá přečtením. **Řádek druhu `chování` se nezavírá
@@ -102,7 +102,10 @@ přečtením, ale testem, který to chování tvrdí** — přečtení kódu dok
 jeho aktuální hodnotu, ne že se chová tak, jak rozhodnutí předpokládá.
 Sloupec `Potvrzeno (SHA)` nese SHA commitu tiketu ze sloupce `Předpokládá o
 (tiket)`, kterým ten tiket rozhodnutí potvrdil; prázdný sloupec znamená
-nepotvrzeno.
+nepotvrzeno. **Řádek se uzavírá (`Stav` → `zavřeno`) jen se zapsaným
+`Potvrzeno (SHA)`** — prázdné SHA znamená nepotvrzeno bez ohledu na to, co
+`Stav` tvrdí, a `Druh` rozhoduje, jaký důkaz to SHA smí zapsat: přečtení
+u `text`, test dokazující tvrzené chování u `chování`.
 
 | Rozhodnutí | Vlastník (tiket) | Předpokládá o (tiket) | Druh | Stav | Potvrzeno (SHA) |
 |------------|------------------|-----------------------|------|------|-----------------|

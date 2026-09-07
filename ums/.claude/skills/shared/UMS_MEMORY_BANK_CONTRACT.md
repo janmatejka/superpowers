@@ -691,6 +691,11 @@ reached the delivery line the branch is deleted, which is a human act because
 deleting a branch through a push is forbidden. Left behind it stays protected for
 ever, and every base choice keeps offering an unrelated epic's line as a base.
 
+**An unconfirmed decision-registry row naming the integrating ticket blocks the
+epic fast-forward, and the ticket's spawn row in the epic's own ledger must
+belong to this epic** — enforced mechanically, ahead of the push, by
+`mb-epic-run`'s `integrate` operation (`Test-UmsEpicGate`, shared scripts).
+
 ## Base Sync & Drift Detection
 
 The base ref is merged into the ticket branch at **phase boundaries** only:

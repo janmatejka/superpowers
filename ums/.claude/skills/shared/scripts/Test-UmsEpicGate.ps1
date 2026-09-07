@@ -1,0 +1,147 @@
+<#
+.SYNOPSIS
+    Read-only epic gate: may this ticket's finished work be fast-forwarded
+    into ITS OWN epic line?
+
+.DESCRIPTION
+    Two mechanical checks, in this order, consuming the epic evidence
+    ledger's `## Rozjetí` and `## Registr rozhodnutí` sections via
+    Get-UmsEpicLedger.ps1:
+
+      1. `spawn-epic`   - what binds the fast-forward to the ticket's OWN
+                         epic. Passes when the ledger at -LedgerPath
+                         declares itself the ledger of -Epic (its
+                         '- **Epic:**' header line names that key) AND
+                         carries a '## Rozjetí' row whose 'Tiket' cell is
+                         -Ticket. Fails when the header names a DIFFERENT
+                         epic (the Detail says which one it actually
+                         names), when the header is missing entirely, or
+                         when this ledger has no spawn row for the ticket.
+                         Without this check nothing stops the manager from
+                         moving any existing `epic/*` branch.
+      2. `decision-ack` - no unconfirmed decision names this ticket. Fails
+                         when any '## Registr rozhodnutí' row has
+                         AssumesAbout (column "Předpokládá o (tiket)")
+                         equal to -Ticket AND an empty AckSha (column
+                         "Potvrzeno (SHA)"). The Detail names each such
+                         row's Decision and Owner ("Vlastník (tiket)" - the
+                         ticket that MADE the decision, reported but never
+                         matched against -Ticket). Confirmation is keyed on
+                         AckSha being non-empty, NEVER on the Stav word -
+                         the ledger template says so outright, and a row
+                         whose Stav claims 'zavřeno' with an empty AckSha
+                         still fails this check.
+
+    BOTH CHECKS PASS TRIVIALLY WHEN THEIR INPUT IS ABSENT: a ledger file
+    that does not exist, or a ledger with no '## Registr rozhodnutí'
+    section, is a PASS with a Detail saying why - never a block and never
+    a throw. This is the design's explicit choice: a check without input
+    must not stop anything, and the caller (mb-epic-run, `integrate`) has
+    already STOPped earlier if no ledger matched the ticket at all. Do NOT
+    turn either absent-input case into a block or a throw - that would
+    punish a ledger that legitimately has no decision registry yet, or a
+    caller deriving a path that turns out not to exist.
+
+    Ticket/epic-key comparisons are case-sensitive (-ceq/-cne), matching
+    this layer's convention for values that come from an external key
+    space rather than free text.
+
+    Pure: reads files, prints nothing, mutates nothing, and touches
+    neither git nor the network - unlike Test-UmsHandoffGate, which
+    fetches. Returns Ok / Checks (Name/Passed/Detail) / Blocking in
+    exactly Test-UmsHandoffGate's shape, so the manager's skill can report
+    both gates' findings together.
+
+    Dot-source this file (it dot-sources Get-UmsEpicLedger.ps1 itself),
+    then call Test-UmsEpicGate.
+#>
+#Requires -Version 7
+Set-StrictMode -Version Latest
+
+. (Join-Path $PSScriptRoot 'Get-UmsEpicLedger.ps1')
+
+function Test-UmsEpicGate {
+    param(
+        [Parameter(Mandatory = $true)] [string] $LedgerPath,
+        [Parameter(Mandatory = $true)] [string] $Ticket,
+        [Parameter(Mandatory = $true)] [string] $Epic
+    )
+
+    $checks = [System.Collections.Generic.List[object]]::new()
+    $add = {
+        param([string] $name, [bool] $passed, [string] $detail)
+        $checks.Add([pscustomobject]@{ Name = $name; Passed = $passed; Detail = $detail })
+    }
+
+    if (-not (Test-Path -LiteralPath $LedgerPath -PathType Leaf)) {
+        & $add 'spawn-epic' $true "ledger $LedgerPath neexistuje - kontrola nemá vstup, prochází triviálně"
+        & $add 'decision-ack' $true "ledger $LedgerPath neexistuje - kontrola nemá vstup, prochází triviálně"
+        return [pscustomobject]@{ Ok = $true; Checks = @($checks); Blocking = @() }
+    }
+
+    $lines = @(Get-Content -LiteralPath $LedgerPath)
+
+    # 1. spawn-epic. Header line format per ledger-template.md:
+    # '- **Epic:** <EPIC-KEY> (https://...)'.
+    $declaredEpic = ''
+    foreach ($ln in $lines) {
+        if ($ln -match '^\s*-\s*\*\*Epic:\*\*\s*(?<epic>\S+)') {
+            $declaredEpic = $Matches['epic']
+            break
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($declaredEpic)) {
+        & $add 'spawn-epic' $false "ledger $LedgerPath nemá řádek '- **Epic:**' - nelze určit, kterému epiku patří"
+    }
+    elseif ($declaredEpic -cne $Epic) {
+        & $add 'spawn-epic' $false "ledger $LedgerPath je ledgerem epiku $declaredEpic, ne $Epic"
+    }
+    else {
+        $rozjetiRows = Get-UmsLedgerSectionTable $lines 'Rozjetí'
+        # Assign first, then filter THAT variable - never chain the section
+        # reader's output directly into Where-Object in one pipeline
+        # statement (Get-UmsEpicLedger.ps1's own note on
+        # Get-UmsLedgerDecisionRegistry: doing so collapses the whole table
+        # into a single unenumerated pipeline object).
+        $spawnRows = @($rozjetiRows | Where-Object {
+                $_.Count -ge 1 -and $_[0] -and $_[0] -notmatch '^<' -and $_[0] -ceq $Ticket
+            })
+        if ($spawnRows.Count -eq 0) {
+            & $add 'spawn-epic' $false "ledger epiku $Epic nemá řádek Rozjetí pro tiket $Ticket"
+        }
+        else {
+            & $add 'spawn-epic' $true "ledger epiku $Epic deklaruje sám sebe a má řádek Rozjetí pro tiket $Ticket"
+        }
+    }
+
+    # 2. decision-ack. Assign first, THEN wrap in @() - wrapping the call
+    # itself directly in @(Get-UmsLedgerDecisionRegistry ...) collapses
+    # differently than a plain assignment followed by @() on the variable,
+    # because the function's own 'return , @($result)' already emits a
+    # single pipeline object; measured empirically (a zero-row ledger gave
+    # Count 1, not 0, when wrapped at the call site).
+    $decisionsRaw = Get-UmsLedgerDecisionRegistry -LedgerPath $LedgerPath
+    $decisions = @($decisionsRaw)
+    $unconfirmed = @($decisions | Where-Object {
+            $_.AssumesAbout -ceq $Ticket -and [string]::IsNullOrWhiteSpace($_.AckSha)
+        })
+    if ($unconfirmed.Count -eq 0) {
+        if ($decisions.Count -eq 0) {
+            & $add 'decision-ack' $true "ledger $LedgerPath nemá (neprázdnou) sekci Registr rozhodnutí - kontrola nemá vstup, prochází triviálně"
+        }
+        else {
+            & $add 'decision-ack' $true "žádný nepotvrzený řádek registru nejmenuje tiket $Ticket ve sloupci Předpokládá o (tiket)"
+        }
+    }
+    else {
+        $names = ($unconfirmed | ForEach-Object { "$($_.Decision) (vlastník $($_.Owner))" }) -join '; '
+        & $add 'decision-ack' $false "nepotvrzené rozhodnutí jmenující $Ticket ve sloupci Předpokládá o (tiket): $names"
+    }
+
+    $blocking = @($checks | Where-Object { -not $_.Passed } | ForEach-Object { $_.Name })
+    return [pscustomobject]@{
+        Ok       = ($blocking.Count -eq 0)
+        Checks   = @($checks)
+        Blocking = $blocking
+    }
+}

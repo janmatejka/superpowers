@@ -410,9 +410,31 @@ zero and more than one match are each a STOP.
 - **Fetch and read the handoff.** `git fetch origin`, then read the artifact.
   Nothing is judged from a tip remembered from the message.
 - **Epic checks.** Two mechanical checks that bind the fast-forward to THIS
-  epic and to its unconfirmed decisions **arrive in phase 2 of the epic
-  orchestration plan**. They are not implemented here: do not improvise a
-  substitute for them, and do not report them as run.
+  epic and to its unconfirmed decisions (contract, Repository
+  Configuration, "The epic line"). Dot-source the shared script and call it
+  against the ledger that matched in Input — `<epic_snake>` is `<KLÍČ>` in
+  lower snake case, the same directory-name convention `spawn`'s
+  eligibility step uses; never a value read from the artifact, which
+  carries no epic at all:
+
+      . <mb-shared>/scripts/Test-UmsEpicGate.ps1
+      $epicGate = Test-UmsEpicGate `
+          -LedgerPath memory-bank/epics/<epic_snake>/ledger.md `
+          -Ticket <TIKET> -Epic <KLÍČ>
+
+  The script reads only that one ledger file, prints nothing and mutates
+  nothing; the Czech reporting is yours. `$epicGate.Ok` false is a STOP:
+  name the blocking check from `$epicGate.Blocking` with its `Detail` from
+  `$epicGate.Checks`. `spawn-epic` means this ledger's `## Rozjetí` either
+  declares a DIFFERENT epic than `<KLÍČ>`, or has no spawn row for
+  `<TIKET>` at all — the remedy is to re-derive the epic (Input) and
+  re-check which pool the ticket actually ran in, never to edit the ledger
+  until the mismatch disappears. `decision-ack` means some OTHER ticket's
+  row in `## Registr rozhodnutí` still assumes something about `<TIKET>`
+  that nobody has confirmed by commit — the remedy belongs to the ticket
+  session named in that row's Vlastník (tiket), not to this operation:
+  report the decision and its owner, and wait for its `Potvrzeno (SHA)`
+  before retrying.
 - **Cross-cutting judgement check.** By judgement, because nothing mechanical
   covers it: does the handoff contradict anything in the epic's own evidence —
   the ledger, its neighbouring tickets, what the epic already decided? This
@@ -502,6 +524,7 @@ no manager.
 | The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a resend |
 | Answer the handing-over ticket session | mandatory, both on a landed fast-forward and on a STOP; without it that session's Confirmation phase never runs |
 | Re-run the handoff gate | `Test-UmsHandoffGate -RepoRoot … -Sha … -BaseRef origin/epic/<KLÍČ>` — `-BaseRef` always explicit |
+| Run the epic checks | `Test-UmsEpicGate -LedgerPath … -Ticket <TIKET> -Epic <KLÍČ>` — `spawn-epic` and `decision-ack`, both mechanical, both pure (contract, "The epic line") |
 | Source side of the integration refspec | the raw 40-hex `<SHA>`, never `HEAD`, never a branch name (contract, "The epic line", condition four) |
 | Is a branch checked out anywhere | ticket code as a case-sensitive SUBSTRING of the union of `slots[].branch` and `excluded[].branch` — never `git worktree list`, never equality |
 | Which epic owns a ticket | scan `memory-bank/epics/*/ledger.md` for the code; zero or more than one is a STOP |
