@@ -110,4 +110,35 @@ $c = Get-UmsRepoConfig $tmp
 Assert-True (@($c.ProtectedBranches).Count -eq 4) 'protectedBranches [""] (prazdny string) pada na vestaveny seznam'
 
 Remove-Item -Recurse -Force $tmp
+
+# ---------------------------------------------------------------------------
+# epicBranchPattern (task 2 of UMS-3505). This suite had no New-ConfigFixture
+# helper (checked before adding it) — shape copied from
+# ums/.claude/hooks/tests/guard-git-push.tests.ps1 and adapted to this
+# suite's own fixture prefix, each call returns its own fresh directory.
+# ---------------------------------------------------------------------------
+function New-ConfigFixture([string] $Json) {
+    $r = Join-Path ([IO.Path]::GetTempPath()) ("ums-cfg-fixture-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path (Join-Path $r 'memory-bank') | Out-Null
+    Set-Content -LiteralPath (Join-Path $r 'memory-bank\ums-repo.json') -Value $Json
+    return $r
+}
+
+Write-Host "== epicBranchPattern: novy klic, vychozi je PRAZDNO (zadna epikova linie)"
+$r = New-ConfigFixture '{ "epicBranchPattern": "epic/*" }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern 'epic/*' 'epicBranchPattern se nacte z konfigurace'
+Remove-Item -Recurse -Force $r
+
+$r = New-ConfigFixture '{ "baseRef": "origin/develop" }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'chybejici epicBranchPattern degraduje na prazdno, ne na vzor'
+Remove-Item -Recurse -Force $r
+
+$r = New-ConfigFixture '{ "epicBranchPattern": "" }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'prazdna hodnota se chova jako chybejici'
+Remove-Item -Recurse -Force $r
+
+$r = New-ConfigFixture '{ "epicBranchPattern": 42 }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'nestringova hodnota degraduje na prazdno, nestringifikuje se'
+Remove-Item -Recurse -Force $r
+
 Complete-Tests

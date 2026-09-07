@@ -33,6 +33,7 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
         TicketPattern     = '^[A-Z][A-Z0-9]+-[0-9]+'
         ProjectMarkers    = @()
         SharedRoots       = @()
+        EpicBranchPattern = ''
         Source            = 'default'
     }
 
@@ -77,6 +78,13 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
     }
     if ($propNames -contains 'ticketPattern' -and $json.ticketPattern) {
         $cfg.TicketPattern = [string]$json.ticketPattern
+    }
+    # epicBranchPattern: contract "The epic line". -is [string] is
+    # load-bearing (see the same class of bug in the list-key loop below):
+    # without it, 42 would stringify into the pattern "42" instead of
+    # falling back to the safer side, the empty string.
+    if ($propNames -contains 'epicBranchPattern' -and $json.epicBranchPattern -is [string] -and $json.epicBranchPattern.Trim() -ne '') {
+        $cfg.EpicBranchPattern = [string]$json.epicBranchPattern
     }
     foreach ($pair in @(
             @{ Key = 'protectedBranches'; Field = 'ProtectedBranches' },
