@@ -67,3 +67,52 @@ sloupci `Pasti`.
 | Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Pasti |
 |-------|-------|------|---------|-----------------------|-------|
 | <UMS-0000> | <YYYY-MM-DD> | <jméno slotu nebo —> | <rozjeto \| odloženo \| selhalo> | <větev> @ <cesta k draftu> | <krátce, co může překvapit> |
+
+## Ověřovací sada
+
+Doslovný výčet příkazů, jeden na řádek, deklarovaný **jednou pro celý epik**.
+Domov má tady, ne v plánu jednotlivého tiketu, právě proto, aby všechny
+tikety epiku měřily svým „zelené" totéž — tiketový plán jmenuje build a
+testy jen pro sebe, epik potřebuje jednu společnou míru napříč tikety.
+
+```
+<příkaz 1: build>
+<příkaz 2: cílené testy>
+```
+
+**Chybějící sada je fail-closed STOP u první integrace do epikové linie, ne
+tichý průchod.** Bez deklarované sady znamená „zelené" pokaždé něco jiného —
+artefakt předání integrace by pak citoval výstup, se kterým není co
+porovnat, a brána by ověření jen předstírala.
+
+## Registr rozhodnutí
+
+Řádek nese tvrzení o chování nebo faktu **cizího** tiketu, na kterém staví
+rozhodnutí vlastníka řádku — ne nález o vlastním kódu. Vlastník je tiket,
+který rozhodnutí udělal; `Předpokládá o (tiket)` jmenuje tiket, jehož chování
+nebo kód se předpokládá, a ten ho musí potvrdit commitem. **Nepotvrzený
+řádek jmenující integrovaný tiket je mechanická zábrana fast-forwardu**
+(kontroluje operace `integrate` skillu `mb-epic-run`), ne věc, na kterou si
+má někdo vzpomenout. Sloupce **neměnit ani nepřehazovat**, parsuje je
+`scripts/ledger-status.ps1` pozičně — stejná poznámka jako u `Rozjetí`.
+
+`Druh` je `text`, nebo `chování`. Stavy řádku: `otevřeno` → `zavřeno`. Řádek
+druhu `text` se zavírá přečtením. **Řádek druhu `chování` se nezavírá
+přečtením, ale testem, který to chování tvrdí** — přečtení kódu dokazuje jen
+jeho aktuální hodnotu, ne že se chová tak, jak rozhodnutí předpokládá.
+Sloupec `Potvrzeno (SHA)` nese SHA commitu tiketu ze sloupce `Předpokládá o
+(tiket)`, kterým ten tiket rozhodnutí potvrdil; prázdný sloupec znamená
+nepotvrzeno.
+
+| Rozhodnutí | Vlastník (tiket) | Předpokládá o (tiket) | Druh | Stav | Potvrzeno (SHA) |
+|------------|------------------|-----------------------|------|------|-----------------|
+| <krátký popis rozhodnutí> | <UMS-0000> | <UMS-0000> | <text \| chování> | <otevřeno \| zavřeno> | <SHA nebo —> |
+
+Měřený příklad (do tabulky výše nejde — skutečná hodnota v šabloně by
+zablokovala každou budoucí integraci): rozhodnutí 244 „po výpadku se
+neobsluhuje z prošlých dat, léčbou je delší okno", vlastník 244, předpokládá
+o 243, druh `chování`. TTL toho okna bylo v kódu 243 natvrdo 60 s, bez
+konfiguračního klíče — přečtení té řádky kódu 244 nesmí řádek zavřít, protože
+dokazuje jen tu hodnotu, ne že se okno po výpadku skutečně chová tak, jak
+rozhodnutí 244 předpokládá; zavírá ho až test, který tu 60s hranici vynutí a
+ověří.
