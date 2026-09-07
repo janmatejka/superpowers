@@ -1773,16 +1773,16 @@ asks which of them the base is, except the single condition of the Handoff phase
 - **Green verification.** Build and targeted tests, on the merged tree.
 - **Handoff gate.** Three checks, and they run as one mechanical check rather
   than as items somebody ticks off, **after a fresh `git fetch origin`** —
-  against the freshly fetched `<effective base>`, never against a tip remembered from
-  the Sync phase. A remembered tip passes in exactly the case the gate exists
+  against the freshly fetched `<effective base>`, never against a tip
+  remembered from the Sync phase. A remembered tip passes in exactly the case the gate exists
   for, and whoever pushes is then handed a command that bounces:
   1. `git merge-base --is-ancestor <freshly fetched base> <sha>` — the commit
      being handed over carries the CURRENT base;
   2. the `context.md` of that same commit is IDLE, which is what the harvest's
      reset leaves behind (Harvest Contract) — so the harvest precedes the
      handoff. Resolve `<CTX_DIR>` per its definition (`<MB_ROOT>/memory-bank/`),
-     never from a path unrelated to `MB_ROOT`, and use this contract's own predicate (`context.md` Schema &
-     Writers): a `Target MB Pin` together with a `Work item` slug is ACTIVE. A
+     never from a path unrelated to `MB_ROOT`, and use this contract's own
+     predicate (`context.md` Schema & Writers): a `Target MB Pin` together with a `Work item` slug is ACTIVE. A
      **missing file is a fail-closed STOP, not "IDLE"** — `git show` on a path
      that does not exist exits 128, and that exit reads all too easily as "no
      pin found";
