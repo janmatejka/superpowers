@@ -411,6 +411,32 @@ $cfgNoKey = New-ConfigFixture '{ "protectedBranches": ["develop", "epic/*"] }'
 Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgNoKey) 'permissionDecision.*deny' 'zamítnuto: chybějící epicBranchPattern znamená žádnou výjimku'
 Remove-Item -Recurse -Force $cfgNoKey
 
+# NEPOUŽITELNÝ baseRef: výjimka taky neexistuje vůbec. Bez použitelného
+# jména báze nemá podmínka o bázi co srovnávat — prázdný string se nerovná
+# ničemu, takže by ji nešlo splnit a dost široký vzor by pohltil i doručovací
+# linii. Měřeno: přesně tenhle tvar guard propouštěl.
+$cfgNoBase = New-ConfigFixture '{ "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgNoBase) 'permissionDecision.*deny' 'zamítnuto: chybějící baseRef znamená žádnou výjimku (bázi se nehádá)'
+Remove-Item -Recurse -Force $cfgNoBase
+
+$cfgWideNoBase = New-ConfigFixture '{ "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgWideNoBase) 'permissionDecision.*deny' 'zamítnuto: vzor pohlcující bázi a chybějící baseRef nesmí pustit surové SHA do doručovací linie'
+Remove-Item -Recurse -Force $cfgWideNoBase
+
+$cfgEmptyBase = New-ConfigFixture '{ "baseRef": "", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEmptyBase) 'permissionDecision.*deny' 'zamítnuto: prázdný baseRef znamená žádnou výjimku'
+Remove-Item -Recurse -Force $cfgEmptyBase
+
+$cfgNonStrBase = New-ConfigFixture '{ "baseRef": 42, "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgNonStrBase) 'permissionDecision.*deny' 'zamítnuto: nestringový baseRef znamená žádnou výjimku'
+Remove-Item -Recurse -Force $cfgNonStrBase
+
+# `origin/` je validní string, ale po odebrání remote a jednoho lomítka
+# nezbyde žádné jméno větve — degradace musí být stejná jako u chybějícího.
+$cfgRemoteOnlyBase = New-ConfigFixture '{ "baseRef": "origin/", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgRemoteOnlyBase) 'permissionDecision.*deny' 'zamítnuto: baseRef "origin/" se redukuje na prázdno, tedy žádná výjimka'
+Remove-Item -Recurse -Force $cfgRemoteOnlyBase
+
 # TÝŽ TVAR V POWERSHELLOVÉM ZÁPISU — guard je registrovaný na Bash|PowerShell.
 Assert-NotMatch (Test-CmdPs "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: výjimka platí i na PowerShell toolu'
 

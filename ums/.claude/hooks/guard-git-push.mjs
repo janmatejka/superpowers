@@ -186,6 +186,11 @@ const loadEpicRule = (cwd) => {
     const baseRef = typeof parsed.baseRef === 'string' ? parsed.baseRef : '';
     // <baseBranch> = baseRef minus the remote and the SINGLE following slash.
     const baseBranch = baseRef.replace(/^[^/]+\//, '');
+    // No usable base name (absent, empty, non-string, or a `origin/` that
+    // reduces to nothing) -> no exception, and never a guessed base: the
+    // condition that keeps the pattern off the base cannot bite against an
+    // empty string (contract: "The epic line").
+    if (baseBranch.trim() === '') return null;
     return { re: globToRe(pat), baseBranch };
   } catch { return null; }
 };
