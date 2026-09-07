@@ -5,6 +5,7 @@
 - **Zdroj položek:** Doc/test.md
 - **Založeno:** 2026-09-01
 - **Poslední aktualizace:** 2026-09-03 (okno W01)
+- **Autonomie:** dohled
 
 ## Položky
 
@@ -33,7 +34,7 @@
 
 ## Rozjetí
 
-| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Pasti |
-|-------|-------|------|---------|-----------------------|-------|
-| UMS-3488 | 2026-09-03 | ums05 | rozjeto | UMS-3400-okno-w01 @ memory-bank/proposals/next/design_ums_3488_pool.md | wt.exe není v PATH na stanici B |
-| UMS-3496 | 2026-09-03 | — | odloženo | UMS-3400-okno-w01 @ memory-bank/proposals/next/design_ums_3496_brana.md | čeká na UMS-3488 |
+| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Autonomie | Pasti |
+|-------|-------|------|---------|-----------------------|-----------|-------|
+| UMS-3488 | 2026-09-03 | ums05 | rozjeto | UMS-3400-okno-w01 @ memory-bank/proposals/next/design_ums_3488_pool.md | sdílená | wt.exe není v PATH na stanici B |
+| UMS-3496 | 2026-09-03 | — | odloženo | UMS-3400-okno-w01 @ memory-bank/proposals/next/design_ums_3496_brana.md | — | čeká na UMS-3488 |

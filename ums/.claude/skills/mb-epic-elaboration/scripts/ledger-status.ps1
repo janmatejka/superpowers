@@ -7,10 +7,10 @@ the mb-epic-elaboration skill.
 Parses the ledger's Markdown tables (Položky, Tikety, Okna, Dirty-set,
 Rozjetí, Registr rozhodnutí) and its one fenced block (Ověřovací sada),
 prints a Czech summary (item counts by state, per-ticket rollup cross-check,
-open windows, unresolved dirty rows, the declared verification set, the
-decision registry) and suggests the next window per the window selection
-rule (dirty first, then leverage). Writes nothing; never touches Jira or
-git.
+open windows, unresolved dirty rows, the epic's declared autonomy level with
+its per-ticket overrides, the declared verification set, the decision
+registry) and suggests the next window per the window selection rule (dirty
+first, then leverage). Writes nothing; never touches Jira or git.
 
 The Markdown/fenced-block parsing itself lives in the shared
 Get-UmsEpicLedger.ps1 (ums/.claude/skills/shared/scripts/), because this
@@ -62,9 +62,49 @@ $items   = @($items   | Where-Object { $_.Count -ge 4 -and $_[0] -and $_[0] -not
 $tickets = @($tickets | Where-Object { $_.Count -ge 2 -and $_[0] -and $_[0] -notmatch '^<' })
 $windows = @($windows | Where-Object { $_.Count -ge 3 -and $_[0] -and $_[0] -notmatch '^<' })
 $dirty   = @($dirty   | Where-Object { $_.Count -ge 3 -and $_[0] })
-$spawns  = @($spawns  | Where-Object { $_.Count -ge 4 -and $_[0] -and $_[0] -notmatch '^<' })
+# Seven columns since the Autonomie column was inserted BEFORE the trailing
+# Pasti column, so a spawn row must carry cells 0..5 to be one: the report
+# reads the four it renders (0,1,2,3) and the autonomy override (5). A row
+# with fewer cells is a pre-column leftover the positional read cannot place,
+# and dropping it here is what keeps its old Pasti prose from being rendered
+# as a slot or a verdict. A SIX-cell leftover still passes this filter and is
+# caught loudly below, by the closed-vocabulary check on cell 5.
+$spawns  = @($spawns  | Where-Object { $_.Count -ge 6 -and $_[0] -and $_[0] -notmatch '^<' })
 
 $issuesFound = @()   # inconsistency messages
+
+# --- autonomy level ----------------------------------------------------------
+# Read LOCALLY rather than in the shared Get-UmsEpicLedger.ps1: the header
+# bullet is the same shape as the '- **Epic:**' line this script already reads
+# for itself (and epic-gate.ps1 reads for itself), and the per-ticket override
+# needs no new parser at all — it is cell 5 of the Rozjetí table the shared
+# positional reader already returns. The shared file carries what MORE THAN
+# ONE skill consumes; this has one consumer today.
+# The vocabulary is closed (contract, "Escalation & Autonomy"); the default
+# when the epic declares nothing is the middle level.
+$autonomyLevels  = @('dohled', 'sdílená', 'delegovaná')
+$autonomyDefault = 'sdílená'
+$autonomyDeclared = ''
+foreach ($ln in $lines) {
+    if ($ln -match '^\s*-\s+\*\*Autonomie:\*\*\s*(.*)$') {
+        # The value is what stands before the first spaced em dash; the rest of
+        # the bullet is the template's own explanatory sentence.
+        $autonomyDeclared = (($Matches[1] -split '\s+—\s+', 2)[0]).Trim()
+        break
+    }
+}
+if ($autonomyDeclared -match '^<') { $autonomyDeclared = '' }   # unfilled template placeholder
+if ($autonomyDeclared -and $autonomyLevels -notcontains $autonomyDeclared) {
+    $issuesFound += "Epik deklaruje neznámou úroveň autonomie «$autonomyDeclared» — povolené jsou dohled, sdílená, delegovaná."
+}
+foreach ($s in $spawns) {
+    # The Count guard is redundant while the row filter above stands at >= 6,
+    # and is kept anyway: measured, a loosened filter otherwise turns this
+    # reportable defect into an unhandled index error under strict mode.
+    if ($s.Count -ge 6 -and $s[5] -and $s[5] -ne '—' -and $autonomyLevels -notcontains $s[5]) {
+        $issuesFound += "Řádek rozjetí «$($s[0])» má ve sloupci Autonomie neznámou hodnotu «$($s[5])» — povolené jsou dohled, sdílená, delegovaná, nebo — (bez přepsání)."
+    }
+}
 
 # --- duplicate item IDs (partition violation) --------------------------------
 $dupIds = @($items | Group-Object { $_[0] } | Where-Object Count -gt 1)
@@ -138,11 +178,21 @@ Write-Output ''
 Write-Output "## Dirty-set (nevyčištěné: $($dirtyOpen.Count))"
 foreach ($d in $dirtyOpen) { Write-Output ("- {0} (okno {1}): {2}" -f $d[0], $d[1], $d[2]) }
 Write-Output ''
+Write-Output '## Autonomie'
+if ($autonomyDeclared) {
+    Write-Output "- deklarováno epikem: $autonomyDeclared"
+} else {
+    Write-Output "- nedeklarováno → platí výchozí: $autonomyDefault"
+}
+Write-Output ''
 Write-Output "## Rozjetí ($($spawns.Count))"
 if ($spawns.Count -eq 0) { Write-Output '- žádné' }
 foreach ($s in $spawns) {
-    $trap = if ($s.Count -ge 6 -and $s[5]) { " — pasti: $($s[5])" } else { '' }
-    Write-Output ("- {0} ({1}): {2}, slot {3}{4}" -f $s[0], $s[1], $s[3], $s[2], $trap)
+    # Positional, and the two indices moved together when the Autonomie column
+    # was inserted before Pasti: the override is cell 5, the trap sentence 6.
+    $auto = if ($s.Count -ge 6 -and $s[5] -and $s[5] -ne '—') { " — autonomie: $($s[5])" } else { '' }
+    $trap = if ($s.Count -ge 7 -and $s[6]) { " — pasti: $($s[6])" } else { '' }
+    Write-Output ("- {0} ({1}): {2}, slot {3}{4}{5}" -f $s[0], $s[1], $s[3], $s[2], $auto, $trap)
 }
 Write-Output ''
 Write-Output "## Ověřovací sada ($($verificationSet.Count))"

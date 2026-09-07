@@ -320,11 +320,11 @@ In this order, and the order is the point.
    branch name equals its own directory name (the parked shape), then the
    rest. Announce which and why.
 3. **Write the intent line** into the epic's ledger section `## Rozjetí`, in
-   `memory-bank/epics/<epic_snake>/ledger.md`. The section has **six columns,
-   in this order**, and the order is binding because the ledger parser indexes
-   them **positionally**:
+   `memory-bank/epics/<epic_snake>/ledger.md`. The section has **seven
+   columns, in this order**, and the order is binding because the ledger
+   parser indexes them **positionally**:
 
-| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Pasti |
+| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Autonomie | Pasti |
 
    Fixing the headers is not enough for a positionally parsed table — the
    CELL vocabulary is fixed too, and this skill is the upstream that defines
@@ -339,6 +339,13 @@ In this order, and the order is the point.
      column is precisely the divergence the fixed order exists to prevent.
    - `Draft (větev + cesta)` — `<větev> @ <cesta>`, the branch first, then the
      repository-relative path, separated by a spaced at-sign.
+   - `Autonomie` — this ticket's override of the autonomy level the epic
+     declared once in its ledger header, or `—` for no override. The
+     vocabulary is closed: `dohled` | `sdílená` | `delegovaná` | `—`. What
+     each level moves, and what no level moves, belongs to the contract
+     ("Escalation & Autonomy") — write the cell, never a fourth word. It
+     stands BEFORE `Pasti` because the free-text note column stays last in
+     every table of the ledger.
    - `Pasti` — free Czech prose, or empty.
 
    There is deliberately **no column for the chosen base**: a work item's base

@@ -1,8 +1,21 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.17
-- Supersedes v2.16 (adds the decision registry and the ticket's spawn row as
-  preconditions of the epic fast-forward; adds the verification set — a
+- **Contract-Version:** 2.18
+- Supersedes v2.17 (adds the `NOW` block — the marker-bounded region at the top
+  of the SDD progress ledger that makes a stalled session visible without
+  anyone reading its transcript, with its six required items, its closed state
+  class, the rewrite-as-an-operation rule, the reader-safety rules it takes
+  from the Session Intent Baton and the bound of its own lifetime; adds the
+  Message Protocol — the single mark every orchestrator message carries, the
+  recipient's right to refuse a conjecture and its duty to refuse an
+  instruction that contradicts a written rule, relay timing decided by
+  immediacy, and the enforcement status of every rule in a section nothing
+  checks; and adds Escalation & Autonomy — the two rules about when ending a
+  turn is legitimate at all, the three escalation bands and the artifact form
+  every kind of escalation must have, and the three named autonomy levels over
+  the one movable band, declared once per epic and overridable per ticket).
+- v2.17 superseded v2.16 (adds the decision registry and the ticket's spawn
+  row as preconditions of the epic fast-forward; adds the verification set — a
   verbatim list of commands whose home is whatever umbrellas the work, with
   a missing set fail-closed — together with the Handoff gate's fourth check;
   adds the shared-interface stub carried on the epic line and names who
@@ -476,7 +489,12 @@ Look at: .superpowers/sdd/plan_ums_3505/task-12-brief.md; git log -3 --oneline
 **Six items, all six required, one `Key: value` line each, in this order.**
 The key is everything before the first colon; the value is the rest of the
 line, trimmed. A missing item, an unknown key, a line outside the `Key: value`
-shape or a duplicated key makes the block malformed.
+shape, a duplicated key, or a `Since:` or `Due:` whose value is not a valid
+ISO-8601 UTC timestamp makes the block malformed. **A BLANK line inside the
+region is SKIPPED, not malformed** — the region is bounded by its markers and
+not by its content, so a writer may keep the six lines clear of them; the
+Session Intent Baton's reader already skips blank lines the same way, and this
+reader inherits that behaviour rather than inventing a second one.
 
 - **`State:`** — the state class, one of the four values below and nothing
   else.
@@ -496,6 +514,15 @@ shape or a duplicated key makes the block malformed.
 - **`Look at:`** — where the next reader looks FIRST: paths and git refs,
   separated by `; `. Pointers only, which is what keeps this item from
   becoming the home of a fact.
+
+**Why an unparseable timestamp is malformed rather than tolerated.** `dueAt`
+and `late` are mandated outputs of the reader that renders this block, and
+neither exists without a `Due:` it can parse; the two ways of tolerating one —
+emitting a partial object, or a `late` that is null — are both forbidden by the
+shape that reader must produce, so there is nothing left to degrade to. A
+`Since:` that cannot be an instant is the same class of defect, and both get
+the same fail-closed answer the state class already gets for a value outside
+its enum.
 
 **The state class is a CLOSED enum of exactly four values.** This is the
 `idle` ambiguity a manager guessed wrong four times; it is an enumerated
@@ -2657,6 +2684,113 @@ author, so the status of each is stated instead of implied:
     *domněnka* belongs to the Language Contract, which decides the language of
     every artifact in this layer; what this section adds is only which token a
     message carries.
+
+## Escalation & Autonomy
+
+**"When to stop" and "how much to stop" are not quantities anyone turns —
+they are rules**, and they have an operational form. Two of them, and they
+bind every session in this layer, epic work or not:
+
+> **Ending a turn is legitimate only where you are waiting for a human's
+> answer, a manager's answer, or a subagent to finish — and that waiting must
+> be NAMED**: by the `NOW` block's state class where the block exists, and in
+> the report everywhere else. What cannot be named is not a reason to end a
+> turn.
+
+> **When you formulate a question, name what does NOT depend on the answer —
+> and do that part immediately**, in the same turn as the question.
+
+The qualifier in the first rule is exact rather than defensive. The block's
+lifetime is stated in "The `NOW` Block" (its closing paragraph, on where the
+block does not exist), and outside that lifetime the wait is named in the
+report and nowhere else; a rule demanding a state class there would demand an
+artifact that does not exist.
+
+**The quantity an operator DOES set is who decides which KIND of escalation.**
+The list has three bands, and two of them are fixed.
+
+**Every kind below has an artifact form, and that form is a row with a state
+in a ledger.** The requirement is `## Message Protocol`'s — that the design of
+an escalation band has an artifact form — and this is where it is discharged.
+Concretely: inside an epic the kind stands as a row of the epic's evidence
+ledger — an item row of `## Položky` with its owner and its state, the
+ticket's `## Rozjetí` row, or a `## Registr rozhodnutí` row where the question
+is another ticket's behaviour; inside a plan's execution it stands in the SDD
+progress ledger, as the open question while it is held and as a `Ruling:` line
+once it is answered, with the `NOW` block carrying the WAIT. A kind escalated
+in a message and in no row has no addressee at all on a harness without
+messaging, and this layer uses no messaging tool anywhere today.
+
+**The floor — always a human, and no autonomy level moves it off one**
+
+| Kind | Measured example |
+|---|---|
+| Publication into the delivery line | the exit of an epic |
+| An irreversible or destructive operation | deleting a branch, a force push, rewriting history |
+| A security-sensitive action | accesses, secrets |
+| Choosing a base that is not a protected branch | today's fail-closed STOP |
+| A change to `epicBranchPattern` or `protectedBranches` | widening a privilege |
+
+**The floor is not a new set of stops.** Its rows are already covered by
+Fail-Closed Behavior and by the stop classes that section maps this layer onto;
+what the three bands add is who owns the kinds that are NOT stops.
+
+**The last row is not distrust**, and saying so matters because it reads as
+distrust otherwise: the threat model of "The epic line" is mistake and not
+intent. Widening a privilege is a DECISION, and Repository Configuration
+already requires approval for every change to the configuration after the
+first. Naming it here only stops an autonomy level from being read as a licence
+to move it.
+
+**Always the manager — and this band does not move DOWN**, because taking
+precisely these off the human is what a manager is for:
+
+| Kind | Measured example |
+|---|---|
+| The order and the queue of integrations | two tickets verified against the same epic tip |
+| Resynchronization prompts and cross-cutting relay | "go and integrate the epic line" |
+
+**The movable band — this is the quantity**
+
+| Kind | Measured example |
+|---|---|
+| A class-3 finding — one where a NEIGHBOURING ticket's written decision would have to change for this to work, or where its record was untrue | a 60 s TTL window hard-coded, with no configuration key |
+| A scope or ownership conflict between tickets | whose `EmployeeResolver` is it |
+| A defect in the plan — every way forward is a guess | a wiring brief wrong in six places |
+| A change to a ticket's brief | the scope turns out to be somewhere else |
+
+**Three named levels stand over that band, and nothing else about them is
+configurable.** They are written into the ledger in Czech, like every other
+ledger value, and named in English here (Language Contract):
+
+| Level | Ledger value | Who decides the movable kinds |
+|---|---|---|
+| Supervised | `dohled` | all of them the human; the manager coordinates |
+| Shared (the DEFAULT) | `sdílená` | the manager rules scope conflicts, class-3 findings and plan defects; a change to a ticket's brief goes to the human |
+| Delegated | `delegovaná` | the manager rules a change to a ticket's brief as well, and reports it |
+
+**Where there is no epic there is no manager**, and the bands say so rather
+than leaving it to be worked out: the middle band is then empty, the movable
+band has only two owners left — the session's own ruling and the human — and
+the three levels do not exist at all, because they are an epic's declaration.
+Nothing here weakens the floor, which binds every session either way.
+
+**Where the value is read.** The epic declares it ONCE, in the header of its
+evidence ledger (`- **Autonomie:**`); the ticket's `## Rozjetí` row carries a
+column that overrides it for that one ticket, `—` meaning no override. A ledger
+that declares nothing is `sdílená`. The session PULLS the value out of the
+committed documents — the manager writes nothing into the slot — which is the
+same pulled-row rule the spawn line already follows.
+
+**One thing deliberately does NOT belong in this list.** An instruction that
+contradicts a written rule is not an escalation — it is a LOOKUP. The
+recipient's duty to refuse such an instruction, and its right to refuse a
+conjecture, are `## Message Protocol`'s and are not repeated here; what belongs
+HERE is the consequence for this list. A refusal settles itself against the
+text of the rule and costs nobody a decision, so it is no band's business.
+Only where the rule is GENUINELY ambiguous is there a question at all, and that
+question goes to the HUMAN, never to the manager — the manager is a party to
+that dispute.
 
 ## Fail-Closed Behavior
 

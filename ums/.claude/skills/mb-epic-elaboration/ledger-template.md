@@ -2,6 +2,7 @@
 
 - **Epic:** <EPIC-KEY> (https://datasyscz.atlassian.net/browse/<EPIC-KEY>) — v režimu Jira; v režimu Proposals odkaz na přehledový dokument, např. [_prehled.md](../proposals/next/_prehled.md)
 - **Režim:** <Jira | Proposals>
+- **Autonomie:** <dohled | sdílená | delegovaná> — deklaruje se **jednou pro celý epik**. Co která úroveň znamená a která pásma nehýbe, definuje kontrakt, sekce „Escalation & Autonomy"; chybí-li tento řádek, platí výchozí `sdílená`.
 - **Zdroj položek:** <repo-relativní cesta k dokumentu nálezů/požadavků, např. Doc/security-risk-assessment.md>
 - **Založeno:** <YYYY-MM-DD>
 - **Poslední aktualizace:** <YYYY-MM-DD> (okno <W##>)
@@ -64,9 +65,15 @@ Zvolená báze tu vlastní sloupec **nemá** — jejím jediným domovem je řá
 `Báze:` v `context.md` té pracovní položky; netriviální bázi zmiň větou ve
 sloupci `Pasti`.
 
-| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Pasti |
-|-------|-------|------|---------|-----------------------|-------|
-| <UMS-0000> | <YYYY-MM-DD> | <jméno slotu nebo —> | <rozjeto \| odloženo \| selhalo> | <větev> @ <cesta k draftu> | <krátce, co může překvapit> |
+Sloupec `Autonomie` přepisuje deklaraci epiku pro jeden tiket; `—` znamená bez
+přepsání, tedy že platí deklarace z hlavičky. Slovník je uzavřený — `dohled`,
+`sdílená`, `delegovaná` — a co která úroveň znamená, definuje kontrakt, sekce
+„Escalation & Autonomy". Sloupec stojí **před** `Pasti`, protože poznámkový
+sloupec zůstává v každé tabulce poslední.
+
+| Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Autonomie | Pasti |
+|-------|-------|------|---------|-----------------------|-----------|-------|
+| <UMS-0000> | <YYYY-MM-DD> | <jméno slotu nebo —> | <rozjeto \| odloženo \| selhalo> | <větev> @ <cesta k draftu> | <dohled \| sdílená \| delegovaná \| —> | <krátce, co může překvapit> |
 
 ## Ověřovací sada
 

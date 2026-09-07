@@ -55,4 +55,45 @@ $ro = Invoke-Ledger $orphan
 Assert-Eq $ro.Code 2 'a spawn row for a non-member ticket is a reported inconsistency (exit 2)'
 Assert-Match $ro.Out 'Nekonzistence' 'the orphaned spawn row is flagged'
 Assert-Match $ro.Out 'UMS-2222.*nemá odpovídajícího člena' 'the orphan message names the ticket and the reason'
+# --- section Rozjetí: the Autonomie column -----------------------------------
+# The Rozjetí table gained a column, and it was inserted BEFORE the trailing
+# free-text Pasti column (every table of the template keeps its note column
+# last). ledger-status.ps1 indexes this table POSITIONALLY, so the insertion
+# moves Pasti from index 5 to index 6 and adds index 5 as the per-ticket
+# override of the epic's declared autonomy level (contract, "Escalation &
+# Autonomy"). These assertions were written and seen to FAIL before the
+# column existed anywhere.
+Assert-Match $rs.Out 'UMS-3488.*pasti: wt\.exe' 'the trap sentence is read from the LAST column, which the insertion moved to index 6'
+Assert-NotMatch $rs.Out 'pasti: sdílená' 'the Autonomie cell is never read as the trap column'
+Assert-Match $rs.Out 'UMS-3488.*autonomie: sdílená' 'the per-ticket override is read from the new column (index 5) and rendered'
+Assert-Match $rs.Out 'UMS-3496.*pasti: čeká na UMS-3488' 'the second row keeps its own trap sentence, also from index 6'
+Assert-NotMatch $rs.Out 'UMS-3496.*autonomie' 'an em-dash cell means NO override and renders nothing'
+# The epic declares the level ONCE, in its own header line; the report says
+# which level is in force before it lists the per-ticket overrides.
+Assert-Match $rs.Out '(?m)^## Autonomie' 'the report carries an Autonomie section of its own'
+Assert-Match $rs.Out 'deklarováno epikem: dohled' 'the epic-level declaration is read from the header bullet'
+
+# An epic that declares NO level: the default is the contract's, and the
+# report must say that it is a default rather than print nothing.
+Assert-Match $ro.Out 'nedeklarováno' 'a ledger without the header bullet reports the level as undeclared'
+Assert-Match $ro.Out 'nedeklarováno.*sdílená' 'and names the default that is therefore in force'
+Assert-Match $ro.Out 'UMS-2222.*autonomie: delegovaná' 'the per-ticket override still renders on a ledger with no epic-level declaration'
+
+# --- Autonomie: the closed vocabulary, and the pre-column legacy row ---------
+# Both values are checked against the same closed vocabulary, and a row left
+# over from the SIX-column era is the case that makes the check load-bearing:
+# it still parses, its old Pasti prose lands in the new index 5, and without
+# this check the report would silently present that prose as an autonomy
+# level. A row too short to carry the column at all is dropped by the row
+# filter, which moved with the column.
+$badAuto = Join-Path $PSScriptRoot 'fixtures\ledger_autonomie_invalid.md'
+$rb = Invoke-Ledger $badAuto
+Assert-Eq $rb.Code 2 'an unknown autonomy value is a reported ledger inconsistency (exit 2)'
+Assert-Match $rb.Out 'neznámou úroveň autonomie «plná»' 'the epic-level declaration is validated against the closed vocabulary'
+Assert-Match $rb.Out 'UMS-5001.*Autonomie neznámou hodnotu «plná»' 'an unknown value in a spawn row names the ticket and the value'
+Assert-Match $rb.Out 'UMS-5002.*Autonomie neznámou hodnotu «past B legacy»' 'a legacy six-column row is flagged LOUDLY, never read as an autonomy level'
+Assert-Match $rb.Out '## Rozjetí \(2\)' 'the four-cell row is dropped by the row filter (which moved from >=4 to >=6 with the column)'
+# UMS-5003 is still a MEMBER, so it appears in the members list; what must
+# not appear is a Rozjetí line for it.
+Assert-NotMatch $rb.Out 'UMS-5003.*rozjeto' 'a spawn row too short to carry the Autonomie column is not rendered at all'
 Complete-Tests

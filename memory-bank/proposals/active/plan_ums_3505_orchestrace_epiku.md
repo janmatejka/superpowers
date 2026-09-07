@@ -1019,33 +1019,33 @@ Bez měřeného případu to zní jako obecná rada: varování o `CS0246` doru�
 - Consumes: registr a sekce ledgeru (Task 9)
 - Produces: `AutonomyLevel` čtený sezením z commitnutých dokumentů
 
-- [ ] **Step 1: Napiš eskalační tabulku do kontraktu**
+- [x] **Step 1: Napiš eskalační tabulku do kontraktu**
 
 Tři pásma podle části 8 návrhu. **Každý druh má řádek se stavem v ledgeru** — to je jeho artefaktová forma a to, co ho drží funkčním i bez `SendMessage`, které je vázané na Claude Code a ve vrstvě se dnes nepoužívá nikde.
 
 Do dna patří i **změna `epicBranchPattern` a `protectedBranches`** — ne z nedůvěry, ale protože rozšíření výsady je rozhodnutí a kontrakt u změn konfigurace repozitáře schválení vyžaduje tak jako tak.
 
-- [ ] **Step 2: Zapiš, co do výčtu nepatří**
+- [x] **Step 2: Zapiš, co do výčtu nepatří**
 
 Pokyn odporující psanému pravidlu **není eskalace, je to vyhledání**. Příjemce ho odmítne a odkáže na pravidlo; teprve když je pravidlo skutečně nejednoznačné, jde otázka **k člověku, nikdy ke správci** — správce je v tom sporu stranou.
 
-- [ ] **Step 3: Napiš dvě pravidla o konci turnu**
+- [x] **Step 3: Napiš dvě pravidla o konci turnu**
 
 Konec turnu je legitimní jen tam, kde čekáš na odpověď člověka, na odpověď správce, nebo na doběhnutí subagenta — a to čekání musí být pojmenované: tam, kde blok existuje, jeho stavovou třídou; jinde v hlášení. A: když formuluješ otázku, vyjmenuj, co na odpovědi nezávisí, a to udělej hned.
 
-- [ ] **Step 4: Přidej deklaraci úrovně do ledgeru a sloupec do `Rozjetí`**
+- [x] **Step 4: Přidej deklaraci úrovně do ledgeru a sloupec do `Rozjetí`**
 
 Pozor: sloupce `Rozjetí` parsuje `ledger-status.ps1` **pozičně**, takže přidání sloupce je změna, kterou musí sada zachytit. Napiš na to test **dřív**, než sloupec přidáš.
 
-- [ ] **Step 5: Napiš padající test na čtení úrovně a na nový sloupec**
+- [x] **Step 5: Napiš padající test na čtení úrovně a na nový sloupec**
 
-- [ ] **Step 6: Spusť, implementuj, spusť znovu**
+- [x] **Step 6: Spusť, implementuj, spusť znovu**
 
-- [ ] **Step 7: Ověř negativitu**
+- [x] **Step 7: Ověř negativitu**
 
-- [ ] **Step 8: Commit a push**
+- [x] **Step 8: Commit a push**
 
-- [ ] **Konec tasku.** `task-brief` končí až u dalšího nadpisu `Task`, takže
+- [x] **Konec tasku.** `task-brief` končí až u dalšího nadpisu `Task`, takže
   brief tohohle tasku nese navíc i uzávěrku fáze a vstupní brief fáze další.
   **Nic z toho tenhle task nevykonává** — uzávěrku dělá řídicí sezení, ne
   implementátor tasku.

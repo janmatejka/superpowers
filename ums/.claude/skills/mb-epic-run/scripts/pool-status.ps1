@@ -388,6 +388,9 @@ function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
     $fields = [ordered] @{}
     for ($i = $b + 1; $i -lt $e; $i++) {
         $line = [string] $Lines[$i]
+        # A blank line inside the region is SKIPPED, not malformed (contract,
+        # "The `NOW` Block"), the same as the Session Intent Baton's reader:
+        # the region is bounded by its markers, not by its content.
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         # The key is everything before the FIRST colon; the value is the rest of
         # the line, trimmed, and no reader splits it further — which is what
