@@ -80,9 +80,10 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
         $cfg.TicketPattern = [string]$json.ticketPattern
     }
     # epicBranchPattern: contract "The epic line". -is [string] is
-    # load-bearing (see the same class of bug in the list-key loop below):
-    # without it, 42 would stringify into the pattern "42" instead of
-    # falling back to the safer side, the empty string.
+    # load-bearing: without it, a non-string value (e.g. 42) crashes this
+    # call on .Trim() instead of falling back to the safer side, the empty
+    # string — measured, not the list-key loop's silent-stringification
+    # failure mode below, which is only an analogy, not this key's own.
     if ($propNames -contains 'epicBranchPattern' -and $json.epicBranchPattern -is [string] -and $json.epicBranchPattern.Trim() -ne '') {
         $cfg.EpicBranchPattern = [string]$json.epicBranchPattern
     }
