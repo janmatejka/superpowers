@@ -622,6 +622,16 @@ epic itself integrates one level further out, into the **delivery line** — the
 shared branch the epic ultimately delivers into, and the base every ticket would
 have had without an epic line.
 
+**When two tickets share an interface, the epic line carries a stub of that
+shared interface, committed before either ticket implements against it.** The
+reason lives here, not in a skill: a stub turns the compiler into an oracle, so
+a later merge surfaces a mismatch as a TEXTUAL conflict — the only kind git can
+show — instead of a SEMANTIC one, which compiles clean on both branches alone
+and fails only once they meet. Measured: the signature of `EmployeeResolver`
+was recorded in the epic's ledger as prose, and it did not compile against what
+the other ticket had written — a parameter too many, a different parameter
+order, the wrong arity — caught only by chance, not by any mechanism.
+
 **It belongs in `protectedBranches`**, so the invariant above — an integration
 branch is always a protected branch — holds for it literally, and both
 enforcement layers resolve its protection by their usual routes.

@@ -106,6 +106,9 @@ Wait for confirmation or narrowing. The human always decides the agenda.
    Drafts of FOLLOW-UP tickets created mid-window live in `next/` on the actor's
    own branch and become visible to others by pushing that branch (never by
    pushing a shared branch, never by cherry-pick).
+   When this step's design settles a signature two tickets will share, found
+   the epic line's stub for it now, before either ticket starts implementing
+   (contract, The epic line).
 7. **Impact on neighbors:** enumerate every other ticket this window changed
    the premises of (moved item, changed/new dependency, corrected claim, new
    ticket) → dirty-set rows (`Zašpiněno oknem` = this window, with reason).
