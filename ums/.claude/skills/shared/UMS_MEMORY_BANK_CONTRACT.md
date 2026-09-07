@@ -2519,6 +2519,130 @@ PRIMARY worktree), so any cross-slot identity comparison must normalize to an
 absolute path; and a RELATIVE `core.hooksPath` resolves per worktree, which
 means each slot then needs its own installer run.
 
+## Message Protocol
+
+**A message does not do harm by INTERRUPTING. It does harm by carrying
+authority and getting written down.** Measured: one orchestrator sent, twice in
+a single day, a factually WRONG justification for a step that was itself
+correct, and both would have landed in a ledger as fact. The recipients caught
+it; the orchestrator did not. Everything below follows from that sentence, and
+none of it is about how often anyone writes.
+
+**Every message from an orchestrator to a session or subagent it coordinates —
+an epic's manager to a ticket session, a plan's orchestrator to an implementer
+— carries exactly ONE mark, and the mark is the mechanism.** It is written as
+the first line of the message. The other direction carries no mark: authority
+runs one way, and a report, a correction or a handoff artifact travelling back
+up carries none of it.
+
+- **`Mark: instruction`** — the message states a BOUNDARY: what the recipient
+  may or may not do, where its work ends, which branch, base or artifact it
+  works with, which of two things goes first, when it stops. The sender owns
+  that boundary, or a written rule does, and the recipient can check it against
+  whichever of the two is claimed. A fact of the sender's OWN action, verifiable
+  by the recipient in a shared artifact — the fast-forward landed, at this SHA,
+  onto this branch — is an instruction too: the marking is BINARY and total, and
+  a message must never go out unmarked for want of a third mark.
+- **`Mark: conjecture`** — the message states a CAUSE or a prediction: why
+  something is happening, what a symptom means, what the recipient is about to
+  find, what would fix it. Nothing but the recipient's own measurement settles
+  it.
+
+The mark is written in English like every other AI-facing text and rendered to
+the user as *pokyn* and *domněnka* — the same translate-on-presentation split
+as `Ruling:` lines and the `NOW` block's state class (Language Contract).
+
+**A cause is ALWAYS a conjecture; a boundary MAY be an instruction.** "May",
+because a boundary the sender does not own — one that belongs to the user, or
+one a written rule decides differently — is a conjecture too. An UNMARKED
+message is read as a conjecture, and so is a message whose content contradicts
+its own mark: `Mark: instruction` over an explanation of a cause is a
+conjecture whatever its first line says.
+
+Three consequences, and they are why the mark exists at all:
+
+- **The recipient MAY refuse a conjecture, and refusing is NORMAL behaviour,
+  not friction.** It needs no permission and no round trip: name the conjecture
+  being refused, say what was measured instead, and carry on. This direction of
+  traffic is where the measured value sits — six agent → orchestrator
+  corrections in one day, every one of them substantive.
+- **A conjecture is NEVER written into the ledger as fact.** Either it is not
+  written at all, or it is written attributed and unverified ("the manager
+  believes X; unmeasured"). Once the recipient has measured it, what the ledger
+  records is the MEASUREMENT — never the message that predicted it.
+- **The recipient MUST refuse an instruction that contradicts a written
+  rule** — a rule of this contract, of the plan it is executing, or of the
+  skill it is running. It names the rule, states what it refused, does not
+  comply, and continues. The duty ends at the refusal: refusing and naming the
+  rule is the whole of it.
+
+**The measured case behind the cause rule, because without it the rule reads as
+general advice.** A warning about a `CS0246` error was delivered to a ticket
+session one minute before that session measured its baseline. It did not help:
+the session's own first step was a restore, so it never saw the symptom the
+warning described. It then hit a SECOND trap that presented the same way —
+another red build straight after the same merge, from a different stale
+artifact entirely — and had it applied the explanation it had been sent, it
+would have gone off repairing a restore that was perfectly fine. The step the
+message pushed for was right; the cause attached to it was wrong, and the cause
+is the half that travels into the next decision.
+
+**Relay timing is decided by IMMEDIACY, not by importance.** Send a change of
+premise immediately ONLY when the recipient is acting on that premise right
+now; otherwise hold it until a boundary — a point where that session reports
+anyway, the end of its current task or a phase boundary, whichever comes
+first. A change that matters enormously but
+touches nothing the recipient is doing this minute waits for the boundary, and
+a small change to the premise under its current step does not.
+
+**Two things are measured as actively harmful, so they are named rather than
+left to judgement.** The first is prodding a session that is WAITING ON A
+SUBAGENT: it cannot act until the subagent returns, so the message buys nothing
+and costs the interruption. The second is re-arming a "notify when idle" style
+subscription after every message — it overwrites its own slot in the
+subscription table, so the orchestrator ends up with one notification where it
+believed it had armed several. The rule that replaces it: **one live
+subscription per peer, renewed only after it has fired.**
+
+**Resynchronization is PULLED, never pushed.** "Go integrate the epic line" is
+a nudge and never a delivery guarantee: a ticket session merges its own
+effective base at every phase boundary itself, and merging the base in the
+MIDDLE of a task is forbidden (Base Sync & Drift Detection). A message
+therefore speeds the order up; it does not establish it, and no message
+legitimately produces a mid-task merge. An orchestrator that needs a session to
+stand on a newer base waits for that session's next phase boundary.
+
+**Every escalation band must have an ARTIFACT form, and a message is an
+acceleration over that artifact, never the artifact itself.** `SendMessage` and
+`ListAgents` are tied to a single harness and are used NOWHERE in this layer
+today, so a rule that lived only in a message would have no addressee at all on
+another one. The state therefore stands in an artifact every harness can read
+and write — a ledger row, the `NOW` block, the report at a phase boundary — and
+the message only gets it there sooner. What a harness without messaging loses is
+then SPEED, not correctness, which is what "fail-closed, not broken" means here.
+
+**Nothing in this section has a mechanical trigger, and its rules are listed one
+by one so that no skill writes them down as though a hook checked them.** It is
+measured in this project that a rule with no trigger gets broken even by its own
+author, so the status of each is stated instead of implied:
+
+- **Recommendations** — nothing detects a breach and nothing fails when one
+  happens: marking a message at all, the relay-timing rule, one live
+  subscription per peer, not prodding a session that waits on a subagent, and
+  "a nudge is not a delivery guarantee".
+- **A right of the recipient**, exercised by the recipient alone and never
+  granted message by message: refusing a conjecture.
+- **Duties of the recipient**, just as undetected and just as binding on it:
+  refusing an instruction that contradicts a written rule, and keeping a
+  conjecture out of the ledger as fact.
+- **A requirement on the DESIGN of an escalation band**, checked when the band
+  is written and never at runtime: that the band has an artifact form.
+- **One rule named here IS binding, and it is binding somewhere else:** the ban
+  on merging the base in the middle of a task belongs to Base Sync & Drift
+  Detection and holds whatever any message says. What this section adds about
+  it — that a nudge does not establish the order — is a recommendation; the ban
+  is not.
+
 ## Fail-Closed Behavior
 
 When anything important is missing or ambiguous:

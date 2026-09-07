@@ -11,8 +11,9 @@ allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(
 > Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
 > especially "Worktree Policy" (the pool-slot exception), "Workspace
 > Discipline" and its subsection on a pool slot's freedom being derived from
-> per-worktree signals only, "Publication Contract" and "Cross-Branch
-> Visibility".
+> per-worktree signals only, "Publication Contract", "Cross-Branch Visibility"
+> and "Message Protocol" — every message this skill sends to a ticket session
+> is governed there, marking included.
 
 # Command: mb-epic-run
 
@@ -188,15 +189,12 @@ skill's job.
 5. **A `Postup v plánu` cell says where to look, never what to do about it.**
    Two rules follow from the state class, both about the READER of this
    table, not about `pool-status.ps1`:
-   - **`čekám na subagenta` is not a reason to prod the session it names.**
-     Interrupting a session that is waiting on a dispatched subagent is one of
-     two things this layer has measured as actively harmful, and it is worth
-     stating as a rule only now: before this column existed, leaving a
-     waiting session alone was a matter of courtesy — nobody could tell a slow
-     subagent from a stalled one without opening the ledger. With `now.late`
-     computed, "still within its due time" and "past due" are for the first
-     time CHECKABLE, so leaving it alone is a decision made on evidence
-     instead of a guess.
+   - **`čekám na subagenta` is not a reason to prod the session it names**
+     (contract, "Message Protocol"). What this column adds is local: before it
+     existed, nobody could tell a slow subagent from a stalled one without
+     opening that slot's ledger. With `now.late` computed, "still within its
+     due time" and "past due" are for the first time CHECKABLE, so leaving the
+     session alone is now a decision made on evidence instead of a guess.
    - **The table decides where to look, never whether to integrate.** The
      contract fixes this boundary for the block itself (contract, section
      "The `NOW` Block") and it applies unchanged to this rendering: a
@@ -587,7 +585,10 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
 
   Then prompt the OTHER sessions to resynchronize: the epic line has moved, so
   every other ticket branch cut from it is now behind, and a ticket that
-  verified against the previous tip is no longer a fast-forward.
+  verified against the previous tip is no longer a fast-forward. **That prompt
+  is a nudge, not a delivery guarantee** (contract, "Message Protocol") — so it
+  is sent and the operation continues; no step here waits for a session to
+  act on it.
 
 **A STOP in this operation leaves the epic line exactly as it was**, which iron
 rule 11 makes trivially true for every step before Fast-forward by refspec.
