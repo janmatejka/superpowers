@@ -51,6 +51,12 @@ stejnou konfiguraci vždy stejnou odpověď.
   [`Test-UmsProtectedBranch.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsProtectedBranch.ps1),
   [`Get-UmsBaseCandidates.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsBaseCandidates.ps1),
   [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEffectiveBase.ps1),
+  [`Test-UmsHandoffGate.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsHandoffGate.ps1)
+  (brána předání — viz [architecture.md](architecture.md), sekce 3),
+  [`Get-UmsEpicLedger.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEpicLedger.ps1)
+  (čtení `## Ověřovací sada` ledgeru epiku po refu),
+  [`epic-gate.ps1`](../ums/.claude/skills/mb-epic-run/scripts/epic-gate.ps1)
+  (dvě epikové kontroly operace `integrate`, sekce 6),
   [`session-intent.ps1`](../ums/.claude/hooks/session-intent.ps1) (`SessionStart`
   hook, čtenář session intent batonu — viz [architecture.md](architecture.md),
   sekce Session Intent Baton), hook `bpmn-validate.ps1`.

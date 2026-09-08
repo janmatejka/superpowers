@@ -200,27 +200,50 @@ kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává kro
 - u všech tří variant (merge / PR / ponechat) nejprve `mb-harvest`, pak commit
   MB změn a push tiketové větve, teprve potom vlastní varianta,
 - **varianta 1 („Merge back to `<base-branch>` locally") se nahrazuje
-  integrací FF pushem tiketové větve na `<baseRef>`** — žádný lokální
+  integrací FF pushem tiketové větve na efektivní bázi** — žádný lokální
   `git checkout <base-branch>`, `git pull`, lokální merge ani `git branch -d`;
   tiketový workspace nemá lokální bázi, a i kdyby existovala, nemergne se.
-  Sekvence: base sync na této hranici fáze (`git fetch origin` + `merge
-  <baseRef>`) PŘED harvestem → harvest, commit a push → znovu `fetch` +
-  `merge <baseRef>` (báze se mohla mezitím pohnout) → zelená verifikace na
-  slouženém stromu → agent připraví lidský příkaz s výčtem odchozích commitů
-  — prostý `! git push origin HEAD:<baseBranch>`, refspecový tvar (integrace
-  pushuje tiketovou větev na bázový ref) a bez úniku, protože jde o
-  fast-forward na commity, které tato tiketová větev na `origin` už
-  zveřejnila a obsahové pravidlo `pre-push` hooku (sekce 3) takový push pustí
-  samo — → uživatel ho spustí → agent ověří dosažitelnost **z báze**
-  (`git merge-base --is-ancestor <sha> <baseRef>`, ne `git branch -r
-  --contains`, který by nahlásil ticketovou větev, kam už publikační pravidlo
+  **Jedna procedura pro každou efektivní bázi** — dodávkovou linii, servisní
+  větev řady i epikovou linii (sekce 3, „Epiková linie") — sedm fází, vždy
+  jmenovaných, nikdy číslovaných (kontrakt, Publication Contract,
+  „Integration"): **Sync** (`git fetch origin` + `merge <efektivní báze>`
+  PŘED harvestem; tahle fáze navíc rozhodne **domov deklarované ověřovací
+  sady** porovnáním cíle proti `epicBranchPattern` — shoda čte `##
+  Ověřovací sada` ledgeru epiku **po refu z jeho elaborační větve**
+  (`Get-UmsEpicLedger.ps1`, `git show <větev>:<cesta>` do git-ignorovaného
+  scratche — tiketová větev, odštěpená z epikové LINIE, ledger nenese),
+  neshoda ji čte ze stejné sekce vlastního `plan_<slug>.md`, nebo
+  `design_<slug>.md` u bounded položky bez plánu; chybějící sada v obou
+  domovech je fail-closed STOP) → **Harvest** (`mb-harvest`, commit, push) →
+  **Publish** (znovu `fetch` + `merge <efektivní báze>`, báze se mohla
+  mezitím pohnout, → push) → **Green verification** (deklarovaná sada
+  spuštěná doslovně a v deklarovaném pořadí na slouženém stromu — to, co
+  tahle fáze spustí, je to, co artefakt předání ocituje) → **Handoff gate**
+  (čtyři kontroly kontraktu jako jedna mechanická brána, po čerstvém
+  `git fetch origin`, proti čerstvě staženému tipu, nikdy proti tipu
+  zapamatovanému z fáze Sync — `Test-UmsHandoffGate.ps1`: dosažitelnost
+  čerstvé báze, kanonický IDLE `context.md` toho commitu — chybějící soubor
+  je STOP, ne IDLE —, dosažitelnost `<sha>` na `origin`, a textová shoda
+  citovaných příkazů s deklarovanou sadou) → **Handoff** (jeden artefakt —
+  cílová větev, SHA, výčet odchozích commitů, doslovné příkazy sady s
+  výstupem — se dvěma vykresleními, o kterých rozhoduje tatáž otázka jako ve
+  fázi Sync, „je efektivní bází epiková linie?": **není správce** → prostý
+  lidský příkaz `! git push origin HEAD:<baseBranch>`, refspecový tvar, bez
+  úniku, protože obsahové pravidlo `pre-push` hooku (sekce 3) takový
+  fast-forward pustí samo; **je správce** → zpráva správci epiku, který push
+  provede operací `mb-epic-run integrate` (sekce 6) pod výjimkou podle
+  aktéra) → **Confirmation** (tiketové sezení na vlastní větvi, ať push
+  provedl kdokoli, ověří dosažitelnost **z báze** —
+  `git merge-base --is-ancestor <sha> <efektivní báze>`, ne `git branch -r
+  --contains`, který by nahlásil tiketovou větev, kam už publikační pravidlo
   commit pushlo, a míjel by tak právě stav, který krok ověřuje),
 - push zamítnutý jako non-fast-forward = báze se pohnula mezitím, opakuje se
-  od fetchi; **strop dvě kola**, potom STOP a report uživateli,
+  od fáze Publish; **strop dvě kola**, potom STOP a report uživateli,
 - po ověřeném FF pushu do báze, s navázaným tiketem, `mb-jira-update` ve
-  finalizačním režimu (tiket přechází přímo do „Test", ruší se Flagged);
-  dokud FF push neproběhne, finalizace se zastaví na vlastní bráně
-  dosažitelnosti,
+  finalizačním režimu na tiketové větvi (tiket přechází přímo do „Test",
+  ruší se Flagged) — životní cyklus běží na větvi toho tiketu bez ohledu na
+  to, kdo push provedl; dokud FF push neproběhne, finalizace se zastaví na
+  vlastní bráně dosažitelnosti,
 - discard cesta neharvestuje: oba soubory páru jdou do `proposals/abandoned/`,
   `context.md` se resetuje, tento pohyb se commitne a pushne na tiketové
   větvi (stejně jako každý jiný commit) a teprve pak se lokální větev smaže —
@@ -528,6 +551,60 @@ subpříkazem i v argumentech. Pojmenované mezery, které nechytí: `bash -c
 ostatní subpříkazy zůstávají fail-open. Skutečným backstopem proti
 odhodlanému obejití zůstává ochrana větví na serveru.
 
+### Epiková linie
+
+Normativní zdroj: kontrakt v2.18, sekce **The epic line** (Repository
+Configuration). Epik dostává **dvě větve** s odlišnými rolemi: **epikovou
+linii** (`epic/<KLÍČ-EPIKU>`, kódová integrační větev — efektivní báze
+každého tiketu odštěpeného pro tento epik, nese kód i sklizené MB dokumenty
+těch tiketů) a **řídicí větev** (existující elaborační větev
+`mb-epic-elaboration`, nese ledger, graf a předběžné návrhy, nikdy pin
+ACTIVE — elaborace je definovaná jako práce bez pinu). Epiková linie
+integruje o úroveň dál, do **dodávkové linie** — sdílené větve, kam epik
+nakonec dodává a kam by každý jeho tiket integroval i bez epikové linie.
+
+Epiková linie **patří mezi `protectedBranches`**, takže invariant
+„integrační větev je vždy chráněná větev" pro ni platí doslova a obě
+vynucovací vrstvy výše ji hlídají obvyklou cestou. **`epicBranchPattern`
+(`ums-repo.json`) neřídí ochranu** — jeho jediná práce je výjimka podle
+aktéra v `guard-git-push.mjs`, která agentovu vlastnímu tool-callu dovolí
+fast-forward na takovou větev; chybějící, prázdná nebo nečitelná hodnota
+znamená **žádnou výjimku**, nikdy „každou větev" — stejná degradace
+k bezpečnější straně jako u ostatních klíčů. Výjimka platí jen když
+**všechny čtyři podmínky** drží zároveň: cíl odpovídá `epicBranchPattern`;
+cíl JE chráněný; cíl NENÍ větev odvozená z `baseRef` (repozitářový
+konfigurační klíč, ne efektivní báze — ani `pre-push`, ani
+`guard-git-push.mjs` pracovní položku v okamžiku vyhodnocení nemají po
+ruce, takže jiná bázová hodnota než `baseRef`ova zůstává mimo tuhle
+podmínku a kryje ji místo toho eskalační dno níž); zdrojem refspecu je
+**surové 40znakové hex SHA** — nikdy `HEAD`, jméno větve, ani chybějící
+zdroj (pojistka proti tomu, že `git switch -c` z `origin/epic/<KLÍČ>`
+nastaví upstream nové větve na epikovou linii, měřeno — bez
+`--unset-upstream` by holý `git push` mohl mířit tam; samotný holý push ale
+stejně zastaví `push.default=simple` a obsahové pravidlo `pre-push`, ne
+tahle výjimka). Model hrozby je vysloven: pattern brání **omylu, ne
+úmyslu**, stejně jako zbytek kontraktu (`MB_HUMAN_PUSH` je taky pravidlo, ne
+mechanismus); čtení hodnoty z báze místo z pracovního stromu bylo zváženo a
+zamítnuto jako složitost bez přínosu za tohoto předpokladu — proto zůstává
+změna `epicBranchPattern` nebo `protectedBranches` v eskalačním dně (sekce
+6), bezpodmínečně u člověka.
+
+Tím vzniká **třetí kategorie** vedle „co smí být bází" — „chráněná větev, do
+které agent smí pushovat" — na menším a lépe hlídaném místě, v aktérské
+vrstvě místo ve volbě báze. Licencuje ji **jediný výstup**: epiková linie se
+dostává do dodávkové linie jen lidským fast-forward pushem (stejná dvě
+zaklínadla jako výše), takže moment integrace do dodávkové linie zůstává
+lidský bez ohledu na to, kdo psal kód uvnitř epikové linie. Epiková linie
+**vzniká jen tam, kde tikety epiku nejsou samostatně dodatelné** do
+dodávkové linie — kde jsou, integruje každý tiket sám, jako dnes — a
+**zakládá ji člověk**: první publikace (`remote_sha` nula) obsahové
+pravidlo `pre-push` vždy zamítne, takže agent ji založit nemůže; hook u ní
+nabízí tvar s únikovou proměnnou, ne prostý integrační tvar. Po východu
+epiku se **maže** (lidský úkon; mazání přes push zůstává zakázané pro
+každou větev) — jinak by seznam chráněných větví rostl donekonečna a
+`Get-UmsBaseCandidates` nabízel cizí epikovou linii jako bázi nesouvisející
+práci.
+
 Zapojení do zbytku vrstvy: `mb-jira-update` finalizace se spouští přímo
 ověřeným FF pushem do báze; overlay `finishing-a-development-branch`
 nahrazuje Option 1 integrací FF pushem (výše) místo publikace lokálního
@@ -791,6 +868,145 @@ tělo skillu (jedenáct železných pravidel — nikdy `cd` do slotu, nikdy
 zapisující git příkaz ve slotu, nikdy žádný zápis do slotu, nikdy spawn bez
 kolizní kontroly, STOP nechá slot přesně tak, jak ho našel, `integrate` nikdy
 nemerguje, …), ne `allowed-tools`.
+
+**Správce a tiketový agent sdílejí jednu proceduru integrace** (sekce 3,
+Overlay 3) a liší se jen ve vykreslení artefaktu předání; správcova strana
+je operace `integrate` výše. Mandát správce je **pozornost, průřezová paměť
+a pořadí fronty** — rozhodovací pravomoc má jen tam, kde nic mechanického
+stát nemůže. **Integrace je fronta, ne merge**: když dva tikety ověří proti
+témuž tipu epikové linie a první se integruje, druhý přestává být
+fast-forward a musí se resynchronizovat a ověřit znovu — proto instrukce
+„dokonči a integruj" drží správce vždy jen u jednoho tiketu najednou.
+
+**Registr rozhodnutí** je sekce `## Registr rozhodnutí` evidenčního ledgeru
+epiku ([`ledger-template.md`](../ums/.claude/skills/mb-epic-elaboration/ledger-template.md),
+parsuje ji pozičně `epic-gate.ps1` i `ledger-status.ps1`; normativně
+kontrakt, „The epic line"). Řádek nese tvrzení o chování nebo faktu
+**cizího** tiketu, na kterém staví rozhodnutí vlastníka řádku — zakládá ho
+elaborační okno, které to rozhodnutí přijalo, ne ten, kdo si na souvislost
+později vzpomene, což je mechanika nahrazující jediný měřený záchyt tohoto
+druhu nálezu v celé předloze návrhu. Sloupec `Druh` (`text` nebo `chování`)
+určuje, čím se řádek smí uzavřít — čtením, nebo testem, který dané chování
+tvrdí; sám o sobě to nekontroluje žádná brána (SHA je SHA, nic v commitu
+nerozliší test od pouhého čtení), je to povinnost toho, kdo SHA dodává.
+Potvrzuje ho **tiket jmenovaný ve sloupci „Předpokládá o (tiket)"** vlastní
+SHA — vlastník řádku je jen kontext k nahlášení, nikdy aktér, na kterého se
+čeká, protože jeho sezení může být už dávno hotové a zavřené. **Nepotvrzený
+řádek jmenující integrující se tiket je mechanická zábrana fast-forwardu**
+(kontrola `decision-ack` operace `integrate`), vedle vazby fast-forwardu na
+vlastní epik (kontrola `spawn-epic` — hlavička ledgeru `- **Epic:**` i řádek
+`Rozjetí` toho tiketu musí patřit stejnému epiku). Sdílejí-li dva tikety
+rozhraní, epiková linie nese navíc jeho **stub, commitnutý dřív, než proti
+němu kterýkoli tiket implementuje** — autoruje ho tiketová session
+(vlastník rozhraní, nebo tiket založený pro tento účel při elaboraci), na
+epikovou linii ho fast-forwarduje správce stejnou cestou jako cokoli jiné.
+Dělá to z překladače orákulum: pozdější nesoulad vyjde najevo jako TEXTOVÝ
+konflikt, který git ukáže, ne sémantický, který projde review na obou
+větvích zvlášť a spadne až při jejich setkání.
+
+**Ověřovací sada** epiku je sekce `## Ověřovací sada` téhož ledgeru —
+doslovný výčet příkazů v jednom ohraničeném bloku, deklarovaný jednou pro
+celý epik, aby všechny jeho tikety měřily totéž „zelené"; mimo epik nese
+stejnou sekci ve stejném tvaru plán práce, nebo `design_<slug>.md` u
+bounded položky bez plánu. Domov se volí ve fázi Sync porovnáním cíle proti
+`epicBranchPattern` (sekce 3, Overlay 3), nikdy v samotné bráně předání;
+chybějící sada v obou domovech je fail-closed STOP při první integraci.
+
+**Čtyři třídy konfliktu nebo červeného buildu po mergi, a kdo je vlastní**
+(kontrakt, „Escalation & Autonomy"): rozhodující otázka je jediná — „čí
+zapsané rozhodnutí by se muselo změnit, aby to fungovalo" — a je záměrně
+jiná než „čí je to soubor", protože sdílený `.csproj` je na cestě všech.
+Třídy **1** (prostředí — nezmění se ničí rozhodnutí, jen strom je zastaralý)
+a **2** (slití — řešením je „nech obojí") a **4** (vlastní vada) hlásí ten,
+kdo mergoval, běžným hlášením na hranici fáze; třída 1 má navíc **operaci,
+ne úsudek** — první reakcí na červený build po mergi je vždy restore
+a čistý rebuild, a teprve co to přežije, je nález vůbec k posouzení. **Třída
+3** (rozhodnutí souseda — muselo by se změnit cizí zapsané rozhodnutí, nebo
+bylo nepravdivé) blokuje bezpodmínečně a hlásí se **okamžitě**; kdo merguje,
+nikdy needituje kód mimo rozsah vlastního plánu, aby merge zezelenal, a
+nosičem rulingu nad ní je vždy **artefakt** — registr rozhodnutí a hint
+zapsaný do `design_<slug>.md` dotčeného tiketu — nikdy jen zpráva.
+
+**Eskalace má tři pásma, dvě z nich pevná.** Dno (vždy člověk, žádná úroveň
+autonomie to nezvedá): publikace do dodávkové linie, nevratná nebo
+destruktivní operace, bezpečnostně citlivá akce, volba báze, která není
+chráněná větev, a **změna `epicBranchPattern` nebo `protectedBranches`** —
+poslední řádek není nedůvěra k agentovi, jen odmítá číst rozšíření
+autonomie jako licenci tuhle konfiguraci posunout. Vždy správce (dolů to
+nejde, protože přesně tohle se sundávalo z člověka): pořadí a fronta
+integrací, pokyny k resynchronizaci a průřezový relay. **Přesouvatelné
+pásmo je ta jediná veličina, kterou operátor nastavuje** — nález třídy 3,
+rozpor rozsahu nebo vlastnictví mezi tikety, vada plánu (každá cesta vpřed
+je hádání), změna zadání tiketu — a řídí ho tři pojmenované úrovně
+autonomie: `dohled` (všechno z pásma jde k člověku, správce jen koordinuje),
+`sdílená` (výchozí — správce rozhoduje rozpory rozsahu, nálezy třídy 3
+a vady plánu; změna zadání tiketu jde k člověku) a `delegovaná` (správce
+rozhoduje i změnu zadání a reportuje ji). Epik ji deklaruje **jednou**
+v hlavičce ledgeru (`- **Autonomie:**`, chybí-li, platí `sdílená`); sloupec
+`Autonomie` řádku `Rozjetí` ji pro jeden tiket přepisuje, `—` znamená bez
+přepsání. Sezení hodnotu **tahá** z commitnutých dokumentů — správce do
+slotu nezapisuje nic, stejné pravidlo jako u řádku záměru `spawn`. Pokyn,
+který odporuje psanému pravidlu, není eskalace, je to **vyhledání**:
+příjemce ho odmítne a odkáže na pravidlo; jen skutečná nejednoznačnost
+pravidla jde k člověku, nikdy ke správci, který je v tom sporu stranou.
+
+**Zprávy mezi správcem a tiketovou session nesou jednu značku** (kontrakt,
+„Message Protocol"; AI-facing anglicky, `Mark:` na prvním řádku zprávy, do
+uživatelského textu se překládá jako *pokyn* / *domněnka* — stejný
+translate-on-presentation vzor jako řádky `Ruling:` a stavová třída bloku
+`NOW` níž): `instruction` pro hranici, kterou odesílatel vlastní — i fakt
+vlastní akce ověřitelný ve sdíleném artefaktu, „přistálo, na tomto SHA", je
+instrukce — `conjecture` pro příčinu nebo predikci. Příjemce **smí odmítnout
+domněnku** bez svolení a bez zdržení a **musí odmítnout pokyn**, který
+odporuje psanému pravidlu; domněnka se do ledgeru nikdy nezapisuje jako
+fakt, jen jako atribuovaná a neověřená. Relay běží podle **bezprostřednosti,
+ne důležitosti** — okamžitě jen když příjemce právě jedná podle měněné
+premisy, jinak čeká na hranici fáze. Resynchronizace je **tažená, ne
+tlačená**: „integruj si epikovou linii" je pobídka, ne doručovací záruka —
+tiketová session si efektivní bázi merguje na hranici fáze sama a merge
+uprostřed tasku kontrakt zakazuje. Nepobízet sezení, které čeká na
+subagenta, a jeden živý odběr `notify_when_idle` na peera jsou z praxe
+měřené jako škodlivé samy o sobě. Pravidla téhle sekce nemají mechanickou
+spoušť (mimo právo odmítnout domněnku a povinnost odmítnout rozporný pokyn)
+a jsou v kontraktu záměrně označená tak, aby je implementátor nezapsal do
+skillu, jako by je hlídala brána.
+
+**Blok `NOW`** žije na začátku `.superpowers/sdd/<plan-basename>/progress.md`
+(git-ignorovaný scratch SDD), přesně jeden pár strojových značek na ledger —
+**není druhý Session Intent Baton**: baton nese, co má po restartu UDĚLAT
+nové sezení, blok nese, na CO SE ČEKÁ právě teď. Šest povinných řádků
+`Klíč: hodnota` v pevném pořadí: `State` (uzavřený výčet čtyř tříd —
+`stalled`/stojím, `waiting-for-subagent`/čekám na subagenta,
+`waiting-for-human`/čekám na člověka, `waiting-for-manager`/čekám na
+správce; `mb-epic-run status` je při renderu překládá do češtiny — to je
+přesně ta dvojznačnost `idle`, kterou správce v praxi čtyřikrát odhadl
+špatně), `Waiting on` (konkrétně pojmenované, nikdy nálada), `Since`/`Due`
+(ISO-8601 UTC; `Due` čte `pool-status.ps1` a **počítá** z něj sloupec „po
+termínu" — psaná pozdní hodnota by byla fakt, jehož jediný domov je tady,
+a je zakázaná), `Task` (číslo a název z tabulky tasků plánu, oddělené
+pomlčkou) a `Look at` (cesty a git refy oddělené `; `, jen ukazatele, nikdy
+domov faktu). Přepis je operace **smaž celou oblast, pak rekonstruuj** ze
+zdrojů, které nedriftují (`git log`, tabulka tasků plánu, index rulingů
+ledgeru) — nikdy „napiš to znovu" nad viditelným textem, protože do prázdné
+oblasti není k čemu připisovat; nutná podmínka rekonstrukce je, že **blok
+nesmí být jediným domovem žádného faktu**. Ohraničení je strojové
+(komentářové značky), ne nadpis — próza uvnitř, která vypadá jako nadpis,
+nic nemění, což je přímá oprava měřeného selhání. Druhý úplný pár značek
+kdekoli v souboru i vnořený začátek dělají blok malformovaný a malformovaný
+blok se čte přesně jako nepřítomný — nikdy jako chyba, protože dva páry
+neumí žádný čtenář rozhodnout, který je aktuální. Čtenář (`pool-status.ps1`
+v cizím pracovním stromě, `mb-epic-run status` do kontextu správce) dědí
+bezpečnostní pravidla Session Intent Batonu: uzavřený formát, parsuje
+a znovu vykresluje místo doslovného výpisu, ořízne velikost, odmítá podle
+znakové třídy — a totéž platí na cokoli jiného, co čtenář z toho ledgeru
+vytáhne, ne jen na blok samotný. Blok rozhoduje **kam se podívat, nikdy
+jestli integrovat** — fast-forward stojí na bráně předání a na kontrolách
+`integrate`, nikdy na tom, co blok tvrdí (měřené selhání: blok jednou tvrdil
+běžící review hodiny poté, co se review vrátilo se čtyřmi nálezy Critical).
+Blok existuje jen po dobu SDD exekuce plánu — `pool-status.ps1` ho renderuje
+jen dokud slot nese ACTIVE pin; v brainstormingu, psaní plánu, design
+review a celém dokončování včetně integrace blok **neexistuje** a čekání se
+jmenuje jen v hlášení (sekce „Eskalace" výše, první operační pravidlo).
 
 ## 7. Vendoring a nasazení
 

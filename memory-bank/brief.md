@@ -99,6 +99,18 @@ místě a strojově ověřené spuštění sezení na vybraný tiket do volného
 uživatel dřív tuto mechaniku dělal ručně a tři z pěti pokusů selhaly
 mechanicky, aniž to bylo poznat na první pohled.
 
+Práce rozjetých tiketů se skládá dohromady na **epikové lince**
+(`epic/<KLÍČ>`, kódová integrační větev epiku) — vzniká, jen když tikety
+epiku nejsou samostatně dodatelné do sdílené větve, a agent do ní smí
+výhradně fast-forwardovat; jediný lidský úkon zůstává její založení a
+zánik po východu epiku. Tiketové sezení a správce epiku (sezení držící
+elaborační větev) prochází stejnou integrační procedurou jako práce mimo
+epik, liší se jen v tom, komu se práce předává. Konflikty mezi sousedními
+tikety a nálezy, které patří jednomu tiketu, ale mění cizí rozhodnutí, řeší
+mechanický registr rozhodnutí v ledgeru epiku a eskalační tabulka se třemi
+úrovněmi autonomie — ne paměť správce (mechanika viz
+[architecture.md](architecture.md), sekce 6).
+
 ## Podporované harnessy
 
 Obsah vrstvy je přenositelný — kontrakt, `mb-*` skilly, overlay fragmenty

@@ -45,7 +45,9 @@ Konvence, které nová sada musí dodržet:
   text citující `--no-verify`, únikovou proměnnou (`MB_HUMAN_PUSH=1`) nebo
   tvar `git push` — report, sonda nad guardem, ledger, dokument o guardu —
   zapiš nástrojem na zápis souboru (Write), ne jako literál v parametru
-  Bash/PowerShell toolu.**
+  Bash/PowerShell toolu.** Druhý, nezávislý spouštěč téhož pravidla je
+  VELIKOST: přes zhruba sto řádků payloadu napiš skript do souboru a spusť
+  ten soubor, ať obsahuje cokoli.
   Proč: bezpečnostní hlídka nástroje blokuje `--no-verify` jen v LITERÁLNÍM
   textu vlastního parametru příkazu, ne v obsahu skriptu, který nástroj
   pouze spouští — týž flag uvnitř dot-sourcovaného/spuštěného `.tests.ps1`
@@ -54,7 +56,13 @@ Konvence, které nová sada musí dodržet:
   reportu citujícího přepínač guardu, sonda nad guardem posílaná jako
   literál, i markdownová tabulka s příkazy `git push …`, kde escapovaný
   `\|` hned za `git push` guard přečetl jako jméno remote a zamítl push se
-  zapsaným reportem samotným.
+  zapsaným reportem samotným. Na velikosti totéž padlo zvlášť:
+  `python - <<'PYEOF' … PYEOF` s ~200řádkovým payloadem zemřel ještě před
+  Pythonem na `/usr/bin/bash: -c: line 134: unexpected EOF while looking for
+  matching '` (exit 2), přestože týž tvar v tomtéž sezení opakovaně fungoval
+  na 20–40řádkových payloadech; identický skript zapsaný do
+  `.superpowers/scratch/edit_overlay.py` a spuštěný jako soubor prošel
+  napoprvé a zůstal znovuspustitelný, když v něm aserce selže.
 - Testovací Memory Bank dokumenty ukládej pod `tests/fixtures/`.
   Proč: indexace MB dokumentů tuto cestu vylučuje, takže fixtury nespadnou do
   indexu ani do kolizních nálezů.
@@ -80,22 +88,61 @@ Konvence, které nová sada musí dodržet:
   dormantní větev. Naopak dva jiné případy (symref `origin/HEAD`,
   `-BranchGlob`) prošly i proti neopravenému skriptu, protože je řešil jiný,
   existující mechanismus — takové asercie oddělit jako zámek, ne jako důkaz.
+- **Že mutace opravdu proběhla, nikdy neodvozuj z výsledku sady — udělej ji
+  sebedokazující.** Vypiš cílový řádek před smazáním, smaž ho podle ČÍSLA
+  ŘÁDKU (krátkým Python snippetem, ne `sed`em se shellově escapovaným
+  regexem) a teprve po `grep -c` s výsledkem 0 spusť sadu. Kotva mutace musí
+  být VÍCEŘÁDKOVÝ kontext jedinečný v souboru — před psaním kotev každou
+  grepni a vyžaduj počet 1 —, a harness musí `throw` jak na minutí kotvy, tak
+  když se mutovaný text rovná původnímu.
+  Proč: řetěz `grep -n <vzor> $F && sed -i <výraz> $F && pwsh …` se přerušil
+  na `grep`u, který pod escapingem Bash toolu nematchl; sada běžela nad
+  NEMUTOVANÝM souborem a nahlásila `353 passed` — což se čte přesně jako
+  nález „tenhle řádek nic nehlídá". Druhá půlka měřena zvlášť: jednořádková
+  kotva `if ($t.Length -gt $LedgerMaxRender) { ... }` se v `pool-status.ps1`
+  vyskytuje dvakrát (grep count 2) a `String.Replace` mutuje KAŽDÝ výskyt,
+  takže jedno kolo by odebralo obě hlídky naráz a každá by vypadala, že ji
+  kryje ta druhá. Hlídkové řádky jsou krátké a napříč sesterskými funkcemi se
+  opakují konstrukcí.
 - **Negativní běh rozděl do TŘÍ kategorií, ne dvou: zčervenalo, zůstalo
   zeleně v obou bězích (regresní zámek), a NEPROVEDENO** (vše za bodem
   přerušení v transkriptu). Bod přerušení vyčti z transkriptu, než
   kategorizaci napíšeš, a asercii, která zezelenala jen proto, že mutace
   vyprázdnila kolekci a testovaná vlastnost je „nic v ní není", neoznačuj
-  za zámek.
+  za zámek. Kategorii NEPROVEDENO ale hlavně nevyráběj: v sadě, kterou máš
+  v plánu mutovat, sahej na KAŽDÉ pole možná nepřítomného objektu přes
+  guardovaný accessor sady, nikdy přímým `.Pole` na výsledek hledání — právě
+  ten objekt mutace odstraňuje. Sbírej přes
+  `"$(@(… | ForEach-Object { $_.Pole }) -join ' ')"` (pole + `-join`
+  + interpolace dá `''`, když nic nematchlo), ať aserce zčervená místo aby
+  hodila výjimku.
   Proč: šest asercí za bodem `IndexOutOfRangeException`/přístupu na
   nulovou vlastnost se v obou sadách nikdy nevykonalo, přesto byly zprvu
-  popsány jako „zůstaly zelené" regresní zámky.
+  popsány jako „zůstaly zelené" regresní zámky. Týž tvar pak sadu ukončil
+  dvakrát: `Assert-Match (($r.Checks | Where-Object { $_.Name -eq
+  'context-missing' }).Detail) …` spadl pod `Set-StrictMode` na
+  `handoff-gate.tests.ps1:48` bez souhrnného řádku a poslední aserce souboru
+  se NEPROVEDLA; jinde přímé `$slot.reasons` pod mutací shodilo tři asercie
+  případu a celý pozdější případ, takže první čtení podhodnotilo dopad mutace
+  (2 červené, ve skutečnosti 4). Sada, která uprostřed umře, za bodem smrti
+  neměří nic.
 - **Po negativitě, kde brief jmenuje konkrétní počet/název asercí, které
-  mají zčervenat, ověř PO běhu, jestli nezčervenaly i jiné asercie testující
-  STEJNOU vlastnost na jiné fixtuře.** Rozdíl proti briefu není chyba — je
-  to úplnější důkaz; report ho vysvětli, ne zamlč.
+  mají zčervenat, ověř PO běhu, jestli zčervenaly právě ony — a to v OBOU
+  směrech.** Zčervenalo-li jich VÍC (typicky jiné asercie testující STEJNOU
+  vlastnost na jiné fixtuře), není to chyba, ale úplnější důkaz; report ho
+  vysvětli, ne zamlč. Zčervenalo-li jich MÍŇ, je mezi nimi alibi fixtura:
+  případ, který prochází už PŘED opravou, protože ho odmítne jiná, starší
+  podmínka. Nová kontrolní fixtura proto NIKDY nedědí konfiguraci sousedního
+  bloku — odvoď ji znovu z toho, kterou podmínku má nová aserce nechat
+  rozhodnout.
   Proč: mutace „odstranění `if (Test-Path …)` větve" zčervenala 5 asercí
   místo briefem jmenovaných 2 — kaskáda přes změněné `$e.Ref` a shodný
   scénář IDLE, který testuje tutéž přednost `Báze` řádku na jiné fixtuře.
+  Opačným směrem: kontrolní fixtura zděděná s `epicBranchPattern: "epic/*"`
+  po sousedních epikových fixturách dala RED `2/353` místo očekávaných
+  `3/353` — vzor sám odmítne `develop`, takže se fixtura k testované bázové
+  podmínce vůbec nedostala a deny půlka procházela už před opravou; odhalilo
+  to jen čtení, KTERÉ asercie zčervenaly.
 - **Prázdný `git diff` po obnově souboru z negativity-checku nic
   nedokazuje, pokud je soubor `??` (netrackovaný).** Před spoléháním na
   tuto kontrolu ověř `git status --short` na dané cestě; je-li netrackovaný,
@@ -126,11 +173,45 @@ Konvence, které nová sada musí dodržet:
   varianty vypadají v diffu identicky.
 - **Před psaním indexových guardů spusť mutaci a přečti, KTERÝ index selže
   první — guarduj celou kolekci, kterou mutace zasahuje, ne jen indexy,
-  které review vzorkovalo.**
+  které review vzorkovalo.** Redundantní `Count -ge N` u indexu NECH i tam,
+  kde ho řádkový filtr garantuje, a napiš do komentáře, že je redundantní
+  a proč: teprve pak dá mutace toho filtru čitelný report s červenými právě
+  jeho vlastními asercemi. Mutaci ověř oběma směry.
   Proč: mutace `%(refname:lstrip=3)` → `%(refname:short)` vyprázdnila
   seznam kandidátů od první skupiny asercí (řádek 46), sedm řádků před
   dvěma indexy, které review jmenovalo (53, 57); guard jen jmenovaných
-  řádků by sadě nedovolil ohlásit vlastní selhání.
+  řádků by sadě nedovolil ohlásit vlastní selhání. A mutace řádkového filtru
+  zpět z `Count -ge 6` na `-ge 4` nezčervenala ani jednu ze dvou asercí
+  o filtru: čtyřbuňková řádka došla k novému `$s[5]`, `Set-StrictMode` hodil
+  `IndexOutOfRange`, skript skončil exitem 1 BEZ reportu a zčervenalo pět
+  asercí, tři z nich o úplně jiných řádcích — kolo o filtru nedokázalo nic.
+- **Zúžení řádkového filtru nad artefaktem, který už má instance v terénu,
+  potřebuje detektor migrace A pojmenovanou hlášku pro každou zahozenou
+  řádku.** Vkládáš-li sloupec do pozičně parsované tabulky, filtruj na
+  `Count -ge <počet buněk, které report opravdu čte>` a spáruj to
+  s kontrolou uzavřeného slovníku nad NOVOU buňkou; napiš fixturu, která
+  nese řádku z doby před sloupcem. Zároveň si nech předfiltrovanou kolekci
+  a pro každou odfiltrovanou řádku vypiš vlastní hlášku, na kterou pak
+  asertuješ. Otázka na nový filtr není „nechá správné řádky", ale „co uvidí
+  čtenář u těch, které zahodí" — a ve strojově čteném reportu, ze kterého
+  jiné sezení rekonstruuje stav, je „nic" jediná odpověď, která nesmí být
+  možná.
+  Proč: tři kandidátní filtry porovnány proti reálným fixturám — `-ge 7`
+  (vyžadovat plný nový tvar) tiše ZAHODÍ každou starou řádku, `-ge 4`
+  (nechat beze změny) přečte její volnou prózu jako hodnotu uzavřeného
+  slovníku; teprve `-ge <čtené buňky>` plus slovníková kontrola udělá
+  z legacy řádky pojmenovanou, tiketem identifikovanou nesrovnalost. A i se
+  správným filtrem (`-ge 4` → `-ge 6`) šlo o regresi: čtyřbuňková řádka se
+  přestala vykreslovat, počet sekcí tiše klesl ze 3 na 2 a v sadě si toho
+  nevšimlo NIC, protože každá aserce se ptá, co report UKAZUJE.
+- **Negativní asercii piš na KLÍČ PLUS token jedinečný pro testovanou
+  sekci** (`'UMS-5003.*rozjeto'`), nikdy na identifikátor, který legitimně
+  stojí i v jiných sekcích téhož reportu; před napsáním aserce si na ten
+  identifikátor projdi celý text reportu.
+  Proč: `Assert-NotMatch $out 'UMS-5003'` mělo dokázat, že spawn řádka
+  z reportu zmizela — kód byl zelený, aserce červená: tiket je zároveň
+  ČLENEM ledgeru a objevuje se v seznamu členů, což aserce od spawn řádky
+  nerozliší.
 - **Podmíněný důkazní/kontrolní krok (proběhne jen když to vstup/konfigurace
   umožní) drž na TŘECH stavech, ne dvou** (`$null` = neproběhlo), a jeho
   přeskočení VŽDY ohlas vlastní poznámkou odlišenou od potvrzení. Do
@@ -155,25 +236,40 @@ Konvence, které nová sada musí dodržet:
   odvozením z briefu, review nebo z toho, že jiné pravidlo to naznačuje — a
   testuj na případu, kde má detektor NĚCO najít, ne na tom, kde má vrátit
   prázdno. Negativní běh je jako důkaz bezcenný právě tam, kde je „nic" i
-  legitimní stav (IDLE, čistý strom, žádné nálezy).
+  legitimní stav (IDLE, čistý strom, žádné nálezy). Totéž platí o tests-first
+  RED běhu: zavádí-li vlna nový PARAMETR nebo cokoli, co může shodit samotnou
+  invokaci, vypíchni zelené asercie toho běhu zvlášť a důkaz jim seber
+  z mutace. Levná kontrola je aserce na exit kód plus jedna POZITIVNÍ hodnota
+  ve stejném běhu — selhala-li pozitivní s `got ''`, skript vůbec neprodukoval
+  výstup a žádná zeleň toho běhu není důkaz.
   Proč: brief tvrdil dvě kotvy na jednom řádku; `--` uvnitř slugu se čte
   jako dvě pomlčky, ale je to jedna kotva — a `grep -c ACTIVE` na bázové
   `context.md` (IDLE) vrátil `0`, což je i správná odpověď na IDLE; teprve
   běh proti scratch větvi se skutečným pinem ukázal také `0` — grep je
-  slepý v obou stavech.
+  slepý v obou stavech. V RED běhu `24/91 FAILED` bylo z 39 nových asercí
+  15 ZELENÝCH — právě ty, jejichž očekávaná hodnota je `$null`, `''` nebo
+  „žádný blok": nové případy předávaly parametr, který ještě neexistoval,
+  `pwsh` invokaci odmítl, žádný JSON nevznikl a null-safe accessory vrátily
+  `$null`. Běh měřil „skript neběžel", ne „hlídka funguje".
 - **Počty asercí v dokumentaci vždy získej spuštěním CELÉ sady ve stejném
   sezení jako úpravu**, nikdy aritmetikou nad čísly z review nebo staršího
   zápisu. Nové číslo rekonciliuj proti předchozímu přes delty, které jsi sám
   zavedl. Součet per-sadových čísel nech spočítat strojově
   (`… | grep -Eo '^[0-9]+ passed' | awk '{s+=$1} END {print s}'`), nikdy
   ručně v hlavě — a počet sad, přes které sčítáš, ber z `find ums -name
-  "*.tests.ps1" | wc -l`, ne z vlastního seznamu dávek.
+  "*.tests.ps1" | wc -l`, ne z vlastního seznamu dávek. Když se čerstvý běh
+  rozchází s baseline, kterou tvrdí brief, autoritou je vlastní report
+  BEZPROSTŘEDNĚ předcházejícího tasku, ne brief — brief tu baseline jen
+  restatuje a mezi napsáním plánu a během tasku zestárne.
   Proč: všechna čísla byla před vlnou správná, ale vlna přidala 16 asercí;
   spuštění všech 13 sad dalo 564 a delty (+4/+2/+3/+7) přesně sedly na
   rozdíl. Ruční součet stejných šestnácti (naměřených, správných) čísel dal
   693 místo správných 716 — chybu odhalily až delty proti předchozímu kolu;
   jinde vlastní seznam dávek tvrdil 15 sad, výpis smyčky jich uvedl 16
-  a `find` jich napočítal 17.
+  a `find` jich napočítal 17. A jinde brief tvrdil baseline 1384, strojový
+  součet dal 1366 a delta z jediné vlastní změny (`handoff-gate.tests.ps1`
+  18→32, net +14) vedla na 1352 — přesně to číslo, které jako svůj vlastní
+  výsledek smyčky zaznamenal report předchozího tasku.
 - **Fixture repo pro testy nad stářím/aktivitou commitu nastavuj datem
   vyjádřeným jako věk ve dnech vůči času vytvoření fixtury**
   (`GIT_AUTHOR_DATE` i `GIT_COMMITTER_DATE`), ne absolutním datem —
@@ -189,14 +285,16 @@ Konvence, které nová sada musí dodržet:
   ho nahradil za loader z fork copy, instalátor spadl na chybu
   a nesouvisející test syncu zčervenal o dvě asercie dál.
 - **Vkládání nového testu „na konec, před `Complete-Tests`" do velké
-  `.tests.ps1` sady se sdílenou fixturou ověř dvojmo: (1) jsou pomocné
+  `.tests.ps1` sady se sdílenou fixturou ověř trojmo: (1) jsou pomocné
   funkce, které chceš použít, v tom bodě souboru už definované** (funkce
-  se v PowerShell skriptu musí objevit textově před prvním voláním), **a
-  (2) žije v tom bodě sdílená fixtura ještě A má historii, kterou scénář
+  se v PowerShell skriptu musí objevit textově před prvním voláním),
+  **(2) žije v tom bodě sdílená fixtura ještě A má historii, kterou scénář
   předpokládá** (grep na poslední `Remove-Item -Recurse -Force $root`/
-  `$work` před cílovým místem). Když sdílená fixtura nevyhovuje, použij
-  existující fixture-helper (`New-PushFixture` a obdoba) místo ohýbání
-  testu na zastaralý stav sdílené fixtury.
+  `$work` před cílovým místem), **a (3) nemutuje něco mezi stavbou fixtury
+  a tvým místem vložení stav, který chceš znovu použít** — fixtura se
+  v takové sadě nejen staví, ale i uprostřed souboru posouvá. Když sdílená
+  fixtura nevyhovuje, použij existující fixture-helper (`New-PushFixture`
+  a obdoba) místo ohýbání testu na zastaralý stav sdílené fixtury.
   Proč: instrukce „přidej na konec souboru, před `Complete-Tests`" byla
   jednou čtena doslovně a `$root` (a tedy `$work`/`$origin`/`$canaryOut`)
   byl už smazaný předchozím řádkem `Remove-Item -Recurse -Force $root`
@@ -205,7 +303,12 @@ Konvence, které nová sada musí dodržet:
   souboru (`term not recognized`) a na primární fixturu dávno uklizenou
   o ~230 řádků dřív, jejíž `develop` má navíc vlastní historii nezávislou
   na `feature/x` od dřívějších case 1/15 — FF-na-publikované test by
-  selhal z fixturní matematiky, ne z testované logiky.
+  selhal z fixturní matematiky, ne z testované logiky. Třetí kontrola
+  přibyla po vložení bloku ZA `Move-GateBase`: `$f.MergedSha`, dál používaná
+  jako „čistá baseline", přestala být potomkem posunuté báze a každá aserce
+  „X blokuje POUZE verification-set" dostala navíc `ancestor`
+  (`got 'ancestor,verification-set'`); přesun téhož bloku před to volání
+  opravil všechny beze změny jediného řádku asercí.
 - **Než napíšeš nový test case pozdě v sekvenci, který sdílí `$work`
   s desítkami předchozích případů, zjisti STROJOVĚ stav klíčové větve před
   svým testem** (`git log --oneline`/`Get-Sha` local vs. remote) — case,
@@ -216,13 +319,23 @@ Konvence, které nová sada musí dodržet:
   checkout + commit + push bez resynchronizace a `git push origin
   feature/x` skončil `! [rejected] ... (non-fast-forward)` — odmítnutí na
   úrovni samotného gitu, ne kvůli testovanému hooku/chainingu.
-- **Smyčku přes všechny testovací sady vrstvy spouštěj po dávkách
-  (1–4 souborů), ne jedním příkazem s výchozím timeoutem.**
+- **Smyčku přes všechny testovací sady vrstvy spouštěj jedním FOREGROUND
+  voláním s explicitně nastaveným parametrem `timeout` (600000 ms), nikdy
+  na pozadí.** Dávkování po 1–4 souborech je fallback pro kontext, kde
+  explicitní timeout k dispozici není. Jako subagent na background
+  nespoléhej vůbec: notifikace o dokončení jde koordinátorovi, ne tobě,
+  a vlastní smyčka tahů ji nemá jak spotřebovat — příkaz, který harness sám
+  přesune na pozadí, znamená, že sezení stojí, dokud koordinátor nezasáhne.
   Proč: `for t in $(find ums -name "*.tests.ps1"); do pwsh ...; done` jako
-  jeden Bash příkaz přesáhl 2–5minutový limit uprostřed sad (jedna sada
-  sama běžela přes minutu) a byl zabit bez signálu, které sady doběhly; po
-  rozdělení na dávky s explicitním `timeout` na dávku doběhne každá dávka
-  se čitelným výstupem, i když 16 sad dohromady zabere několik minut.
+  jeden Bash příkaz s VÝCHOZÍM timeoutem přesáhl 2–5minutový limit uprostřed
+  sad (jedna sada sama běžela přes minutu) a byl zabit bez signálu, které
+  sady doběhly. S `run_in_background` bylo pollování výstupního souboru
+  neodlišitelné od zamrznutí (běh vypadal zaseknutý v `pre-push.tests.ps1`),
+  zatímco tentýž běh na popředí doběhl hluboko pod desetiminutovým limitem
+  a dal shodný výsledek (23 sad, 1239 asercí, žádné `FAILED`). Monitor
+  s kontrolou živosti procesu (grep `pwsh` v `/proc/*/status`) nad
+  backgroundem navíc vyrobil falešnou událost „stream ended" místo skutečného
+  signálu dokončení.
 - **Úklid throwaway fixtury přes `rm -rf` dělej jako samostatné, izolované
   volání, ne zřetězené `&&`/`;` s dalšími příkazy.**
   Proč: bezpečnostní hlídka nástroje zablokovala i čistě throwaway
@@ -341,28 +454,89 @@ Konvence, které nová sada musí dodržet:
   Proč: české asserční hlášky se v tomhle prostředí vykreslují jako mojibake
   kvůli neshodě konzolové code page, zatímco markery, počet a exit kód
   zůstávají spolehlivé.
+- **Asertuj proti syrovému textu, který spotřebitel opravdu čte, ne proti
+  hodnotě přečtené zpátky přes parser.** V helperu sady, který spustí skript
+  a naparsuje jeho JSON, drž vedle objektu i RAW text (`@{ Data = …;
+  Raw = … }`) a každý timestamp asertuj proti němu
+  (`Assert-Match $r.Raw '"dueAt":\s*"2026-09-07T09:42:00Z"'`). Totéž
+  u vlastností, které nepřežijí serializaci: asertuj na to, co jí PROJDE
+  (celý očekávaný řetězec plus NEPŘÍTOMNOST U+FFFD v syrovém souboru), ne na
+  vlastnost porušené hodnoty samotné, a round trip si napřed ozkoušej
+  zahazovacím skriptem — co vidí spotřebitel, je round trip, ne hodnota
+  v paměti.
+  Proč: `ConvertFrom-Json` přeparsuje každý ISO-8601 vypadající řetězec na
+  `[datetime]`, takže čtyři asercie selhaly s `got '09/07/2026 09:12:00'`,
+  přestože JSON na disku byl správný — srovnání se tiše proměnilo
+  v porovnání s locale formátem data (`-DateKind String` existuje až na velmi
+  nových PowerShellech a spoléhat se na něj tu nejde). Opačným směrem byla
+  aserce `[char]::IsSurrogate` na poslední znak hodnoty zelená i POD mutací:
+  osamocený surrogát zapsaný přes `Set-Content -Encoding utf8` se čte zpátky
+  jako U+FFFD (`55357` → `65533`), takže vlastnost je za souborem
+  nepozorovatelná — zámek vydávaný za důkaz; případ nesla jen aserce na
+  délku.
+- **Když se tolerantní věta kontraktu sráží s jeho pravidlem o uzavřeném
+  formátu, napiš fixturu pro OBĚ čtení.** Rozděl případ: (a) tolerantní
+  čtení — text vypadající jako nadpis tam, kde ho uzavřený formát dovoluje
+  (kolem regionu a uvnitř HODNOTY položky), s asercí, že se blok pořád
+  parsuje celý; (b) čtení podle uzavřeného formátu — holý nadpisový ŘÁDEK
+  umístěný AŽ ZA všechny povinné položky, s asercí, že blok čte jako
+  nepřítomný. Pozici v (b) volíš schválně: je to jediné místo, kde by čtenář
+  s hranicí na nadpisu vrátil sebejistý platný blok, takže aserce mezi
+  oběma implementacemi rozlišuje, místo aby pravidlo jen převyprávěla.
+  Proč: věta „próza mezi markery, která vypadá jako nadpis, nic nemění"
+  a pravidlo téže sekce „řádek mimo tvar `Key: value` dělá blok malformed"
+  nemohou obě platit pro holý nadpisový řádek uvnitř regionu — kterékoli
+  čtení samo by dalo sadu souhlasící jen s polovinou sekce.
 - **Obnovu netrackovaného cíle mutace ověřuj hashem, ne gitem.** U každého
   souboru, který je na aktuální větvi nový nebo netrackovaný, ověřuj obnovu
   po mutačním testu hashem obsahu zachyceným před první mutací, plus `cmp`.
+  Přesáhne-li kontrola jedno volání nástroje, zapiš CESTU zálohy a její
+  SHA-256 do trvalého artefaktu, který otevře další čtenář (report tasku nebo
+  SDD ledger), ne jen do transkriptu — a když přebíráš přerušenou vlnu,
+  podívej se po záloze pod git-ignorovaný `.superpowers/` DŘÍV, než z `git
+  status` uzavřeš, že žádná není.
   Proč: git je vůči mutacím netrackovaného souboru slepý oběma směry, takže
   `git diff` nic nehlásí bez ohledu na to, jestli byla obnova správná nebo
-  zpackaná — je to prázdný, bezcenný pass.
-- **Mutaci odebraného pole může zastínit ranější kontrola.** Když předvídáš,
-  které případy má mutace odstraňující hlídku zčervenat, zkontroluj, jestli
-  stejný symptom už nepokrývá ranější, obecnější validace (kontrola
-  povinného pole nebo tvaru); pokud ano, ten případ legitimně zůstává zelený
+  zpackaná — je to prázdný, bezcenný pass. Táž slepota stála jednou za
+  falešnou inventurou: sezení zemřelo uprostřed mutace, `git status` ze
+  zálohy neukázal nic (`.superpowers/` je ignorovaný) a navazující sezení
+  uzavřelo „žádná záloha tu není", přestože záloha ležela na disku a byla
+  jedinou cestou k bajtově přesné obnově místo rekonstrukce z komentáře.
+- **Mutaci odebraného pole může zastínit ranější kontrola — nebo samo místo
+  volání.** Když předvídáš, které případy má mutace odstraňující hlídku
+  zčervenat, zkontroluj, jestli stejný symptom už nepokrývá ranější,
+  obecnější validace (kontrola povinného pole nebo tvaru), a u podmínky
+  uvnitř víceslovného predikátu přečti VOLAJÍCÍHO, jestli tutéž podmínku
+  nevyžaduje už on; pokud ano, ten případ legitimně zůstává zelený
   a patří do reportu jako očekávaná odchylka, ne jako rozbitý mutační test.
+  Podmínku nepozorovatelnou z místa volání hlas jako „nefalzifikovatelná zde
+  (obrana do hloubky)", ne jako „nic nehlídá", a předpověz to v plánu, ať se
+  kolo nečte jako nález.
   Proč: odstranění celé hlídky větve zčervenalo tři ze čtyř předpovězených
   případů — „chybějící Branch" zůstalo zelené, protože kontrola povinných
-  polí ho zamítá dřív, než se vůbec dostane k hlídce.
-- **Každý case-sensitive komparátor potřebuje vlastní testovací případ.** Ke
-  každému `-cne` (nebo jinému case-sensitive komparátoru) přidanému do
-  hlídky napiš vyhrazený případ, jehož dvě hodnoty se liší JEN velikostí
-  písmen; obecný případ „tohle jsou různé hodnoty" není pokrytí negativity
-  pro tenhle komparátor.
+  polí ho zamítá dřív, než se vůbec dostane k hlídce. A odebrání podmínky
+  `isProtected` z predikátu nezčervenalo NIC: call site
+  `targets.findIndex((t, i) => isProtected(t, patterns) &&
+  !isEpicFastForward(...))` tutéž podmínku už vyžaduje, takže kolo 3 dalo
+  `344 passed`, shodně s nemutovaným během.
+- **Každá podmínka ANDovaného predikátu potřebuje fixturu, ve které
+  rozhoduje JEN ona** — ostatní podmínky splněné, tahle porušená. Dvě
+  podmínky, které umí odmítnout tentýž vstup, si dělají navzájem alibi a ani
+  jedna tím není dokázaná. Zvláštní případ téhož: ke každému `-cne` (nebo
+  jinému case-sensitive komparátoru) přidanému do hlídky napiš vyhrazený
+  případ, jehož dvě hodnoty se liší JEN velikostí písmen; obecný případ
+  „tohle jsou různé hodnoty" není pokrytí negativity pro tenhle komparátor.
+  Audit fixtur dělej při psaní RED asercí, ne až po negativním kole —
+  chybějící fixtura s jediným rozhodovatelem vypadá přesně jako dekorativní
+  podmínka.
   Proč: mutace `-cne` na `-ne` v hlídce slugu nezměnila nic měřitelného —
   `jiny_slug` a `x` se liší i case-insensitive, takže sada prošla 57/57
-  s živou mutací a nedokázala nic o case-sensitivitě.
+  s živou mutací a nedokázala nic o case-sensitivitě. Totéž o kolo dál
+  u dvojice podmínek: negativní aserce z briefu (`raw SHA -> refs/heads/
+  develop`, báze = `develop`) měla dokázat vzorovou podmínku, jenže cíl byl
+  zároveň bází, takže verdikt držela bázová podmínka a odebrání vzorové bylo
+  neviditelné — a v dalším kole zrcadlově naopak. Obě kola zelená, ani jedna
+  podmínka dokázaná.
 - **Skutečná volání gitu počítej `git.bat` shimem dřív v `PATH`, ne mockem** —
   zaznamená si argv a přepošle je reálnému gitu, takže měří to, co se opravdu
   stalo, a funguje i pro volání z **potomka** `pwsh`, kterého spouští
@@ -393,8 +567,12 @@ Konvence, které nová sada musí dodržet:
   `Set-StrictMode -Version Latest` spadne na `PropertyNotFoundException`)
   i pro `if`/`else` (nebo libovolný scriptblock): piš `$x = @(if (…) { … }
   else { @() })`, NIKDY `$x = if (…) { @(…) } else { @() }` — obal jen
-  kolem větve prázdnou pipeline nezachytí. Než tomuto tvaru důvěřuješ ve
-  skutečném skriptu, ověř ho pětiřádkovým reprodukčním testem:
+  kolem větve prázdnou pipeline nezachytí, a stejně tak nezachytí větev,
+  která je LITERÁLNÍ `@()` (čtenář si snadno řekne „to už polem je"
+  a vnější obal vynechá). U volitelného polového parametru navíc testuj
+  `$null -eq $Param` PŘED obalením, nikdy `@($Param).Count` samotné. Než
+  tomuto tvaru důvěřuješ ve skutečném skriptu, ověř ho pětiřádkovým
+  reprodukčním testem:
   `Set-StrictMode -Version Latest; $arr=[object[]]@(); $x = if($true){@($arr|Where-Object{$false})}else{@()}; $null -eq $x`.
   Proč: obvyklý `if ($null -eq $x) { $x = @() }` kryje jen prázdný vstup, ne
   jednoprvkový; `@(Get-Content <prázdný soubor>)` dá pole s `Count = 0`, ne
@@ -404,7 +582,42 @@ Konvence, které nová sada musí dodržet:
   než vnější přiřazení něco zachytí. `.Count` na výsledném `$null` pod
   strict módem spadl přesně na tom „no pool" větvení, které měl task nejvíc
   dokázat, a proměnil dokumentovaný exit 3 v nediagnostikovaný exit 1 bez
-  jediné diagnostické věty.
+  jediné diagnostické věty. Bez vnějšího obalu se stejně rozpadl i tvar
+  s literálním `@()` uvnitř — vynechaný parametr I explicitní `-Param @()`
+  daly `$null` místo prázdného pole a další `.Count` hodil
+  `PropertyNotFoundException`. A `@($Param).Count` jako detektor „byl
+  parametr vůbec předán" je rovnou špatně: `@($null).Count` je **1**, ne 0
+  (`function Test-P([string[]] $X) { @($X).Count }` bez `-X` tiskne `1`),
+  takže vynechaný parametr aktivoval novou kontrolu a rozbil pre-existující
+  asercii „brána vrací právě tři kontroly" (got `4`, want `3`).
+- **`Mandatory` na parametru typu kolekce (`[string[]]`) odmítne pole, jehož
+  KTERÝKOLI prvek je prázdný řetězec** — ne jen null nebo prázdné pole. Než
+  ho přidáš na parametr, který ponese řádky souboru, položky logu nebo
+  jakýkoli reálný text rozsekaný po řádcích, zjisti, jestli je prázdná
+  položka normálním členem té kolekce; když ano, nech parametr nepovinný
+  (nebo dej `[AllowEmptyCollection()]` a validuj v těle), místo abys tvar
+  vstupu vynucoval atributem.
+  Proč: každá reálná ledgerová fixtura přestala parsovat s `Cannot bind
+  argument to parameter 'Lines' because it is an empty string`; pětiřádkové
+  repro (`function f{param([Parameter(Mandatory=$true)][string[]]$Lines,…)};
+  f @("a","","b") "X"`) hází identickou hlášku, zatímco tatáž funkce bez
+  `Mandatory` na `$Lines` totéž pole přijme.
+- **Volání funkce, která vrací `return , $x` (nebo `return , @($x)`), nikdy
+  nekombinuj v JEDNOM příkazu s enumerací ani s obalením do `@()` — přiřaď
+  do proměnné a teprve pak operuj.** Ten idiom v téhle vrstvě existuje
+  právě proto, aby přiřazení zachytilo celou tabulku jako jednu hodnotu;
+  zřetězený `Get-Foo … | Where-Object {…}` i `@(Get-Foo …)` tu jednu hodnotu
+  spotřebují dřív, než se stihne rozbalit o úroveň. Piš to jako dva příkazy,
+  tak jak to dělá každé existující volací místo v `ledger-status.ps1`
+  i v `ledger-evidence.tests.ps1`.
+  Proč: `Get-UmsLedgerSectionTable $lines 'Heading' | Where-Object {…}`
+  svázalo `$_` s CELOU tabulkou — `rowsA.Count = 1` se čtyřmi zdrojovými
+  řádky slitými do jedné, proti správným `rowsB.Count = 3` po přiřazení do
+  proměnné. Obalení má zrcadlovou podobu: `@(Get-UmsLedgerDecisionRegistry
+  -LedgerPath $LedgerPath)` dalo pro ledger s nula řádky registru `Count = 1`
+  (jeden prvek, sám prázdné pole) místo `0`; přiřazení a obalení ve dvou
+  krocích dá `0` správně (repro: `function Test-Repro { $result = @();
+  return , @($result) }; @(Test-Repro)` → `Count 1`).
 - **`Set-Content -Encoding UTF8` v PowerShellu 7 BOM nepřidává.** Ověřeno
   bajtově. Chování se liší od Windows PowerShellu 5.1, kde stejný parametr BOM
   přidával, takže tam, kde je vyžadováno „UTF-8 bez BOM", není potřeba žádná
@@ -423,7 +636,17 @@ Konvence, které nová sada musí dodržet:
   o vzhledu/kódování výstupu („je to jen code page, obsah je v pořádku")
   se NIKDY nesmí kopírovat mezi koly beze změny — u KAŽDÉHO nového kola, kde
   soubor prošel editací, spusť čerstvý bajtový/grep test na konkrétní
-  diakritická slova a teprve výsledek toho běhu napiš do reportu.
+  diakritická slova a teprve výsledek toho běhu napiš do reportu. Varování
+  o code page se týká hodnot čtených zpátky DO PowerShellu, ne přesměrování
+  do souboru: `git show <ref>:<cesta> > <soubor>` je bajtově přesný kanál pro
+  UTF-8 blob, takže cross-branch obsah předávej helperu, který bere CESTU,
+  právě takhle — jen si PŘED parsováním ověř `$LASTEXITCODE`, protože
+  přesměrování cíl nejdřív usekne a neúspěšný `git show` nechá PRÁZDNÝ
+  soubor, který se dál čte jako „nic nedeklarováno". A v `python -c` sondě
+  nad soubory téhle vrstvy tiskni jen ASCII-bezpečné odvozené hodnoty (čísla
+  řádků, délky, booleany, počty), nikdy matchnutý text; potřebuješ-li text,
+  zapiš ho přes `io.open(..., encoding='utf-8')` do souboru a přečti
+  nástrojem, který UTF-8 dekóduje.
   Proč: zdánlivě poškozený výstup svede k „opravě" kódování, které je
   v pořádku. Při podezření sáhni po `xxd`, ne po zobrazeném textu. Totéž
   potká diakritiku, kterou skript posílá zpátky do gitu (jméno větve, cesta) —
@@ -435,7 +658,37 @@ Konvence, které nová sada musí dodržet:
   věta o code page, zkopírovaná z předchozího kola bez nového měření, byla
   jednou pravdivá a podruhé ne — assertion texty byly reálně stripnuté na
   ASCII (`znacky`, `puvodni`, `prezila`…), což odhalil až grep na UTF-8
-  diakritické bajty, který vrátil nulu.
+  diakritické bajty, který vrátil nulu. Bezpečná půlka je změřená stejně
+  tvrdě: na `ledger-template.md` (které nese `č ř ě á í` přímo v matchovaném
+  nadpisu) je `git show HEAD:<cesta> > <soubor>` bajtově shodný
+  s `git cat-file blob`, 6268 B, bez BOM a bez CRLF konverze; negativní půlka
+  (`HEAD:<neexistující>`) dá exit 128 a nulový soubor. Pythonová sonda naopak
+  umřela uprostřed na `UnicodeEncodeError: 'charmap' codec can't encode
+  character '→'` — stdout je tu cp1250, takže kontrola skončí po částečném
+  výstupu, což se čte přesně jako „soubor je do řádku N v pořádku".
+- **Šířku řádku UTF-8 prózy měř ve ZNACÍCH, nikdy `awk 'length > 80'` ani
+  `wc -L`.** V každém prozaickém souboru téhle vrstvy jsou em dashe, šipky
+  a česká diakritika, a `awk`ové `length` počítá BAJTY. Použij
+  character-aware kontrolu (`Get-Content -Encoding utf8 | %{ $_.Length }`
+  nebo `python` nad `io.open(..., encoding='utf-8')`); musí-li awk být, ber
+  každý jeho zásah jen jako kandidáta k přeměření znak po znaku, ne jako
+  nález.
+  Proč: měřeno na `UMS_MEMORY_BANK_CONTRACT.md` — dva řádky ohlášené jako
+  83 znaků mají ve skutečnosti 79 znaků (řádky 2620 a 2643); každý em dash
+  (`—`, 3 bajty v UTF-8) nafoukne počet o dva. Nad celým souborem, který se
+  schválně zalamuje na 80, ohlásil `awk` 226 řádků přes limit — přebalení
+  podle takového nálezu by soubor rozhodilo proti sousedům bez důvodu.
+- **Python skript, který edituje soubory téhle vrstvy, si konce řádků musí
+  DETEKOVAT, ne předpokládat.** Otevři s `newline=''`, urči
+  `nl = '\r\n' if '\r\n' in s else '\n'` a přes něj přelož každý víceřádkový
+  hledaný i náhradní literál; zapisuj zase s `newline=''`. Ověř
+  `tr -dc '\r' < f | wc -c` proti `tr -dc '\n' < f | wc -c` (shodné počty
+  u CRLF souboru, nula CR u LF) a potvrď, že `git diff --stat` ukazuje jen
+  zamýšlený počet řádků, ne celý soubor.
+  Proč: `assert s.count(old)==1` selhal s `0` — `.ps1` soubory téhle vrstvy
+  jsou v pracovním stromu CRLF (`core.autocrlf=true`, žádný `eol` atribut),
+  zatímco `.md` jsou LF (`.gitattributes: eol=lf`), takže jednosouborový
+  skript nesmí předpokládat ani jedno.
 - **Asercie tvaru `(?m)^slovo$` proti textu zachycenému přes `2>&1 |
   Out-String` (nebo jakýkoli capture-and-rejoin helper) potřebuje na
   Windows `(?m)^slovo\r?$` — oprav to v regexu SADY, ne ve sdíleném capture
@@ -997,6 +1250,19 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   Proč: nasazené vendorované soubory už nesou předchozí overlay bloky, takže
   `-OverlaysOnly` skončil FAIL „'brainstorming/SKILL.md' already contains an
   overlay block. Re-vendor first (vendored files must be pristine…)".
+- **Editaci, která mění jen TĚLO overlay fragmentu, ověřuj diffem, ne
+  revendorem.** Zkontroluj dvě věci:
+  `git diff <báze>..HEAD -- <adresář overlayů> | grep -E "^[+-].*(ANCHOR|ASSERT|UMS-OVERLAY)"`
+  musí být prázdný (nezměnil se žádný řádek kotvy, assertu ani markeru bloku)
+  a každý overlay soubor musí mít pořád právě jeden `UMS-OVERLAY BEGIN`
+  a jeden `END`. Revendor je pak samostatný krok NASAZENÍ; do jeho proběhnutí
+  hlas nasazené vendorované skilly jako zastaralé.
+  Proč: vlna, která chtěla anchoring ověřit spuštěním redeploy skriptu,
+  skončila bez ověření úplně — revendor spadl z Bash toolu na
+  `tar: Cannot connect to C: resolve failed`, `-OverlaysOnly` odmítl běžet nad
+  už nepristine vendorovanými soubory a plný revendor přes PowerShell tool
+  zamítl klasifikátor nástroje. Selhání `tar`u přitom není nález o samotné
+  editaci.
 - `sync-with-monorepo.ps1` na tohle není: cílí na monorepo nebo na profil
   uživatele, ne na kořen tohoto forku.
 
@@ -1018,6 +1284,18 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   vlastní pořadí pro tutéž operaci a jen jeden byl prověřen; a `git rm -f`
   vyžadovaný kontraktem pro playbook-candidate soubor by bez jmenované
   výjimky přímo odporoval hlavičce `mb-harvest`.
+- **Když přebíráš pravidla jiné sekce odkazem, kvalifikuj podstatné jméno
+  („pravidla ČTENÁŘSKÉ BEZPEČNOSTI té podsekce", ne „každé čtenářské
+  pravidlo") a napiš NEGATIVNÍ seznam:** která pravidla té sekce
+  NEcestují a jaká vlastnost obě skupiny odděluje. Odkaz bez negativního
+  seznamu je neomezený kvantifikátor nad sekcí, kterou neřídíš.
+  Proč: věta „každé čtenářské pravidlo té podsekce tu platí beze změny",
+  následovaná dvojtečkovým výčtem těch skutečně míněných — výčet větu
+  nesvázal. Citovaná sekce nesla i consume-on-read (přejmenování souboru po
+  vydání), pravidlo o validaci instrukcí a pravidlo nikdy neselhat hlasitě;
+  implementátor čtoucí tu větu jako specifikaci by je importoval všechna
+  a consume-on-read by nad stále čteným ledgerem ZNIČIL právě ten soubor,
+  o kterém se reportuje.
 - **`allowed-tools` v hlavičce skillu RESTRINGUJE dostupné nástroje — než
   přebereš navržený seznam pro nový skill, vypiš si napřed VŠECHNY nástroje,
   které skill vlastními kroky používá** (i ty, ke kterým se dostane přes
@@ -1116,6 +1394,10 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   a opakuj" — se lživým nálezem, že práce byla integrována bez harvestu.
 - **Overlay úpravu vždy verifikuj proti KONTRAKTU, ne proti briefu**, který
   ho jen parafrázuje — brief je práce k dohledání místa, ne zdroj pravdy.
+  Totéž platí o kterémkoli briefově tvrzení „tenhle spotřebitel úpravu
+  nepotřebuje": je to závěr k ověření, ne daný fakt — grepni ten konkrétní
+  soubor a řádek na charakteristické tokeny měněného pravidla, i když to
+  brief tvrdí sebejistě a sám žádá „spíš potvrď, než abys mi věřil".
   Když overlay NAHRAZUJE upstream krok (ne rozšiřuje), jmenovitě neguj staré
   příkazy v textu fragmentu, protože zůstávají viditelné vedle přebíjeného
   textu. Po KAŽDÉ změně pravidla v kontraktu grepni celou vrstvu na jeho
@@ -1131,17 +1413,28 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   `core.hooksPath` a STOP v `mb-park` zůstalo pět z šesti nálezů v místech,
   která pravidlo jen RESTATOVALA; a změna „publikuj po každém commitu"
   nechala nekomitovaný abandon-move zničit jedinou kopii a zapsat trvalou
-  „KOLIZI AKTIVNÍ PRÁCE" na originu.
+  „KOLIZI AKTIVNÍ PRÁCE" na originu. A tam, kde brief tvrdil, že jistý
+  spotřebitel „žádnou nabídku nerestatuje, úpravu nepotřebuje", nesl řádek
+  `mb-architect-review/SKILL.md:267` text „fail-open, **offer only**" —
+  doslovný, zastaralý restatement rušeného mechanismu, přesný opak briefova
+  tvrzení.
 - **Jedna obecná definiční věta („kdekoli tento dokument píše token X, myslí
   se…") nezneplatní specifickou větu, která svou hodnotu tvrdí jako
   VÝHRADNÍ** („jen", „všude jinde", „jediná báze, která se počítá") —
   čtenář narazí na výhradní větu první a nemá signál, že je překonaná. Po
   zavedení obecné věty grepuj i na vlastní exkluzivní/autoritativní
-  slovník specifických míst, ne jen na slovník nové obecné věty.
+  slovník specifických míst, ne jen na slovník nové obecné věty. Totéž
+  u VÝJIMKY z kategorického pravidla: sweep na vlastní tokeny výjimky
+  nestačí — grepni i tokeny pravidla, ze kterého se vyjímáš, a přečti
+  zastudena odstavec, který to pravidlo tvrdí nejkategoričtěji.
   Proč: holý placeholder token je obecnou větou tiše kryt, ale věta navíc
   JMENUJÍCÍ svůj zdroj (`baseRef` per Repository Configuration) nebo
   tvrdící „jediná, která se počítá" zůstává v rozporu, i když obě čtení
-  vedou ke stejné hodnotě.
+  vedou ke stejné hodnotě. A sweep na tokeny nové výjimky
+  (`epicBranchPattern`, `epic line`) přišel čistý a problém najít NEMOHL:
+  věta, kterou výjimka falsifikovala („the MOMENT of integration belongs to
+  the human"), žádný z nových tokenů neobsahuje — odhalila ji až chladná
+  četba sekce, kterou výjimka sama cituje.
 - **Po zavedení nové instance něčeho, co existující věta počítá jako
   jedinou** („the single exception", „jediná výjimka", „přesně jedna"),
   **grepuj celý dokument na tu POČÍTACÍ frázi samotnou** — samostatně od
@@ -1214,6 +1507,16 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   pro tyto vzory (řádky 451–514) — přestože manuální krok samotný byl
   potřeba z jiného, mechanického důvodu (vzorkuje `Select-Object -First 1`,
   odvozuje jméno větve substitucí `*`→`x`).
+- **Než degraduješ chybějící hodnotu na „neutrální" default, dohledej každé
+  místo, kde se ta hodnota POUŽÍVÁ, a přečti polaritu testu, do kterého
+  teče.** Default bezpečný pod `===`/`.test()` („nematchne nic") je pod
+  `!==` nebezpečný („liší se od všeho"). Kde hodnota teče do negativního
+  testu, odmítni raději celé pravidlo, než abys hodnotu defaultoval — a nikdy
+  za ni nedosazuj odhad.
+  Proč: prázdný řetězec na pravé straně `stripRef(dest) !== epic.baseBranch`
+  udělal podmínku trvale pravdivou a hlídka degradovala k MENŠÍ ochraně;
+  naměřeno, že raw-SHA push do dodávkové linie prošel pouze proto, že
+  `baseRef` chyběl.
 - **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej VOLAJÍCÍHO
   a zjisti, co s ní udělá** — zvol tu z obou konečných cest (výjimka vs.
   degradovaný provoz), po které zůstane VÍC ochrany. Náprava (remedy), která
@@ -1340,12 +1643,20 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   po dnešní změně?".** Zvlášť hlídej věty tvrdící POČET nebo JEDINEČNOST
   („the one", „exactly two", „everywhere except") — ty se lámou přidáním
   nové cesty, ne změnou té, kterou popisují, takže je grep na jméno
-  změněného konceptu nenajde.
+  změněného konceptu nenajde. Stejně tak u ČÍSEL: opravuješ-li počet, který
+  je SOUČTEM výčtu ve stejném dokumentu, nech výčet sečíst strojově
+  (`grep -oE '\(([0-9]+)' | awk '{s+=$1}'`) a vyžaduj rovnost s headlinem;
+  nesedí-li, rozsah opravy je celý výčet, ne jmenované instance — a napiš to
+  do reportu, ať rozšíření nezůstane nevysvětlené.
   Proč: po opravě per-token tolerance grep přes `FAIL-OPEN|FAIL-CLOSED|
   expansion|command position` v obou souborech našel další tři nepravdivé
   věty mimo diff té opravy — dvě tvrdily jedinečnost, která přestala platit
   vznikem druhé cesty k povolení, jedna pocházela ještě z kola 0 a
-  zneplatnil ji samotný task.
+  zneplatnil ji samotný task. U čísel dopadl týž vzor stejně: opravený součet
+  seděl ve větě s dalším chybným počtem sad a tři per-sadová čísla jinde
+  v témž seznamu byla také odchýlená (jedno z nich odchýlila právě ta vlna,
+  co opravovala) — oprava jen čtyř jmenovaných by nechala headline
+  neověřitelný a zavedla novou nepravdu.
 - **Ke greppu na jména pojmů přidej druhý průchod po sekcích: vypiš
   sekce, kterých se změna věcně týká, a přečti je celé** — restatement
   pravidla bývá napsaný jinými slovy než pravidlo samo, takže ho jméno
@@ -1461,6 +1772,50 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   definovala; v diffu to vypadalo správně, protože smazaná tabulka i nový
   odstavec jsou vidět vedle sebe, ale že jeden odkazuje na druhý, ukáže až
   čtení výsledku.
+- **Ohrazený příklad, proti kterému někdo napíše parser, si před commitem
+  přečti ZNOVU proti pravidlům na třídy znaků, velikost a tvar, která táž
+  sekce ukládá — doslova.** Obvyklý viník je placeholder v „ostrých
+  závorkách"; použij konkrétní realistickou hodnotu a to hláskování nech jen
+  okolní PRÓZE.
+  Proč: kanonický příklad bloku `NOW` napsaný s dokumentačním placeholderem
+  `plan_<slug>` v hodnotě `Look at:` by byl odmítnut čtenářskou disciplínou,
+  kterou tatáž sekce přejímá o čtyři odstavce níž (parsovaná hodnota nesmí
+  obsahovat ostrou závorku) — a autor parseru by z něj napsal fixturu, která
+  MUSÍ selhat.
+- **Když měřené pravidlo říká „pravidlo patří do STEJNÉHO odstavce jako
+  artefakt" a artefaktem je ohrazený blok, dej pravidlo TĚSNĚ NAD ohrazení,
+  bez prázdného řádku, a ukonči větu dvojtečkou, která na blok ukazuje.**
+  Pod blok ani do následujícího odstavce pravidlo nikdy nepiš — to je právě
+  to oddělení, kterému má bránit.
+  Proč: v Markdownu ohrazení odstavec ukončí, takže pravidlo a artefakt spolu
+  doslova jeden odstavec sdílet nemohou. Tučný odstavec končící „Tohle je ten
+  artefakt:" a ohrazení hned na dalším řádku bez prázdné mezery dá jeden
+  neoddělitelný textový celek — každá kopie bloku začínající u předchozího
+  prázdného řádku si pravidlo odnese s sebou — a CommonMark blok pořád
+  vykreslí jako kód (ohrazený blok smí odstavec přerušit).
+- **Po definici uzavřeného výčtu nad záznamem s povinnými poli projdi KAŽDÝ
+  člen a vypiš pro něj celý záznam doslova.** Vynutí-li některý člen prázdné
+  nebo bezvýznamné pole, ten člen nemá hláskování — dej mu pevnou literální
+  hodnotu pro to pole, ve stejné sekci a viditelně v tabulce samotného
+  výčtu, ještě než se formát commitne.
+  Proč: člen, kvůli kterému artefakt vůbec vznikl (`stalled`), byl zároveň
+  ten jediný nezapsatelný: se všemi položkami povinnými dělá chybějící
+  položka záznam malformed a malformed byl definován jako nepřítomný, takže
+  skutečně uvíznuté sezení by se vykreslilo jako žádný záznam — přesně ta
+  neviditelnost, kterou měl artefakt odstranit. Vada přežila autorovu vlastní
+  revizi; chytil ji až cizí recenzent křížovou četbou tří odstavců téže
+  sekce.
+- **Kde duplikace ohraničeného regionu signalizuje, že PISATEL porušil
+  pravidlo o přepisu, definuj odpověď čtenáře jako malformed → nepřítomný,
+  ne jako pravidlo o přednosti.** Nepřítomnost pošle čtenáře ke skutečnému
+  zdroji; přednost tiše povýší jednoho ze dvou nedůvěryhodných kandidátů
+  a schová vadu pisatele. Důvod napiš hned vedle pravidla, ať ho pozdější
+  kolo „nevylepší" na poslední-vyhrává.
+  Proč: „první pár vyhrává" i „poslední pár vyhrává" vykreslí region, jehož
+  aktuálnost nelze zjistit — druhý kompletní pár je podpis pisatele, který
+  místo přepsání připojil, takže první je zastaralý a druhý může být
+  fragment. U tohoto artefaktu je precedens naměřený: blok tvrdil běžící
+  review hodiny poté, co se review vrátilo se čtyřmi Critical nálezy.
 - **Když úloha ruší pojmenovaný koncept, sweep na doslovný token
   proměnné/příkazu, který koncept provázel, NESTAČÍ — grepni zvlášť i na
   frázi, kterou byl koncept POJMENOVÁN v prózi** (česky i anglicky),
@@ -1534,6 +1889,19 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   Proč: oba slovníkové sweepy byly kompletní a oba minuly samotnou verzi —
   sedm restatementů `2.11`, které žádný slovníkový grep nechytí, a
   `brief.md` nebyl v žádném hand-off seznamu vůbec.
+- **Sweep na restatementy pouštěj přes `ums/` I `memory-bank/` jedním
+  příkazem a grepuj NEJKRATŠÍ rozlišující fragment.** Memory Bank dokumenty
+  vrstvu popisují a její tvary restatují, takže patří do stejného průchodu
+  jako zdrojový strom; a ve flektivním jazyce je dvouslovný token skoro
+  zárukou minutí — `sloupc`, ne `šest sloupců`; `Draft (větev`, ne celá
+  hlavička řádku. Výsledek zkřížuj s `git diff --name-only` vlastního
+  commitu: soubor, který jsi editoval a sweep ho netrefil, je první místo
+  k ruční kontrole.
+  Proč: sweep nahlásil jeden restatement a byly dva. Druhý ležel
+  v `memory-bank/architecture.md`, souboru, který týž commit editoval
+  čtyřikrát kvůli bumpu verze — a schovala ho i druhá, nezávislá příčina:
+  fráze ve zdroji zní „šest **pozičních** sloupců", takže ji token
+  `šest sloupc` nemohl matchnout.
 - **Inventáře sweepuj podle DRUHU artefaktu, ne podle jeho jména.** Po
   slovníkovém sweepu spusť druhý průchod cílený na druh vytvořeného
   artefaktu — ptej se „kdo počítá nebo vyjmenovává věci tohoto druhu?"; pro
@@ -1549,16 +1917,24 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   `output_mode: "content"` explicitně spolu s `-n`.
   Proč: vynechání tiše spadne na výpis souborů se shodou a nedá žádná čísla
   řádků.
-- **Vložení odstavce do prózy cíli na konec odstavce, ověřený čtením
+- **Vložení odstavce i nadpisu do prózy cíli na konec ÚTVARU, ověřený čtením
   dopředu.** Než vložíš nový odstavec „za" pojmenovanou větu nebo
   číslovaný seznam, přečti dopředu za řádek, který vypadá jako konec,
   a potvrď, že nejde o zalomené pokračování téže věty; upřednostni
   přirozený konec odstavce, pokud instrukce jasně nemíří na přerušení.
+  Vkládáš-li NADPIS do dlouhé sekce, zjisti navíc, jestli v ní vůbec nějaké
+  nadpisy té úrovně jsou: nemá-li žádné, jediná umístění, která
+  nepřeparentují existující text, jsou KONEC sekce nebo restrukturace, která
+  koncové odstavce zvedne nad nový nadpis — vyber konec a napiš to do
+  reportu, místo abys tiše spolkl ocas sekce.
   Proč: jedno vložení rozdělilo jedinou větu na dva odstavce, protože řádek
   vypadající jako konec odstavce byl uprostřed věty zalomený; v jiném
   případě následovala za pojmenovanou větou dvojtečka a inline výčet
   patřící téže větě, takže vložení by oddělilo tvrzení od jeho vlastního
-  zdůvodnění.
+  zdůvodnění. A `###` nadpis vložený do `##` sekce v bodě, který jmenoval
+  brief, by pod sebe přeparentoval pět následujících odstavců — včetně
+  invariantu, který nová podsekce sama cituje —, protože ta sekce žádnou
+  podsekci neměla.
 
 ## Psaní plánů, návrhů a commitů
 

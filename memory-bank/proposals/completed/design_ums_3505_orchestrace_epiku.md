@@ -1122,3 +1122,13 @@ položené po ní:
   úsudkových kandidátů místo blokující brány; dedup při sběru a stárnutí
   nepotvrzených. Dataset pro návrh vzniká z triáže kandidátů tohoto work
   itemu (kritérium × mechanické/úsudkové × hlasité/tiché selhání).
+- **Dvě lekce z triáže playbooku převést na kontrolu v kódu, ne do prózy**
+  (rozhodnutí uživatele při harvestu 2026-09-08; do playbooku se nezapisují):
+  (a) každá `Assert-*` volaná v `*.tests.ps1` musí existovat v sesterském
+  `_assert.ps1` — chybějící helper se v RED běhu tváří identicky jako očekávaný
+  RED („is not recognized as a name of a cmdlet"); (b) každá `*.tests.ps1`,
+  která dot-sourcuje svůj předmět, musí nastavit
+  `$ErrorActionPreference = 'Stop'` — bez něj sada vykoná část asercí a skončí
+  s nepojmenovanou příčinou (`3/13 FAILED`), s ním padne na řádku a příčinu
+  jmenuje. Obojí je grep nad `ums/**/tests/*.tests.ps1`, kandidát na vlastní
+  sadu nebo krok smyčky vrstvy.
