@@ -889,8 +889,8 @@ Přečti sekci Epic Backflow jako chladný čtenář a projdi obě větve — n�
 
 **Předpoklady:**
 
-- [ ] Fáze 1 a 2 jsou hotové a zaškrtané; poslední commit je na `origin`
-- [ ] Jsi na `UMS-3505-orchestrace-epiku`, strom čistý, baseline testů zelená
+- [x] Fáze 1 a 2 jsou hotové a zaškrtané; poslední commit je na `origin`
+- [x] Jsi na `UMS-3505-orchestrace-epiku`, strom čistý, baseline testů zelená
 
 **Co si přečti:** návrh, části 6, 7 a 8 celé; kontrakt, sekce „Session Intent Baton" (blok `NOW` od ní musí být odlišený) a „Fail-Closed Behavior"; `ums/.claude/skills/mb-epic-run/scripts/pool-status.ps1`, funkce `Get-SlotProgress`.
 
@@ -905,29 +905,29 @@ Přečti sekci Epic Backflow jako chladný čtenář a projdi obě větve — n�
 **Interfaces:**
 - Produces: formát bloku, který parsuje Task 16 — strojové značky začátku a konce, šest položek, stavová třída z uzavřeného výčtu, očekávaný čas dalšího ohlášení
 
-- [ ] **Step 1: Napiš sekci kontraktu**
+- [x] **Step 1: Napiš sekci kontraktu**
 
 Musí obsahovat: strojové ohraničení komentářovými značkami (**ne nadpis** — vložení sekce před textovou kotvu skončilo uvnitř odstavce, který o té kotvě mluvil); šest položek; **stavovou třídu z uzavřeného výčtu** (stojím / čekám na subagenta / čekám na člověka / čekám na správce); **očekávaný čas dalšího ohlášení**; a čtyři pravidla v operačním tvaru.
 
-- [ ] **Step 2: Odliš blok od Session Intent Batonu**
+- [x] **Step 2: Odliš blok od Session Intent Batonu**
 
 Jednou větou, jinak implementátor postaví druhý baton: baton nese, co má nové sezení udělat po restartu; blok nese, na co se právě teď čeká.
 
-- [ ] **Step 3: Napiš pravidlo o přepisu jako operaci**
+- [x] **Step 3: Napiš pravidlo o přepisu jako operaci**
 
 Doslova podle návrhu: přepis je „smaž oblast a rekonstruuj ji z gitu, tabulky tasků a indexu rulingů", ne „napiš to znovu". Z prázdné oblasti není k čemu připisovat. A nutná podmínka: **blok nesmí být jediným domovem žádného faktu.**
 
 **Pravidlo patří do TÉHOŽ odstavce jako artefakt**, ne do sousedního — je naměřené, že se tvar převezme bez pravidla a blok okamžitě zaostane.
 
-- [ ] **Step 4: Napiš hranici, kterou blok nesmí překročit**
+- [x] **Step 4: Napiš hranici, kterou blok nesmí překročit**
 
 Blok slouží k rozhodnutí, kam se podívat, **nikdy k rozhodnutí integrovat**. Doklad: jednou tvrdil běžící review několik hodin poté, co se vrátilo se čtyřmi Criticaly.
 
-- [ ] **Step 5: Zapiš omezení životnosti**
+- [x] **Step 5: Zapiš omezení životnosti**
 
 Blok žije v `.superpowers/sdd/<plan>/progress.md`, který SDD na konci maže, a `pool-status.ps1` ho renderuje jen dokud slot nese pin. Během brainstormingu, psaní plánu a celého dokončování blok **není** — pravidlo o konci turnu ho proto jmenuje jen tam, kde je.
 
-- [ ] **Step 6: Grep konzumentů a commit**
+- [x] **Step 6: Grep konzumentů a commit**
 
 ---
 
@@ -941,7 +941,7 @@ Blok žije v `.superpowers/sdd/<plan>/progress.md`, který SDD na konci maže, a
 - Consumes: formát z Tasku 15
 - Produces: `progress.now` s poli `state`, `dueAt`, `late` (`[bool]`) a `items`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 Asercie, které musí existovat, a tři z nich jsou bezpečnostní:
 
@@ -952,17 +952,17 @@ Asercie, které musí existovat, a tři z nich jsou bezpečnostní:
 - **čtenář tělo nevypisuje tak, jak leží**: znaky mimo povolenou třídu se odmítnou a nadměrná velikost se ořízne — soubor je gitignorovaný scratch v **cizím** pracovním stromě, do kterého rutinně píšou implementátorské subagenty, a jeho obsah se renderuje do kontextu správce;
 - **zdvojená a vnořená koncová značka mají definované chování** a to chování je aserované, ne ponechané náhodě.
 
-- [ ] **Step 2: Spusť a ověř, že padají**
+- [x] **Step 2: Spusť a ověř, že padají**
 
-- [ ] **Step 3: Implementuj parsování, re-render a limity**
+- [x] **Step 3: Implementuj parsování, re-render a limity**
 
 Aplikuj pravidla čtenáře, která kontrakt zavedl pro Session Intent Baton — formát je uzavřený a je to bezpečnostní vlastnost, ne úhlednost.
 
-- [ ] **Step 4: Spusť a ověř, že prochází**
+- [x] **Step 4: Spusť a ověř, že prochází**
 
-- [ ] **Step 5: Ověř negativitu každé bezpečnostní asercie zvlášť**
+- [x] **Step 5: Ověř negativitu každé bezpečnostní asercie zvlášť**
 
-- [ ] **Step 6: Commit a push**
+- [x] **Step 6: Commit a push**
 
 ---
 
@@ -971,15 +971,15 @@ Aplikuj pravidla čtenáře, která kontrakt zavedl pro Session Intent Baton —
 **Files:**
 - Modify: `ums/.claude/skills/mb-epic-run/SKILL.md` — sekce `status`
 
-- [ ] **Step 1: Doplň sloupce do popisu tabulky**
+- [x] **Step 1: Doplň sloupce do popisu tabulky**
 
 Česká tabulka dostane sloupec se stavovou třídou a sloupec „po termínu". Zdůrazni, že „po termínu" je **spočítané**, ne přečtené — v tom je celý rozdíl proti tomu, co se dnes musí přečíst.
 
-- [ ] **Step 2: Zapiš pravidlo o pobídce**
+- [x] **Step 2: Zapiš pravidlo o pobídce**
 
 Stavová třída „čekám na subagenta" **není důvod k pobídce**. S blokem je to poprvé kontrolovatelné, ne otázka ohleduplnosti.
 
-- [ ] **Step 3: Commit a push**
+- [x] **Step 3: Commit a push**
 
 ---
 
@@ -991,19 +991,19 @@ Stavová třída „čekám na subagenta" **není důvod k pobídce**. S blokem 
 
 Doc-only; ověření je studený průchod.
 
-- [ ] **Step 1: Napiš sekci kontraktu**
+- [x] **Step 1: Napiš sekci kontraktu**
 
 Značení **pokyn / domněnka**; právo domněnku odmítnout; domněnka se do ledgeru nezapisuje jako fakt; **příčina je vždycky domněnka, hranice smí být pokyn**; povinnost odmítnout pokyn odporující psanému pravidlu; relay timing (bezprostřednost, ne důležitost); jeden živý odběr na peera obnovený až po sepnutí; a že resynchronizace je **tažená** — merge báze uprostřed tasku kontrakt zakazuje, takže zpráva pořadí urychluje, nezakládá ho.
 
-- [ ] **Step 2: Označ pravidla bez mechanické spouště**
+- [x] **Step 2: Označ pravidla bez mechanické spouště**
 
 Sekce musí **jmenovitě** říct, která z těch pravidel jsou doporučení a ne brány. Bez toho je implementátor zapíše do skillu, jako by byly vynucené — a je naměřené, že pravidlo bez spouště se poruší i svým autorem.
 
-- [ ] **Step 3: Napiš příklad k pravidlu o příčině**
+- [x] **Step 3: Napiš příklad k pravidlu o příčině**
 
 Bez měřeného případu to zní jako obecná rada: varování o `CS0246` doručené minutu před měřením baseline nepomohlo, protože příjemce udělal restore jako první krok — ale trefil druhou past se stejným příznakem a doručené vysvětlení by ho poslalo opravovat restore, který byl v pořádku.
 
-- [ ] **Step 4: Odkaz z `mb-epic-run`, grep konzumentů, commit**
+- [x] **Step 4: Odkaz z `mb-epic-run`, grep konzumentů, commit**
 
 ---
 
@@ -1054,10 +1054,10 @@ Pozor: sloupce `Rozjetí` parsuje `ledger-status.ps1` **pozičně**, takže při
 
 ## Výstup fáze 3 a uzavření tiketu
 
-- [ ] Ověření celé vrstvy smyčkou z playbooku
-- [ ] Obnova nasazené kopie
-- [ ] **Projdi seznam Verifikace v návrhu** (26 bodů) a u každého zapiš: pokrytý testem (kterým), pokrytý studeným průchodem, nebo nepokrytý a proč. Nepokrytý bod není selhání — nezapsaný nepokrytý bod ano.
-- [ ] Report česky
+- [x] Ověření celé vrstvy smyčkou z playbooku
+- [x] Obnova nasazené kopie
+- [x] **Projdi seznam Verifikace v návrhu** (26 bodů) a u každého zapiš: pokrytý testem (kterým), pokrytý studeným průchodem, nebo nepokrytý a proč. Nepokrytý bod není selhání — nezapsaný nepokrytý bod ano.
+- [x] Report česky
 - [ ] `finishing-a-development-branch` — Harvest Gate, harvest skillem `mb-harvest`, a integrace podle **nové** procedury, kterou tenhle plán právě zavedl. Je to první ostrý průchod tou cestou; co na něm nesedí, je nález.
 
 ---
@@ -1079,3 +1079,47 @@ Pozor: sloupce `Rozjetí` parsuje `ledger-status.ps1` **pozičně**, takže při
   párů) a přesah je ohraničený a předvídatelný, ne runaway — proto je
   pojmenovaný přímo v těch třech tascích místo přestrukturování plánu.
 - **Behaviorální pravidla fáze 3 nemají strojový test.** Je to v úvodu fáze napsané a ověřením je studený průchod. Evaly nejsou součástí tohohle plánu.
+
+---
+
+## Procházka seznamu Verifikace návrhu (26 bodů)
+
+Zapsáno při uzávěrce fáze 3, měřeno proti `a798fe0`. Legenda: **T** = pokrytý
+jmenovaným testem, **I** = pokrytý inspekcí (studeným průchodem), **N** =
+nepokrytý. Nepokrytý bod není selhání; nezapsaný nepokrytý bod ano.
+
+| # | Bod | Stav | Čím |
+|---|-----|------|-----|
+| 1 | FF na epikovou linii jen v protokolární podobě | **T částečně** | `guard-git-push.tests.ps1`, blok „Epiková výjimka" — pozitivní případ i všechny čtyři negativní; `--force`/`-f` odmítá `PUSH_ALLOWED_FLAGS`. **Ale** „nový obsah" a „první publikace" stojí na obsahovém pravidle `pre-push`, testovaném obecně a **nikdy s epikovou fixturou** — obě půlky jsou testované jen odděleně (nález M4, odložen). |
+| 2 | Agentní push do dodávkové linie neprojde ani omylem | **T pro konfigurovanou bázi** | `guard-git-push.tests.ps1` (pět případů). Pro **efektivní** bázi jinou než `baseRef` záruka neplatí — nález I6, uzavřený rulingem R26 dokumentací; zbytkové riziko kryje eskalační dno, které změnu `epicBranchPattern`/`protectedBranches` bezpodmínečně dává člověku. |
+| 3 | JEDNA PROCEDURA (nejdůležitější test celého návrhu) | **I** | Base-režimová otázka se klade právě dvakrát: Sync volí **domov**, Handoff volí **vykreslení**. Ověřeno proti textu overlay fragmentu, ne proti tvrzení. Oprava C1 přidala třetí větev, ale ta se rozhoduje `Test-Path` uvnitř ramene „báze nesedí" — ptá se, který dokument položka **má**, ne jaká je báze. Test by zůstal zelený. |
+| 4 | `epicBranchPattern` mimo `protectedBranches` je chyba konfigurace | **N** | Žádná taková kontrola ve vrstvě neexistuje a žádné sezení není instruováno ji provést. Navazující položka. |
+| 5 | `Get-UmsBaseCandidates` nabízí epikovou linii, víceúrovňový glob | **I** | `lstrip=3`, `Test-UmsProtectedBranch` s `-like` napříč lomítkem. `base-candidates.tests.ps1` **nemá žádný epikový případ** — mezera v pokrytí testem, ne v chování. |
+| 6 | Brána předání čte čerstvý tip | **T** | `handoff-gate.tests.ps1` (posun báze, selhaný fetch jako STOP, vlastní jméno `fetch-failed`). |
+| 7 | Chybějící `context.md` je STOP, ne IDLE; ACTIVE = pár pinu | **T** | `handoff-gate.tests.ps1`. |
+| 8 | FF vázaný na vlastní epik tiketu | **T** | `epic-gate.tests.ps1` (`wrong-epic`, `no-epic-header`, `no-spawn-row`). |
+| 9 | Nepotvrzený řádek registru blokuje, po potvrzení projde | **T** | `epic-gate.tests.ps1` (`unconfirmed` včetně „zavřeno" nad prázdnou SHA, `multi-unconfirmed`, `ok`). |
+| 10 | Behaviorální předpoklad se zavírá testem, ne přečtením | **N, a nevynutitelné konstrukcí** | `Druh` nemá mechanického konzumenta a mít ho nemůže — SHA je SHA. Nález I7: kontrakt teď **říká**, že je to povinnost toho, kdo SHA dodává, ne kontrola brány, a výslovně zakazuje domnělou kontrolu dodávat. |
+| 11 | Stub sdíleného rozhraní překládá dřív, než proti němu kdokoli implementuje | **I** | Kontrakt + `protocol.md`. Půlka „kompilátor jako orákulum" je vlastnost produktu, zde netestovatelná. |
+| 12 | Epik bez deklarované sady je STOP; artefakt cituje doslovně; brána porovnává jako text | **T porovnání, I STOP** | `handoff-gate.tests.ps1` (chybějící citace, odlišná citace, rozdíl jen ve velikosti písmen, „blokuje POUZE verification-set"). Sám STOP je próza overlaye — a právě tady byl Critical C1 a nález I4. |
+| 13 | Post-harvest `context.md` bajtově identický | **I** | Kontrakt „IDLE state"; `mb-harvest` i `mb-abort` srovnané. Bez testu. |
+| 14 | Potvrzení běží na tiketové větvi před Jirou a i bez Jira tiketu | **I** | Overlay fáze Confirmation + kontrakt; `mb-jira-update` přepnutý na fázovou terminologii. |
+| 15 | Holý `git push` po `switch -c` musí být odmítnut | **N touto vrstvou** | Odmítnutí obstarává `push.default=simple` gitu a obsahové pravidlo `pre-push`, ne guard: cíl se odvodí jako **jméno aktuální větve**, ta není chráněná, a test na surovou SHA se nedosáhne. Chování drží; **vysvětlení v kontraktu bylo chybné a nález M5 ho opravil**. |
+| 16 | Blok strojově ohraničený, přežije prózu vypadající jako nadpis, zdvojené a vnořené značky definované, nadměrný oříznutý | **T** | `pool-status.tests.ps1`, případy 17/18/19 — osm malformed tvarů, zdvojená koncová značka za oblastí definovaná jako ignorovaná, strop 200 znaků, odmítnutí znakové třídy. |
+| 17 | Přepis je smaž-a-rekonstruuj; fakt bydlící jen v bloku nesmí přežít | **I** | Kontrakt + SDD overlay. Netestovatelné. |
+| 18 | „Po termínu" se počítá, ne čte; „čekám na subagenta" není důvod k pobídce | **T výpočet, I pobídka** | Tytéž bajty, posunuté hodiny, `late` se překlopí; rovnost není po termínu. |
+| 19 | Když si blok a `git log` odporují, blok je špatně | **I** | Kontrakt. |
+| 20 | Vyjmenuj, co na odpovědi nezávisí, a udělej to hned | **I** | Druhé operační pravidlo sekce Escalation & Autonomy. |
+| 21 | Autonomie mění směrování; dno se nehýbe; `epicBranchPattern` je na dně | **T + I, po doplnění taxonomie** | Směrovací půlka pokrytá (tři úrovně, tři pásma, pět řádků dna; `ledger-status.ps1` čte deklaraci i override, s testy). **Taxonomie tříd konfliktů byla ve vrstvě celá chybějící** a byla doplněna v opravné vlně — klauzuli po klauzuli proti části 5 návrhu, včetně záměrné asymetrie, že třída 4 nenese „na hranici". Sezení teď umí rozhodnout, jestli červený build před ním vůbec je nález, a kdo hlásí nález třídy 1/2/4 a kdy. |
+| 22 | Každé eskalační pásmo má artefaktovou formu | **I** | Vyřízeno výslovně pro všechna tři pásma; formou dna je sám STOP a hlášení, které ho pojmenuje. |
+| 23 | Opuštěný tiket nechá epikovou linii netknutou a zavře své řádky | **N** | Nic neváže `mb-abort` na zavření řádků `Rozjetí` a registru; pravidlo „nepublikované opuštění je nález" neexistuje. Navazující položka. |
+| 24 | Epiková linie bez epiku je nález `mb-doc-index`, ne ticho | **N** | `mb-doc-index` nebyl tímto plánem měněn a epikovou logiku nemá. Navazující položka. |
+| 25 | `stripRef` je case-insensitive | **T** | `guard-git-push.tests.ps1` (`refs/HEADS/`, `Refs/Heads/`); komentář `pre-push` doplněn o paritu. |
+| 26 | Epic Backflow už nenabízí elaboraci, poznámka se dostane do dalšího okna | **I** | `brainstorming.overlay.md`, `mb-architect-review`, kontrakt. Bez testu. |
+
+**Souhrn: 13 bodů pokrytých jmenovaným testem, 8 inspekcí, 5 nepokrytých
+(4, 10, 15, 23, 24), 1 pokrytý až po doplnění v opravné vlně (21).**
+
+Z pěti nepokrytých je bod 10 nevynutitelný konstrukcí a kontrakt to teď říká;
+bod 15 drží v praxi a opravena byla jen jeho mylná explikace. Zbývají **tři
+skutečné navazující položky: 4, 23 a 24.**
