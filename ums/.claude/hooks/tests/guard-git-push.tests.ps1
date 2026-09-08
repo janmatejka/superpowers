@@ -374,9 +374,12 @@ $cfgEpic = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches"
 # POZITIVNÍ: přesně tvar protokolu.
 Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: refspec se surovým SHA do epic/* projde výjimkou'
 
-# NEGATIVNÍ 1 — zdroj není surové SHA. Tohle zavírá past se zděděným
-# upstreamem: switch -c z origin/epic/<KLÍČ> nastaví upstream na epikovou
-# linii, takže holý push by jinak prošel.
+# NEGATIVNÍ 1 — zdroj není surové SHA. Zavírá to REFSPEC bez surového zdroje:
+# `HEAD:`, jméno větve, refspec bez zdroje. NEZAVÍRÁ to holý `git push` —
+# ten se do téhle podmínky vůbec nedostane, protože cílem je pak JMÉNO
+# aktuální větve (tiketová větev, nechráněná) a verdikt je ALLOW; co drží
+# holý push, je `push.default=simple` a obsahové pravidlo `pre-push`
+# (kontrakt, „The epic line").
 Assert-Match (Test-Cmd 'git push origin HEAD:refs/heads/epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: HEAD jako zdroj není surové SHA'
 Assert-Match (Test-Cmd 'git push origin UMS-3400-x:refs/heads/epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: jméno větve jako zdroj není surové SHA'
 Assert-Match (Test-Cmd 'git push origin epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: refspec bez zdroje výjimku neotevírá'

@@ -1846,8 +1846,13 @@ everything else in this hook.
 **A freshly created ticket branch is DETACHED from its inherited upstream, and
 its first publication is `git push -u origin <branch>` — never a bare
 `git push`.** `git switch -c <branch> <chosen base>` sets the new branch's
-upstream to the BASE, so until that upstream is rewritten every bare push
-targets the (typically protected) base branch. Two steps, and both belong at
+upstream to the BASE, so until that upstream is rewritten the branch is
+pointed at a (typically protected) destination it must never publish to. What
+stops a bare push in that state is git's own `push.default=simple` refusing the
+name mismatch, plus `pre-push` — **not** the `PreToolUse` guard, which on a
+bare push resolves the target as the CURRENT BRANCH NAME and allows it ("The
+epic line", where that mechanism is written once). Relying on the guard here
+would be relying on the wrong file. Two steps, and both belong at
 the source rather than in any one caller's prose: immediately after the
 `switch -c`, run `git branch --unset-upstream`, so no accident in between can
 aim at the base; and publish the first time with `-u`, which sets the upstream

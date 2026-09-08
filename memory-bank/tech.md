@@ -186,8 +186,8 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 23 sad, dohromady
-1235 asercí:
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 27 sad, dohromady
+1464 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou):
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -196,22 +196,32 @@ v [playbook.md](playbook.md).
   + fixtures (proposal dokumenty ve starém i novém pojmenování, Jira JSON
   snapshoty, `fixtures/doc-index/*.json`).
 - [`mb-epic-elaboration/tests/`](../ums/.claude/skills/mb-epic-elaboration/tests/) —
-  `ledger-status.tests.ps1` (23; přibyla sekce ledgeru „## Rozjetí" — pozičně
-  parsovaná šestisloupcová tabulka řádků záměru — a její orphan případ, tiket
-  v řádku záměru bez odpovídajícího člena epiku) + fixtures (`ledger_rozjeti.md`,
-  `ledger_rozjeti_orphan.md`).
+  `ledger-status.tests.ps1` (41; sekce ledgeru „## Rozjetí" — pozičně
+  parsovaná tabulka řádků záměru o SEDMI sloupcích, poslední dva jsou
+  `Autonomie` a `Pasti` — její orphan případ, tiket v řádku záměru bez
+  odpovídajícího člena epiku, a řádek ze šestisloupcové éry, který se hlásí
+  jako nedostatečný, nikdy se nečte jako úroveň autonomie),
+  `ledger-evidence.tests.ps1` (40; ověřovací sada a registr rozhodnutí)
+  + fixtures (`ledger_rozjeti.md`, `ledger_rozjeti_orphan.md`,
+  `ledger_verification_set.md`, `ledger_decision_registry.md`).
 - [`mb-epic-run/tests/`](../ums/.claude/skills/mb-epic-run/tests/) — testy
   mechaniky poolu (`mb-epic-run`, viz [architecture.md](architecture.md),
   sekce 6), vlastní `_assert.ps1` a fixture builder
   `new-pool-fixture.ps1` (skutečné linked worktrees se sdíleným `.git`, ne
-  simulace): `pool-status.tests.ps1` (52; volnost jen z per-worktree signálů,
+  simulace): `pool-status.tests.ps1` (120; volnost jen z per-worktree signálů,
   marker, obsazenost stubovaná `tests/stubs/claude-stub.ps1`, ledger podle
-  slugu z pinu, `-1` jako nečitelný sentinel u `dirtyCount`/`unpushedCount`),
+  slugu z pinu, `-1` jako nečitelný sentinel u `dirtyCount`/`unpushedCount`,
+  blok `NOW` včetně tvarů, které ho dělají malformovaným, znaková třída
+  a strop toho, co smí z cizího ledgeru ven, tvar slugu jako komponenty cesty
+  a kulturně nezávislé timestampy),
   `pool-launch.tests.ps1` (41; vyčištění devíti proměnných, oba adaptéry
   proti `tests/stubs/argv-probe.ps1`/`argv-probe.cmd`, pět odmítnutých tvarů
   promptu, stavové slovo na vlastní řádce), `pool-provision.tests.ps1` (26;
   guard proti agentní relaci, marker, kontrola sdíleného hooku, exit 5 při
-  nepotvrzené publikační záruce).
+  nepotvrzené publikační záruce), `epic-gate.tests.ps1` (39; brána předání
+  a její čtyři kontroly, vazba fast-forwardu na vlastní epik, nepotvrzený
+  řádek registru rozhodnutí jako mechanická zábrana),
+  `frontmatter.tests.ps1` (2).
 - [`mb-doc-index/tests/`](../ums/.claude/skills/mb-doc-index/tests/) —
   `enumeration.tests.ps1` (43; okno aktivity podle tipu větve, čerstvá větev
   se starým návrhovým commitem, uspaná větev dosažitelná přes commit společný
@@ -238,7 +248,7 @@ v [playbook.md](playbook.md).
   `VAROVÁNÍ` při ubrání přes 50 % neprázdných řádků) proti fixture repu
   generovanému `new-fixture-repo.ps1`.
 - [`shared/tests/`](../ums/.claude/skills/shared/tests/) —
-  `repo-config.tests.ps1` (33; loader `Get-UmsRepoConfig.ps1` — per-key
+  `repo-config.tests.ps1` (37; loader `Get-UmsRepoConfig.ps1` — per-key
   defaulty, degradace na bezpečnější stranu u chybějícího i poškozeného
   souboru, normalizace bare stringu na jednoprvkový seznam v paritě
   s `guard-git-push.mjs`), `protected-branch.tests.ps1` (15; `Test-UmsProtectedBranch`
@@ -253,7 +263,9 @@ v [playbook.md](playbook.md).
   `Get-UmsEffectiveBase` — přednost řádku `Báze:` před `baseRef`, fallback při
   jeho absenci i bez `context.md`, tři tvary nesrozumitelného řádku
   (komentář za hodnotou, prázdná hodnota, chybějící diakritika) hlášené v
-  `Malformed` a odlišené od „řádek chybí úplně", zachování řádku v IDLE stavu).
+  `Malformed` a odlišené od „řádek chybí úplně", zachování řádku v IDLE stavu),
+  `handoff-gate.tests.ps1` (32; `Test-UmsHandoffGate` — čerstvý tip báze,
+  kanonický IDLE `context.md` commitu, dosažitelnost na `origin`).
 - [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (230;
   end-to-end proti skutečnému lokálnímu bare remote: marker `MB_AGENT_SESSION`
   jako vstupní brána, obsahové pravidlo fast-forwardu na už dosažitelný tip,
@@ -262,14 +274,14 @@ v [playbook.md](playbook.md).
   cizího hooku (`run_chained`) i jeho čtyři odmítnuté případy,
   `core.hooksPath` lokální/globální/relativní per worktree, generovaný
   seznam chráněných větví a self-test instalátoru včetně důvodů přeskočení;
-  běží přes dvě minuty, což je normální), `guard-git-push.tests.ps1` (332;
+  běží přes dvě minuty, což je normální), `guard-git-push.tests.ps1` (353;
   JSON na stdin → rozhodnutí podle aktéra a fail-closed čtení cíle: chráněné
   větve včetně integračního fast-forwardu, force, `--no-verify`, obě jména
   únikové proměnné v POSIX i PowerShellovém zápisu, přesměrování krokovaná
   jako v reálném shellu, pojmenované mezery jako `bash -c` nebo git alias) a
   `sync-marker.tests.ps1` (18; `Set-AgentMarker` per harness — Codex
   `config.toml`, Gemini `.env`, Kilo Code hlásí `NotSupportedException` a
-  nezapisuje nic) a `session-intent.tests.ps1` (120; čtenář session intent
+  nezapisuje nic) a `session-intent.tests.ps1` (125; čtenář session intent
   batonu — uzavřený formát s re-renderem, branch a slug guard
   case-sensitive, existence `Plan`, věk bez tvrdé expirace, consume-on-read
   vč. replay okna mezi emisí a přejmenováním, čtyři regresní zámky
