@@ -137,25 +137,15 @@ After the user chooses and BEFORE executing the choice:
       lower-cased, with `-` turned to `_` — the same convention `mb-epic-run`
       uses for the ledger's directory name.
     - **The base does NOT match** (no epic) → the set lives in the work
-      item's own plan, under its own `## Ověřovací sada` heading — the SAME
-      heading and shape as the epic ledger's, so the SAME reader applies:
-
-      ```powershell
-      . <mb-shared>/scripts/Get-UmsEpicLedger.ps1
-      $verificationSet = Get-UmsLedgerVerificationSet `
-          -LedgerPath <PLAN_MB>/proposals/active/plan_<slug>.md
-      ```
-
-      The plan is still on disk at this phase and will not be after the
-      **Harvest** phase, which deletes it as part of `mb-harvest`. That is the
-      second reason this resolution lives in the **Sync** phase.
-
-      **A BOUNDED work item has no `plan_<slug>.md` — its home is
-      `design_<slug>.md`** (contract, Publication Contract, "Integration",
-      the verification-set homes; and "Brainstorming Paths" for why the design
-      half always exists). A missing plan on this path is the EXPECTED shape
-      and never by itself a STOP: read the same heading out of the design
-      instead, with the same call.
+      item's own document, under its own `## Ověřovací sada` heading — the
+      SAME heading and shape as the epic ledger's, so the SAME reader applies.
+      **Which document depends on what this work item HAS**, and that is the
+      only choice here: `plan_<slug>.md` where there is a plan,
+      `design_<slug>.md` for a **bounded** work item, which writes no plan at
+      all (contract, Publication Contract, "Integration", the verification-set
+      homes; and "Brainstorming Paths" for why the design half always exists).
+      A missing plan on this path is the EXPECTED shape and never by itself a
+      STOP. **This is the ONE call — do not run a plan-only variant first:**
 
       ```powershell
       . <mb-shared>/scripts/Get-UmsEpicLedger.ps1
@@ -166,9 +156,16 @@ After the user chooses and BEFORE executing the choice:
       ```
 
       `Get-UmsLedgerVerificationSet` throws `Ledger not found` for a path that
-      is not there, so choosing the path is what keeps a bounded item off that
-      throw. When NEITHER file exists the work item has no pinned documents at
-      all, which is a different failure and a STOP of its own.
+      is not there, so choosing the path with `Test-Path` FIRST is what keeps a
+      bounded item off that throw and out of a terminating error where it is
+      owed the fail-closed STOP below. When NEITHER file exists the work item
+      has no pinned documents at all, which is a different failure and a STOP
+      of its own.
+
+      Whichever it is, it is still on disk at THIS phase and will not be in the
+      same place after the **Harvest** phase — `mb-harvest` deletes the plan
+      and archives the design in the same step. That is the second reason this
+      resolution lives in the **Sync** phase.
 
     Either way, finding **no declared set at all** — no such section in the
     ledger, and none in whichever of the plan or the design is this work item's
@@ -231,8 +228,18 @@ After the user chooses and BEFORE executing the choice:
       Read it from the commit BEFORE the harvest commit —
       `git show <pre-harvest sha>:<PLAN_MB>/proposals/active/plan_<slug>.md`,
       where `<pre-harvest sha>` is that harvest commit's parent (`git log` on
-      this ticket branch names the harvest commit). No such section there
-      either is the **Sync** phase's fail-closed STOP, arriving late.
+      this ticket branch names the harvest commit).
+    - **design home (a BOUNDED work item, which has no plan):** the design was
+      **archived, not deleted**, so it is still on disk — at
+      `<PLAN_MB>/proposals/completed/design_<slug>.md`. Read it there; no
+      `git show` is needed and none should be attempted against
+      `proposals/active/`, where a bounded item's plan never existed on any
+      commit of this branch and `git show` would exit 128 with an empty copy
+      that reads as "nothing declared".
+
+    Take the home this work item HAS — the same choice the **Sync** phase
+    made, one directory further on. No such section in it is the **Sync**
+    phase's fail-closed STOP, arriving late.
 
     Call the gate with both — `-CitedCommands` is what the **Green
     verification** phase actually ran, and what the **Handoff** phase below

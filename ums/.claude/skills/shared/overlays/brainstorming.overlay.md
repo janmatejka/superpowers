@@ -197,6 +197,13 @@ Adjustments to the checklist above:
   in its first half only: the design file IS written here (it is the durable
   Memory Bank record the harvest archives); "no implementation plan
   document" continues to hold.
+
+  **On this path the design also carries the `## Ověřovací sada` section**
+  (contract, "Brainstorming Paths"; the shape and the reason are the
+  Publication Contract's, section "Integration") — agree its commands with
+  your human partner before writing the file. Bounded is the only path where
+  nothing else writes it: the plan step, where every other work item declares
+  its set, is precisely the step bounded skips.
 - **Agentic opposition offer (architectural path only — after the user
   approves the written spec, BEFORE the Architect Review Gate offer):**
   offer an independent agentic opposition of the design per the contract's
