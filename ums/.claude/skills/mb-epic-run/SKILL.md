@@ -146,6 +146,18 @@ skill's job.
    `Postup v plánu` renders `progress`.
    - **`progress == null`** means the slot carries no ACTIVE pin — the `Pin`
      column already says so; leave this cell empty.
+   - **`progress.exists == false`** means the slot HAS a pin and the ledger of
+     that pin's slug is not there — a session that has not written one yet, or
+     one whose slug and ledger directory disagree. Render it as
+     **`bez ledgeru`**, never through the `progress.now == null` branch below:
+     that branch renders `bez bloku / <lines> / (bez výstupu)`, which is
+     indistinguishable from a ledger that exists and is empty, and the two
+     call for different next moves — look at the slot versus wait for the
+     first write. `lines` is `0` in this case and says nothing; do not print
+     it. A `path` of `''` alongside it means the pin's slug was REFUSED before
+     any path was built (`reasons` names it); render that as **`nečitelné`**
+     and read the reason, because it is a fail-closed refusal and not an
+     absence.
    - **`progress.now` is not `null`** — the actionable case, and the reason
      this column exists at all: lead the cell with `now.state` translated
      through the Czech mapping the contract fixes (contract, section "The
@@ -586,7 +598,10 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   courtesy** (contract, Publication Contract, "Integration", the Handoff phase:
   the manager owes that session an answer on both outcomes). The answer carries
   that the fast-forward landed, the target branch and the epic line's new tip
-  SHA; **on a STOP the same answer is owed**, naming the blocking check. The
+  SHA; **on a STOP the same answer is owed**, naming the blocking check. Mark
+  it per the contract, "Message Protocol" — this answer is the textbook case
+  its instruction clause names, a fact of the sender's own action the recipient
+  can verify in a shared artifact. The
   wire protocol is the epic orchestration's own and arrives with it — do not
   invent a format here; the obligation to answer is not one.
 

@@ -175,6 +175,11 @@ const loadProtected = (cwd) => {
 // Reads `epicBranchPattern` and derives `<baseBranch>` from `baseRef`; a
 // missing, empty or non-string value of either yields no exception (null).
 // See UMS_MEMORY_BANK_CONTRACT.md, "The epic line".
+//
+// `baseRef` here is the CONFIGURATION KEY, by name, and not the effective base
+// of a work item — the escape the contract's effective-base rule provides,
+// taken deliberately. Why, and what residual risk it leaves and which control
+// covers that: contract, "The epic line", condition 3. Not restated here.
 const loadEpicRule = (cwd) => {
   try {
     const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');

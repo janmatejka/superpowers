@@ -864,14 +864,47 @@ bite.
 4. the SOURCE side of the refspec is a raw 40-character hex SHA — not `HEAD`,
    not a branch name, not an absent source.
 
+**Condition 3 needs the CONFIGURATION KEY `baseRef` itself, by name, and says
+so** — this is the escape the effective-base rule above provides ("a site that
+instead needs the config key itself, by name, says so"), taken deliberately and
+not by omission. The reason is what evaluates the condition: a `pre-push` hook
+and a `PreToolUse` guard both fire without a work item in hand. Neither can know
+which base THIS work item integrates into — that lives in `context.md`, in a
+working tree the guard is not entitled to assume it is standing in — so the
+repository default is the only base name available to both, and it must be the
+same name in both or the two would disagree about what they exclude.
+**The residual risk, plainly:** in a repository whose work items integrate into
+maintenance branches other than `baseRef`, combined with an over-broad
+`epicBranchPattern` (`*` is contemplated below as a realistic mistake),
+condition 3 excludes `baseRef`'s own branch and nothing else — so the actual
+delivery line of such a work item is excluded by conditions 1 and 2 only.
+**The control that covers it is not another condition here**, and adding one
+would mean resolving an effective base inside a push guard, which is new design:
+it is the Escalation floor (`## Escalation & Autonomy`), which puts a change to
+`epicBranchPattern` or `protectedBranches` with the HUMAN, unconditionally and
+at every autonomy level. The pattern is how that risk is entered, so the pattern
+is where it is guarded.
+
 Each condition closes its own hole. Without the protected test, configuration
 would grant push rights over a namespace nothing guards. Without the
 `baseBranch` exclusion, a pattern of `*` would swallow the base itself. And the
-raw-SHA test is what keeps the inherited upstream out: the `switch -c` that cuts
-a ticket branch from `origin/epic/<EPIC-KEY>` sets the new branch's upstream to
-the epic LINE (measured), so the `git branch --unset-upstream` required with it
-stops being hygiene here and becomes the step that keeps a bare push from
-reaching the exception.
+raw-SHA test is what keeps a REFSPEC-LESS invocation from reaching the
+exception: the `switch -c` that cuts a ticket branch from
+`origin/epic/<EPIC-KEY>` sets the new branch's upstream to the epic LINE
+(measured), so the `git branch --unset-upstream` required with it stops being
+hygiene here.
+**What the raw-SHA test does NOT do is stop a bare `git push`, and the mechanism
+is worth stating exactly, because it is not this guard's.** Verified in
+`guard-git-push.mjs`: with no positional arguments the evaluation resolves the
+target through `addCurrent()`, which contributes the CURRENT BRANCH NAME and no
+source at all — never the destination the upstream would resolve to. A ticket
+branch is not a protected name, so the guard's verdict on a bare push from one
+is ALLOW, and the suite pins it as such. What actually keeps a bare push off
+`origin/epic/<KEY>` is git's own `push.default=simple`, which refuses when the
+upstream's branch name differs from the local branch's, plus the `pre-push`
+content rule while the ticket branch is unpublished. The guarantee holds; it is
+simply owed to git and to `pre-push`, and a reader who believed this guard
+carried it would look for it in the wrong file.
 
 **The threat model is stated because the choice rests on it.** The pattern lives
 in a file the agent may edit, so this exception defends against **mistake, not
@@ -924,6 +957,17 @@ which reads them.
   whole job: a `text` row closes on a READING, a `chování` row closes on a
   TEST asserting that behaviour. Reading code proves its current value, never
   that it behaves the way the decision assumes.
+  **This one is a DUTY on whoever supplies the SHA, not a check the gate
+  performs, and it is stated so that the rule stops looking enforced.**
+  `integrate` keys confirmation on a non-empty `Potvrzeno (SHA)` alone — a SHA
+  is a SHA, and nothing in a commit identifier distinguishes a commit that adds
+  a test from one that merely records a reading. The gate therefore reads
+  `Druh` for nobody: it is rendered by `ledger-status` so a HUMAN or a manager
+  reviewing the registry can see which rows owed a test, and it is that reader
+  who catches a `chování` row closed on a reading. Do not add a mechanical
+  check here in the belief that one is missing; there is nothing available to
+  the gate to check it WITH, and a check that cannot tell the two apart would
+  only move the false assurance one level down.
 - **`Stav` runs `otevřeno` → `zavřeno`, and confirmation is not keyed on
   it.** A row closes only with a non-empty `Potvrzeno (SHA)`, whatever `Stav`
   says; a row whose `Stav` claims `zavřeno` over an empty SHA still blocks.
@@ -2000,15 +2044,25 @@ never the raw `baseRef` configuration key.
 
 **ONE procedure, whatever the effective base is.** A delivery line, a maintenance
 branch of a release series and an epic line (Repository Configuration, "The epic
-line") are integrated through the same phases in the same order; nothing below
-asks which of them the base is, except the single condition of the Handoff phase
-— and that condition picks a rendering, not a step. The phases, in order:
+line") are integrated through the same phases in the same order. **Every phase
+below runs for every base**, and the question "is the base an epic line?" is
+asked exactly TWICE — in the Sync phase, to pick the HOME the declared
+verification set is read from, and in the Handoff phase, to pick the RENDERING
+of the artifact. Neither adds, removes or reorders a step, and they are not two
+independent conditions: **both read the ONE base resolution made once, before
+the sequence starts** (the effective base and the `epicBranchPattern` match
+derived from it). One derivation, consulted twice, is what keeps this a single
+procedure; a THIRD site asking the same question — or either of these two
+re-deriving the answer for itself — would not be, and the test named in the
+design's verification point 3 exists to turn red on exactly that.
+The phases, in order:
 
 - **Sync.** `git fetch origin`, then `git merge <effective base>` on the ticket
   branch. **The declared verification set (fourth check of the Handoff gate
-  below) is resolved in THIS phase**, in whichever of its two homes applies:
-  the Harvest phase deletes the plan, which is one of them, and a set learned
-  after the Green verification has run cannot be the set that run measured.
+  below) is resolved in THIS phase**, in whichever of its homes applies:
+  the Harvest phase deletes the plan and archives the design, and both are
+  homes, and a set learned after the Green verification has run cannot be the
+  set that run measured.
 - **Harvest.** The knowledge harvest and the IDLE reset of `context.md` (Harvest
   Contract; in `finishing-a-development-branch` it is the UMS Harvest Gate),
   committed on the ticket branch. It precedes the Handoff gate because that
@@ -2043,8 +2097,8 @@ asks which of them the base is, except the single condition of the Handoff phase
      anyway; the gate carries it so the error arrives earlier and legibly.
   4. the commands the Handoff artifact is about to quote match, AS TEXT, the
      verification set declared for this work item. **The verification set is
-     a verbatim list of commands, one per line, declared once**, and its home
-     is whatever umbrellas the work:
+     a verbatim list of commands, one per line inside ONE FENCED code block,
+     declared once**, and its home is whatever umbrellas the work:
      - **a ticket that belongs to an epic** — the epic's own ledger, section
        "Ověřovací sada", declared once for the whole epic so every ticket
        measures the identical thing. **That ledger is on the epic's
@@ -2065,6 +2119,26 @@ asks which of them the base is, except the single condition of the Handoff phase
        existed declares its set the same way any plan does — by gaining that
        section — and until it does, the missing-set case below is fail-closed
        exactly as stated, no differently for an old plan than for a new one.
+     - **a BOUNDED work item, which writes no `plan_<slug>.md` at all**
+       (Brainstorming Paths) — **its `design_<slug>.md`**, under that same
+       heading and in that same shape. Bounded is the one path whose plan
+       half legitimately does not exist, and the design half always does:
+       Brainstorming Paths requires the approved short design to be WRITTEN
+       to `<PLAN_MB>/proposals/active/design_<slug>.md` precisely so that
+       "harvest, integration, Jira and the archive work unchanged", and this
+       is that sentence continued rather than a new rule. **There is no
+       bounded exemption**, and the reason is the one stated below for the
+       missing-set case: a work item whose handoff artifact quotes output
+       with nothing to compare it against measures a different "green" every
+       time, and nothing about a small change makes its reader need less.
+       Resolution stays in the Sync phase for the same reason it does for a
+       plan — the Harvest phase archives the design to `proposals/completed/`.
+     **The shape, in all three homes, is one FENCED code block under that
+     heading, one command per line** — that is what the single reader
+     (`Get-UmsLedgerVerificationSet`) parses, and a bulleted or plain list
+     under a correct heading yields NOTHING and reads downstream as "no set
+     declared at all", which is a fail-closed STOP whose stated reason would
+     then be false.
      The comparison is TEXTUAL, not semantic: equal strings in equal order,
      never normalized and never reordered, because the entire point is that
      two measurements of "green" are measuring the identical thing. The check
@@ -2083,9 +2157,11 @@ asks which of them the base is, except the single condition of the Handoff phase
   in the SAME order that the Handoff gate's fourth check just compared as text
   against that set — so "verified" is a claim the reader can compare rather
   than an assurance. It has **two
-  renderings**, and the single condition of the whole
-  procedure decides between them — **is there a manager?**, answered by whether
-  the effective base is an epic line:
+  renderings**, and the SECOND of the procedure's two readings of the one base
+  resolution decides between them — **is there a manager?**, answered by
+  whether the effective base is an epic line. It picks a rendering and never a
+  step; the first reading, in the Sync phase, picks a HOME and likewise never a
+  step:
   - **no manager** → the artifact is rendered as the PLAIN human command with the
     outgoing commits enumerated (per the two spellings above). The user runs it:
     the base is a protected branch and the moment of integration belongs to the
@@ -2579,6 +2655,15 @@ The mark is written in English like every other AI-facing text and rendered to
 the user as *pokyn* and *domněnka* — the same translate-on-presentation split
 as `Ruling:` lines and the `NOW` block's state class (Language Contract).
 
+**`instruction` here is the MARK, and it is a different thing from
+`Instruction`, the required key of the Session Intent Baton.** The baton's
+`Instruction` is a key of a CLOSED, validated format and its value names a
+skill to invoke; this section's `instruction` is one of two values a `Mark:`
+line may carry, and it classifies what a message asserts. `Mark:` is the
+spelling precisely so nothing mechanical can confuse them — no reader of either
+one ever sees the other's spelling — and the two senses are named apart here so
+they cannot drift into one.
+
 **A cause is ALWAYS a conjecture; a boundary MAY be an instruction.** "May",
 because a boundary the sender does not own — one that belongs to the user, or
 one a written rule decides differently — is a conjecture too. An UNMARKED
@@ -2764,11 +2849,56 @@ precisely these off the human is what a manager is for:
 | The order and the queue of integrations | two tickets verified against the same epic tip |
 | Resynchronization prompts and cross-cutting relay | "go and integrate the epic line" |
 
+**The four classes of a conflict or a failed verification, and who owns each**
+
+A merge conflict and a red build after a merge are classified before anything
+is done about them, and the deciding question is ONE. It is deliberately not
+"whose file is this?" nor "whose paths are these?" — a shared `.csproj` is on
+everybody's path:
+
+> **Whose WRITTEN decision would have to change for this to work?**
+
+| Class | Recognised by | Owner | When it is reported |
+|---|---|---|---|
+| **1 — environment** | nobody's decision changes; the tree is fine, my workspace is stale | whoever merged | the ordinary report at a boundary |
+| **2 — confluence** | the answer is "keep both"; both intents stand | whoever merged | the ordinary report at a boundary |
+| **3 — a neighbour's decision** | another ticket's written decision would have to change, or its record was untrue | neither of them alone — **an escalation**, ruled in the movable band below | **immediately** |
+| **4 — own defect** | my work is wrong and the merge only revealed it | whoever merged | the ordinary report |
+
+**Class 1 has an OPERATION, not a judgement.** The first reaction to a red
+build after a merge is ALWAYS **restore and a clean rebuild**, and only what
+survives that is a finding at all. Both measured failures were exactly this
+and both were cured by it. Deciding it by judgement is the trap: the same
+symptom had two different causes in a single afternoon, so a session that
+reasons about the cause before it has restored is reasoning about an artifact.
+This is the operation that makes the table above usable — without it a session
+cannot tell whether what is in front of it is a class-1 nuisance or a class-3
+finding, which is precisely where both measured incidents were misclassifiable.
+
+**Class 3 blocks unconditionally**, and it is the only one of the four handled
+differently from the rest. The hard cap that goes with it, and it binds every
+class: **whoever merges NEVER edits code outside their own plan's scope to make
+the merge green.** Making it green that way converts a neighbour's decision
+into an unrecorded one.
+
+**The carrier of a class-3 ruling is an ARTIFACT, never a message** — this
+section's artifact requirement applied to this kind: the epic's evidence ledger
+(a `## Registr rozhodnutí` row where the question is another ticket's
+behaviour) and a hint written into the affected ticket's `design_<slug>.md`.
+A message may carry it sooner; it never carries it instead.
+
+The `immediately` in the table is not a second timing rule. It is
+`## Message Protocol`'s immediacy rule with its answer already known: a class-3
+finding changes a premise the neighbouring session is acting on right now, by
+definition of the class. The other three classes wait for the boundary the same
+rule sends them to. What a relay may CARRY is likewise that section's, and is
+not restated here.
+
 **The movable band — this is the quantity**
 
 | Kind | Measured example |
 |---|---|
-| A class-3 finding — one where a NEIGHBOURING ticket's written decision would have to change for this to work, or where its record was untrue | a 60 s TTL window hard-coded, with no configuration key |
+| A class-3 finding (the four classes above) | a 60 s TTL window hard-coded, with no configuration key |
 | A scope or ownership conflict between tickets | whose `EmployeeResolver` is it |
 | A defect in the plan — every way forward is a guess | a wiring brief wrong in six places |
 | A change to a ticket's brief | the scope turns out to be somewhere else |

@@ -68,8 +68,9 @@ After the user chooses and BEFORE executing the choice:
     `$verificationSet`: the **Green verification** phase runs exactly it, and
     the **Handoff gate** phase compares against it. Here and nowhere later,
     for two reasons that both bite: the **Harvest** phase DELETES
-    `plan_<slug>.md`, which is one of the set's two homes, and a set learned
-    after the verification already ran cannot be what the verification ran.
+    `plan_<slug>.md` and ARCHIVES `design_<slug>.md`, and both are homes of the
+    set, and a set learned after the verification already ran cannot be what
+    the verification ran.
 
     Resolve the repository configuration once, here — the same `$cfg` is
     reused by the **Handoff gate** and **Handoff** phases below, so it is
@@ -149,11 +150,30 @@ After the user chooses and BEFORE executing the choice:
       **Harvest** phase, which deletes it as part of `mb-harvest`. That is the
       second reason this resolution lives in the **Sync** phase.
 
+      **A BOUNDED work item has no `plan_<slug>.md` — its home is
+      `design_<slug>.md`** (contract, Publication Contract, "Integration",
+      the verification-set homes; and "Brainstorming Paths" for why the design
+      half always exists). A missing plan on this path is the EXPECTED shape
+      and never by itself a STOP: read the same heading out of the design
+      instead, with the same call.
+
+      ```powershell
+      . <mb-shared>/scripts/Get-UmsEpicLedger.ps1
+      $planPath   = '<PLAN_MB>/proposals/active/plan_<slug>.md'
+      $designPath = '<PLAN_MB>/proposals/active/design_<slug>.md'
+      $setPath = if (Test-Path -LiteralPath $planPath) { $planPath } else { $designPath }
+      $verificationSet = Get-UmsLedgerVerificationSet -LedgerPath $setPath
+      ```
+
+      `Get-UmsLedgerVerificationSet` throws `Ledger not found` for a path that
+      is not there, so choosing the path is what keeps a bounded item off that
+      throw. When NEITHER file exists the work item has no pinned documents at
+      all, which is a different failure and a STOP of its own.
+
     Either way, finding **no declared set at all** — no such section in the
-    ledger, nothing declared in the plan, or no plan file at all (the expected
-    shape for a **bounded** work item, where `Get-UmsLedgerVerificationSet`
-    throws `Ledger not found`) — is itself a fail-closed **STOP** (contract,
-    Publication Contract, "Integration"; Fail-Closed Behavior). Running some
+    ledger, and none in whichever of the plan or the design is this work item's
+    home — is itself a fail-closed **STOP** (contract, Publication Contract,
+    "Integration"; Fail-Closed Behavior). Running some
     verification of your own choosing and citing that later would be exactly
     the silent downgrade this layer forbids — the gate's own activation-only
     behaviour exists so that IT never fabricates a pass, not so a caller can
@@ -163,9 +183,11 @@ After the user chooses and BEFORE executing the choice:
     Report in Czech which home was consulted and what was missing, and say who
     declares it: on the epic path the epic's **manager**, in the ledger on the
     elaboration branch; otherwise **this session**, by adding the
-    `## Ověřovací sada` section to `plan_<slug>.md` — it is still on disk in
-    this phase — with the commands agreed with your human partner, committed
-    and pushed like any other change. Never invent a set later, at the gate.
+    `## Ověřovací sada` section — as one FENCED code block, one command per
+    line — **to the file this work item actually has**: `plan_<slug>.md` where
+    there is a plan, `design_<slug>.md` for a bounded work item. Both are on
+    disk in this phase. Agree the commands with your human partner, commit and
+    push like any other change. Never invent a set later, at the gate.
   - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
     the ticket branch.
   - **Publish.** `git fetch origin` and `git merge <effective base>` once

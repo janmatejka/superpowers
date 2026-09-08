@@ -7,7 +7,10 @@
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 **The plan file itself carries a `## Ověřovací sada` section**, per the
 contract's Publication Contract, section "Integration" — add it before
-presenting the options below.
+presenting the options below. **The shape is ONE FENCED code block under that
+heading, one command per line**, because a single reader parses all three homes
+of the set and it reads the fence; a bulleted or plain list under a correct
+heading yields nothing and later reads as "no set declared at all".
 
 **3. Fresh Session** (recommended for larger plans, or when the design
 discussion ran long) - I write a session intent baton and stop; you type
