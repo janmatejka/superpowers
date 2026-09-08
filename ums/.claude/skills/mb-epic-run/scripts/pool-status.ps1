@@ -89,6 +89,9 @@ $LedgerMaxRender = 200
 # working tree that implementer subagents write into routinely; a status
 # command must not pull an unbounded one into memory.
 $LedgerMaxBytes = 1048576
+# Bound on the slug lifted out of a foreign `context.md` before it becomes a
+# FILENAME COMPONENT (see Test-SlotSlug).
+$SlugMaxLength = 100
 $IsoUtcPattern = '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$'
 
 # Returns a [datetimeoffset], or $null when the text is not ISO-8601 UTC. The
@@ -337,8 +340,27 @@ function Get-SlotPin([string] $SlotPath) {
 function Test-LedgerText([string] $Text) {
     if ($null -eq $Text) { return $false }
     if ($Text -match '[<>]') { return $false }
+    # Cc AND Cf. The contract states the class once ("Session Intent Baton":
+    # an angle bracket, a control character or a FORMAT character); the reason
+    # the format category belongs in it is that U+202E RIGHT-TO-LEFT OVERRIDE,
+    # U+200B and the U+2066..U+2069 isolates carry no glyph, survive .Trim()
+    # and the length bound, and reorder the manager's rendered table -- the
+    # Trojan-source shape -- inside the very budget this bound grants.
     if ($Text -match '\p{Cc}') { return $false }
+    if ($Text -match '\p{Cf}') { return $false }
     return $true
+}
+
+# The bound, applied in exactly one place so both callers cut the same way.
+# `Substring(0, $LedgerMaxRender)` on its own can cut BETWEEN the halves of a
+# surrogate pair and emit a lone surrogate into UTF-8 JSON; when the last kept
+# char is a high surrogate its partner is the first dropped one, so the cut
+# moves back by one char.
+function Limit-LedgerText([string] $Text) {
+    if ($Text.Length -le $LedgerMaxRender) { return $Text }
+    $cut = $LedgerMaxRender
+    if ([char]::IsHighSurrogate($Text[$cut - 1])) { $cut -= 1 }
+    return $Text.Substring(0, $cut)
 }
 
 # A block value: rejected text yields $null (which makes the block malformed,
@@ -346,8 +368,7 @@ function Test-LedgerText([string] $Text) {
 function ConvertTo-NowValue([string] $Text) {
     $t = ([string] $Text).Trim()
     if (-not (Test-LedgerText $t)) { return $null }
-    if ($t.Length -gt $LedgerMaxRender) { return $t.Substring(0, $LedgerMaxRender) }
-    return $t
+    return (Limit-LedgerText $t)
 }
 
 # Any OTHER excerpt lifted out of the same file (today: the last non-empty
@@ -356,8 +377,7 @@ function ConvertTo-NowValue([string] $Text) {
 function ConvertTo-LedgerExcerpt([string] $Text) {
     $t = ([string] $Text).Trim()
     if (-not (Test-LedgerText $t)) { return '' }
-    if ($t.Length -gt $LedgerMaxRender) { return $t.Substring(0, $LedgerMaxRender) }
-    return $t
+    return (Limit-LedgerText $t)
 }
 
 function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
@@ -425,7 +445,11 @@ function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
     return [pscustomobject] @{
         # Re-rendered from the enum's own array, never echoed from the file.
         state = $NowStates[$stateIndex]
-        dueAt = $due.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        # InvariantCulture, and not decoration: `:` in a CUSTOM format string
+        # is the culture's TIME SEPARATOR, so under a culture that spells it
+        # otherwise this would emit a value the reader re-parses as late/not
+        # late, and `$IsoUtcPattern` would no longer match its own output.
+        dueAt = $due.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
         # COMPUTED here and nowhere else. Nothing in the file can set it: an
         # extra `Late:` line is an unknown key and makes the block malformed.
         late  = [bool] ($Now -gt $due)
@@ -440,24 +464,69 @@ function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
     }
 }
 
+# The slug is a FILENAME COMPONENT taken from a foreign worktree's
+# `context.md`, which is the same untrusted file the banner above governs --
+# so it is checked for SHAPE before it is used to build a path, not only for
+# what it emits. `Get-SlotPin` lifts it with `(?<v>\S+)`, and `\S+` admits
+# `../../..`; `Join-Path` would then resolve outside the slot and this reader
+# would emit the last line of any `progress.md` the process can reach.
+# The shape is the layer's own slug convention (contract, "Active Work Item
+# (Design + Plan Pair)": lowercase snake case, ASCII only, no diacritics),
+# with a length ceiling so the path stays bounded too.
+function Test-SlotSlug([string] $Slug) {
+    if ([string]::IsNullOrWhiteSpace($Slug)) { return $false }
+    if ($Slug.Length -gt $SlugMaxLength) { return $false }
+    return ($Slug -cmatch '^[a-z0-9]+(_[a-z0-9]+)*$')
+}
+
 function Get-SlotProgress([string] $SlotPath, [string] $Slug, [datetimeoffset] $Now) {
     # Paired to the slug the PIN names, never to "the first directory found
     # under sdd/": a slot can carry the leftover ledger of earlier work, and a
     # leftover slug can sort first.
-    if ([string]::IsNullOrWhiteSpace($Slug)) { return $null }
+    #
+    # `notRead` names WHY a `lines = -1` slot was not read, so the caller's
+    # `reasons` entry can say it in this script's established wording without
+    # the caller re-deriving the cause. Empty on every path that did read.
+    if (-not (Test-SlotSlug $Slug)) {
+        return [pscustomobject] @{
+            path = ''; exists = $false; lines = -1; lastLine = ''; now = $null
+            notRead = 'pin slug outside the slug shape, fail-closed'
+        }
+    }
     $rel = ".superpowers/sdd/plan_$Slug/progress.md"
     $full = Join-Path $SlotPath ($rel -replace '/', [IO.Path]::DirectorySeparatorChar)
     if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
-        return [pscustomobject] @{ path = $rel; exists = $false; lines = 0; lastLine = ''; now = $null }
+        return [pscustomobject] @{ path = $rel; exists = $false; lines = 0; lastLine = ''; now = $null; notRead = '' }
     }
     # Bound the READ before anything is read. `lines = -1` is this script's own
     # convention for an unreadable per-worktree signal (see `dirty` and
     # `unpushed`), so an over-size ledger reports as unread rather than as an
     # empty one.
-    if ((Get-Item -LiteralPath $full).Length -gt $LedgerMaxBytes) {
-        return [pscustomobject] @{ path = $rel; exists = $true; lines = -1; lastLine = ''; now = $null }
+    #
+    # Both calls are in `try/catch` for the same reason `Get-SlotPin`'s read
+    # is: under `$ErrorActionPreference = 'Stop'` a foreign slot that rotates,
+    # deletes or momentarily holds its ledger -- the routine case this script's
+    # own header describes -- would throw a TERMINATING error and take the
+    # whole pool report down with exit 1 and no output, for every slot.
+    # Measured: `Get-Item` on a path that passed `Test-Path` and then vanished
+    # throws ItemNotFoundException, and `Get-Content` on a file held with
+    # FileShare.None throws IOException. An unreadable ledger is a per-worktree
+    # signal like any other here, so it degrades into `reasons`.
+    $lines = @()
+    try {
+        if ((Get-Item -LiteralPath $full).Length -gt $LedgerMaxBytes) {
+            return [pscustomobject] @{
+                path = $rel; exists = $true; lines = -1; lastLine = ''; now = $null
+                notRead = 'over the size ceiling'
+            }
+        }
+        $lines = @(Get-Content -LiteralPath $full -Encoding utf8)
+    } catch {
+        return [pscustomobject] @{
+            path = $rel; exists = $true; lines = -1; lastLine = ''; now = $null
+            notRead = 'unreadable in this worktree'
+        }
     }
-    $lines = @(Get-Content -LiteralPath $full -Encoding utf8)
     $last = @($lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 1)
     return [pscustomobject] @{
         path     = $rel
@@ -465,6 +534,7 @@ function Get-SlotProgress([string] $SlotPath, [string] $Slug, [datetimeoffset] $
         lines    = $lines.Count
         lastLine = if ($last.Count -gt 0) { ConvertTo-LedgerExcerpt ([string] $last[0]) } else { '' }
         now      = (Get-NowBlock $lines $Now)
+        notRead  = ''
     }
 }
 
@@ -497,13 +567,15 @@ foreach ($c in $candidates) {
     # Every unreadable per-worktree signal in this script is named in `reasons`
     # (`status unreadable`, `unpushed count unreadable`, `pin unreadable
     # (fail-closed)`, `occupancy unknown (fail-closed)`), and a `-1` sentinel
-    # without one would be invisible to a renderer — an over-size ledger would
-    # read as an ordinary slot. This reason can never be the FIRST one and
+    # without one would be invisible to a renderer — an over-size, an
+    # unreadable and a slug-refused ledger would each read as an ordinary
+    # slot. `notRead` supplies the cause; the wording of the three causes is
+    # this function's, not the caller's. This reason can never be the FIRST one and
     # therefore cannot change any slot's freedom: the ledger is read only when
     # a pin exists, and a pin has already added `ACTIVE pin: <slug>` above.
     $progress = if ($null -ne $pin) { Get-SlotProgress $c.Path $pin.slug $clockUtc } else { $null }
     if ($null -ne $progress -and $progress.lines -eq -1) {
-        $reasons += 'progress ledger not read (over the size ceiling)'
+        $reasons += "progress ledger not read ($($progress.notRead))"
     }
 
     $session = Get-SlotSession $claude $c.Path
@@ -545,7 +617,7 @@ $stash = @(if ($stashRes.Code -eq 0) { $stashRes.Out | Where-Object { -not [stri
 
 $state = [pscustomobject] @{
     repoRoot        = $repoAbs
-    generatedAt     = $clockUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    generatedAt     = $clockUtc.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
     occupancySource = $occupancySource
     stashCount      = $stash.Count
     slots           = @($slots)

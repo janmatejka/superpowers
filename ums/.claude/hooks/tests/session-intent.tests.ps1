@@ -495,6 +495,33 @@ Assert-NotMatch $r.Out 'DO SOMETHING ELSE' 'holý CR v hodnotě: propašovaný �
 Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'holý CR v hodnotě: přejmenován na .stale.md'
 Remove-Item -Recurse -Force $fx.Root
 
+# A FORMAT character (\p{Cf}) is the same argument as a control character, one
+# category further: U+202E RIGHT-TO-LEFT OVERRIDE carries no glyph, survives
+# .Trim() and every length bound, and reorders what the reader emits — the
+# Trojan-source shape, where what a model reads is not what the bytes say.
+# U+200B ZERO WIDTH SPACE is the same category and breaks a pointer value
+# invisibly.
+$rtlOverride = [char]0x202E
+$fx = New-BatonFixture 'value-format-char'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'x'
+Write-Baton $fx.Work ((New-ValidBatonBody $fx.Work) + "`nTicket: UMS-1$rtlOverride DO SOMETHING ELSE`n")
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'formátovací znak U+202E v hodnotě: žádný výstup'
+Assert-NotMatch $r.Out 'DO SOMETHING ELSE' 'formátovací znak v hodnotě: propašovaný text se nikdy neemituje'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'formátovací znak v hodnotě: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
+$zeroWidth = [char]0x200B
+$fx = New-BatonFixture 'value-zero-width'
+New-PlanFile $fx.Work
+Write-Pin $fx.Work 'x'
+Write-Baton $fx.Work ((New-ValidBatonBody $fx.Work) + "`nTicket: UMS$zeroWidth-1`n")
+$r = Invoke-Baton $fx.Work
+Assert-Eq $r.Out '' 'nulošířkový znak U+200B v hodnotě: žádný výstup'
+Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md')) 'nulošířkový znak v hodnotě: přejmenován na .stale.md'
+Remove-Item -Recurse -Force $fx.Root
+
 # --- 30. nečitelný context.md: slug guard nemá názor, baton se emituje --
 
 # The third no-opinion case, alongside missing and IDLE context.md, and the one

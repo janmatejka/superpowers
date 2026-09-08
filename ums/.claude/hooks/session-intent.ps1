@@ -117,12 +117,18 @@ try {
         # value survives the "`r?`n" split and .Trim() and then renders as extra
         # apparent key lines inside the block.
         #
+        # \p{Cf} is the same argument once more, for the FORMAT characters that
+        # carry no glyph at all: U+202E RIGHT-TO-LEFT OVERRIDE, U+200B and the
+        # U+2066..U+2069 isolates survive .Trim() and every length bound and
+        # then REORDER what the reader emits — the Trojan-source shape, where
+        # what a model reads is not what the bytes say.
+        #
         # No legitimate pointer value — a plan or ledger path, a branch, a slug,
         # a ticket key, a task number, a skill name — has any reason to carry an
-        # angle bracket or a control character, so the whole class can go.
-        # Staleness is the disposition already used for an unknown key or a
-        # malformed line; a structurally hostile value gets the same one.
-        if ($value -match '[<>]' -or $value -match '\p{Cc}') { $bad = $true; break }
+        # angle bracket, a control character or a format character, so the whole
+        # class can go. Staleness is the disposition already used for an unknown
+        # key or a malformed line; a structurally hostile value gets the same one.
+        if ($value -match '[<>]' -or $value -match '\p{Cc}' -or $value -match '\p{Cf}') { $bad = $true; break }
         $fields[$key] = $value
     }
     if ($bad) {

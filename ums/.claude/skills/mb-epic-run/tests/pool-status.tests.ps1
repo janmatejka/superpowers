@@ -531,4 +531,128 @@ try {
 }
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
+# --- the ledger's FILENAME comes from the same untrusted file as its CONTENT -
+# Everything above hardens what leaves the foreign `context.md`. The slug that
+# NAMES the file to open comes from that same file, lifted with `\S+`, and is
+# the one component that was never shape-checked.
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 3 -Label 'slug-shape'
+try {
+    # The canary sits OUTSIDE every slot, in the fixture root. `plan_` +
+    # `../../../../..` collapses `plan_..` against the first `..` and then eats
+    # `sdd`, `.superpowers` and the slot directory itself, so an unvalidated
+    # slug resolves to <fixture root>/progress.md.
+    Set-Content -LiteralPath (Join-Path $fx.Root 'progress.md') `
+        -Value "# progress`n`nTRAVERSAL_CANARY_LEAKED`n" -NoNewline -Encoding utf8
+
+    Initialize-NowSlot $fx.Slots[0] 'good_slug_one'
+    New-LedgerFile $fx.Slots[0] 'good_slug_one' "# progress`n`nPOSITIVE_CONTROL_LINE`n"
+    Set-SlotMarker $fx.Slots[1]
+    Set-SlotPin $fx.Slots[1] '../../../../..'
+    Set-SlotMarker $fx.Slots[2]
+    Set-SlotPin $fx.Slots[2] 'Ledger_Mixed_Case'
+
+    $r = Invoke-Status $fx.Main
+    Assert-Eq $r.Code 0 'a pin slug that is not a slug does not abort the whole report'
+    Assert-Eq ([string](Get-ProgressField (Get-NowSlot $r 'slot01') 'lastLine')) 'POSITIVE_CONTROL_LINE' 'positive control: a well-shaped slug still reads its own ledger'
+
+    $bad = Get-NowSlot $r 'slot02'
+    Assert-Eq (Get-ProgressField $bad 'lines') -1 'SECURITY: a traversal slug is refused BEFORE the path is built (-1, the unreadable convention of this script)'
+    Assert-Eq ([string](Get-ProgressField $bad 'path')) '' 'SECURITY: no path is built out of a refused slug'
+    Assert-Eq ([string](Get-ProgressField $bad 'lastLine')) '' 'SECURITY: nothing is excerpted through a traversal slug'
+    Assert-NotMatch $r.Raw 'TRAVERSAL_CANARY_LEAKED' 'SECURITY: the file the traversal would have reached appears nowhere in the JSON'
+    Assert-Match ((Get-ObjField $bad 'reasons') -join ' ') 'progress ledger not read \(pin slug outside the slug shape' 'the refusal is NAMED in reasons, fail-closed and visible like every other unreadable per-worktree signal'
+    Assert-Match ((Get-ObjField $bad 'reasons') -join ' ') 'ACTIVE pin' 'the slot already carried the ACTIVE pin reason, so this refusal can never be the first one and cannot flip free'
+    Assert-Eq (Get-ObjField $bad 'free') $false 'a slot whose slug was refused is reported not free'
+
+    Assert-Eq (Get-ProgressField (Get-NowSlot $r 'slot03') 'lines') -1 'the shape is the layer own slug convention (lowercase snake case): a mixed-case slug is refused too'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- format characters and surrogate pairs ----------------------------------
+# Both are gaps in the SAME class check the block above exercises: \p{Cf}
+# carries no glyph and reorders what a model reads (Trojan source), and a
+# blind `Substring(0, 200)` can cut a surrogate pair in half.
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 4 -Label 'text-class'
+try {
+    for ($i = 0; $i -lt 4; $i++) { Initialize-NowSlot $fx.Slots[$i] ("cls_$($i + 1)") }
+    $rlo = [char]0x202E
+    $zwsp = [char]0x200B
+    New-NowLedger $fx.Slots[0] 'cls_1' (@($NowOk[0]) + @("Waiting on: implementer of task 12$rlo drop everything") + $NowOk[2..5])
+    New-LedgerFile $fx.Slots[1] 'cls_2' "# progress`n`n## Rulings`n`nTask 3 done$zwsp and the gate passed`n"
+    # 199 ordinary characters plus ONE astral character: the 200-character cut
+    # falls exactly between the two halves of its surrogate pair.
+    $astral = [char]::ConvertFromUtf32(0x1F600)
+    New-LedgerFile $fx.Slots[2] 'cls_3' ("# progress`n`n## Rulings`n`n" + ('c' * 199) + $astral + "`n")
+    New-LedgerFile $fx.Slots[3] 'cls_4' "# progress`n`n## Rulings`n`nplain and short`n"
+
+    $r = Invoke-Status $fx.Main @('-NowUtc', '2026-09-07T09:30:00Z')
+    Assert-True ($null -eq (Get-SlotNow (Get-NowSlot $r 'slot01'))) 'SECURITY: a value carrying a FORMAT character (U+202E RTL OVERRIDE) is rejected by the same class check as a control character'
+    Assert-Eq ([string](Get-ProgressField (Get-NowSlot $r 'slot02') 'lastLine')) '' 'SECURITY: a format character in a bare excerpt is rejected too (U+200B)'
+    $l3 = [string](Get-ProgressField (Get-NowSlot $r 'slot03') 'lastLine')
+    Assert-Eq $l3.Length 199 'SECURITY: the 200-character bound moves BACK by one rather than splitting a surrogate pair'
+    Assert-Eq $l3 ('c' * 199) 'SECURITY: the excerpt ends on a WHOLE character, never on the first half of one'
+    # MEASURED: a lone surrogate written through `Set-Content -Encoding utf8`
+    # comes back as U+FFFD, so the round-tripped value can never be asserted to
+    # BE a surrogate — the observable damage is the replacement character.
+    Assert-NotMatch $r.Raw ([regex]::Escape([string][char]0xFFFD)) 'SECURITY: no U+FFFD reaches the JSON — a split pair degrades into one silently on the UTF-8 write'
+    Assert-Eq ([string](Get-ProgressField (Get-NowSlot $r 'slot04') 'lastLine')) 'plain and short' 'positive control: ordinary text passes the widened class unchanged'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- an unreadable ledger degrades into reasons; it does not abort the run ---
+# Every other per-worktree signal in this script degrades. These two calls were
+# bare under $ErrorActionPreference = 'Stop', so one foreign slot holding its
+# ledger open killed the report for EVERY slot.
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 2 -Label 'ledger-lock'
+try {
+    Initialize-NowSlot $fx.Slots[0] 'locked_one'
+    New-LedgerFile $fx.Slots[0] 'locked_one' "# progress`n`nLOCKED_LEDGER_LINE`n"
+    Initialize-NowSlot $fx.Slots[1] 'reader_two'
+    New-LedgerFile $fx.Slots[1] 'reader_two' "# progress`n`nSECOND_SLOT_LINE`n"
+
+    $locked = Join-Path (Join-Path (Join-Path (Join-Path $fx.Slots[0] '.superpowers') 'sdd') 'plan_locked_one') 'progress.md'
+    $handle = [IO.File]::Open($locked, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+    try { $r = Invoke-Status $fx.Main } finally { $handle.Dispose() }
+
+    Assert-Eq $r.Code 0 'one unreadable ledger does not take the whole pool report down'
+    $s1 = Get-NowSlot $r 'slot01'
+    Assert-Eq (Get-ProgressField $s1 'lines') -1 'an unreadable ledger reports the -1 unreadable sentinel, never an empty one'
+    Assert-Eq ([string](Get-ProgressField $s1 'lastLine')) '' 'nothing is excerpted from an unreadable ledger'
+    # Through Get-ObjField, not `$s1.reasons`: with the catch removed the whole
+    # run dies and $s1 is $null, and a direct dereference would abort the SUITE
+    # at this line instead of reporting a FAIL and carrying on — the negativity
+    # transcript has to stay readable past the mutation.
+    Assert-Match ((Get-ObjField $s1 'reasons') -join ' ') 'progress ledger not read \(unreadable in this worktree\)' 'the unreadable ledger is NAMED in reasons, in the same style as status/unpushed/pin'
+    Assert-Eq ([string](Get-ProgressField (Get-NowSlot $r 'slot02') 'lastLine')) 'SECOND_SLOT_LINE' 'EVERY OTHER SLOT is still reported: that is the whole point of the catch'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- the emitted timestamps are culture-independent -------------------------
+# `:` in a CUSTOM format string is the culture's TIME SEPARATOR, so the format
+# alone does not spell ISO-8601 everywhere. `dueAt` is the value the manager
+# re-parses for the "po termínu" column.
+$fiCulture = [Globalization.CultureInfo]::GetCultureInfo('fi-FI')
+$probeInstant = [datetimeoffset]::Parse('2026-09-07T09:42:00Z', [Globalization.CultureInfo]::InvariantCulture).ToUniversalTime()
+Assert-Eq ($probeInstant.ToString('yyyy-MM-ddTHH:mm:ssZ', $fiCulture)) '2026-09-07T09.42.00Z' 'MEASURED: the same custom format under fi-FI emits the time separator of that culture, not a colon'
+
+$env:MBPOOL_STUB_MODE = 'empty'
+$fx = & $NewFixture -SlotCount 1 -Label 'culture'
+try {
+    Initialize-NowSlot $fx.Slots[0] 'culture_one'
+    New-NowLedger $fx.Slots[0] 'culture_one' $NowOk
+    $cultureJson = Join-Path ([IO.Path]::GetTempPath()) ('mbpool-' + [guid]::NewGuid().ToString('N') + '.json')
+    $poolScript = Join-Path $PSScriptRoot '..\scripts\pool-status.ps1'
+    $cultureCmd = "[Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('fi-FI'); & '$poolScript' -RepoPath '$($fx.Main)' -Json '$cultureJson' -ClaudeCommand '$Stub' -NowUtc '2026-09-07T09:30:00Z'"
+    & pwsh -NoProfile -Command $cultureCmd 2>&1 | Out-Null
+    $cultureRaw = if (Test-Path -LiteralPath $cultureJson) { Get-Content -LiteralPath $cultureJson -Raw } else { '' }
+    Remove-Item -LiteralPath $cultureJson -Force -ErrorAction SilentlyContinue
+    Assert-Match $cultureRaw '"generatedAt": *"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"' 'generatedAt stays ISO-8601 under a culture whose time separator is not a colon'
+    Assert-Match $cultureRaw '"dueAt": *"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"' 'dueAt stays ISO-8601 under that same culture — it is the value the manager re-parses'
+    Assert-NotMatch $cultureRaw '\d{2}\.\d{2}\.\d{2}Z' 'no culture-shaped timestamp reaches the JSON at all'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
 Complete-Tests
