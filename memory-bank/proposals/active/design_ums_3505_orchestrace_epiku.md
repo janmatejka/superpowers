@@ -1092,3 +1092,33 @@ jsou kontrakt a vynucovací mechanika; body 4 a 5 jsou chování skillů.
   nestavět na něm bez měření.
 - **Doklady v ledgeru epiku SKODASMS-237** — sezení `ums01` je má a nabídlo je
   k vyžádání.
+
+Doplněno při uzávěrce fáze 3 z procházky seznamu Verifikace a z otázky
+položené po ní:
+
+- **Kontrola, že `epicBranchPattern` leží uvnitř `protectedBranches`** (bod 4
+  Verifikace) — nikde ve vrstvě neexistuje a žádné sezení ji nemá uloženou;
+  eskalační dno dnes kryje jen *změnu* těch klíčů, ne jejich *nesoulad*.
+- **Vazba opuštění tiketu na zavření jeho řádků** (bod 23) — `mb-abort` nezavírá
+  řádky `Rozjetí` ani registru a pravidlo „nepublikované opuštění je nález"
+  není napsané.
+- **Epiková logika v `mb-doc-index`** (bod 24) — epiková linie bez epiku je
+  dnes ticho, ne nález.
+- **Playbook chybí v eskalačním dně.** Zápis do `playbook.md` „vždycky
+  schvaluje člověk a žádná úroveň to nezvedá" má přesně tvar řádku dna, ale
+  sekce Escalation & Autonomy ho nejmenuje — pravidlo bydlí jen v Playbook
+  Contractu. Čtenář tabulky může usoudit, že spadá do pohyblivého pásma.
+  Oprava je jeden řádek dna plus odkaz; je to změna kontraktu, tedy vlastní
+  tiket.
+- **Autonomie tvorby playbooku v plně autonomním režimu** — orchestrace
+  tiketů nesmí stát na nepřítomném člověku, kandidáti se mají zapracovávat
+  autonomně a další práce je ověřuje použitím. Změna kontraktu nejvyšší třídy
+  (playbook je preskriptivní, špatná položka je závazné pravidlo, ne špatná
+  informace). Stavební kameny z existujících vzorů vrstvy: autonomní položka
+  je domněnka až do potvrzení použitím (Message Protocol; stavy `navrženo` →
+  `ověřeno` → `vyvráceno`); závazné vs. doporučené položky; pole `Confirms:`
+  v reportu implementátora, aby se potvrzení použitím **zaznamenávalo**;
+  nedestruktivnost vůči lidsky autorizovaným položkám; commitnutá fronta
+  úsudkových kandidátů místo blokující brány; dedup při sběru a stárnutí
+  nepotvrzených. Dataset pro návrh vzniká z triáže kandidátů tohoto work
+  itemu (kritérium × mechanické/úsudkové × hlasité/tiché selhání).
