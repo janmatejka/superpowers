@@ -1,3 +1,13 @@
+param(
+    # Task 7 negative-run hook: point the whole suite at an unfixed
+    # install-git-hooks.ps1 (e.g. the pre-Task-1..6 version from git history)
+    # WITHOUT editing the working tree, so the suite can prove its own new
+    # assertions actually go red against the old installer. Left unset, this
+    # resolves to the exact same production installer path as before this
+    # parameter existed - the default path is unchanged.
+    [string] $installScript = (Join-Path $PSScriptRoot '..\install-git-hooks.ps1')
+)
+
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '_assert.ps1')
 $ErrorActionPreference = 'Stop'
@@ -77,6 +87,19 @@ function Find-GitBash {
 }
 $gitBash = Find-GitBash
 
+# Task 7: git-lfs itself may be absent from the machine running this suite.
+# Blocks that need REAL git-lfs to GENERATE or repair a .ums-chained restore
+# must gate on this - a machine without git-lfs must SKIP those cases, not
+# fail them (the spec is explicit: "kde git lfs na stroji není, se případy
+# přeskočí, ne zčervenají"). Blocks that only assert nothing was created
+# (shared core.hooksPath, an already-present foreign non-lfs chain) refuse
+# before Restore-LfsChainedHook ever checks for the git-lfs command, so they
+# do not need this guard and stay unconditional.
+$script:HasGitLfs = [bool](Get-Command git-lfs -ErrorAction SilentlyContinue)
+if (-not $script:HasGitLfs) {
+    Write-Host 'SKIP: git-lfs není na PATH - případy obnovy řetězu se přeskakují (ne fail).' -ForegroundColor Yellow
+}
+
 # --------------------------------------------------------------- fixture --
 $root = Join-Path ([IO.Path]::GetTempPath()) ("mbprepush-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $origin = Join-Path $root 'origin.git'
@@ -98,8 +121,8 @@ Invoke-GitOk $work @('commit', '-m', 'feature') | Out-Null
 Invoke-GitOk $work @('push', '-u', 'origin', 'feature/x') | Out-Null
 
 # install the hook under test via the real installer, into the WORK clone
-# (pre-push runs client-side, in the repo doing the pushing).
-$installScript = Join-Path $PSScriptRoot '..\install-git-hooks.ps1'
+# (pre-push runs client-side, in the repo doing the pushing). $installScript
+# itself is now the param declared at the top of this file (Task 7).
 
 # Runs the real installer capturing BOTH its output and its exit code. The
 # exit code is part of its contract with sync-with-monorepo.ps1: "installed
@@ -1721,30 +1744,39 @@ function New-LfsSiblingRepo([string] $Label) {
     return $r
 }
 
-$rLfs = New-LfsSiblingRepo 'restore'
-$res = Invoke-Installer $rLfs $null
-$chained = Join-Path $rLfs '.git/hooks/pre-push.ums-chained'
-Assert-True (Test-Path $chained) 'obnova: .ums-chained vznikl'
-Assert-Match ([IO.File]::ReadAllText($chained)) 'git lfs pre-push' 'obnova: obnovený řetěz volá git lfs pre-push'
-Assert-Match ([IO.File]::ReadAllText($chained)) 'Restored by install-git-hooks.ps1' 'obnova: obnovený řetěz nese provenience stamp'
-Assert-Match $res.Flat 'restored' 'obnova: instalátor obnovu pojmenuje'
-Assert-Eq $res.Code 0 'obnova: instalace končí kódem 0'
+if ($script:HasGitLfs) {
+    $rLfs = New-LfsSiblingRepo 'restore'
+    $res = Invoke-Installer $rLfs $null
+    $chained = Join-Path $rLfs '.git/hooks/pre-push.ums-chained'
+    Assert-True (Test-Path $chained) 'obnova: .ums-chained vznikl'
+    Assert-Match ([IO.File]::ReadAllText($chained)) 'git lfs pre-push' 'obnova: obnovený řetěz volá git lfs pre-push'
+    Assert-Match ([IO.File]::ReadAllText($chained)) 'Restored by install-git-hooks.ps1' 'obnova: obnovený řetěz nese provenience stamp'
+    Assert-Match $res.Flat 'restored' 'obnova: instalátor obnovu pojmenuje'
+    Assert-Eq $res.Code 0 'obnova: instalace končí kódem 0'
 
-# Druhý běh obnovený soubor nemění.
-$chainedBefore = [IO.File]::ReadAllText($chained)
-$res = Invoke-Installer $rLfs $null
-Assert-Eq ([IO.File]::ReadAllText($chained)) $chainedBefore 'obnova: opakovaný běh obnovený soubor nemění'
-# Zdravý řetěz nemá co obnovovat - Reason je $null, ne text popisující překážku,
-# takže se nesmí objevit žádná "note: git-lfs chain not restored" hláška.
-Assert-NotMatch $res.Flat 'git-lfs chain not restored' 'obnova: opakovaný běh zdravého řetězu nehlásí "chain not restored"'
+    # Druhý běh obnovený soubor nemění.
+    $chainedBefore = [IO.File]::ReadAllText($chained)
+    $res = Invoke-Installer $rLfs $null
+    Assert-Eq ([IO.File]::ReadAllText($chained)) $chainedBefore 'obnova: opakovaný běh obnovený soubor nemění'
+    # Zdravý řetěz nemá co obnovovat - Reason je $null, ne text popisující překážku,
+    # takže se nesmí objevit žádná "note: git-lfs chain not restored" hláška.
+    Assert-NotMatch $res.Flat 'git-lfs chain not restored' 'obnova: opakovaný běh zdravého řetězu nehlásí "chain not restored"'
 
-# Repozitář bez jakékoli stopy po LFS - nevznikne nic.
+    Remove-Item -Recurse -Force $rLfs
+}
+
+# Repozitář bez jakékoli stopy po LFS - nevznikne nic. Test-RepoUsesLfs vrátí
+# false dřív, než by na skutečný git-lfs vůbec došlo, takže tenhle blok
+# zůstává nepodmíněný (Task 7 ruling).
 $rNoLfs = Join-Path ([IO.Path]::GetTempPath()) ("mbnolfs-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 & git init -q -b develop $rNoLfs | Out-Null
 Invoke-Installer $rNoLfs $null | Out-Null
 Assert-True (-not (Test-Path (Join-Path $rNoLfs '.git/hooks/pre-push.ums-chained'))) 'bez LFS: žádný řetěz nevznikne'
+Remove-Item -Recurse -Force $rNoLfs
 
 # .ums-chained existuje, ale je to cizí non-LFS hook -> obnova se nespustí.
+# Restore-LfsChainedHook odmítne dřív, než by sáhl na příkaz git-lfs (existující
+# cizí řetěz pozná bez něj), takže tenhle blok zůstává nepodmíněný (Task 7 ruling).
 $rForeignChain = New-LfsSiblingRepo 'foreignchain'
 [IO.File]::WriteAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'), "#!/bin/sh`nexit 0`n", (New-Object System.Text.UTF8Encoding($false)))
 $before = [IO.File]::ReadAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'))
@@ -1753,29 +1785,81 @@ Assert-Eq ([IO.File]::ReadAllText((Join-Path $rForeignChain '.git/hooks/pre-push
 # Tady Reason neprázdný je - překážka existuje (cizí hook na místě řetězu),
 # takže instalátor musí nahlas hlásit, že nic nepřepsal.
 Assert-Match $res.Flat 'not overwriting it' 'cizí řetěz: instalátor nahlas hlásí, že existující cizí řetěz nepřepisuje'
+Remove-Item -Recurse -Force $rForeignChain
 
-# Důkaz o LFS i bez sourozenců - .gitattributes s filter=lfs.
-$rAttr = Join-Path ([IO.Path]::GetTempPath()) ("mbattr-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
-& git init -q -b develop $rAttr | Out-Null
-& git -C $rAttr remote add origin "$rAttr/../fake-origin" | Out-Null
-[IO.File]::WriteAllText((Join-Path $rAttr '.gitattributes'), "*.dll filter=lfs diff=lfs merge=lfs -text`n", (New-Object System.Text.UTF8Encoding($false)))
-Invoke-Installer $rAttr $null | Out-Null
-Assert-True (Test-Path (Join-Path $rAttr '.git/hooks/pre-push.ums-chained')) 'důkaz z .gitattributes: řetěz se obnoví i bez sourozenců'
+if ($script:HasGitLfs) {
+    # Důkaz o LFS i bez sourozenců - .gitattributes s filter=lfs. RULING (Task
+    # 7, kontroluje brief): tenhle blok skutečný git-lfs POTŘEBUJE - generování
+    # (Restore-LfsChainedHook) je jediná cesta, jak .ums-chained vznikne, žádní
+    # sourozenci ho nekopírují. Bez guardu by na stroji bez git-lfs zčervenal.
+    $rAttr = Join-Path ([IO.Path]::GetTempPath()) ("mbattr-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    & git init -q -b develop $rAttr | Out-Null
+    & git -C $rAttr remote add origin "$rAttr/../fake-origin" | Out-Null
+    [IO.File]::WriteAllText((Join-Path $rAttr '.gitattributes'), "*.dll filter=lfs diff=lfs merge=lfs -text`n", (New-Object System.Text.UTF8Encoding($false)))
+    Invoke-Installer $rAttr $null | Out-Null
+    Assert-True (Test-Path (Join-Path $rAttr '.git/hooks/pre-push.ums-chained')) 'důkaz z .gitattributes: řetěz se obnoví i bez sourozenců'
+    Remove-Item -Recurse -Force $rAttr
+}
 
-Remove-Item -Recurse -Force $rLfs, $rNoLfs, $rForeignChain, $rAttr
+if ($script:HasGitLfs) {
+    # Po obnově git-lfs znovu nainstaluje svůj pre-push. Instalátor ho musí
+    # zřetězit přes náš vlastní obnovený řetěz, ne skončit exitem 2.
+    $rReinstall = New-LfsSiblingRepo 'reinstall'
+    Invoke-Installer $rReinstall $null | Out-Null
+    $chainedPath = Join-Path $rReinstall '.git/hooks/pre-push.ums-chained'
+    Assert-True (Test-Path $chainedPath) 'reinstalace: předpoklad - řetěz byl obnoven'
+    [IO.File]::WriteAllText((Join-Path $rReinstall '.git/hooks/pre-push'), "#!/bin/sh`ngit lfs pre-push `"`$@`"`n", (New-Object System.Text.UTF8Encoding($false)))
+    $res = Invoke-Installer $rReinstall $null
+    Assert-Eq $res.Code 0 'reinstalace: instalátor neskončí exitem 2, náš obnovený řetěz smí přepsat'
+    Assert-NotMatch ([IO.File]::ReadAllText($chainedPath)) 'Restored by install-git-hooks' 'reinstalace: na místě je teď skutečný hook od git-lfs, ne náš generovaný'
+    $head = Get-Content -LiteralPath (Join-Path $rReinstall '.git/hooks/pre-push') -TotalCount 5
+    Assert-Match ($head -join "`n") 'UMS pre-push guard' 'reinstalace: na pre-push je zase náš hook'
+    Remove-Item -Recurse -Force $rReinstall
+}
 
-# Po obnově git-lfs znovu nainstaluje svůj pre-push. Instalátor ho musí
-# zřetězit přes náš vlastní obnovený řetěz, ne skončit exitem 2.
-$rReinstall = New-LfsSiblingRepo 'reinstall'
-Invoke-Installer $rReinstall $null | Out-Null
-$chainedPath = Join-Path $rReinstall '.git/hooks/pre-push.ums-chained'
-Assert-True (Test-Path $chainedPath) 'reinstalace: předpoklad - řetěz byl obnoven'
-[IO.File]::WriteAllText((Join-Path $rReinstall '.git/hooks/pre-push'), "#!/bin/sh`ngit lfs pre-push `"`$@`"`n", (New-Object System.Text.UTF8Encoding($false)))
-$res = Invoke-Installer $rReinstall $null
-Assert-Eq $res.Code 0 'reinstalace: instalátor neskončí exitem 2, náš obnovený řetěz smí přepsat'
-Assert-NotMatch ([IO.File]::ReadAllText($chainedPath)) 'Restored by install-git-hooks' 'reinstalace: na místě je teď skutečný hook od git-lfs, ne náš generovaný'
-$head = Get-Content -LiteralPath (Join-Path $rReinstall '.git/hooks/pre-push') -TotalCount 5
-Assert-Match ($head -join "`n") 'UMS pre-push guard' 'reinstalace: na pre-push je zase náš hook'
-Remove-Item -Recurse -Force $rReinstall
+# ---------------------------------------------------------------------------
+# Task 7: spojený akceptační případ - obě poloviny změny se musí potkat v
+# JEDNOM běhu instalátoru, jinak si každá dokazuje jen sebe: klon s LFS, náš
+# hook ve staré verzi, bez řetězu. RULING: tenhle blok potřebuje skutečný
+# git-lfs stejně jako obnova výše - guardovaný.
+# ---------------------------------------------------------------------------
+if ($script:HasGitLfs) {
+    $rBoth = New-LfsSiblingRepo 'both'
+    $hookBoth = Join-Path $rBoth '.git/hooks/pre-push'
+    $srcHead = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\pre-push') -TotalCount 5
+    $srcVersion = [regex]::Match(($srcHead -join "`n"), 'Publication Contract\) v(\d+)').Groups[1].Value
+    [IO.File]::WriteAllText($hookBoth, "#!/bin/sh`n# UMS pre-push guard (Publication Contract) v1`n# stale`n", (New-Object System.Text.UTF8Encoding($false)))
+    $res = Invoke-Installer $rBoth $null
+    $headBoth = Get-Content -LiteralPath $hookBoth -TotalCount 5
+    Assert-Match ($headBoth -join "`n") ('Publication Contract\) v' + $srcVersion) 'spojený případ: hlavička po instalaci nese zdrojovou verzi'
+    Assert-True (Test-Path (Join-Path $rBoth '.git/hooks/pre-push.ums-chained')) 'spojený případ: v témže běhu vznikl i LFS řetěz'
+    Assert-Eq $res.Code 0 'spojený případ: instalace končí kódem 0'
+    Remove-Item -Recurse -Force $rBoth
+}
+
+# Sdílený hooks adresář: obnova se nesmí spustit vůbec. Nepodmíněné (Task 7
+# ruling) - Restore-LfsChainedHook odmítne na core.hooksPath dřív, než by
+# sáhl na příkaz git-lfs.
+$rShared = New-LfsSiblingRepo 'shared'
+$sharedHooks = Join-Path ([IO.Path]::GetTempPath()) ("mbsharedhooks-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $sharedHooks | Out-Null
+Invoke-GitOk $rShared @('config', 'core.hooksPath', $sharedHooks) | Out-Null
+Invoke-Installer $rShared $null | Out-Null
+Assert-True (-not (Test-Path (Join-Path $sharedHooks 'pre-push.ums-chained'))) 'sdílený hooks adresář: obnova se nespustí'
+Remove-Item -Recurse -Force $rShared, $sharedHooks
+
+if ($script:HasGitLfs) {
+    # Řetěz volá git lfs, ale nemá execute bit -> opraví se. Guardovaný: první
+    # instalace musí řetěz nejdřív vygenerovat, což bez git-lfs neproběhne.
+    $rNoX = New-LfsSiblingRepo 'noexec'
+    Invoke-Installer $rNoX $null | Out-Null
+    $chainNoX = Join-Path $rNoX '.git/hooks/pre-push.ums-chained'
+    $bash = Find-GitBash
+    & $bash -c 'chmod -x "$1"' _ ($chainNoX -replace '\\', '/') | Out-Null
+    Invoke-Installer $rNoX $null | Out-Null
+    & $bash -c 'test -x "$1"' _ ($chainNoX -replace '\\', '/') | Out-Null
+    Assert-Eq $LASTEXITCODE 0 'neexekutovatelný řetěz: opakovaný běh instalátoru execute bit vrátí'
+    Remove-Item -Recurse -Force $rNoX
+}
 
 Complete-Tests
