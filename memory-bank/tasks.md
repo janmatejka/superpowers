@@ -43,17 +43,7 @@ reprodukovaný, žádný neblokuje provoz.
    a `mb-park` kontrakt implementují správně. Předchází tuto pracovní
    položku, je mimo její soupis souborů a je to jedna sdílená formulace
    použitá pětkrát v pěti neotestovaných tělech skillů. Neřešeno.
-6. **Monorepo `d:\_datasys\ums` čeká na redeploy vrstvy.** Nasazená kopie
-   tohoto forku (kořenové `.claude/`, `.agents/skills/`, vendorované skilly
-   s overlay bloky) je s `ums/.claude/` v souladu — obnovuje ji poslední
-   úloha každého plánu. Monorepo je samostatná živá kopie a za `ums/.claude/`
-   zaostává o celou publikační vrstvu (marker gate, pravidlo obsahu,
-   `MB_HUMAN_PUSH`, chaining cizího hooku, kontrakt v2.18): nástroj je
-   `pwsh ums/sync-with-monorepo.ps1` a poté revendor v monorepu
-   (`-NoOverlays` → `-OverlaysOnly`, postup v [playbook.md](playbook.md),
-   sekce „Upgrade upstreamu"). Po nasazení znovu spustit
-   `install-git-hooks.ps1`, protože hook je nyní `v2`. Neřešeno.
-7. **Sebekontrola hooku čte průchod syntetické chráněné řádky jako chybějící
+6. **Sebekontrola hooku čte průchod syntetické chráněné řádky jako chybějící
    značku, ale od pravidla obsahu má průchod dva důvody.** Kontrakt (Workspace
    Discipline, fáze 0) i finishing overlay (Step 4.5) říkají „řádka chráněné
    větve, která PROJDE, znamená, že značka agentní session chybí". Po zavedení

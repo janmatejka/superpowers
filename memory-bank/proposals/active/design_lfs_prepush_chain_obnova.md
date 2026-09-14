@@ -13,10 +13,16 @@
 
 ## Co se stalo
 
-V klonu `D:\_datasys\ums` leží LFS hooky `post-commit`, `post-checkout`
-a `post-merge` z 30. 7. 2026, ale `pre-push` je z 7. 9. 2026 náš guard —
-a `pre-push.ums-chained` tam **není**. Starší verze instalátoru LFS hook
+V klonu `D:\_datasys\ums` ležely LFS hooky `post-commit`, `post-checkout`
+a `post-merge` z 30. 7. 2026, ale `pre-push` byl z 7. 9. 2026 náš guard —
+a `pre-push.ums-chained` tam **nebyl**. Starší verze instalátoru LFS hook
 přepsala, místo aby ho odsunula.
+
+**Akutní případ je od 14. 9. 8:43 spravený ručně** — `pre-push.ums-chained`
+v monorepu existuje, je spustitelný, volá `git lfs pre-push` a nese vlastní
+komentář o ruční obnově. Minulý čas výše je tedy stav při měření, ne dnešní.
+Na rozsahu položky to nemění nic: ruční zásah opravil jeden klon, ne mezeru
+v instalátoru, a ostatní klony nikdo neobešel.
 
 Smudge/clean filtry na tom nezávisí, takže navenek nic nevypadalo rozbitě.
 Rozbitý byl jen push: bez hooku od git-lfs `git push` LFS objekty nenahrává.
