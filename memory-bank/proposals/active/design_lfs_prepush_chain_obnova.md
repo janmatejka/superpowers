@@ -386,16 +386,9 @@ položky, jen se pojmenovává. **Jestli z bodu 4 těží, závisí na tom, zda 
 
 ## Ověřovací sada
 
-> Po překlasifikaci na `architectural` je domovem ověřovací sady **hlavička
-> plánu** — tady zůstává jen do chvíle, než `writing-plans` vytvoří
-> `plan_lfs_prepush_chain_obnova.md`. Pak se přesune tam a odsud zmizí, aby
-> jeden fakt neměl dva domovy.
-
-```
-pwsh -NoProfile -File ums/.claude/hooks/tests/pre-push.tests.ps1
-pwsh -NoProfile -File ums/.claude/skills/mb-epic-run/tests/pool-provision.tests.ps1
-for t in $(find ums -name "*.tests.ps1"); do echo "== $t"; pwsh -NoProfile -File "$t" || echo "FAILED: $t"; done
-```
+Po překlasifikaci na `architectural` je domovem ověřovací sady **hlavička
+plánu** — `plan_lfs_prepush_chain_obnova.md`, sekce „Ověřovací sada". Tady
+už není, aby jeden fakt neměl dva domovy.
 
 Po bumpu navíc grep jako zámek proti nedodělanému přepisu. **Hledat jen plný
 literál značky nestačí** — většina míst verzi parafrázuje („starší než v2",
