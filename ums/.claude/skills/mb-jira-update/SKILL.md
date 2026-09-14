@@ -236,6 +236,95 @@ Scope lock remains active until command completion.
   is present, and `ODKAZ NA NEEXISTUJÍCÍ PROPOSAL` if it points at a stale
   filename — both VAROVÁNÍ.
 
+#### 7b-1. Change one line WITHOUT risking the rest of the description
+
+**The API has no partial-description edit.** `editJiraIssue` replaces the whole
+field, so touching one line means re-emitting the entire description — often
+many kilobytes of Czech prose with tables, `„ "` quotes, `$${…}` literals and
+escaped quotes. Re-emitting it from context is the failure mode this repository
+has already paid for (see the memory note about five diacritic slips across five
+descriptions), and a silently mangled description is worse than a stale link.
+
+There is no Atlassian CLI and no credentials on this machine, so a native
+file-based update (`acli … --description-file`) is NOT available — verify before
+assuming otherwise; if one ever is installed, prefer it and skip this whole
+dance.
+
+**Use this four-step procedure. It makes the edit scripted rather than retyped,
+and it PROVES the result instead of trusting it.** Measured working on 2026-09-11
+against a 10 202-character description.
+
+1. **Download WITHOUT retyping — force the harness to persist the response.**
+   The agent cannot pipe an MCP result into a file, but when a result exceeds the
+   output limit the harness saves it to `…/tool-results/<name>.txt` and returns
+   the path. Make it overflow on purpose by asking for more than one issue, then
+   extract the field mechanically:
+
+   ```powershell
+   $j     = Get-Content $persistedFile -Raw | ConvertFrom-Json
+   $desc  = ($j.issues.nodes | Where-Object { $_.key -eq '<TICKET>' }).fields.description
+   [System.IO.File]::WriteAllText($orig, $desc, (New-Object System.Text.UTF8Encoding($false)))
+   ```
+
+   Use `searchJiraIssuesUsingJql` with `key = <EPIC> OR parent = <EPIC>`,
+   `fields: [summary, description]`, `responseContentFormat: markdown` — measured
+   to overflow reliably (76 159 characters for one epic). A single-issue
+   `getJiraIssue` does NOT overflow even with `fields: ["*all"]`, so it does not
+   produce a file; do not rely on it for this step. The `UTF8Encoding($false)`
+   matters — a BOM would show up as a diff on line 1 later.
+
+   **This is the step that removes transcription from the read path entirely.**
+   Only fall back to writing the description out by hand if no persisted file can
+   be produced, and say so in the report when you do.
+2. **Patch by script, never by hand.** Let PowerShell do the replacement, and
+   make it refuse to run if the target line is not in the expected shape — a
+   silent no-match is how this step turns into a whole-description rewrite:
+
+   ```powershell
+   $lines = Get-Content $orig
+   if ($lines[0] -notmatch '^\*\*Návrh \(design\):\*\* \[.+\]\(https://bitbucket\.org/\S+\)$') {
+       throw "první řádek nemá očekávaný tvar: $($lines[0])"
+   }
+   $lines[0] = '**Návrh (design):** [<design-file>.md](<commit-pinned URL>)'
+   Set-Content -Path $new -Value $lines -Encoding UTF8
+   ```
+
+   Then `Compare-Object (Get-Content $orig) (Get-Content $new)` — it MUST report
+   exactly one replaced line (two entries, one `=>` and one `<=`). This is the
+   step that guarantees the intended diff; nothing after it can widen the change.
+3. **Send** `desc-new.md`'s content through `editJiraIssue`.
+4. **Prove it, with two independent comparisons.** Read the description back **by
+   the same persisted-file route as step 1** — not by retyping — into
+   `desc-after.md`, then:
+
+   - `Compare-Object desc-new.md desc-after.md` → **must be empty.** This is the
+     load-bearing check: it proves what Jira stored is what step 2 produced, so
+     no transcription error crept into the send.
+   - `Compare-Object desc-orig.md desc-after.md` → **must be exactly the one
+     line.** Independent confirmation that nothing else moved.
+   - Compare character counts as a third, cheap signal, and expect the delta to
+     equal the intended edit. Watch the line-ending trap: `Set-Content` writes
+     CRLF while a file written by the `Write` tool is LF, so a CRLF file reads
+     one character longer per line. Compare `Get-Content -Raw` lengths only
+     between files of the same line ending, or reason about the offset.
+
+   If the first comparison is non-empty, the description in Jira is NOT what you
+   meant to write — restore it from Jira's description history and retry; do not
+   patch the patch.
+5. **Delete the three scratch files** when the checks pass.
+
+**Where the residual risk actually sits.** With step 1 and step 4 both going
+through the persisted file, the ONLY place the description passes through the
+agent's own output is step 3, the `editJiraIssue` argument. That is precisely
+what the first comparison in step 4 measures, and it measures it mechanically:
+`desc-new.md` came from a script, `desc-after.md` came from Jira through a
+parser, and neither was retyped. An empty diff between them is therefore real
+evidence that the send was faithful, not a self-confirming check.
+
+This supersedes the older habit of reading the returned `description` out of the
+tool response by eye — see the memory notes on Jira description edits; that
+method could not distinguish a faithful send from a slip reproduced twice.
+
 ### 8. Publish to Jira
 - First compose the Jira comment body in Czech as a brief, professional implementation note for the delivery team.
 - Use this structure:
