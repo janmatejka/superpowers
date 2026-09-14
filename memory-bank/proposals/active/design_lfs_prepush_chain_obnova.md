@@ -3,7 +3,13 @@
 - **Jira:** — (bez tiketu)
 - **Target MB:** memory-bank/
 - **Vytvořeno:** 2026-09-14
-- **Cesta:** bounded (ohraničená změna existujícího toku `install-git-hooks.ps1`)
+- **Cesta:** architectural (překlasifikováno 2026-09-14 z `bounded` — ratchet je
+  jednosměrný nahoru). Původní odhad „ohraničená změna existujícího toku
+  `install-git-hooks.ps1`" přestal platit se zapracovanou oponenturou: přechod
+  konzumentů verze z rovnosti na porovnání uspořádáním (bod 4) sahá do
+  `settings.json`, `mb-state`, `pool-provision.ps1`, dvou overlayů a kontraktu,
+  a obnova sama mění invariantu proof běhů instalátoru. To už není jeden tok,
+  ale změna napříč vrstvou.
 - **Evidence:** naměřeno 2026-09-14 v monorepu `D:\_datasys\ums` — tři binárky
   FreeSWITCH (`FreeSwitch/mod/mod_dscurl.dll`, `mod_say_cs.dll`,
   `mod_say_sk.dll`, commit `e3794dc31` z 11. 9.) byly na `origin/develop` jen
@@ -379,6 +385,11 @@ položky, jen se pojmenovává. **Jestli z bodu 4 těží, závisí na tom, zda 
 `settings.json` přistává trackovaně; to ověřeno není a návrh to netvrdí.**
 
 ## Ověřovací sada
+
+> Po překlasifikaci na `architectural` je domovem ověřovací sady **hlavička
+> plánu** — tady zůstává jen do chvíle, než `writing-plans` vytvoří
+> `plan_lfs_prepush_chain_obnova.md`. Pak se přesune tam a odsud zmizí, aby
+> jeden fakt neměl dva domovy.
 
 ```
 pwsh -NoProfile -File ums/.claude/hooks/tests/pre-push.tests.ps1
