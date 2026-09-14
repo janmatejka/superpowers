@@ -67,6 +67,26 @@ performing one. Reading another branch's state never checks that branch out.
     put there by another repository's install. The marker check settles that
     provenance question, which is the only thing that was ever at stake. A missing
     or unmarked hook stays a missing guarantee whatever `core.hooksPath` says.
+  - The health of the Git LFS `pre-push` chain, restored by
+    `install-git-hooks.ps1`'s `Restore-LfsChainedHook` and reported here on the
+    same trigger, so the report and that installer step never drift apart. It
+    only applies where that step itself would run: the `pre-push` slot is empty
+    or already carries our marker (`Test-IsOurHook`) — a foreign, non-UMS hook
+    occupying it is a different case, already covered above — and the hooks
+    directory is not shared, the same OR condition `Restore-LfsChainedHook`
+    itself refuses on: an absolute `core.hooksPath` value (the scope warning
+    above) or one read from global/system config scope even when relative.
+    Within that scope, the repository counts as using LFS the moment any one of
+    `Test-RepoUsesLfs`'s four proofs holds, checked in this order: a sibling
+    hook among `post-commit`, `post-checkout` or `post-merge` whose body calls
+    `git lfs <name>`; `.gitattributes` containing `filter=lfs`; a non-empty LFS
+    storage directory (`git rev-parse --git-path lfs`); or `git config
+    --get-regexp '^lfs\.'` matching anything. When it does, the chained hook at
+    `<pre-push>.ums-chained` must be healthy — present, its body matching
+    `git lfs pre-push` (`Test-IsLfsHook`, the same identity test used above),
+    and carrying the execute bit — or the chain is reported missing/incomplete.
+    Nothing here is executed, including the chain itself: only `Test-Path` and
+    reading file contents, the same discipline as the marker check above.
   - The hook's own VERSION, read from the same five lines: they must carry a
     version no lower than the layer's own source header (`ums/.claude/hooks/pre-push`,
     line 2). A header with the identity marker but a LOWER version is our hook
@@ -262,7 +282,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
+Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ⚠️ LFS pre-push řetěz chybí nebo je neúplný> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
@@ -291,6 +311,7 @@ Další krok:
 - zbytky v cestě a větev je IDLE → commitni je, nebo zahoď po tvém výslovném potvrzení (mb-park by řekl „Není co parkovat")
 - pre-push chybí/neověřený → spusť install-git-hooks.ps1 a znovu ověř
 - pre-push je starší verze než zdrojová → spusť install-git-hooks.ps1 (upgraduje hook na místě) a znovu ověř
+- LFS řetěz chybí/neúplný → spusť install-git-hooks.ps1 a znovu ověř
 - báze chybí commity → base sync na nejbližší hranici fáze (ne uprostřed tasku)
 ```
 
@@ -313,7 +334,10 @@ gather step and the contract give it. An absolute `core.hooksPath` is a warning
 about SCOPE, never a claim that the hook is bypassed: the hook was resolved through
 that very path, so a verified marker there is a live guarantee, and `✅ způsobilý`
 plus this one warning is the correct line for such a workspace — never a line
-without `✅`.
+without `✅`. A missing or incomplete LFS `pre-push` chain is not a missing
+guarantee either — the guard itself is installed and working, something running
+alongside it is what is broken — so it too rides next to `✅ způsobilý` rather
+than replacing it, the same way the absolute-`core.hooksPath` warning does.
 
 A third note, on the `Báze:` line: `(z context.md | výchozí z ums-repo.json)` is
 `$base.Source` (`context` / `config`) translated to Czech — read from the resolve
