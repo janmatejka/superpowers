@@ -65,7 +65,7 @@ Adjustments to the checklist above:
      non-base IDLE branch (a harvested ticket branch) committing on that branch is
      fine. Either way the leftovers still have to be resolved. Within eligibility, a
      **verified publication guarantee for THIS session is a fail-closed
-     precondition** — the hook must exist, be at least v2, and reject a synthetic
+     precondition** — the hook must exist, be at least the layer's own version, and reject a synthetic
      protected-branch line run in this session's own environment, together
      with the mirror-image accept case: a hook that cannot execute at all
      "rejects" everything while still carrying its marker line, so the reject

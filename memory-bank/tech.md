@@ -101,7 +101,7 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 | Klíč | Obsah |
 |---|---|
 | `env` | `MB_AGENT_SESSION: "1"` — vstupní marker agentní relace; bez něj `pre-push` hook nevynucuje nic vlastního (viz níže) |
-| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md`; entry gate stejného kroku navíc fail-closed ověří verzi `pre-push` hooku (`UMS pre-push guard (Publication Contract) v2`) a spustí synteticky obě poloviny jeho self-checku (zamítnutí i propuštění) — postup je v [playbook.md](playbook.md). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
+| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md`; entry gate stejného kroku navíc fail-closed ověří verzi `pre-push` hooku (značka `UMS pre-push guard (Publication Contract)` s verzí ne nižší, než jakou nese zdrojová hlavička vrstvy) a spustí synteticky obě poloviny jeho self-checku (zamítnutí i propuštění) — postup je v [playbook.md](playbook.md). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
 | `hooks.PostCompact` | `systemMessage`: po kompaktaci znovu načíst kontrakt, `context.md` a při exekuci plánu i `.superpowers/sdd/<plan-basename>/progress.md` |
 | `hooks.PreToolUse` (`Write|Edit`) | `deny-superpowers-docs.mjs` — blokuje zápis do `docs/superpowers/**` a `docs/plans/**` |
 | `hooks.PreToolUse` (`Bash|PowerShell`) | `guard-git-push.mjs` — nese pravidlo podle AKTÉRA (jen vlastní tool-cally agenta, ne příkazy uživatele psané přes `!`): na rozpoznaný `git push` leans fail-CLOSED (nečitelný cíl zamítá, nečeká na vyjasnění), zamítá push agenta na chráněnou větev včetně integračního fast-forwardu, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a `--no-verify` bez kontextu; NENÍ záruka publikace — tou zůstává git `pre-push` hook (níže), který navíc vynucuje jen uvnitř agentní relace |
@@ -114,7 +114,7 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 `git push` už není v `permissions.deny` — je binární a deny vyhrává nad allow,
 takže by nešlo rozvolnit jen pro vlastní tiketovou větev. Skutečnou hranicí
 publikačního pravidla (kontrakt, Publication Contract) je git `pre-push` hook
-(`v2`) [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (POSIX
+(verze podle hlavičky ve vrstvě) [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) (POSIX
 `sh`, scope `refs/heads/*`) — git mu předá už rozparsované čtveřice refů, ne
 shellový text, takže žádné parsování k obejití neexistuje. Vynucuje jen
 uvnitř agentní relace: vstupní brána je marker `MB_AGENT_SESSION=1` (u

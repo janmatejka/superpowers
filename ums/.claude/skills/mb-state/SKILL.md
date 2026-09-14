@@ -67,12 +67,13 @@ performing one. Reading another branch's state never checks that branch out.
     put there by another repository's install. The marker check settles that
     provenance question, which is the only thing that was ever at stake. A missing
     or unmarked hook stays a missing guarantee whatever `core.hooksPath` says.
-  - The hook's own VERSION, read from the same five lines: they must carry
-    `UMS pre-push guard (Publication Contract) v2`. A header with the identity
-    marker but WITHOUT the ` v2` suffix is our hook in a stale workspace — an
-    older, superseded set of rules, so it counts as a missing guarantee exactly
-    like an unmarked one, and it is reported with the same remedy (re-run
-    `install-git-hooks.ps1`, which upgrades it in place). Whether the guarantee
+  - The hook's own VERSION, read from the same five lines: they must carry a
+    version no lower than the layer's own source header (`ums/.claude/hooks/pre-push`,
+    line 2). A header with the identity marker but a LOWER version is our hook
+    in a stale workspace — an older, superseded set of rules, so it counts as
+    a missing guarantee exactly like an unmarked one, and it is reported with
+    the same remedy (re-run `install-git-hooks.ps1`, which upgrades it in
+    place). Whether the guarantee
     also applies to THIS SESSION is a different question, answered by the
     synthetic pipe with `MB_AGENT_SESSION=1` set — and per the bullet above that
     question belongs to the entry gate and the installer, not here.
@@ -261,7 +262,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než v2 (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
+Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
@@ -289,7 +290,7 @@ Další krok:
 - zbytky v cestě a větev MÁ pin → mb-park (odložit), nebo zahodit po tvém výslovném potvrzení
 - zbytky v cestě a větev je IDLE → commitni je, nebo zahoď po tvém výslovném potvrzení (mb-park by řekl „Není co parkovat")
 - pre-push chybí/neověřený → spusť install-git-hooks.ps1 a znovu ověř
-- pre-push je starší verze než v2 → spusť install-git-hooks.ps1 (upgraduje hook na místě) a znovu ověř
+- pre-push je starší verze než zdrojová → spusť install-git-hooks.ps1 (upgraduje hook na místě) a znovu ověř
 - báze chybí commity → base sync na nejbližší hranici fáze (ne uprostřed tasku)
 ```
 
@@ -299,9 +300,10 @@ configuration are independent findings that can hold at once, so list every one
 that applies. Only the FIRST position is an alternation, and `✅ způsobilý` is
 withheld for ONE class of finding — a **missing guarantee** — which today has two
 members, both about the `pre-push` hook and both alternatives in that first
-position: it is missing or carries no marker, or its header is older than v2 (a
-superseded set of rules is not the guarantee either, which is why the template
-offers `⚠️ pre-push je starší verze než v2` there rather than beside `✅`).
+position: it is missing or carries no marker, or its header is older than the
+layer's source (a superseded set of rules is not the guarantee either, which
+is why the template offers `⚠️ pre-push je starší verze než zdrojová` there
+rather than beside `✅`).
 Everything that is not a missing guarantee
 rides ALONGSIDE `✅ způsobilý` instead of replacing it: `✅ způsobilý` with no
 further item means no finding at all, `✅ způsobilý` followed by items means the

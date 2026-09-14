@@ -460,7 +460,7 @@ dva tvary se nezaměňují.
 
 ### Dvouvrstvá mechanika vynucení
 
-Skutečnou hranicí je git `pre-push` hook (`v2`,
+Skutečnou hranicí je git `pre-push` hook (verze podle hlavičky ve vrstvě,
 [`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push), POSIX `sh`,
 bez přípony) — git mu předá už rozparsované čtveřice `<local-ref> <local-sha>
 <remote-ref> <remote-sha>`, takže neexistuje shellové parsování k obejití.

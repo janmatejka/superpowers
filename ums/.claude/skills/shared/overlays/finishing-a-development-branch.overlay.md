@@ -12,9 +12,10 @@ After the user chooses and BEFORE executing the choice:
   entry gate, and this is the session that integrates. Re-run the gate's hook
   check here IN THIS SESSION'S ENVIRONMENT (contract, Workspace Discipline)
   before executing the chosen option (the push that integrates): the resolved
-  `pre-push` must exist, carry
-  `UMS pre-push guard (Publication Contract) v2` within its first five lines,
-  and reject a synthetic protected-branch line — **together with the
+  `pre-push` must exist, carry the marker
+  `UMS pre-push guard (Publication Contract)` within its first five lines with
+  a version no lower than the layer's own source header (`ums/.claude/hooks/pre-push`,
+  line 2), and reject a synthetic protected-branch line — **together with the
   mirror-image ACCEPT case**, a synthetic ticket-branch creation that must exit
   0 and say nothing. Both halves or neither: a hook that cannot execute at all
   "rejects" everything too and would pass this check on the reject half alone

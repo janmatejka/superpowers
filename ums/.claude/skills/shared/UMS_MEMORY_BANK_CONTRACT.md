@@ -1,7 +1,12 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.18
-- Supersedes v2.17 (adds the `NOW` block — the marker-bounded region at the top
+- **Contract-Version:** 2.19
+- Supersedes v2.18 (the pre-push hook version is compared by ORDERING against
+  the layer's own source header rather than by equality against a literal, so
+  a stale layer copy can no longer downgrade a newer installed hook; adds the
+  installer's restore of a clobbered Git LFS chain and the `mb-state`
+  read-only detection of it).
+- v2.18 superseded v2.17 (adds the `NOW` block — the marker-bounded region at the top
   of the SDD progress ledger that makes a stalled session visible without
   anyone reading its transcript, with its six required items, its closed state
   class, the rewrite-as-an-operation rule, the reader-safety rules it takes
@@ -1178,16 +1183,19 @@ Leftovers split in two:
 
 0. **Eligibility**, fail-closed except where stated: `MB_ROOT`, `memory-bank/`,
    `git fetch origin`, and a **fail-closed check that the publication guarantee
-   applies to THIS session** — the resolved `pre-push` exists, carries
-   `UMS pre-push guard (Publication Contract) v2` within its first five lines,
-   and rejects a synthetic protected-branch line **run in this session's own
+   applies to THIS session** — the resolved `pre-push` exists, carries the
+   marker `UMS pre-push guard (Publication Contract)` within its first five
+   lines with a version no lower than the layer's own source header
+   (`ums/.claude/hooks/pre-push`, line 2), and rejects a synthetic
+   protected-branch line **run in this session's own
    environment** — together with the mirror-image accept case the Publication
    Contract prescribes beside it, because a hook that cannot execute at all
    "rejects" everything while still carrying its marker line.
    A protected-branch line that PASSES means the agent-session marker
    is absent in this harness, so the hook disables itself here: that is a
-   missing guarantee, reported as such. An older-than-v2 hook is repaired by
-   re-running `install-git-hooks.ps1` and re-checking, not by proceeding.
+   missing guarantee, reported as such. A hook older than the layer's own
+   source header is repaired by re-running `install-git-hooks.ps1` and
+   re-checking, not by proceeding.
    The same check runs at session start and again at the beginning of
    `finishing-a-development-branch`, because the session that integrates never
    passes this gate.
@@ -1893,9 +1901,11 @@ either publishes real commits if the hook turns out to be inert (this is
 exactly how a linked-worktree installation gap was first confirmed) or
 prints a misleading "Everything up-to-date" when there is nothing to push:
 resolve the installed path with `git rev-parse --git-path hooks/pre-push`,
-confirm it exists and carries
-`UMS pre-push guard (Publication Contract) v2` within its first five lines,
-then pipe a synthetic line straight into it (`printf 'refs/heads/develop
+confirm it exists and carries the marker
+`UMS pre-push guard (Publication Contract)` within its first five lines with
+a version no lower than the layer's own source header
+(`ums/.claude/hooks/pre-push`, line 2), then pipe a synthetic line straight
+into it (`printf 'refs/heads/develop
 <sha> refs/heads/develop <sha>\n' | MB_AGENT_SESSION=1 <hook path> origin
 verify`), expecting a non-zero exit and the `UMS:` message, AND the
 mirror-image accept case (a synthetic ticket-branch creation must exit 0,
@@ -1908,9 +1918,11 @@ marker set on each run — reports the result and exits non-zero whenever the
 guarantee is not in place. The substring
 `UMS pre-push guard (Publication Contract)` is what the installer recognizes
 its OWN hook by, so a pre-v2 hook is still recognized as ours and overwritten
-rather than treated as a foreign hook; the ` v2` suffix is what distinguishes a
-current hook from the one a stale workspace still carries, and an older one is
-repaired by re-running the installer.
+rather than treated as a foreign hook; the version suffix is compared by
+ORDERING against the layer's own source header, not by equality against a
+literal, so it distinguishes a hook that is at least as new as the layer from
+one a stale workspace still carries, and an older one is repaired by
+re-running the installer.
 
 **The hook is plain git; the marker is not.** The guarantee therefore reaches a
 harness only once `MB_AGENT_SESSION` is in the environment the push runs in,
@@ -2977,8 +2989,9 @@ When anything important is missing or ambiguous:
   publication time; the same slug or ticket active on a foreign branch; a base
   sync that cannot be performed at a phase boundary (divergence or a dirty tree);
   the ceiling of two integration rounds; a `pre-push` hook that is missing,
-  older than v2, or fails EITHER half of the synthetic-pipe check run in this
-  session's own environment — the protected-branch line it must reject and the
+  older than the layer's own source header, or fails EITHER half of the
+  synthetic-pipe check run in this session's own environment — the
+  protected-branch line it must reject and the
   ticket-branch line it must accept (Workspace Discipline); a failing
   `git fetch origin` in phase 0 of the entry gate; a missing declared
   verification set at a work item's first integration (Publication Contract,
