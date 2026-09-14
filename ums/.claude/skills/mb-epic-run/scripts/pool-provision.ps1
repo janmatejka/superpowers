@@ -15,8 +15,9 @@ Claude Code, in settings.json).
 The hook check runs FROM INSIDE the new slot, because that is where the
 question is: `git rev-parse --git-path hooks/pre-push` resolves per worktree
 and honours core.hooksPath. A shared .git means one installation covers every
-slot, so this installs only when the hook is MISSING or older than v2 —
-reinstalling a current hook would be a write nobody asked for.
+slot, so this installs only when the hook is MISSING or older than the
+layer's own hook — reinstalling a current hook would be a write nobody
+asked for.
 
 .OUTPUTS
 English progress lines. Exit: 0 = OK (provisioned and the publication
@@ -26,8 +27,8 @@ place — never unwound) but the shared pre-push guard's presence could not be
 confirmed: the hook path could not be resolved from inside the slot, the
 installer script was not found, or install-git-hooks.ps1 itself exited
 non-zero. A caller must not treat exit 5 as success — the postcondition this
-script exists to establish (a marked v2 hook resolvable from inside the slot)
-is exactly what is unconfirmed in that case.
+script exists to establish (a marked hook at least as new as the layer's own
+resolvable from inside the slot) is exactly what is unconfirmed in that case.
 #>
 [CmdletBinding()]
 param(
@@ -42,6 +43,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+
+. (Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsHookVersion.ps1')
 
 # Never name a function `Git`: PowerShell command discovery prefers a function
 # over an application, case-insensitively, so `& git ...` inside it would
@@ -127,8 +130,9 @@ Write-Output 'Marker .superpowers/pool-slot created.'
 
 # --- shared hook check, asked FROM INSIDE the new slot -----------------------
 # $guaranteeUnconfirmed tracks whether the postcondition this script exists to
-# establish (a marked v2 hook resolvable from inside the slot) was actually
-# reached. The worktree and the marker are NEVER unwound over this — the slot
+# establish (a marked hook at least as new as the layer's own resolvable from
+# inside the slot) was actually reached. The worktree and the marker are NEVER
+# unwound over this — the slot
 # genuinely exists and the operator needs to see it — but a run that could not
 # confirm the guarantee must not claim success (exit 0) either; see exit 5.
 $guaranteeUnconfirmed = $false
@@ -142,24 +146,16 @@ else {
     # The path SHAPE differs by where you ask from: absolute from a slot,
     # relative from the primary worktree. Normalize before doing anything with it.
     $hookPath = if ([IO.Path]::IsPathRooted($hookRaw)) { $hookRaw } else { Join-Path $Path $hookRaw }
-    $current = $false
-    if (Test-Path -LiteralPath $hookPath -PathType Leaf) {
-        $head5 = @(Get-Content -LiteralPath $hookPath -TotalCount 5)
-        # -cmatch, case-sensitive: this reads the hook's STATIC file content
-        # and never executes it, unlike install-git-hooks.ps1's own live-hook
-        # proof (whose broken-hook/stderr-quoting risk is where this exact
-        # phrasing was borrowed from, and does not apply here). The real
-        # reason to stay case-sensitive: this is an identity check against the
-        # EXACT marker string install-git-hooks.ps1 itself stamps, so a
-        # hand-edited or differently-cased paraphrase in a hook's header is
-        # never mistaken for that stamp.
-        $current = [bool](@($head5 | Where-Object { $_ -cmatch 'UMS pre-push guard \(Publication Contract\) v2' }).Count)
-    }
-    if ($current) {
-        Write-Output "Shared pre-push guard is current (v2) at $hookPath — not reinstalling."
+    $sourceHook = Join-Path $PSScriptRoot '..\..\..\hooks\pre-push'
+    $needsInstall = Test-UmsHookNeedsInstall $hookPath $sourceHook
+    if (-not $needsInstall) {
+        $v = Get-UmsHookVersion $hookPath
+        Write-Output "Shared pre-push guard is current (v$v) at $hookPath — not reinstalling."
     }
     else {
-        Write-Output "Shared pre-push guard is missing or older than v2 at $hookPath — installing."
+        $v = Get-UmsHookVersion $hookPath
+        $found = if ($null -eq $v) { 'missing or foreign' } else { "v$v" }
+        Write-Output "Shared pre-push guard is $found at $hookPath — installing."
         $installer = Join-Path $PSScriptRoot '..\..\..\hooks\install-git-hooks.ps1'
         if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
             Write-Output "WARNING: installer not found at $installer; install the hook by hand. The publication guarantee is NOT confirmed."
@@ -186,8 +182,9 @@ Write-Output "Slot provisioned: $files files, $gb GB (bytes: $bytes)."
 if ($guaranteeUnconfirmed) {
     # The worktree and the marker above are NOT unwound: the slot genuinely
     # exists and the operator needs to see it. What must not happen is
-    # reporting exit 0 — this run never reached the postcondition (a marked v2
-    # hook resolvable from inside the slot) that a successful run promises.
+    # reporting exit 0 — this run never reached the postcondition (a marked
+    # hook at least as new as the layer's own resolvable from inside the
+    # slot) that a successful run promises.
     Write-Output 'Slot provisioned, but the publication guarantee could NOT be confirmed (see WARNING above).'
     exit 5
 }

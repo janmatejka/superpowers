@@ -1,7 +1,12 @@
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '_assert.ps1')
+. (Join-Path $PSScriptRoot '..\..\shared\scripts\Get-UmsHookVersion.ps1')
 $ErrorActionPreference = 'Stop'
 $NewFixture = Join-Path $PSScriptRoot 'new-pool-fixture.ps1'
+# Read from the layer's own hook rather than hardcoding a version literal, so
+# this suite never goes stale on the next header bump (the whole point of
+# Task 2's ordering comparison).
+$currentHookVersion = Get-UmsHookVersion (Join-Path $PSScriptRoot '..\..\..\hooks\pre-push')
 
 function Invoke-Provision([string] $Repo, [string] $Path, [string[]] $Extra = @()) {
     $a = @('-RepoPath', $Repo, '-Path', $Path, '-Base', 'origin/develop', '-NoFetch') + $Extra
@@ -68,22 +73,42 @@ try {
     $hook = Join-Path (Join-Path (Join-Path $fx.Main '.git') 'hooks') 'pre-push'
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $hook) | Out-Null
     $marker = 'MARKER-SENTINEL-DO-NOT-OVERWRITE'
-    Set-Content -LiteralPath $hook -Value "#!/bin/sh`n# UMS pre-push guard (Publication Contract) v2`n# $marker`nexit 0`n" -Encoding utf8 -NoNewline
+    Set-Content -LiteralPath $hook -Value "#!/bin/sh`n# UMS pre-push guard (Publication Contract) v$currentHookVersion`n# $marker`nexit 0`n" -Encoding utf8 -NoNewline
     $new = Join-Path $fx.Root 'slotX'
     Invoke-WithoutSessionEnv {
         $script:r4 = Invoke-Provision $fx.Main $new
     }
     Assert-Eq $script:r4.Code 0 'provisioning succeeds with a current hook already in place'
-    Assert-Match (Get-Content -LiteralPath $hook -Raw) $marker 'a current marked v2 hook is left untouched'
-    # Fix round 1, Gate 1: 'v2' alone appears on BOTH branches ("current (v2)
-    # ... not reinstalling" AND "missing or older than v2 ... installing"), so
-    # it passed identically whether the hook was correctly left alone or
-    # wrongly reinstalled. Match the phrase unique to the "left alone" branch,
-    # and independently assert the "installing" branch's own text is absent.
-    Assert-Match $script:r4.Out 'current \(v2\)' 'the run reports that the shared hook is current'
+    Assert-Match (Get-Content -LiteralPath $hook -Raw) $marker 'a current marked hook is left untouched'
+    # Fix round 1, Gate 1: 'v\d+' alone appears on BOTH branches ("current
+    # (v\d+) ... not reinstalling" AND "missing or foreign/v\d+ ...
+    # installing"), so it passed identically whether the hook was correctly
+    # left alone or wrongly reinstalled. Match the phrase unique to the
+    # "left alone" branch, and independently assert the "installing" branch's
+    # own text is absent.
+    Assert-Match $script:r4.Out 'current \(v\d+\)' 'the run reports that the shared hook is current'
     Assert-NotMatch $script:r4.Out '— installing' 'the run does NOT take the reinstall branch'
 }
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
+# --- case 4b: a hook NEWER than the layer's own is NEVER degraded -----------
+# Ruling A: wrapped in Invoke-WithoutSessionEnv, same reason as case 3.
+$fxNewer = & $NewFixture -SlotCount 0 -Label 'newerhook'
+try {
+    $slotNewer = Join-Path $fxNewer.Root 'slotNewer'
+    $hookNewer = Join-Path $fxNewer.Main '.git/hooks/pre-push'
+    New-Item -ItemType Directory -Force -Path (Split-Path $hookNewer) | Out-Null
+    [IO.File]::WriteAllText($hookNewer, "#!/bin/sh`n# UMS pre-push guard (Publication Contract) v99`n", (New-Object System.Text.UTF8Encoding($false)))
+    $before = [IO.File]::ReadAllText($hookNewer)
+    Invoke-WithoutSessionEnv {
+        $script:rNewer = Invoke-Provision $fxNewer.Main $slotNewer
+    }
+    Assert-Eq ([IO.File]::ReadAllText($hookNewer)) $before 'novější hook ve slotu zůstane nedotčený (žádná degradace)'
+    Assert-Match $script:rNewer.Out 'not reinstalling' 'novější hook: skript reinstalaci vynechá'
+}
+finally {
+    Remove-Item -Recurse -Force $fxNewer.Root -ErrorAction SilentlyContinue
+}
 
 # --- case 5: an existing target path is refused, never overwritten ----------
 # Ruling A: wrapped in Invoke-WithoutSessionEnv, same reason as case 3.
@@ -146,7 +171,7 @@ try {
         $script:r7 = Invoke-Provision $fx.Main $new
     }
     Assert-True (@(0, 5) -contains $script:r7.Code) 'the run reaches a definite outcome (confirmed or unconfirmed guarantee), not an input/guard failure'
-    $m7 = [regex]::Match($script:r7.Out, 'guard is (?:current \(v2\)|missing or older than v2) at (?<p>\S+) —')
+    $m7 = [regex]::Match($script:r7.Out, 'guard is (?:current \(v\d+\)|missing or foreign|v\d+) at (?<p>\S+) —')
     Assert-True $m7.Success 'the run reports a resolved hook path'
     $reportedPath = ($m7.Groups['p'].Value).Replace('\', '/').ToLowerInvariant()
     $slotNorm = (([IO.Path]::GetFullPath($new)).Replace('\', '/')).ToLowerInvariant()

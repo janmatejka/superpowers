@@ -19,7 +19,7 @@ $env:MB_AGENT_SESSION = '1'
 # hook and know it needs an upgrade.
 $hookSrc = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\pre-push') -TotalCount 5
 Assert-Match ($hookSrc -join "`n") 'UMS pre-push guard \(Publication Contract\)' 'hlavička hooku si drží identitu pro instalátor'
-Assert-Match ($hookSrc -join "`n") 'v2' 'hlavička hooku nese verzi, podle které jde poznat potřeba upgradu'
+Assert-Match ($hookSrc -join "`n") 'Publication Contract\) v\d+' 'hlavička hooku nese verzi, podle které jde poznat potřeba upgradu'
 
 # End-to-end proof of the real Publication Contract enforcement boundary:
 # the git `pre-push` hook. Everything here is a REAL git push against a
@@ -1603,7 +1603,7 @@ $realHookLines8 = @(Get-Content -LiteralPath $realHookPath8)
 # Simulate the pre-Task-7 shape by stripping just the version suffix off line 2
 # - the identity substring is untouched, which is exactly what makes this case
 # distinguish "recognized as ours" from "recognized as foreign".
-$oldStyleLine8 = $realHookLines8[1] -replace '\s+v2\s*$', ''
+$oldStyleLine8 = $realHookLines8[1] -replace '\s+v\d+\s*$', ''
 Assert-True ($oldStyleLine8 -ne $realHookLines8[1]) 'upgrade: fixtura sama sobě dokazuje, že simulovaná stará hlavička skutečně nenese v2 (sanity check)'
 $oldStyleLines8 = @($realHookLines8[0], $oldStyleLine8) + $realHookLines8[2..($realHookLines8.Count - 1)]
 $oldStyleHookPath8 = Join-Path $root8 '.git\hooks\pre-push'
@@ -1614,7 +1614,7 @@ $res8 = Invoke-Installer $root8 $null
 Assert-True (-not (Test-Path (Join-Path $root8 '.git\hooks\pre-push.ums-chained'))) 'upgrade: hook bez v2 je rozpoznán jako NÁŠ, ne odsunut jako cizí do .ums-chained'
 Assert-Eq $res8.Code 0 'upgrade: instalace nad hookem bez v2 končí kódem 0'
 $upgradedHead8 = Get-Content -LiteralPath $oldStyleHookPath8 -TotalCount 5
-Assert-Match ($upgradedHead8 -join "`n") 'UMS pre-push guard \(Publication Contract\) v2' 'upgrade: po instalaci hlavička na místě nese v2'
+Assert-Match ($upgradedHead8 -join "`n") 'UMS pre-push guard \(Publication Contract\) v\d+' 'upgrade: po instalaci hlavička na místě nese verzi'
 
 Remove-Item -Recurse -Force $root8
 
