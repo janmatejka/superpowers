@@ -1764,4 +1764,18 @@ Assert-True (Test-Path (Join-Path $rAttr '.git/hooks/pre-push.ums-chained')) 'd�
 
 Remove-Item -Recurse -Force $rLfs, $rNoLfs, $rForeignChain, $rAttr
 
+# Po obnově git-lfs znovu nainstaluje svůj pre-push. Instalátor ho musí
+# zřetězit přes náš vlastní obnovený řetěz, ne skončit exitem 2.
+$rReinstall = New-LfsSiblingRepo 'reinstall'
+Invoke-Installer $rReinstall $null | Out-Null
+$chainedPath = Join-Path $rReinstall '.git/hooks/pre-push.ums-chained'
+Assert-True (Test-Path $chainedPath) 'reinstalace: předpoklad - řetěz byl obnoven'
+[IO.File]::WriteAllText((Join-Path $rReinstall '.git/hooks/pre-push'), "#!/bin/sh`ngit lfs pre-push `"`$@`"`n", (New-Object System.Text.UTF8Encoding($false)))
+$res = Invoke-Installer $rReinstall $null
+Assert-Eq $res.Code 0 'reinstalace: instalátor neskončí exitem 2, náš obnovený řetěz smí přepsat'
+Assert-NotMatch ([IO.File]::ReadAllText($chainedPath)) 'Restored by install-git-hooks' 'reinstalace: na místě je teď skutečný hook od git-lfs, ne náš generovaný'
+$head = Get-Content -LiteralPath (Join-Path $rReinstall '.git/hooks/pre-push') -TotalCount 5
+Assert-Match ($head -join "`n") 'UMS pre-push guard' 'reinstalace: na pre-push je zase náš hook'
+Remove-Item -Recurse -Force $rReinstall
+
 Complete-Tests

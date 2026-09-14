@@ -645,7 +645,16 @@ function Move-ForeignHook([string] $Path, [hashtable] $HooksPathCfg) {
     }
     $dst = $Path + $CHAINED_SUFFIX
     if (Test-Path -LiteralPath $dst) {
-        return @{ Moved = $false; Path = $dst; Refused = "a chained hook is already present at $dst - not overwriting it" }
+        # One exception to "never overwrite an existing chain": a chain THIS
+        # script generated itself (stamp) that calls git-lfs, being replaced
+        # by a real git-lfs hook. Without it the restore of Task 4 would
+        # manufacture the very exit-2 refusal it exists to prevent - the
+        # guarantee would vanish in a clone where chaining used to work.
+        $body = Get-Content -LiteralPath $dst -Raw -ErrorAction SilentlyContinue
+        $isOurRestored = $body -and ($body -match [regex]::Escape($RESTORE_STAMP)) -and (Test-IsLfsHook $dst 'pre-push')
+        if (-not ($isOurRestored -and (Test-IsLfsHook $Path 'pre-push'))) {
+            return @{ Moved = $false; Path = $dst; Refused = "a chained hook is already present at $dst - not overwriting it" }
+        }
     }
     # Minor 4: a locked/read-only file must not die with a raw PowerShell
     # exception under $ErrorActionPreference = 'Stop' - that would bypass
@@ -658,7 +667,11 @@ function Move-ForeignHook([string] $Path, [hashtable] $HooksPathCfg) {
         # before moving, since the link property is easiest to read on the
         # original path.
         $isLink = $null -ne (Get-Item -LiteralPath $Path -Force).LinkType
-        Move-Item -LiteralPath $Path -Destination $dst
+        # -Force: the only way $dst can already exist here is the isOurRestored
+        # exception above, which just proved it is safe to overwrite (our own
+        # stamped LFS chain, being replaced by a real git-lfs hook). In the
+        # ordinary case $dst does not exist yet, so -Force changes nothing.
+        Move-Item -LiteralPath $Path -Destination $dst -Force
     }
     catch {
         return @{ Moved = $false; Path = $null; Refused = "could not move the foreign hook to $dst`: $($_.Exception.Message)" }
