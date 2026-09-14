@@ -42,8 +42,10 @@
     not be). That pair is what distinguishes "the generated list was consulted"
     from "the built-in fallback happened to agree".
 
-    No run touches the repository or the remote (no git command runs, every sha
-    is fabricated), unlike verifying with a real `git push origin develop`,
+    No run pushes anything and every sha is fabricated. Where a git-lfs chain
+    is present the accept run does reach real git-lfs through run_chained, so
+    the run is not free of git entirely - it still writes nothing and pushes
+    nothing. This differs from verifying with a real `git push origin develop`,
     which either publishes real commits when the hook turns out to be inert —
     exactly how a worktree bypass was confirmed for real — or prints a
     misleading "Everything up-to-date" when there is nothing to push. The
@@ -185,6 +187,13 @@ $EXIT_PROOF_FAILED = 1
 $EXIT_NOT_INSTALLED = 2
 $EXIT_UNPROVEN = 3
 $EXIT_LIST_FAILED = 4
+
+# A git-lfs chain that could not be restored gets no exit code of its own:
+# codes 0-4 speak to the Publication Contract guarantee (the guard hook
+# itself), which is installed and enforcing either way - only LFS uploads are
+# at risk, not the guarantee this script's exit code exists to report. That
+# fact is surfaced through the "note:" line printed at the call site and,
+# durably, through mb-state, not through the exit code.
 
 $script:ListFailed = $false
 $script:ListFailedReason = $null
@@ -604,6 +613,19 @@ if ($loaderFound) {
 
 $CHAINED_SUFFIX = '.ums-chained'
 
+$RESTORE_STAMP = '# Restored by install-git-hooks.ps1 (git-lfs pre-push chain)'
+
+# Does this hook body call `git lfs <name>`? Used both as evidence that
+# git-lfs installed its hooks here and as the identity test for an existing
+# chain - existence alone proves nothing, the slot is single and may hold a
+# husky/pre-commit hook while the LFS chain is lost.
+function Test-IsLfsHook([string] $Path, [string] $Verb) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $body = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
+    if (-not $body) { return $false }
+    return ($body -match ('git\s+lfs\s+' + [regex]::Escape($Verb)))
+}
+
 # Moves a foreign pre-push aside so our hook can call it. NEVER into a shared
 # hooks directory: under an absolute or global core.hooksPath that holds
 # other repositories' hooks too, and renaming would silently re-point every
@@ -666,6 +688,88 @@ function Move-ForeignHook([string] $Path, [hashtable] $HooksPathCfg) {
     return @{ Moved = $true; Path = $dst; Refused = $null }
 }
 
+# Evidence that THIS repository uses LFS. Deliberately NOT limited to the
+# hooks directory: husky (core.hooksPath=.husky), a wiped .git/hooks or a
+# relocated hooks dir leaves a genuinely LFS-using repo with zero siblings.
+function Test-RepoUsesLfs([string] $Root, [string] $HooksDir) {
+    foreach ($n in @('post-commit', 'post-checkout', 'post-merge')) {
+        if (Test-IsLfsHook (Join-Path $HooksDir $n) $n) { return $true }
+    }
+    $attr = Join-Path $Root '.gitattributes'
+    if ((Test-Path -LiteralPath $attr) -and ((Get-Content -LiteralPath $attr -Raw) -match 'filter=lfs')) { return $true }
+    $store = & git -C $Root rev-parse --git-path lfs 2>$null
+    if ($LASTEXITCODE -eq 0 -and $store) {
+        $storePath = if ([IO.Path]::IsPathRooted($store)) { $store } else { Join-Path $Root $store }
+        if ((Test-Path -LiteralPath $storePath) -and @(Get-ChildItem -LiteralPath $storePath -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) { return $true }
+    }
+    & git -C $Root config --get-regexp '^lfs\.' 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $true }
+    return $false
+}
+
+# Generates the chain FROM git-lfs rather than transcribing it, and does so in
+# isolation: `git init` honours init.templateDir and `git lfs install --local`
+# resolves its hooks dir through core.hooksPath, which may come from GLOBAL
+# config - without isolation the generation step would write into the user's
+# shared hooks directory, outside both the temp dir and the target repo.
+function Restore-LfsChainedHook([string] $Path, [hashtable] $HooksPathCfg, [string] $Shell) {
+    if ($HooksPathCfg -and ($HooksPathCfg.IsAbsolute -or $HooksPathCfg.Scope -in @('global', 'system'))) {
+        return @{ Restored = $false; Path = $null; Reason = 'the hooks directory is shared with other repositories (core.hooksPath), so restoring a chain there would enable it for every one of them' }
+    }
+    $dst = $Path + $CHAINED_SUFFIX
+    $healthy = (Test-IsLfsHook $dst 'pre-push')
+    if ($healthy -and $Shell) {
+        $unix = $dst -replace '\\', '/'
+        & $Shell -c 'test -x "$1"' _ $unix 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return @{ Restored = $false; Path = $dst; Reason = $null } }
+        & $Shell -c 'chmod +x "$1"' _ $unix 2>&1 | Out-Null
+        return @{ Restored = $true; Path = $dst; Reason = $null }
+    }
+    if ((Test-Path -LiteralPath $dst) -and -not $healthy) {
+        return @{ Restored = $false; Path = $dst; Reason = "a chained hook that is not a git-lfs hook is already present at $dst - not overwriting it" }
+    }
+    if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
+        return @{ Restored = $false; Path = $null; Reason = 'git lfs is not on PATH' }
+    }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('umslfsgen-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        $nul = Join-Path $tmp 'no-such-config'
+        $env:GIT_CONFIG_GLOBAL = $nul
+        $env:GIT_CONFIG_SYSTEM = $nul
+        & git init -q --template= -b main $tmp 2>$null | Out-Null
+        # `-c core.hooksPath=` (empty) does NOT mean "no override" - measured on
+        # git 2.51: an empty value resolves `--git-path hooks/pre-push` to
+        # `/pre-push` (rooted, at the working-tree root), so git-lfs writes the
+        # hook next to .git instead of inside it and generation looks like it
+        # silently failed. Pinning the real default explicitly still isolates
+        # $tmp from a stray LOCAL core.hooksPath (defense in depth alongside the
+        # GIT_CONFIG_GLOBAL/SYSTEM redirection above, which already rules out a
+        # global/system one), and it actually resolves.
+        & git -C $tmp -c core.hooksPath=.git/hooks lfs install --local 2>$null | Out-Null
+        $gen = Join-Path $tmp '.git/hooks/pre-push'
+        if (-not (Test-IsLfsHook $gen 'pre-push')) {
+            return @{ Restored = $false; Path = $null; Reason = 'git lfs did not generate a recognisable pre-push hook' }
+        }
+        $bytes = [IO.File]::ReadAllBytes($gen)
+        [IO.File]::WriteAllBytes($dst, $bytes)
+        [IO.File]::AppendAllText($dst, "`n$RESTORE_STAMP`n")
+        if ($Shell) {
+            $unix = $dst -replace '\\', '/'
+            $out = & $Shell -c 'chmod +x "$1"' _ $unix 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "WARNING: restored $dst but could not make it executable ($out) - our hook will silently skip it until this is fixed by hand." -ForegroundColor Red
+            }
+        }
+        return @{ Restored = $true; Path = $dst; Reason = $null }
+    }
+    finally {
+        Remove-Item Env:GIT_CONFIG_GLOBAL -ErrorAction SilentlyContinue
+        Remove-Item Env:GIT_CONFIG_SYSTEM -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+}
+
 $installed = @()
 $skipped = @()
 foreach ($name in $HOOK_NAMES) {
@@ -701,6 +805,21 @@ foreach ($name in $HOOK_NAMES) {
             }
             else {
                 Write-Host "         made executable (unconditionally - if it was intentionally disabled, re-disable it by hand)." -ForegroundColor DarkGray
+            }
+        }
+    }
+
+    # Only pre-push carries a chain, and only where our hook is (or is about
+    # to be) the installed one - a repo whose pre-push is foreign is handled
+    # by the block above, and one with no pre-push at all never lost a chain.
+    if ($name -eq 'pre-push' -and (-not (Test-Path $dst) -or (Test-IsOurHook $dst))) {
+        if (Test-RepoUsesLfs $RepoRoot (Split-Path $dst)) {
+            $restore = Restore-LfsChainedHook $dst $hooksPathCfg $shell
+            if ($restore.Restored) {
+                Write-Host "restored: git-lfs pre-push chain -> $($restore.Path)" -ForegroundColor Cyan
+            }
+            elseif ($restore.Reason) {
+                Write-Host "note: git-lfs chain not restored - $($restore.Reason)" -ForegroundColor Yellow
             }
         }
     }

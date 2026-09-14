@@ -1705,4 +1705,57 @@ Assert-Match $r.Out 'HEAD:develop' 'kontrola: běžný push na chráněnou věte
 
 Remove-Item -Recurse -Force $fxDelMsg.Root
 
+# ---------------------------------------------------------------------------
+# Obnova ztraceného LFS řetězu: náš hook na místě, LFS sourozenci tam jsou,
+# ale .ums-chained chybí - starší instalátor ho přepsal místo odsunutí.
+# ---------------------------------------------------------------------------
+function New-LfsSiblingRepo([string] $Label) {
+    $r = Join-Path ([IO.Path]::GetTempPath()) ("mblfs-$Label-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    & git init -q -b develop $r | Out-Null
+    & git -C $r remote add origin "$r/../fake-origin" | Out-Null
+    $h = Join-Path $r '.git/hooks'
+    New-Item -ItemType Directory -Force -Path $h | Out-Null
+    foreach ($n in @('post-commit', 'post-checkout', 'post-merge')) {
+        [IO.File]::WriteAllText((Join-Path $h $n), "#!/bin/sh`ngit lfs $n `"`$@`"`n", (New-Object System.Text.UTF8Encoding($false)))
+    }
+    return $r
+}
+
+$rLfs = New-LfsSiblingRepo 'restore'
+$res = Invoke-Installer $rLfs $null
+$chained = Join-Path $rLfs '.git/hooks/pre-push.ums-chained'
+Assert-True (Test-Path $chained) 'obnova: .ums-chained vznikl'
+Assert-Match ([IO.File]::ReadAllText($chained)) 'git lfs pre-push' 'obnova: obnovený řetěz volá git lfs pre-push'
+Assert-Match ([IO.File]::ReadAllText($chained)) 'Restored by install-git-hooks.ps1' 'obnova: obnovený řetěz nese provenience stamp'
+Assert-Match $res.Flat 'restored' 'obnova: instalátor obnovu pojmenuje'
+Assert-Eq $res.Code 0 'obnova: instalace končí kódem 0'
+
+# Druhý běh obnovený soubor nemění.
+$chainedBefore = [IO.File]::ReadAllText($chained)
+$res = Invoke-Installer $rLfs $null
+Assert-Eq ([IO.File]::ReadAllText($chained)) $chainedBefore 'obnova: opakovaný běh obnovený soubor nemění'
+
+# Repozitář bez jakékoli stopy po LFS - nevznikne nic.
+$rNoLfs = Join-Path ([IO.Path]::GetTempPath()) ("mbnolfs-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+& git init -q -b develop $rNoLfs | Out-Null
+Invoke-Installer $rNoLfs $null | Out-Null
+Assert-True (-not (Test-Path (Join-Path $rNoLfs '.git/hooks/pre-push.ums-chained'))) 'bez LFS: žádný řetěz nevznikne'
+
+# .ums-chained existuje, ale je to cizí non-LFS hook -> obnova se nespustí.
+$rForeignChain = New-LfsSiblingRepo 'foreignchain'
+[IO.File]::WriteAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'), "#!/bin/sh`nexit 0`n", (New-Object System.Text.UTF8Encoding($false)))
+$before = [IO.File]::ReadAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'))
+Invoke-Installer $rForeignChain $null | Out-Null
+Assert-Eq ([IO.File]::ReadAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'))) $before 'cizí řetěz: obnova ho nepřepíše'
+
+# Důkaz o LFS i bez sourozenců - .gitattributes s filter=lfs.
+$rAttr = Join-Path ([IO.Path]::GetTempPath()) ("mbattr-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+& git init -q -b develop $rAttr | Out-Null
+& git -C $rAttr remote add origin "$rAttr/../fake-origin" | Out-Null
+[IO.File]::WriteAllText((Join-Path $rAttr '.gitattributes'), "*.dll filter=lfs diff=lfs merge=lfs -text`n", (New-Object System.Text.UTF8Encoding($false)))
+Invoke-Installer $rAttr $null | Out-Null
+Assert-True (Test-Path (Join-Path $rAttr '.git/hooks/pre-push.ums-chained')) 'důkaz z .gitattributes: řetěz se obnoví i bez sourozenců'
+
+Remove-Item -Recurse -Force $rLfs, $rNoLfs, $rForeignChain, $rAttr
+
 Complete-Tests
