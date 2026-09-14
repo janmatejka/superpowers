@@ -42,7 +42,7 @@ performing one. Reading another branch's state never checks that branch out.
 
   ```bash
   git rev-parse --git-path hooks/pre-push
-  git config --get core.hooksPath
+  git config --show-scope --get core.hooksPath
   ```
 
   - The resolved path must exist **and** carry the case-sensitive marker
@@ -75,7 +75,11 @@ performing one. Reading another branch's state never checks that branch out.
     occupying it is a different case, already covered above — and the hooks
     directory is not shared, the same OR condition `Restore-LfsChainedHook`
     itself refuses on: an absolute `core.hooksPath` value (the scope warning
-    above) or one read from global/system config scope even when relative.
+    above) or one read from global/system config scope even when relative — the
+    `--show-scope` output above (`<scope>\t<value>`, the same shape
+    `Get-HooksPathConfig` parses) is what carries that scope, since a plain
+    `--get` cannot: a *relative* value from `global`/`system` scope is shared
+    exactly like an absolute one, and would otherwise be missed.
     Within that scope, the repository counts as using LFS the moment any one of
     `Test-RepoUsesLfs`'s four proofs holds, checked in this order: a sibling
     hook among `post-commit`, `post-checkout` or `post-merge` whose body calls
@@ -85,8 +89,20 @@ performing one. Reading another branch's state never checks that branch out.
     `<pre-push>.ums-chained` must be healthy — present, its body matching
     `git lfs pre-push` (`Test-IsLfsHook`, the same identity test used above),
     and carrying the execute bit — or the chain is reported missing/incomplete.
-    Nothing here is executed, including the chain itself: only `Test-Path` and
-    reading file contents, the same discipline as the marker check above.
+    Nothing of the hook or the chain is ever RUN — no `git lfs`, no shell
+    script, no chained hook executes. What this check actually costs is more
+    than a single `Test-Path`, though, and should be said plainly rather than
+    undersold: `Test-Path`, reading file contents (the marker, the
+    `Test-IsLfsHook` body match, `.gitattributes`), the `git config` /
+    `git rev-parse` calls used throughout this bullet and the ones above, and —
+    for the execute bit specifically, where a POSIX shell is available — a
+    `test -x` on the chain file, the same read `Restore-LfsChainedHook` itself
+    performs before deciding whether to `chmod +x`. That is a real subprocess
+    query, not a pure filesystem stat, even though it never runs the file it
+    inspects. On Windows, per the installer's own note next to its
+    unconditional `chmod +x`, `test -x` is largely shebang-sniffed rather than
+    a genuine permission-bit read, so this exec-bit half of the signal is
+    weaker there than the rest of the check.
   - The hook's own VERSION, read from the same five lines: they must carry a
     version no lower than the layer's own source header (`ums/.claude/hooks/pre-push`,
     line 2). A header with the identity marker but a LOWER version is our hook
