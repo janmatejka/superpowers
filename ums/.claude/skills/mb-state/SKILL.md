@@ -57,10 +57,13 @@ performing one. Reading another branch's state never checks that branch out.
     `install-git-hooks.ps1` and to the entry gate, which fail closed on the
     answer. mb-state only reports, so it has no use for a signal it may not act
     on: what it states is what the file IS, never what it DOES.
-  - `git config --get core.hooksPath` decides **where** the hook above was looked
-    for, and `git rev-parse --git-path hooks/pre-push` already honours it — so a
-    marker found there is a marker in the directory git itself will execute. An
-    absolute value is therefore **not** a bypass and is not reported as one; it is
+  - `git config --show-scope --get core.hooksPath` decides **where** the hook
+    above was looked for, and `git rev-parse --git-path hooks/pre-push` already
+    honours it — so a marker found there is a marker in the directory git itself
+    will execute. Its output is `<scope>\t<value>`; split on that tab first —
+    the absoluteness test below is against the VALUE field, never the raw line
+    with its scope prefix still attached. An absolute value is therefore
+    **not** a bypass and is not reported as one; it is
     a **scope** warning: the directory is shared with other repositories (a global
     husky or pre-commit setup), so installing or removing the layer's hook there
     reaches every repository using that config, and the file may equally have been
