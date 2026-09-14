@@ -1734,6 +1734,9 @@ Assert-Eq $res.Code 0 'obnova: instalace končí kódem 0'
 $chainedBefore = [IO.File]::ReadAllText($chained)
 $res = Invoke-Installer $rLfs $null
 Assert-Eq ([IO.File]::ReadAllText($chained)) $chainedBefore 'obnova: opakovaný běh obnovený soubor nemění'
+# Zdravý řetěz nemá co obnovovat - Reason je $null, ne text popisující překážku,
+# takže se nesmí objevit žádná "note: git-lfs chain not restored" hláška.
+Assert-NotMatch $res.Flat 'git-lfs chain not restored' 'obnova: opakovaný běh zdravého řetězu nehlásí "chain not restored"'
 
 # Repozitář bez jakékoli stopy po LFS - nevznikne nic.
 $rNoLfs = Join-Path ([IO.Path]::GetTempPath()) ("mbnolfs-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -1745,8 +1748,11 @@ Assert-True (-not (Test-Path (Join-Path $rNoLfs '.git/hooks/pre-push.ums-chained
 $rForeignChain = New-LfsSiblingRepo 'foreignchain'
 [IO.File]::WriteAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'), "#!/bin/sh`nexit 0`n", (New-Object System.Text.UTF8Encoding($false)))
 $before = [IO.File]::ReadAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'))
-Invoke-Installer $rForeignChain $null | Out-Null
+$res = Invoke-Installer $rForeignChain $null
 Assert-Eq ([IO.File]::ReadAllText((Join-Path $rForeignChain '.git/hooks/pre-push.ums-chained'))) $before 'cizí řetěz: obnova ho nepřepíše'
+# Tady Reason neprázdný je - překážka existuje (cizí hook na místě řetězu),
+# takže instalátor musí nahlas hlásit, že nic nepřepsal.
+Assert-Match $res.Flat 'not overwriting it' 'cizí řetěz: instalátor nahlas hlásí, že existující cizí řetěz nepřepisuje'
 
 # Důkaz o LFS i bez sourozenců - .gitattributes s filter=lfs.
 $rAttr = Join-Path ([IO.Path]::GetTempPath()) ("mbattr-" + [guid]::NewGuid().ToString('N').Substring(0, 8))

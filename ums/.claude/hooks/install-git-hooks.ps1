@@ -712,61 +712,82 @@ function Test-RepoUsesLfs([string] $Root, [string] $HooksDir) {
 # resolves its hooks dir through core.hooksPath, which may come from GLOBAL
 # config - without isolation the generation step would write into the user's
 # shared hooks directory, outside both the temp dir and the target repo.
+#
+# Two distinct shapes carry `Restored = $false`, and the caller tells them
+# apart only by `Reason`: a non-empty `Reason` means something PREVENTED the
+# restore (foreign chain present, git-lfs missing, generation failed, an
+# unexpected exception, ...); `Reason = $null` means there was nothing to do -
+# the chain was already present and healthy. Never give the healthy no-op
+# path a non-empty `Reason` - the caller prints `note: git-lfs chain not
+# restored - <Reason>` for any non-empty one, and every ordinary run against
+# an already-healthy repo would start emitting a note that reads like a
+# problem.
 function Restore-LfsChainedHook([string] $Path, [hashtable] $HooksPathCfg, [string] $Shell) {
-    if ($HooksPathCfg -and ($HooksPathCfg.IsAbsolute -or $HooksPathCfg.Scope -in @('global', 'system'))) {
-        return @{ Restored = $false; Path = $null; Reason = 'the hooks directory is shared with other repositories (core.hooksPath), so restoring a chain there would enable it for every one of them' }
-    }
-    $dst = $Path + $CHAINED_SUFFIX
-    $healthy = (Test-IsLfsHook $dst 'pre-push')
-    if ($healthy -and $Shell) {
-        $unix = $dst -replace '\\', '/'
-        & $Shell -c 'test -x "$1"' _ $unix 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { return @{ Restored = $false; Path = $dst; Reason = $null } }
-        & $Shell -c 'chmod +x "$1"' _ $unix 2>&1 | Out-Null
-        return @{ Restored = $true; Path = $dst; Reason = $null }
-    }
-    if ((Test-Path -LiteralPath $dst) -and -not $healthy) {
-        return @{ Restored = $false; Path = $dst; Reason = "a chained hook that is not a git-lfs hook is already present at $dst - not overwriting it" }
-    }
-    if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
-        return @{ Restored = $false; Path = $null; Reason = 'git lfs is not on PATH' }
-    }
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('umslfsgen-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     try {
-        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-        $nul = Join-Path $tmp 'no-such-config'
-        $env:GIT_CONFIG_GLOBAL = $nul
-        $env:GIT_CONFIG_SYSTEM = $nul
-        & git init -q --template= -b main $tmp 2>$null | Out-Null
-        # `-c core.hooksPath=` (empty) does NOT mean "no override" - measured on
-        # git 2.51: an empty value resolves `--git-path hooks/pre-push` to
-        # `/pre-push` (rooted, at the working-tree root), so git-lfs writes the
-        # hook next to .git instead of inside it and generation looks like it
-        # silently failed. Pinning the real default explicitly still isolates
-        # $tmp from a stray LOCAL core.hooksPath (defense in depth alongside the
-        # GIT_CONFIG_GLOBAL/SYSTEM redirection above, which already rules out a
-        # global/system one), and it actually resolves.
-        & git -C $tmp -c core.hooksPath=.git/hooks lfs install --local 2>$null | Out-Null
-        $gen = Join-Path $tmp '.git/hooks/pre-push'
-        if (-not (Test-IsLfsHook $gen 'pre-push')) {
-            return @{ Restored = $false; Path = $null; Reason = 'git lfs did not generate a recognisable pre-push hook' }
+        if ($HooksPathCfg -and ($HooksPathCfg.IsAbsolute -or $HooksPathCfg.Scope -in @('global', 'system'))) {
+            return @{ Restored = $false; Path = $null; Reason = 'the hooks directory is shared with other repositories (core.hooksPath), so restoring a chain there would enable it for every one of them' }
         }
-        $bytes = [IO.File]::ReadAllBytes($gen)
-        [IO.File]::WriteAllBytes($dst, $bytes)
-        [IO.File]::AppendAllText($dst, "`n$RESTORE_STAMP`n")
-        if ($Shell) {
+        $dst = $Path + $CHAINED_SUFFIX
+        $healthy = (Test-IsLfsHook $dst 'pre-push')
+        if ($healthy -and $Shell) {
             $unix = $dst -replace '\\', '/'
-            $out = & $Shell -c 'chmod +x "$1"' _ $unix 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "WARNING: restored $dst but could not make it executable ($out) - our hook will silently skip it until this is fixed by hand." -ForegroundColor Red
-            }
+            & $Shell -c 'test -x "$1"' _ $unix 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { return @{ Restored = $false; Path = $dst; Reason = $null } }
+            & $Shell -c 'chmod +x "$1"' _ $unix 2>&1 | Out-Null
+            return @{ Restored = $true; Path = $dst; Reason = $null }
         }
-        return @{ Restored = $true; Path = $dst; Reason = $null }
+        if ((Test-Path -LiteralPath $dst) -and -not $healthy) {
+            return @{ Restored = $false; Path = $dst; Reason = "a chained hook that is not a git-lfs hook is already present at $dst - not overwriting it" }
+        }
+        if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
+            return @{ Restored = $false; Path = $null; Reason = 'git lfs is not on PATH' }
+        }
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('umslfsgen-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        try {
+            New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+            $nul = Join-Path $tmp 'no-such-config'
+            $env:GIT_CONFIG_GLOBAL = $nul
+            $env:GIT_CONFIG_SYSTEM = $nul
+            & git init -q --template= -b main $tmp 2>$null | Out-Null
+            # `-c core.hooksPath=` (empty) does NOT mean "no override" - measured on
+            # git 2.51: an empty value resolves `--git-path hooks/pre-push` to
+            # `/pre-push` (rooted, at the working-tree root), so git-lfs writes the
+            # hook next to .git instead of inside it and generation looks like it
+            # silently failed. Pinning the real default explicitly still isolates
+            # $tmp from a stray LOCAL core.hooksPath (defense in depth alongside the
+            # GIT_CONFIG_GLOBAL/SYSTEM redirection above, which already rules out a
+            # global/system one), and it actually resolves.
+            & git -C $tmp -c core.hooksPath=.git/hooks lfs install --local 2>$null | Out-Null
+            $gen = Join-Path $tmp '.git/hooks/pre-push'
+            if (-not (Test-IsLfsHook $gen 'pre-push')) {
+                return @{ Restored = $false; Path = $null; Reason = 'git lfs did not generate a recognisable pre-push hook' }
+            }
+            $bytes = [IO.File]::ReadAllBytes($gen)
+            [IO.File]::WriteAllBytes($dst, $bytes)
+            [IO.File]::AppendAllText($dst, "`n$RESTORE_STAMP`n")
+            if ($Shell) {
+                $unix = $dst -replace '\\', '/'
+                $out = & $Shell -c 'chmod +x "$1"' _ $unix 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "WARNING: restored $dst but could not make it executable ($out) - our hook will silently skip it until this is fixed by hand." -ForegroundColor Red
+                }
+            }
+            return @{ Restored = $true; Path = $dst; Reason = $null }
+        }
+        finally {
+            Remove-Item Env:GIT_CONFIG_GLOBAL -ErrorAction SilentlyContinue
+            Remove-Item Env:GIT_CONFIG_SYSTEM -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        }
     }
-    finally {
-        Remove-Item Env:GIT_CONFIG_GLOBAL -ErrorAction SilentlyContinue
-        Remove-Item Env:GIT_CONFIG_SYSTEM -ErrorAction SilentlyContinue
-        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    catch {
+        # Every other failure mode here degrades to a Reason-carrying $false;
+        # this catch-all keeps an unexpected exception (permission denied,
+        # disk full, path-length limits, ...) from doing the same instead of
+        # aborting the whole installation - the LFS chain is ancillary, the
+        # Publication Contract guard (the Copy-Item after this call, in the
+        # main loop) is the point and must still run.
+        return @{ Restored = $false; Path = $null; Reason = $_.Exception.Message }
     }
 }
 
