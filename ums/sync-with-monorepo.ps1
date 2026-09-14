@@ -10,9 +10,9 @@
     UMS-owned file set (everything in the monorepo's .claude/ EXCEPT the 14
     vendored superpowers skill directories):
 
-      FromMonorepo (default):  <monorepo>/.claude/*  ->  <fork>/ums/.claude/*
+      FromMonorepo :           <monorepo>/.claude/*  ->  <fork>/ums/.claude/*
                                <monorepo>/CLAUDE.md  ->  <fork>/ums/CLAUDE.md.sample
-      ToMonorepo:              the reverse
+      ToMonorepo:  (default)            the reverse
 
     The monorepo is the LIVE deployment and the normal master copy; run the
     default direction after changing the layer in the monorepo.
@@ -48,7 +48,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('FromMonorepo', 'ToMonorepo')]
-    [string]$Direction = 'FromMonorepo',
+    [string]$Direction = 'ToMonorepo',
     [ValidateSet('claude', 'codex', 'gemini', 'kilocode')]
     [string]$Agent = 'claude',
     [ValidateSet('Monorepo', 'UserProfile')]
@@ -219,7 +219,7 @@ if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
 
     if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
         do {
-            $dirAnswer = Read-WithDefault 'Direction: 1 = FromMonorepo (monorepo -> fork), 2 = ToMonorepo (fork -> monorepo)' '1'
+            $dirAnswer = Read-WithDefault 'Direction: 1 = FromMonorepo (monorepo -> fork), 2 = ToMonorepo (fork -> monorepo)' '2'
             $valid = $dirAnswer -in @('1', '2', 'FromMonorepo', 'ToMonorepo')
             if (-not $valid) { Write-Host '  Enter 1, 2, FromMonorepo, or ToMonorepo.' -ForegroundColor Yellow }
         } until ($valid)
