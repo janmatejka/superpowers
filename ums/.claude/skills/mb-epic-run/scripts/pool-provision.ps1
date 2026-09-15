@@ -150,7 +150,12 @@ else {
     $needsInstall = Test-UmsHookNeedsInstall $hookPath $sourceHook
     if (-not $needsInstall) {
         $v = Get-UmsHookVersion $hookPath
-        Write-Output "Shared pre-push guard is current (v$v) at $hookPath — not reinstalling."
+        # Never render an empty "(v)": Test-UmsHookNeedsInstall is fail-open on
+        # an unreadable SOURCE hook, so "current" can be reported without any
+        # comparison having happened, and a version-less rendering must degrade
+        # to no parenthetical rather than to "(v)".
+        $vTxt = if ($null -eq $v) { '' } else { " (v$v)" }
+        Write-Output "Shared pre-push guard is current$vTxt at $hookPath — not reinstalling."
     }
     else {
         $v = Get-UmsHookVersion $hookPath

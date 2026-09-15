@@ -713,9 +713,18 @@ function Test-RepoUsesLfs([string] $Root, [string] $HooksDir) {
     $store = & git -C $Root rev-parse --git-path lfs 2>$null
     if ($LASTEXITCODE -eq 0 -and $store) {
         $storePath = if ([IO.Path]::IsPathRooted($store)) { $store } else { Join-Path $Root $store }
-        if ((Test-Path -LiteralPath $storePath) -and @(Get-ChildItem -LiteralPath $storePath -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) { return $true }
+        # -First 1: the question is "is the store non-empty", not "how big is
+        # it" - a full recursive enumeration of an LFS store can walk tens of
+        # thousands of objects to answer a yes/no.
+        if ((Test-Path -LiteralPath $storePath) -and @(Get-ChildItem -LiteralPath $storePath -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1).Count -gt 0) { return $true }
     }
-    & git -C $Root config --get-regexp '^lfs\.' 2>$null | Out-Null
+    # --local, NOT the default config search order: `lfs.storage`,
+    # `lfs.concurrenttransfers`, `lfs.fetchexclude` and friends are commonly set
+    # GLOBALLY, and an unscoped read would then answer $true for every
+    # repository on that machine - turning the last proof in this chain (the one
+    # reached exactly when the other three said "no LFS here") into no proof at
+    # all. A repository genuinely using LFS carries `lfs.<url>.access` locally.
+    & git -C $Root config --local --get-regexp '^lfs\.' 2>$null | Out-Null
     if ($LASTEXITCODE -eq 0) { return $true }
     return $false
 }
@@ -724,7 +733,13 @@ function Test-RepoUsesLfs([string] $Root, [string] $HooksDir) {
 # isolation: `git init` honours init.templateDir and `git lfs install --local`
 # resolves its hooks dir through core.hooksPath, which may come from GLOBAL
 # config - without isolation the generation step would write into the user's
-# shared hooks directory, outside both the temp dir and the target repo.
+# shared hooks directory, outside both the temp dir and the target repo. The
+# ambient GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / GIT_CONFIG_COUNT are
+# cleared for the same reason (see below). That is isolation against the inputs
+# NAMED here, not a blanket "nothing outside the temp dir is touched": git has
+# further redirecting variables (GIT_OBJECT_DIRECTORY, GIT_COMMON_DIR,
+# GIT_CEILING_DIRECTORIES, ...) and enumerating them exhaustively is not
+# something this function can promise.
 #
 # Two distinct shapes carry `Restored = $false`, and the caller tells them
 # apart only by `Reason`: a non-empty `Reason` means something PREVENTED the
@@ -742,7 +757,16 @@ function Restore-LfsChainedHook([string] $Path, [hashtable] $HooksPathCfg, [stri
         }
         $dst = $Path + $CHAINED_SUFFIX
         $healthy = (Test-IsLfsHook $dst 'pre-push')
-        if ($healthy -and $Shell) {
+        # HEALTH short-circuits on its own, NEVER coupled to shell availability:
+        # the shell is needed only for the exec-bit half. Coupling them (an
+        # earlier version wrote `if ($healthy -and $Shell)`) meant that on a
+        # machine with no POSIX shell a healthy chain fell through and was
+        # REGENERATED over - possibly over a real git-lfs hook that
+        # Move-ForeignHook had put there, and the replacement would then carry
+        # $RESTORE_STAMP, retroactively qualifying that chain for the
+        # Move-ForeignHook overwrite exception on every later run.
+        if ($healthy) {
+            if (-not $Shell) { return @{ Restored = $false; Path = $dst; Reason = $null } }
             $unix = $dst -replace '\\', '/'
             & $Shell -c 'test -x "$1"' _ $unix 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { return @{ Restored = $false; Path = $dst; Reason = $null } }
@@ -752,15 +776,44 @@ function Restore-LfsChainedHook([string] $Path, [hashtable] $HooksPathCfg, [stri
         if ((Test-Path -LiteralPath $dst) -and -not $healthy) {
             return @{ Restored = $false; Path = $dst; Reason = "a chained hook that is not a git-lfs hook is already present at $dst - not overwriting it" }
         }
+        # Symlink guard, the same standard Move-ForeignHook applies one path
+        # over: WriteAllBytes below would write THROUGH a link and land the
+        # generated chain outside the repository. A DANGLING link reads as
+        # ABSENT to Test-Path, so the link property has to be read directly
+        # rather than inferred from the existence tests above.
+        $existingDst = $null
+        try { $existingDst = Get-Item -LiteralPath $dst -Force -ErrorAction Stop } catch { $existingDst = $null }
+        if ($null -ne $existingDst -and $existingDst.LinkType) {
+            return @{ Restored = $false; Path = $dst; Reason = "$dst is a symbolic link - writing the restored chain would go through it and land outside the repository; resolve it by hand" }
+        }
         if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
             return @{ Restored = $false; Path = $null; Reason = 'git lfs is not on PATH' }
         }
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ('umslfsgen-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        # Ambient git environment that would redirect the generation subprocesses
+        # OUT of $tmp: GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE point git at
+        # another repository outright, and GIT_CONFIG_COUNT is what activates the
+        # GIT_CONFIG_KEY_*/GIT_CONFIG_VALUE_* override family (git ignores those
+        # keys entirely when it is unset). SAVED AND RESTORED, never just
+        # deleted: this function runs inside a caller's process and must not
+        # strip that process's environment for the rest of its run - which is
+        # exactly what the earlier `Remove-Item Env:...` finally block did to
+        # GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM.
+        $envNames = @('GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CONFIG_COUNT')
+        $envSaved = @{}
+        foreach ($n in $envNames) { $envSaved[$n] = [Environment]::GetEnvironmentVariable($n) }
         try {
             New-Item -ItemType Directory -Force -Path $tmp | Out-Null
             $nul = Join-Path $tmp 'no-such-config'
             $env:GIT_CONFIG_GLOBAL = $nul
             $env:GIT_CONFIG_SYSTEM = $nul
+            # Remove-Item, NOT SetEnvironmentVariable($n, $null): PowerShell
+            # binds that $null to the EMPTY STRING, which leaves the variable
+            # set to "" instead of removing it - measured, `git init` then dies
+            # with "fatal: The empty string is not a valid path".
+            foreach ($n in @('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CONFIG_COUNT')) {
+                Remove-Item -LiteralPath "Env:$n" -ErrorAction SilentlyContinue
+            }
             & git init -q --template= -b main $tmp 2>$null | Out-Null
             # `-c core.hooksPath=` (empty) does NOT mean "no override" - measured on
             # git 2.51: an empty value resolves `--git-path hooks/pre-push` to
@@ -788,8 +841,10 @@ function Restore-LfsChainedHook([string] $Path, [hashtable] $HooksPathCfg, [stri
             return @{ Restored = $true; Path = $dst; Reason = $null }
         }
         finally {
-            Remove-Item Env:GIT_CONFIG_GLOBAL -ErrorAction SilentlyContinue
-            Remove-Item Env:GIT_CONFIG_SYSTEM -ErrorAction SilentlyContinue
+            foreach ($n in $envNames) {
+                if ($null -eq $envSaved[$n]) { Remove-Item -LiteralPath "Env:$n" -ErrorAction SilentlyContinue }
+                else { [Environment]::SetEnvironmentVariable($n, $envSaved[$n]) }
+            }
             Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
         }
     }
@@ -843,10 +898,17 @@ foreach ($name in $HOOK_NAMES) {
         }
     }
 
-    # Only pre-push carries a chain, and only where our hook is (or is about
-    # to be) the installed one - a repo whose pre-push is foreign is handled
-    # by the block above, and one with no pre-push at all never lost a chain.
-    if ($name -eq 'pre-push' -and (-not (Test-Path $dst) -or (Test-IsOurHook $dst))) {
+    # Only pre-push carries a chain, and only where OUR hook is the one already
+    # installed - that is the shape a clone damaged by the older installer has.
+    # A repo whose pre-push is foreign is handled by the block above. An EMPTY
+    # pre-push slot is deliberately NOT covered: it is a first install, or a
+    # repository where the LFS pre-push was removed on purpose
+    # (`git lfs install --manual`), and restoring there would resurrect a hook
+    # nobody lost. `-not (Test-Path $dst)` used to be accepted here and fired
+    # on exactly and only that forbidden state. It also broke parity with
+    # mb-state, which is read-only and can never observe "this run is about to
+    # write the hook".
+    if ($name -eq 'pre-push' -and (Test-Path $dst) -and (Test-IsOurHook $dst)) {
         if (Test-RepoUsesLfs $RepoRoot (Split-Path $dst)) {
             $restore = Restore-LfsChainedHook $dst $hooksPathCfg $shell
             if ($restore.Restored) {

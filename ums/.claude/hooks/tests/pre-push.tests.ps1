@@ -1627,7 +1627,7 @@ $realHookLines8 = @(Get-Content -LiteralPath $realHookPath8)
 # - the identity substring is untouched, which is exactly what makes this case
 # distinguish "recognized as ours" from "recognized as foreign".
 $oldStyleLine8 = $realHookLines8[1] -replace '\s+v\d+\s*$', ''
-Assert-True ($oldStyleLine8 -ne $realHookLines8[1]) 'upgrade: fixtura sama sobě dokazuje, že simulovaná stará hlavička skutečně nenese v2 (sanity check)'
+Assert-True ($oldStyleLine8 -ne $realHookLines8[1]) 'upgrade: fixtura sama sobě dokazuje, že simulovaná stará hlavička skutečně nenese verzní příponu (sanity check)'
 $oldStyleLines8 = @($realHookLines8[0], $oldStyleLine8) + $realHookLines8[2..($realHookLines8.Count - 1)]
 $oldStyleHookPath8 = Join-Path $root8 '.git\hooks\pre-push'
 New-Item -ItemType Directory -Force -Path (Split-Path $oldStyleHookPath8) | Out-Null
@@ -1732,6 +1732,14 @@ Remove-Item -Recurse -Force $fxDelMsg.Root
 # Obnova ztraceného LFS řetězu: náš hook na místě, LFS sourozenci tam jsou,
 # ale .ums-chained chybí - starší instalátor ho přepsal místo odsunutí.
 # ---------------------------------------------------------------------------
+
+# Byte copy of the layer's OWN pre-push into a fixture slot. Bajtově kvůli LF:
+# je to bezpříponový sh skript mimo dosah .gitattributes.
+function Copy-OurHookInto([string] $HookPath) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $HookPath) | Out-Null
+    [IO.File]::WriteAllBytes($HookPath, [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot '..\pre-push')))
+}
+
 function New-LfsSiblingRepo([string] $Label) {
     $r = Join-Path ([IO.Path]::GetTempPath()) ("mblfs-$Label-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
     & git init -q -b develop $r | Out-Null
@@ -1741,6 +1749,12 @@ function New-LfsSiblingRepo([string] $Label) {
     foreach ($n in @('post-commit', 'post-checkout', 'post-merge')) {
         [IO.File]::WriteAllText((Join-Path $h $n), "#!/bin/sh`ngit lfs $n `"`$@`"`n", (New-Object System.Text.UTF8Encoding($false)))
     }
+    # NÁŠ hook na pre-push je součást stavu, který tahle fixtura popisuje:
+    # "klon poškozený starším instalátorem" má náš guard na místě a chybí mu
+    # jen řetěz. Dřív fixtura pre-push VŮBEC nezakládala, takže obnova se
+    # spouštěla přes větev "slot je prázdný" - tedy přes stav, který návrh
+    # výslovně zakazuje křísit (první instalace / `git lfs install --manual`).
+    Copy-OurHookInto (Join-Path $h 'pre-push')
     return $r
 }
 
@@ -1796,6 +1810,9 @@ if ($script:HasGitLfs) {
     & git init -q -b develop $rAttr | Out-Null
     & git -C $rAttr remote add origin "$rAttr/../fake-origin" | Out-Null
     [IO.File]::WriteAllText((Join-Path $rAttr '.gitattributes'), "*.dll filter=lfs diff=lfs merge=lfs -text`n", (New-Object System.Text.UTF8Encoding($false)))
+    # Náš hook na místě - obnova se spouští jen nad NAŠÍM hookem, ne nad
+    # prázdným slotem (viz komentář u New-LfsSiblingRepo).
+    Copy-OurHookInto (Join-Path $rAttr '.git/hooks/pre-push')
     Invoke-Installer $rAttr $null | Out-Null
     Assert-True (Test-Path (Join-Path $rAttr '.git/hooks/pre-push.ums-chained')) 'důkaz z .gitattributes: řetěz se obnoví i bez sourozenců'
     Remove-Item -Recurse -Force $rAttr
@@ -1812,6 +1829,10 @@ if ($script:HasGitLfs) {
     $res = Invoke-Installer $rReinstall $null
     Assert-Eq $res.Code 0 'reinstalace: instalátor neskončí exitem 2, náš obnovený řetěz smí přepsat'
     Assert-NotMatch ([IO.File]::ReadAllText($chainedPath)) 'Restored by install-git-hooks' 'reinstalace: na místě je teď skutečný hook od git-lfs, ne náš generovaný'
+    # Samotná nepřítomnost stampu projde i pro prázdný nebo rozbitý soubor -
+    # tohle je jediný zámek na výjimku z Tasku 5, takže musí tvrdit i to, CO
+    # na místě je: příchozí tělo od git-lfs.
+    Assert-Match ([IO.File]::ReadAllText($chainedPath)) 'git lfs pre-push' 'reinstalace: v řetězu je příchozí tělo volající git lfs pre-push'
     $head = Get-Content -LiteralPath (Join-Path $rReinstall '.git/hooks/pre-push') -TotalCount 5
     Assert-Match ($head -join "`n") 'UMS pre-push guard' 'reinstalace: na pre-push je zase náš hook'
     Remove-Item -Recurse -Force $rReinstall
@@ -1843,10 +1864,38 @@ if ($script:HasGitLfs) {
 $rShared = New-LfsSiblingRepo 'shared'
 $sharedHooks = Join-Path ([IO.Path]::GetTempPath()) ("mbsharedhooks-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force -Path $sharedHooks | Out-Null
+# core.hooksPath přesměruje cíl do sdíleného adresáře, takže tam musí ležet
+# NÁŠ hook a důkaz o LFS musí být dosažitelný odtamtud (sourozenci zůstali
+# v .git/hooks) - jinak by případ spadl o patro výš, na spouštěcí podmínku, a
+# přestal by testovat odmítnutí uvnitř Restore-LfsChainedHook, po kterém je
+# pojmenovaný.
+Copy-OurHookInto (Join-Path $sharedHooks 'pre-push')
+[IO.File]::WriteAllText((Join-Path $rShared '.gitattributes'), "*.dll filter=lfs diff=lfs merge=lfs -text`n", (New-Object System.Text.UTF8Encoding($false)))
 Invoke-GitOk $rShared @('config', 'core.hooksPath', $sharedHooks) | Out-Null
-Invoke-Installer $rShared $null | Out-Null
+$resShared = Invoke-Installer $rShared $null
 Assert-True (-not (Test-Path (Join-Path $sharedHooks 'pre-push.ums-chained'))) 'sdílený hooks adresář: obnova se nespustí'
+Assert-Match $resShared.Flat 'shared with other repositories' 'sdílený hooks adresář: instalátor odmítnutí obnovy pojmenuje'
 Remove-Item -Recurse -Force $rShared, $sharedHooks
+
+if ($script:HasGitLfs) {
+    # POZITIVNÍ DVOJČE k případu výše. Aserce "nic nevzniklo" je sama o sobě
+    # neprůkazná: "nic" je i stav před změnou, takže ji žádný negativní běh se
+    # starým instalátorem nevyvrátí. Tenhle případ je její protipól - RELATIVNÍ
+    # LOKÁLNÍ core.hooksPath sdílený není, takže řetěz v tom adresáři VZNIKNOUT
+    # musí. Dvojice pak rozlišuje v obou směrech: zruš strážce a spadne případ
+    # s absolutní cestou, rozšiř ho na "vždy odmítni" a spadne tenhle - a na
+    # samotného strážce přitom nikdo nesahá.
+    $rRel = New-LfsSiblingRepo 'relhooks'
+    $relHooks = Join-Path $rRel 'customhooks'
+    Copy-OurHookInto (Join-Path $relHooks 'pre-push')
+    [IO.File]::WriteAllText((Join-Path $rRel '.gitattributes'), "*.dll filter=lfs diff=lfs merge=lfs -text`n", (New-Object System.Text.UTF8Encoding($false)))
+    Invoke-GitOk $rRel @('config', 'core.hooksPath', 'customhooks') | Out-Null
+    $resRel = Invoke-Installer $rRel $null
+    Assert-True (Test-Path (Join-Path $relHooks 'pre-push.ums-chained')) 'relativní lokální core.hooksPath: řetěz VZNIKNE v tom adresáři'
+    Assert-Match ([IO.File]::ReadAllText((Join-Path $relHooks 'pre-push.ums-chained'))) 'git lfs pre-push' 'relativní lokální core.hooksPath: obnovený řetěz volá git lfs pre-push'
+    Assert-Match $resRel.Flat 'restored' 'relativní lokální core.hooksPath: instalátor obnovu pojmenuje'
+    Remove-Item -Recurse -Force $rRel
+}
 
 if ($script:HasGitLfs) {
     # Řetěz volá git lfs, ale nemá execute bit -> opraví se. Guardovaný: první

@@ -1,3 +1,4 @@
+#Requires -Version 7
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '_assert.ps1')
 $ErrorActionPreference = 'Stop'
@@ -15,18 +16,18 @@ $v0 = New-HookFile 'v0' "#!/bin/sh`n# UMS pre-push guard (Publication Contract)`
 $foreign = New-HookFile 'foreign' "#!/bin/sh`nexit 0`n"
 $deep = New-HookFile 'deep' "#!/bin/sh`n#`n#`n#`n#`n# UMS pre-push guard (Publication Contract) v3`n"
 
-Assert-Eq (Get-UmsHookVersion $v3) 3 'verze v3 se precte jako 3'
-Assert-Eq (Get-UmsHookVersion $v2) 2 'verze v2 se precte jako 2'
-Assert-Eq (Get-UmsHookVersion $v0) 0 'nas hook bez pripony je verze 0'
-Assert-Eq (Get-UmsHookVersion $foreign) $null 'cizi hook nevrati verzi'
-Assert-Eq (Get-UmsHookVersion (Join-Path $PSScriptRoot 'neexistuje')) $null 'chybejici soubor nevrati verzi'
-Assert-Eq (Get-UmsHookVersion $deep) $null 'znacka pod patym radkem se nepoiova'
+Assert-Eq (Get-UmsHookVersion $v3) 3 'verze v3 se přečte jako 3'
+Assert-Eq (Get-UmsHookVersion $v2) 2 'verze v2 se přečte jako 2'
+Assert-Eq (Get-UmsHookVersion $v0) 0 'náš hook bez přípony je verze 0'
+Assert-Eq (Get-UmsHookVersion $foreign) $null 'cizí hook nevrací verzi'
+Assert-Eq (Get-UmsHookVersion (Join-Path $PSScriptRoot 'neexistuje')) $null 'chybějící soubor nevrací verzi'
+Assert-Eq (Get-UmsHookVersion $deep) $null 'značka pod pátým řádkem se nepočítá'
 
-Assert-True (Test-UmsHookNeedsInstall $v2 $v3) 'nainstalovna v2 proti zdrojove v3 chce instalaci'
-Assert-True (-not (Test-UmsHookNeedsInstall $v3 $v3)) 'shodna verze instalaci nechce'
-Assert-True (-not (Test-UmsHookNeedsInstall $v3 $v2)) 'NOVEJSI nainstalovna verze se NEDEGRADUJE'
-Assert-True (Test-UmsHookNeedsInstall $v0 $v2) 'hook bez pripony chce instalaci'
-Assert-True (Test-UmsHookNeedsInstall $foreign $v3) 'cizi hook chce instalaci'
+Assert-True (Test-UmsHookNeedsInstall $v2 $v3) 'nainstalovaná v2 proti zdrojové v3 chce instalaci'
+Assert-True (-not (Test-UmsHookNeedsInstall $v3 $v3)) 'shodná verze instalaci nechce'
+Assert-True (-not (Test-UmsHookNeedsInstall $v3 $v2)) 'NOVĚJŠÍ nainstalovaná verze se NEDEGRADUJE'
+Assert-True (Test-UmsHookNeedsInstall $v0 $v2) 'hook bez přípony chce instalaci'
+Assert-True (Test-UmsHookNeedsInstall $foreign $v3) 'cizí hook chce instalaci'
 
 Remove-Item -Force $v3, $v2, $v0, $foreign, $deep
 Complete-Tests

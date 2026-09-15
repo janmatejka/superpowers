@@ -73,9 +73,11 @@ performing one. Reading another branch's state never checks that branch out.
   - The health of the Git LFS `pre-push` chain, restored by
     `install-git-hooks.ps1`'s `Restore-LfsChainedHook` and reported here on the
     same trigger, so the report and that installer step never drift apart. It
-    only applies where that step itself would run: the `pre-push` slot is empty
-    or already carries our marker (`Test-IsOurHook`) — a foreign, non-UMS hook
-    occupying it is a different case, already covered above — and the hooks
+    only applies where that step itself would run: the `pre-push` slot already
+    carries our marker (`Test-IsOurHook`) — a foreign, non-UMS hook
+    occupying it is a different case, already covered above, and an EMPTY slot
+    is not covered at all, by either side: restoring there would resurrect a
+    chain nobody lost (a first install, or `git lfs install --manual`) — and the hooks
     directory is not shared, the same OR condition `Restore-LfsChainedHook`
     itself refuses on: an absolute `core.hooksPath` value (the scope warning
     above) or one read from global/system config scope even when relative — the
@@ -87,8 +89,11 @@ performing one. Reading another branch's state never checks that branch out.
     `Test-RepoUsesLfs`'s four proofs holds, checked in this order: a sibling
     hook among `post-commit`, `post-checkout` or `post-merge` whose body calls
     `git lfs <name>`; `.gitattributes` containing `filter=lfs`; a non-empty LFS
-    storage directory (`git rev-parse --git-path lfs`); or `git config
-    --get-regexp '^lfs\.'` matching anything. When it does, the chained hook at
+    storage directory (`git rev-parse --git-path lfs`); or `git config --local
+    --get-regexp '^lfs\.'` matching anything. That last one is `--local` on
+    purpose — `lfs.storage` and friends are commonly set GLOBALLY, and an
+    unscoped read would report every repository on the machine as an LFS one.
+    When it does, the chained hook at
     `<pre-push>.ums-chained` must be healthy — present, its body matching
     `git lfs pre-push` (`Test-IsLfsHook`, the same identity test used above),
     and carrying the execute bit — or the chain is reported missing/incomplete.

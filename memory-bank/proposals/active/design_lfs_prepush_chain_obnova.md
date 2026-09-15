@@ -57,8 +57,7 @@ Volaná v hlavní smyčce jen pro `pre-push`, za blokem s cizím hookem a před
 
 1. **hooks adresář není sdílený** — `core.hooksPath` není absolutní a nepochází
    z `global` ani `system` scope;
-2. **na `pre-push` leží náš hook** (`Test-IsOurHook`), nebo ho tam tenhle běh
-   právě zapisuje;
+2. **na `pre-push` leží náš hook** (`Test-IsOurHook`);
 3. **zdravý LFS řetěz tam není** — `pre-push.ums-chained` buď neexistuje, nebo
    existuje, ale nevolá `git lfs pre-push`, nebo ho volá a nemá execute bit;
 4. **repozitář LFS opravdu používá** (důkaz níže);
@@ -77,6 +76,15 @@ kde LFS pre-push někdo odstranil schválně (`git lfs install --manual`). To by
 vzkřísilo hook, který nikdo neztratil. Dvě pravidla mířící na tentýž stav
 nesmí mít různé spouštěče, jinak se report `mb-state` a akce instalátoru
 rozejdou.
+
+**Prázdný slot se proto nepočítá** — původní znění téhle odrážky připouštělo
+i „nebo ho tam tenhle běh právě zapisuje", což ji činilo prázdnou (zapisuje ho
+každý běh) a odporovalo odstavci výše. Podmínka je `Test-Path` **a**
+`Test-IsOurHook`, obojí před zápisem. Klon poškozený starým instalátorem náš
+hook má; repozitář s vlastním LFS hookem jde cestou cizího hooku; a prázdný
+slot je právě ten stav, který se křísit nesmí. Navíc jen tahle podoba drží
+paritu s `mb-state`, který je read-only a stav „tenhle běh to právě zapisuje"
+nemůže nikdy pozorovat.
 
 **Podmínka 3 netestuje existenci, ale zdraví.** Slot řetězu je jen jeden
 (`$CHAINED_SUFFIX`, `pre-push:112`), takže `.ums-chained` může nést cizí
@@ -98,7 +106,13 @@ sourozence. Důkazem je proto **kterýkoli** z těchto, v tomhle pořadí:
   instaloval, ale `pre-push` mezi nimi chybí");
 - `filter=lfs` v `.gitattributes`;
 - neprázdný objektový sklad `.git/lfs/`;
-- `git config --get-regexp '^lfs\.'` vrátí cokoli.
+- `git config --local --get-regexp '^lfs\.'` vrátí cokoli — **`--local`, ne
+  neomezené čtení**: `lfs.storage`, `lfs.concurrenttransfers`,
+  `lfs.fetchexclude` či `lfs.dialtimeout` se běžně nastavují globálně, a
+  neomezený dotaz by tedy na takovém stroji vrátil `$true` pro **každý**
+  repozitář. Je to poslední důkaz v řetězu, dosažený právě tehdy, když tři
+  předchozí řekly „tady LFS není", takže by ho to zrušilo celý. Repozitář,
+  který LFS opravdu používá, nese `lfs.<url>.access` lokálně.
 
 Kde není ani jeden, se nespustí nic — řetěz si nevymýšlíme tam, kam nepatří.
 To pokrývá i `git lfs uninstall`, který maže všechny čtyři hooky naráz.
@@ -117,10 +131,23 @@ stroji by generovací krok zapsal `pre-push` do sdíleného globálního hooks
 adresáře, tedy mimo dočasný adresář i mimo cílový repozitář. Že je ta konfigurace
 na těchhle strojích živá, instalátor sám ví (`install-git-hooks.ps1:301-317`
 a `:571-573`). Generovací běh proto jede s `--template=` (prázdná šablona),
-`-c core.hooksPath=` (prázdná hodnota, přebije dědění) a `GIT_CONFIG_GLOBAL`
-i `GIT_CONFIG_SYSTEM` nasměrovanými na neexistující soubor. Teprve s touhle
-izolací platí, že se cílový repozitář ani nic jiného mimo dočasný adresář
-nedotkne.
+`-c core.hooksPath=.git/hooks` (explicitně připnutý default; prázdná hodnota
+**nefunguje** — naměřeno na gitu 2.51 se resolvuje na `/pre-push` v kořeni
+pracovního stromu) a `GIT_CONFIG_GLOBAL` i `GIT_CONFIG_SYSTEM` nasměrovanými
+na neexistující soubor. K tomu se pro generovací podprocesy **odklízí okolní
+git prostředí**, které by je přesměrovalo ven z dočasného adresáře:
+`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` a `GIT_CONFIG_COUNT` (ten je
+spínačem rodiny `GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*`; bez něj je git
+ignoruje). Všechny se **ukládají a obnovují**, ne mažou — funkce běží uvnitř
+procesu volajícího a nesmí mu prostředí osekat na zbytek běhu.
+
+**Co ta izolace garantuje, řečeno přesně.** Pokrývá jmenovitě ty vstupy výše;
+není to tvrzení „nic mimo dočasný adresář se nedotkne" za všech okolností —
+git zná další proměnné prostředí, které umí běh přesměrovat
+(`GIT_OBJECT_DIRECTORY`, `GIT_COMMON_DIR`, `GIT_CEILING_DIRECTORIES`, …), a
+vyjmenovat je vyčerpávajícím způsobem nelze. Tvrzení tedy zní: vůči
+konfiguraci a přesměrování, o kterých instalátor ví a která na těchhle
+strojích reálně existují, je generování inertní.
 
 **Obnovený řetěz se značkuje, protože ta značka pak něco rozhoduje.** Provenience
 stamp není jen stopa pro člověka: `Move-ForeignHook` dnes bezpodmínečně odmítá,
@@ -358,7 +385,16 @@ zůstaly bez zámku:
   důkaz projde přes `.gitattributes` / `.git/lfs/` / `git config`;
 - po obnově git-lfs znovu nainstaluje svůj `pre-push` → instalátor náš
   vygenerovaný řetěz přepíše a skončí 0, **ne** exitem 2;
-- proof běh v repozitáři se skutečným `origin` po obnově (nejen ve fixtuře).
+- proof běh v repozitáři se skutečným `origin` po obnově (nejen ve fixtuře) —
+  **tenhle případ se automatizovaným testem nepokrývá a je to rozhodnutí.**
+  Fixtura `New-LfsSiblingRepo` míří `origin` na neexistující cestu a jediný
+  skutečný bare `origin` v sadě LFS nepoužívá; postavit v sadě LFS remote by
+  znamenalo síť nebo LFS server, což konvence „testy běží offline" zakazuje.
+  Poctivým vyrovnáním je proto **naměřené pozorování při kroku šíření**: běh
+  `install-git-hooks.ps1` v monorepu `d:\_datasys\ums` — skutečný LFS
+  repozitář se skutečným `origin` a zároveň klon, ze kterého incident vzešel —
+  a zapsaný exit kód toho běhu. Tím je případ vyřízený; nesmí v soupisu
+  zůstat viset jako nesplněný požadavek.
 
 Negativní běh podle playbooku: sadu spustit i proti neopravenému skriptu
 a rozdělit aserce na „zčervenaly" a „zůstaly zelené v obou bězích"
@@ -369,7 +405,9 @@ oběma verzím bez editace pracovního stromu.
 ## Šíření
 
 Po opravě `sync-with-monorepo.ps1` do `D:\_datasys\ums` — tahle cesta instalátor
-spustí sama a nepotřebuje verzní bránu k ničemu.
+spustí sama a nepotřebuje verzní bránu k ničemu. **Exit kód toho běhu se
+zapisuje**: je to zároveň jediné pokrytí případu „proof běh v repozitáři se
+skutečným `origin` po obnově" ze sekce Testy.
 
 Verzní bump (bod 4) je pro **druhou** cestu, a ta je ověřená přesně jedna:
 monorepo má `.claude/settings.json` trackovaný a text brány v něm, takže kdo si
