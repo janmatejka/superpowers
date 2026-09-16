@@ -16,6 +16,20 @@ for t in $(find ums -name "*.tests.ps1"); do echo "== $t"; pwsh -NoProfile -File
 Zelená sada končí řádkem `<N> passed` a nulovým exit kódem; při selhání vypíše
 `<N>/<M> FAILED` a vrátí `1`.
 
+- **Pod PowerShell-first preferencí je smyčku výše legitimní nahradit
+  ekvivalentním `Get-ChildItem -Recurse -Filter *.tests.ps1 | ForEach-Object
+  { & pwsh -NoProfile -File $_.FullName; check $LASTEXITCODE }` — ale jen pro
+  INTERIMNÍ ověřování během vývoje. U Handoff brány na konci práce spusť
+  ověřovací sadu deklarovanou v `## Ověřovací sada` design/plán dokumentu
+  DOSLOVNĚ, přesně jak je tam napsaná, i kdyby to byla tahle bashová smyčka.
+  Brána porovnává citované příkazy s deklarovanou sadou jako TEXT — parafráze
+  (jiný nástroj, jiný tvar smyčky) na ní neprojde, i kdyby dělala totéž.
+  Proč: PowerShellová verze fungovala identicky — našla a spustila všech 28
+  sad, správně rozpoznala exit kódy i koncový řádek `<N> passed` pro součet,
+  doběhla v rámci timeoutu 600000 ms. To ale dokazuje jen bezpečnost náhrady
+  pro průběžné ověřování; u citace vůči Handoff bráně je rozhodující shoda
+  s deklarovaným textem, ne funkční ekvivalence.
+
 Konvence, které nová sada musí dodržet:
 
 - **Žádný Pester, jen obyčejný `.ps1` skript s vlastními aserčními funkcemi.**
@@ -88,6 +102,29 @@ Konvence, které nová sada musí dodržet:
   dormantní větev. Naopak dva jiné případy (symref `origin/HEAD`,
   `-BranchGlob`) prošly i proti neopravenému skriptu, protože je řešil jiný,
   existující mechanismus — takové asercie oddělit jako zámek, ne jako důkaz.
+- **„Security Weaken" zamítnutí nástroje nad hook/guard souborem — i pro
+  scoped, hned revertovanou probe přesně podle předchozího bodu (dočasně smaž
+  podmínku, ověř zčervenání, obnov) — ber jako KONEČNÉ pro ten soubor.**
+  Neopakuj pokus dalšími koly ani jinou formulací; padni zpátky na cílený
+  primární běh bez destruktivní mutace toho souboru a mezeru v důkazu ohlas
+  v „Issues or concerns", místo abys zablokovaný pokus prezentoval jako
+  hotové ověření.
+  Proč: úprava, která by dočasně zakomentovala jednu guard podmínku
+  v `install-git-hooks.ps1` (bezpečnostně relevantní hook instalátor) a hned
+  nato ji vrátila zpět, byla bezpečnostním klasifikátorem nástroje zamítnuta
+  rovnou (důvod „Security Weaken") — i přesto, že šlo o scoped, okamžitě
+  revertovanou sondu na souboru bez jiných rozpracovaných změn.
+- **Když je zdrojová oprava omylem aplikovaná dřív, než se stihla zachytit
+  true RED proti PŮVODNÍ logice, `git stash push --keep-index -- <cesta>`
+  (jednosouborový, ne plný stash) vrátí přesně TEN soubor do committnutého
+  stavu, aniž by se dotkl zbytku pracovního stromu** (typicky už upravený
+  testovací soubor s novým case) — spusť RED sadu, pak `git stash pop`
+  obnoví opravu zpátky.
+  Proč: Step 3 zdrojový edit byl aplikovaný dřív, než proběhl skutečný RED
+  běh proti původní (`-cmatch 'v2'`) logice; `git stash push --keep-index --
+  <soubor>` izolovaně vrátilo jen ten jeden soubor, RED běh selhal přesně
+  podle předpovědi briefu a `git stash pop` vše obnovil beze zbytku
+  (`git status` čistý mimo zamýšlené změny po popnutí).
 - **Že mutace opravdu proběhla, nikdy neodvozuj z výsledku sady — udělej ji
   sebedokazující.** Vypiš cílový řádek před smazáním, smaž ho podle ČÍSLA
   ŘÁDKU (krátkým Python snippetem, ne `sed`em se shellově escapovaným
@@ -126,6 +163,20 @@ Konvence, které nová sada musí dodržet:
   případu a celý pozdější případ, takže první čtení podhodnotilo dopad mutace
   (2 červené, ve skutečnosti 4). Sada, která uprostřed umře, za bodem smrti
   neměří nic.
+- **Negativní běh proti merge-base baseline, který má potvrdit VLASTNÍ nové
+  asercie právě uzavíraného tasku, nejdřív zkontroluj, jestli v tom samém
+  souboru — se stejnou „musí existovat reálné X" předpodmínkou — neleží
+  v pořadí spuštění dřív existující asercie z JINÉHO, dřívějšího tasku.**
+  Pokud ano, sada na neopraveném základu umře tam, dřív, než se vůbec
+  dostane k novým asercím. V reportu napiš explicitně, že nové asercie
+  skončily v NEPROVEDENO a proč (typicky: uzavírací task nepřidal žádný
+  produkční kód, jen testové pokrytí chování, které implementovaly dřívější
+  tasky) — nikdy pád neprezentuj jako důkaz platný i pro ně.
+  Proč: nasměrování sady na skutečně neopravený instalátor přes briefem
+  předepsanou merge-base baseline mělo zčervenat vlastní nové asercie tasku;
+  sada místo toho spadla na `[IO.File]::ReadAllText` výjimce nad souborem,
+  který nikdy nevznikl, na úplně PRVNÍ git-lfs-restore asercii v pořadí
+  souboru — patřící dřívějšímu tasku, ne uzavíranému.
 - **Po negativitě, kde brief jmenuje konkrétní počet/název asercí, které
   mají zčervenat, ověř PO běhu, jestli zčervenaly právě ony — a to v OBOU
   směrech.** Zčervenalo-li jich VÍC (typicky jiné asercie testující STEJNOU
@@ -284,6 +335,16 @@ Konvence, které nová sada musí dodržet:
   Proč: fake monorepo ve fixture mělo v `shared/` jen stub; `Copy-Mirrored`
   ho nahradil za loader z fork copy, instalátor spadl na chybu
   a nesouvisející test syncu zčervenal o dvě asercie dál.
+- **Fixtura, která sama razí kopii verzované značky** (např. `# ... v2`
+  v testovacím fixture hooku), **ať tu hodnotu čte ze zdroje pravdy stejným
+  sdíleným helperem jako produkční kód** (`Get-UmsHookVersion <cesta-k-
+  hooku>`, dot-sourcený), **ne literálem.** Jinak se fixtura při dalším bumpu
+  verze rozejde přesně stejným způsobem, jaký měla oprava odstranit.
+  Proč: `pool-provision.tests.ps1` case 4 razil fixture hook literálem
+  `# ... v2`; po bumpu hlavičky na v3 by tenhle literál zestárl stejně jako
+  opravovaný `-cmatch 'v2'` gate v produkčním kódu. Po přechodu na
+  `Get-UmsHookVersion` a `v$currentHookVersion` místo literálu sada prošla
+  a zůstane zelená i přes budoucí bumpy.
 - **Vkládání nového testu „na konec, před `Complete-Tests`" do velké
   `.tests.ps1` sady se sdílenou fixturou ověř trojmo: (1) jsou pomocné
   funkce, které chceš použít, v tom bodě souboru už definované** (funkce
@@ -326,6 +387,12 @@ Konvence, které nová sada musí dodržet:
   nespoléhej vůbec: notifikace o dokončení jde koordinátorovi, ne tobě,
   a vlastní smyčka tahů ji nemá jak spotřebovat — příkaz, který harness sám
   přesune na pozadí, znamená, že sezení stojí, dokud koordinátor nezasáhne.
+  **Pokud i tak jeden 600000ms foreground běh skončí přesunem na pozadí,
+  není to signál k dalšímu manuálnímu dávkování ani k čekání přes tahy
+  navíc — nejvýš jeden opakovaný pokus, pak STOP:** nahlas přesně, co
+  doběhlo a co zůstává neověřené, a nech rozhodnutí (spustit sám, přijmout
+  částečné/jednosadové ověření, prodloužit rozpočet) na koordinátorovi;
+  neukončuj vlastní tah čekáním na prázdné/no-op volání.
   Proč: `for t in $(find ums -name "*.tests.ps1"); do pwsh ...; done` jako
   jeden Bash příkaz s VÝCHOZÍM timeoutem přesáhl 2–5minutový limit uprostřed
   sad (jedna sada sama běžela přes minutu) a byl zabit bez signálu, které
@@ -335,7 +402,14 @@ Konvence, které nová sada musí dodržet:
   a dal shodný výsledek (23 sad, 1239 asercí, žádné `FAILED`). Monitor
   s kontrolou živosti procesu (grep `pwsh` v `/proc/*/status`) nad
   backgroundem navíc vyrobil falešnou událost „stream ended" místo skutečného
-  signálu dokončení.
+  signálu dokončení. V jiném sezení se i celý 28sadový běh s `timeout:
+  600000` na popředí dvakrát přesunul na pozadí sám (harnessem), přestože
+  jednou dorazila kompletní a správná dokončovací notifikace přímo
+  subagentovi, ne jen koordinátorovi — spolehlivost notifikace tedy NENÍ
+  zaručená v tahu, který má pokračovat dál, a opakovaný manuální retry
+  s menší dávkou (4 sady, `timeout: 180000`) skončil stejně; skutečným
+  problémem bylo vlastní ukončování tahů čekáním na tuto notifikaci místo
+  reportu stavu a čistého předání.
 - **Úklid throwaway fixtury přes `rm -rf` dělej jako samostatné, izolované
   volání, ne zřetězené `&&`/`;` s dalšími příkazy.**
   Proč: bezpečnostní hlídka nástroje zablokovala i čistě throwaway
@@ -502,6 +576,22 @@ Konvence, které nová sada musí dodržet:
   zálohy neukázal nic (`.superpowers/` je ignorovaný) a navazující sezení
   uzavřelo „žádná záloha tu není", přestože záloha ležela na disku a byla
   jedinou cestou k bajtově přesné obnově místo rekonstrukce z komentáře.
+- **Aplikace briefova doslovného code-block snippetu na guard/podmínku
+  nestačí sama o sobě — po aplikaci zkontroluj ZBYTEK STEJNÉ funkce na další
+  příkazy, jejichž předpoklady nová podmínka právě změnila** (typicky
+  `Move-Item`/zápis souboru hned za kontrolou tvaru „tahle cesta nesmí už
+  existovat"). Zúžený guard, který pustí běh k pozdějšímu nepodmíněnému
+  příkazu, může selhat o řádek dál se STEJNOU asercí a STEJNÝM exit kódem
+  jako RED před opravou — a snadno se to přečte jako „oprava se neuchytila",
+  ne jako „existuje druhá, nepopsaná mezera".
+  Proč: aplikace jen briefova Step 3 snippetu (výjimka pro existující
+  `.ums-chained`) nechala stejné tři asercie padat pořád se stejným
+  `Code '2'`, ale z jiného důvodu: `Move-Item -LiteralPath $Path -Destination
+  $dst` bez `-Force`, o pár řádků níž ve stejné funkci `Move-ForeignHook`,
+  spadlo, protože `$dst` už existoval — funkce skončila ve vlastním catch
+  bloku a vrátila `Refused` znovu. Izolovaná ruční repro fixtury dala
+  přesnou hlášku: „could not move the foreign hook to ... Nelze vytvořit
+  soubor, který již existuje."
 - **Mutaci odebraného pole může zastínit ranější kontrola — nebo samo místo
   volání.** Když předvídáš, které případy má mutace odstraňující hlídku
   zčervenat, zkontroluj, jestli stejný symptom už nepokrývá ranější,
@@ -1007,6 +1097,23 @@ Konvence, které nová sada musí dodržet:
   spadne (`Invalid remote name "origin"`). Po `git remote add origin
   https://example.invalid/repo.git` proof prošel čistě. Jinak by se chyba
   bez souvislosti s řetězením četla jako regrese.
+- **`-c core.hooksPath=` (prázdná hodnota) NENÍ „bez override" na gitu 2.51
+  — nemá význam „výchozí/nenastaveno".** Izolaci od zděděného
+  `core.hooksPath` (např. při generování hooku do fixture repa) řeš buď
+  úplným vynecháním `-c core.hooksPath=...` (spolehni se na to, že čerstvě
+  `git init`nutý adresář nemá LOCAL config, případně v kombinaci
+  s přesměrováním `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`), nebo explicitním
+  pinem reálného defaultu (`-c core.hooksPath=.git/hooks`) — nikdy prázdnou
+  hodnotou.
+  Proč: `git -C $tmp -c core.hooksPath= lfs install --local` mělo
+  neutralizovat zděděný override pro izolovaný temp repo; místo toho
+  `git lfs install --local` tiše zapsal `pre-push`/`post-commit`/atd. přímo
+  do `$tmp` samotného místo `$tmp/.git/hooks`, takže `Test-IsLfsHook`
+  nahlásilo „git lfs negeneroval rozpoznatelný pre-push hook", ačkoli
+  generování ve skutečnosti „uspělo", jen na špatném místě. Izolovaná repro
+  proti tomuto repu: `git -c core.hooksPath= rev-parse --git-path
+  hooks/pre-push` vrátí `/pre-push` (kořen pracovního stromu), zatímco bez
+  override vrátí `.git/hooks/pre-push`.
 - **Fixturu pro „tenhle tvar guard vůbec nerozpozná" postav na UVOZENÉM
   `git` tokenu** (`bash -c '…'`, `echo "git push …"`), ne na neuvozeném za
   jiným příkazem — a před zapsáním asercie ji jednou pusť ručně (`printf
@@ -1124,6 +1231,28 @@ běhu použije defaulty potichu.
   každé změně vrstvy provedené v monorepu a výsledek commitni. `ToMonorepo` je
   opačný směr. Každá jiná kombinace je jednosměrný deploy z `ums/` do cíle
   a `-Direction` se ignoruje.
+- **Před jakýmkoli nasazením směrem `-Direction ToMonorepo` nejdřív potáhni
+  aktuální stav monorepa (`-Direction FromMonorepo`, viz výše) a slouč do
+  forku vše, kde je monorepo napřed — teprve pak spusť `ToMonorepo`.** Traktuj
+  pořadí FromMonorepo → ToMonorepo jako pevné, nikdy jako volbu; default
+  skriptu (`FromMonorepo`) tenhle krok automaticky neudělá, protože
+  `-Direction ToMonorepo` musí být zadán explicitně a hazard je tak
+  neviditelný pro každého, kdo default jen bez rozmyslu přijme.
+  Proč: příprava kroku „Šíření" přesně podle plánu (spustit `ToMonorepo`
+  rovnou) by přepsala 89 řádků, o které byl monorepo napřed
+  v `.claude/skills/mb-jira-update/SKILL.md` (dva commity z 2026-09-11) —
+  `-Direction ToMonorepo` zrcadlí KAŽDÝ `mb-*` skill směrem fork → monorepo
+  bez ohledu na to, který strom je novější.
+- **Drift mezi forkem a monorepem hledej jen v UMS-vlastněných položkách**
+  (`skills/mb-*`, `skills/shared`, top-level `hooks/*`) **po jednotlivých
+  adresářích — přesně tak, jak je enumeruje `sync-with-monorepo.ps1`** — ne
+  `git diff --no-index --stat` přes celý `skills` strom obou stran.
+  `hooks/tests/` sync nesynchronizuje nikdy, takže rozdíl tam čekej a neřeš
+  ho jako drift.
+  Proč: plošný diff dal 190 souborů / 203 242 vložených řádků čistého šumu —
+  monorepo `skills` adresář nese navíc vendorované superpowers skilly
+  a projektové skilly (`wf-*`, bpmn tooling), které se ve fork mirroru vůbec
+  nevyskytují, takže KAŽDÝ z nich vyjde jako rozdíl.
 - `gemini` a `kilocode` nemají adresář skillů — dostanou jen glue a blok
   preferencí v instrukčním souboru.
 - **`settings.json` se na ne-Claude cíle nenasazuje.**
@@ -1315,6 +1444,30 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   zásah); referenční dokumentace skillů v tomto stroji ji ale uvádí
   jednoznačně jako „Restrict tool access", takže restringující výklad je
   ten správný.
+- **Grep lock spuštěný přes adresář, který obsahuje AKTIVNÍ návrh/plán pro
+  právě prováděný task, počítej se třetí kategorií residua: dokument
+  samotný, který cituje starou formulaci jako popis problému nebo cituje
+  samotný grep příkaz jako narativ.** Nevynucuj tohle do seznamu rulingem
+  předem daných kategorií (např. „dvě záměrné zmínky" / „tři out-of-scope
+  významy") — pojmenuj ji v reportu jako vlastní, samostatnou kategorii.
+  Proč: grep lock spuštěný přes `ums/` i `memory-bank/` matchnul několik
+  řádků v `design_lfs_prepush_chain_obnova.md` a
+  `plan_lfs_prepush_chain_obnova.md` — vlastních dokumentech tohoto tasku —
+  protože citují STAROU formulaci jako problem statement a dokonce citují
+  sám grep příkaz (nutně obsahující hledaný literál). Žádný z rulingů tuhle
+  kategorii nepředvídal, takže 100% pokrytí residua podle jen dřív daných
+  seznamů není vždy dosažitelné, i když je každá substantivní úprava
+  správná.
+- **Po dokončení briefem jmenovaných editů hardcoded literálu spusť grep
+  lock PŘED commitem** (ne až jako formální krok briefu) **a každý přeživší
+  zásah uvnitř souboru, který je už na edit listu, čti jako silný signál, že
+  brief podcenil počet výskytů právě v tom souboru** — oprav ho a odchylku
+  popiš v reportu, místo abys residuum „ospravedlnil" tím, že ho brief
+  nejmenoval.
+  Proč: brief jmenoval jen `memory-bank/tech.md:117` pro hardcoded literál
+  verze hooku; grep lock po editu odhalil druhý, nejmenovaný výskyt téhož
+  literálu o sedm řádků dřív (`tech.md:104`), popisující stejný
+  `settings.json` hook z jiného řádku tabulky.
 - **Rys, který je git-faktem (tracked/foreign/published), testuj git
   příkazem nebo porovnáním CESTY — nikdy čtením obsahu souboru.** Derivovaný
   stav „nic k udělání", který gatuje krok sahající na git-IGNOROVANOU cestu,
@@ -1955,3 +2108,17 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   až při kontrole. V tomhle běhu se to stalo dvakrát. Kontrola je jeden
   příkaz: `git log -1 --format=%B | od -c` a podívat se, jestli tam jsou
   vícebajtové sekvence.
+- **Na rozdíl od bash heredocu diakritika PŘES PowerShellový here-string
+  (`git commit -m @'...'@`) tiše NEPŘEŽIJE.** Commit projde bez chyby, ale
+  `git log -1` ukáže diakritiku nahrazenou ASCII transliterací — zpráva
+  vypadá věrohodně a na první pohled projde. Napiš přesnou zprávu nástrojem
+  `Write` do souboru (zachová UTF-8 bajt po bajtu) a commituj `git commit -F
+  <soubor>` (nebo `--amend -F <soubor>` na opravu už vytvořeného commitu);
+  po commitu vždy ověř bajtově (`git log -1 --format=%B` do hex dumpu),
+  stejně jako u bash heredocu výše — nikdy nevěř tomu, že „minule to bylo
+  v pořádku, tak je to jen code page".
+  Proč: commit zpráva s diakritikou (`hlásí`, `chybějící`, `řetěz`,
+  `instalátoru`) předaná jako PowerShellový `@'...'@` here-string argument
+  `git commit -m` prošla bez chyby, ale `git log -1` ukázal diakritiku
+  tiše nahrazenou ASCII transliterací (`hlasi`, `chybejici`, `retez`,
+  `instalatoru`) — plausibilní, ale špatný text.

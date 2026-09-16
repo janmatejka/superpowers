@@ -10,7 +10,7 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 2.18 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 2.19 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 4 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`, `writing-plans`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
@@ -55,6 +55,11 @@ stejnou konfiguraci vždy stejnou odpověď.
   (brána předání — viz [architecture.md](architecture.md), sekce 3),
   [`Get-UmsEpicLedger.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEpicLedger.ps1)
   (čtení `## Ověřovací sada` ledgeru epiku po refu),
+  [`Get-UmsHookVersion.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsHookVersion.ps1)
+  (`Get-UmsHookVersion`/`Test-UmsHookNeedsInstall` — verze `pre-push` hooku
+  porovnaná uspořádáním proti zdrojové hlavičce vrstvy, nikdy rovností; čtou ji
+  `install-git-hooks.ps1` a `pool-provision.ps1` — viz [architecture.md](architecture.md),
+  sekce Publikace a viditelnost napříč větvemi),
   [`epic-gate.ps1`](../ums/.claude/skills/mb-epic-run/scripts/epic-gate.ps1)
   (dvě epikové kontroly operace `integrate`, sekce 6),
   [`session-intent.ps1`](../ums/.claude/hooks/session-intent.ps1) (`SessionStart`
@@ -172,6 +177,15 @@ co znamenají ostatní návratové kódy, je v [playbook.md](playbook.md). Konce
 řádků hooku hlídá [`ums/.gitattributes`](../ums/.gitattributes) pravidlem
 `text eol=lf`.
 
+Tam, kde je náš `pre-push` už nainstalovaný a repozitář používá Git LFS,
+instalátor navíc obnoví ztracený LFS `pre-push` řetěz na `<jméno>.ums-chained`
+regenerací přímo z git-lfs (`Restore-LfsChainedHook` — mechanika, pět
+podmínek a provenienční stopa jsou v [architecture.md](architecture.md),
+sekce Publikace a viditelnost napříč větvemi). **Exit kódy zůstávají 0–4
+beze změny** — neobnovený řetěz nedostává vlastní kód, protože kódy mluví
+k záruce guard hooku, ne k LFS uploadu; ohlašuje se jen řádkem `note:` na
+místě volání a trvale přes `mb-state`.
+
 **Doručení markeru `MB_AGENT_SESSION` mimo Claude Code** dělá
 [`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) do dokumentovaného
 mechanismu každého harnessu:
@@ -192,8 +206,8 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 27 sad, dohromady
-1464 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou):
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 28 sad, dohromady
+1502 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou):
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -222,8 +236,9 @@ v [playbook.md](playbook.md).
   a kulturně nezávislé timestampy),
   `pool-launch.tests.ps1` (41; vyčištění devíti proměnných, oba adaptéry
   proti `tests/stubs/argv-probe.ps1`/`argv-probe.cmd`, pět odmítnutých tvarů
-  promptu, stavové slovo na vlastní řádce), `pool-provision.tests.ps1` (26;
-  guard proti agentní relaci, marker, kontrola sdíleného hooku, exit 5 při
+  promptu, stavové slovo na vlastní řádce), `pool-provision.tests.ps1` (28;
+  guard proti agentní relaci, marker, kontrola sdíleného hooku — verze
+  porovnaná uspořádáním proti zdrojové hlavičce, ne rovností — exit 5 při
   nepotvrzené publikační záruce), `epic-gate.tests.ps1` (39; brána předání
   a její čtyři kontroly, vazba fast-forwardu na vlastní epik, nepotvrzený
   řádek registru rozhodnutí jako mechanická zábrana),
@@ -271,15 +286,22 @@ v [playbook.md](playbook.md).
   (komentář za hodnotou, prázdná hodnota, chybějící diakritika) hlášené v
   `Malformed` a odlišené od „řádek chybí úplně", zachování řádku v IDLE stavu),
   `handoff-gate.tests.ps1` (32; `Test-UmsHandoffGate` — čerstvý tip báze,
-  kanonický IDLE `context.md` commitu, dosažitelnost na `origin`).
-- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (230;
+  kanonický IDLE `context.md` commitu, dosažitelnost na `origin`),
+  `hook-version.tests.ps1` (11; `Get-UmsHookVersion`/`Test-UmsHookNeedsInstall`
+  — verze čtená z hlavičky (`v2`, `v3`, hook bez přípony jako 0, cizí hook
+  jako `$null`), značka pod pátým řádkem se nepočítá, a srovnání uspořádáním:
+  novější nainstalovaná verze se nedegraduje, i když je zdrojová hlavička
+  starší).
+- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (255;
   end-to-end proti skutečnému lokálnímu bare remote: marker `MB_AGENT_SESSION`
   jako vstupní brána, obsahové pravidlo fast-forwardu na už dosažitelný tip,
   lidská výjimka `MB_HUMAN_PUSH`/zastaralé `UMS_ALLOW_SHARED_PUSH`,
   mazání/force i s ní zamítnuté, bufferovací rameno nad markerem, chaining
   cizího hooku (`run_chained`) i jeho čtyři odmítnuté případy,
   `core.hooksPath` lokální/globální/relativní per worktree, generovaný
-  seznam chráněných větví a self-test instalátoru včetně důvodů přeskočení;
+  seznam chráněných větví a self-test instalátoru včetně důvodů přeskočení,
+  obnova ztraceného Git LFS `pre-push` řetězu (`Restore-LfsChainedHook`) včetně
+  výjimky `Move-ForeignHook` pro řetěz nesoucí vlastní provenienční stopu;
   běží přes dvě minuty, což je normální), `guard-git-push.tests.ps1` (353;
   JSON na stdin → rozhodnutí podle aktéra a fail-closed čtení cíle: chráněné
   větve včetně integračního fast-forwardu, force, `--no-verify`, obě jména

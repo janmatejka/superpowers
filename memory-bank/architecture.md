@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.18, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.19, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -351,7 +351,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.18, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v2.19, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -488,6 +488,57 @@ ručně sloučený hook nesoucí náš marker hluboko v těle místo v hlavičce
 selhání samotného přesunu) — v tom případě se hook do klonu vůbec
 nenainstaluje a běh instalátoru skončí exit kódem 2.
 
+**Verze hooku se porovnává uspořádáním, nikdy rovností.** Sdílený skript
+[`Get-UmsHookVersion.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsHookVersion.ps1)
+čte číslo za identity markerem v hlavičce (`v2`, `v3`, …; hook bez přípony je
+verze 0) a `Test-UmsHookNeedsInstall` srovnává nainstalovanou verzi se
+zdrojovou hlavičkou vrstvy (`ums/.claude/hooks/pre-push`) operátorem „menší
+než", nikdy „liší se od" — rovnostní test by neuměl rozlišit novější
+nainstalovaný hook od staršího, takže zastaralá kopie vrstvy v jednom
+worktree by mohla DEGRADOVAT novější hook nainstalovaný odjinud (hook žije
+ve sdíleném git common dir, takže jeden worktree ho mění pro celé repo).
+Nečitelný zdrojový hook (chybějící nebo bez markeru) degraduje fail-open —
+instalace se neprovede, radši nechá nainstalovaný hook beze změny, než aby
+hádala — a volající to nesmí hlásit jako „aktuální" bez výhrady, protože
+k žádnému srovnání nedošlo. Konzumenti (`install-git-hooks.ps1`,
+`pool-provision.ps1`, `mb-state`) čtou tento sdílený skript místo vlastní
+kopie porovnání.
+
+**Ztracený Git LFS `pre-push` řetěz se obnovuje, ne jen hlásí.** Starší
+instalátor PŘEPISOVAL git-lfs `pre-push` hook místo jeho odsunutí stranou,
+takže postižené klony ztratily `pre-push.ums-chained` beze stopy —
+smudge/clean filtry fungují dál, jen `git push` LFS objekty nikdy
+nenahraje: pointery odejdou, obsah zůstane lokální a selhání se projeví až
+na cizím klonu (změřeno reálně — `[404] Object does not exist on the
+server`). `Restore-LfsChainedHook` (`install-git-hooks.ps1`) regeneruje
+řetěz PŘÍMO Z git-lfs (nikdy netranskribuje existující tělo) a spouští se
+jen tam, kde náš hook je už na slotu `pre-push` — prázdný slot se
+NEPOKRÝVÁ, protože je to buď čerstvá instalace, nebo `git lfs install
+--manual`, a obnova by křísila řetěz, který nikdo neztratil. Obnova sama
+platí jen když drží všech pět podmínek: adresář hooků není sdílený
+(`core.hooksPath` není absolutní ani ze scope `global`/`system`), zdravý
+řetěz na `<jméno>.ums-chained` ještě neleží, repozitář opravdu používá LFS
+(čtyři důkazy — sourozenecký hook volající `git lfs`, `.gitattributes`
+s `filter=lfs`, neprázdné LFS úložiště, nebo `git config --local
+--get-regexp '^lfs\.'`, poslední záměrně `--local`, protože `lfs.storage`
+a příbuzné klíče se běžně nastavují globálně) a `git-lfs` je dosažitelný na
+`PATH`. Generování běží izolovaně od uživatelské git konfigurace
+(`--template=`, pevně `core.hooksPath=.git/hooks`, přesměrované
+`GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`, vyčištěné `GIT_DIR`/`GIT_WORK_TREE`/
+`GIT_INDEX_FILE`/`GIT_CONFIG_COUNT` — vše uloženo a po sobě obnoveno, nikdy
+jen smazáno) a výsledný soubor nese na konci provenienční stopu (`#
+Restored by install-git-hooks.ps1 …`). `Move-ForeignHook` má jedinou
+výjimku ze zásady „nikdy nepřepisuj existující `.ums-chained`": řetěz nesoucí
+tuto stopu a volající `git lfs pre-push` smí ustoupit, když se git-lfs znovu
+instaluje a chce svůj hook zpátky — bez ní by tahle obnova sama vyráběla
+přesně to zamítnutí (exit 2), kterému má předcházet. Instalátorové exit kódy
+zůstávají 0–4 beze změny — neobnovený řetěz nedostává vlastní kód, protože
+exit kódy mluví k záruce Publication Contractu (samotnému guard hooku),
+která je nainstalovaná a funguje i bez LFS řetězu; ohlašuje se jen řádkem
+`note:` na místě volání a trvale přes `mb-state`, které tutéž mechaniku
+detekuje read-only, na stejné spouštěcí podmínce jako instalátor (report
+a instalátorský krok se tak nemohou rozejít).
+
 `--no-verify` hook obchází a `core.hooksPath` ho může přesměrovat jinam
 (relativní hodnota per-worktree) — proto ho instaluje per-clone
 [`install-git-hooks.ps1`](../ums/.claude/hooks/install-git-hooks.ps1) (cíl
@@ -553,7 +604,7 @@ odhodlanému obejití zůstává ochrana větví na serveru.
 
 ### Epiková linie
 
-Normativní zdroj: kontrakt v2.18, sekce **The epic line** (Repository
+Normativní zdroj: kontrakt v2.19, sekce **The epic line** (Repository
 Configuration). Epik dostává **dvě větve** s odlišnými rolemi: **epikovou
 linii** (`epic/<KLÍČ-EPIKU>`, kódová integrační větev — efektivní báze
 každého tiketu odštěpeného pro tento epik, nese kód i sklizené MB dokumenty
@@ -614,7 +665,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.18](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v2.19](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -748,7 +799,7 @@ flowchart LR
 | Skill | Role | Volán odkud |
 |---|---|---|
 | `mb-init` | Vytvoří strukturu `memory-bank/` — režim orchestračního kořene nebo projektové MB, včetně `ums-repo.json` detekovaného z topologie repozitáře (první verze bez schválení, stejná výjimka jako u prvního `playbook.md`). Nikdy netvoří `context.md`. | ručně |
-| `mb-state` | Read-only orákulum stavu i způsobilosti workspace: pin, slug, úplnost páru, SDD ledger, větev, staleness, `pre-push` hook a `ums-repo.json`, zbytky ve workspace (v cestě / jen přítomné), zaparkovaná práce na jiných lokálních větvích, vzdálenost od báze, invariant „báze nesmí nést ACTIVE pin". | ručně |
+| `mb-state` | Read-only orákulum stavu i způsobilosti workspace: pin, slug, úplnost páru, SDD ledger, větev, staleness, `pre-push` hook (verze porovnaná uspořádáním i zdraví LFS řetězu) a `ums-repo.json`, zbytky ve workspace (v cestě / jen přítomné), zaparkovaná práce na jiných lokálních větvích, vzdálenost od báze, invariant „báze nesmí nést ACTIVE pin". | ručně |
 | `mb-harvest` | Složí znalost do dotčených MB (current-state faktů i playbookové brány), archivuje návrh, smaže plán, resetuje na IDLE. Zákaz git operací — commit vlastní volající. | Harvest Gate ve finishing, nebo ručně |
 | `mb-abort` | Opuštění práce: oba soubory páru do `abandoned/`, reset `context.md` na IDLE, commit a push tohoto pohybu na tiketové větvi. Mazání lokální větve (detach na `<baseRef>` + smazání) dělá až finishing Discard, ne `mb-abort` samotné. | ručně |
 | `mb-park` | Odloží aktivní práci beze ztráty: commit rozpracovaného, push tiketové větve, commit kandidátů playbooku aktuálního slugu (`git add -f`), ohlášení zbytků. `context.md` zůstává ACTIVE — pár zůstává v `active/`. STOP dřív, než cokoli commitne, když aktuální větev odpovídá kterémukoli vzoru efektivních `protectedBranches` (`Test-UmsProtectedBranch`), ne jen odvozené bázi — jednodušší i přísnější než dřívější kontrola jediné hodnoty. Třetí konec životního cyklu vedle dokončení a opuštění. | ručně, nebo z entry gate při zbytcích v cestě |
@@ -781,7 +832,7 @@ instrukční Markdown.
 
 ## 6. Pool: mechanika slotů a spuštění sezení na tiket
 
-Normativní zdroj: kontrakt v2.18, sekce **Worktree Policy** (výjimka pro
+Normativní zdroj: kontrakt v2.19, sekce **Worktree Policy** (výjimka pro
 slot poolu a její přepsané měření disku), **Workspace Discipline** (podsekce
 „A pool slot's freedom is derived from per-worktree signals only") a
 **Session Intent Baton** (proč záměr do slotu baton nenese). Mechanika
