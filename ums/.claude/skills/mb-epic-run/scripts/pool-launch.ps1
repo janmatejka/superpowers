@@ -32,7 +32,7 @@ its CLAUDECODE/AI_AGENT fallback. CLAUDE_CODE_USE_POWERSHELL_TOOL stays too —
 that is a user setting, not session state.
 
 The variable list lives HERE and not in ums-repo.json: it is a property of the
-harness, not of the repository (contract, "Repository Configuration").
+harness, not of the repository (contract/repository-configuration.md, "Repository Configuration").
 
 .PARAMETER Adapter
 `terminal` (wt.exe) or `direct` (Start-Process). Exactly one command each, no

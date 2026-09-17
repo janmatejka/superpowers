@@ -21,8 +21,8 @@ Assert-True (-not (($coreLines -join "`n") -match 'Measured|measured 2026|Earlie
 
 # --- heading index across core + references -----------------------------------
 function Get-Headings([string] $Path) {
-    @(Get-Content -LiteralPath $Path -Encoding utf8) | Where-Object { $_ -match '^#{2,4}\s+' } |
-        ForEach-Object { ($_ -replace '^#{2,4}\s+', '').Trim() -replace '`', '' }
+    @(Get-Content -LiteralPath $Path -Encoding utf8) | Where-Object { $_ -match '^#{1,4}\s+' } |
+        ForEach-Object { ($_ -replace '^#{1,4}\s+', '').Trim() -replace '`', '' }
 }
 $index = @{ 'core' = @(Get-Headings $core) }
 $refs = @(Get-ChildItem -LiteralPath $refDir -File -Filter '*.md')

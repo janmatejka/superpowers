@@ -7,11 +7,10 @@ metadata:
   version: "2.0"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Active Work Item (Design + Plan Pair)", "`context.md` Schema & Writers"
-> and the Publication Contract's "Abandon" subsection, which owns the order of the
-> steps below.
-> This skill is the abandon-path counterpart of `mb-harvest`.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [integration.md](../shared/contract/integration.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md). Read the named references before acting.
+>
+> This skill is the abandon-path counterpart of `mb-harvest`; the order of the
+> steps below is owned by (contract/integration.md, "Abandon").
 
 # Command: mb-abort
 
@@ -71,7 +70,7 @@ schema (`context.md` Schema & Writers): `## Active Work` →
 abandoned work item and NOT its `- **Jira:** …` line, exactly as that section
 specifies. Do not preserve any other section or history.
 
-- Invalidate the session intent baton (contract, "Session Intent Baton"). The
+- Invalidate the session intent baton (contract/session-intent-baton.md, "Session Intent Baton"). The
   work item ends here, so an outstanding `plan-execution` baton is void.
 
 ### 4a. Commit and publish the abandon

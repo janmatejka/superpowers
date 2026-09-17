@@ -7,10 +7,11 @@ metadata:
   version: "2.0"
 ---
 
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md). Read it before acting.
+
 # Command: mb-act (deprecated)
 
-Retired in Memory Bank v2 — Superpowers is the driving workflow
-(see `../shared/UMS_MEMORY_BANK_CONTRACT.md`).
+Retired in Memory Bank v2 — Superpowers is the driving workflow.
 
 **Instead:** execute the active plan
 (`<PLAN_MB>/proposals/active/plan_<slug>.md`, legacy `proposal_<slug>.md` naming grandfathered) via

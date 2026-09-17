@@ -34,7 +34,7 @@ After the user chooses and BEFORE executing the choice:
   commits. Then execute the chosen option. For Option 1 the harvest is the
   **Harvest** phase of the integration sequence below, so the **Sync** phase
   precedes it.
-  For a **bounded** work item (contract, "Brainstorming Paths") a missing
+  For a **bounded** work item (contract/brainstorming-paths.md, "Brainstorming Paths") a missing
   plan half in `active/` is the EXPECTED shape — the harvest reports it and
   archives the design (its documented warning path); it is not unfinished
   work and not a reason to stop.
@@ -42,8 +42,8 @@ After the user chooses and BEFORE executing the choice:
   repository by integration through a push of the ticket branch** — the same kind
   of redirection the document paths get. A ticket workspace has no local base
   branch to merge into; if one exists it is neither updated nor merged, and the
-  **effective base** is the only base that counts (contract, "Repository
-  Configuration"). Resolve it mechanically ONCE before the sequence below, never
+  **effective base** is the only base that counts
+  (contract/repository-configuration.md, "Repository Configuration"). Resolve it mechanically ONCE before the sequence below, never
   by hand — `<mb-shared>` is this layer's `skills/shared/` directory, the sibling
   of the skill directory this overlay is injected into:
 
@@ -62,8 +62,8 @@ After the user chooses and BEFORE executing the choice:
 
   - **Sync** (BEFORE the harvest, a phase boundary): `git fetch origin`,
     then `git merge <effective base>` on the ticket branch, with the intersection
-    assessment and verification of the contract's "Base Sync & Drift Detection"
-    section.
+    assessment and verification of
+    (contract, "Base Sync & Drift Detection").
 
     **Resolve the declared verification set in THIS phase** and keep it in
     `$verificationSet`: the **Green verification** phase runs exactly it, and
@@ -361,7 +361,7 @@ After the user chooses and BEFORE executing the choice:
   `MB_HUMAN_PUSH=1` and rerun it. Do NOT substitute `--no-verify`: it is a
   bypass of the guarantee, not a way to publish, and it disables every hook in
   the repository. On an epic line the fast-forward belongs to the epic's
-  manager under the actor-rule exception (contract, "The epic line") — still
+  manager under the actor-rule exception (contract/epic-line.md, "The epic line") — still
   never to this session.
 - **A push rejected as non-fast-forward** means the base moved while the sequence
   ran: repeat from the **Publish** phase (`fetch`). **At most two failed
@@ -404,7 +404,7 @@ After the user chooses and BEFORE executing the choice:
   `origin`. The branch published on `origin` is left in place: deleting a branch
   through a push is forbidden with or without the escape variable.
 
-  Invalidate the session intent baton (contract, "Session Intent Baton") before
+  Invalidate the session intent baton (contract/session-intent-baton.md, "Session Intent Baton") before
   reporting. This path performs the abandon itself rather than calling
   `mb-abort`, so it does not inherit that skill's invalidation.
 

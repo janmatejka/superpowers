@@ -7,10 +7,8 @@ metadata:
   version: "2.1"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Harvest Contract", "Repository Configuration" (the effective base),
-> "Memory Bank Document Set", "Document Ownership",
-> "Active Work Item (Design + Plan Pair)" and "`context.md` Schema & Writers".
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [harvest.md](../shared/contract/harvest.md), [playbook-contract.md](../shared/contract/playbook-contract.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md). Read the named references before acting.
+>
 > This skill is the only IDLE-resetting writer of `context.md` besides
 > `mb-abort`.
 
@@ -202,7 +200,7 @@ finished work item; keep its `- **Báze:** …` line (nothing to keep if the
 work item had none). See that section for why. On partial failure, leave
 `context.md` unchanged and report which MBs failed.
 
-- Invalidate the session intent baton (contract, "Session Intent Baton"). Local
+- Invalidate the session intent baton (contract/session-intent-baton.md, "Session Intent Baton"). Local
   point: this belongs to the SAME success condition as the reset above — on a
   partial failure the work item has not ended, so the baton must survive.
 

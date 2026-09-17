@@ -7,9 +7,7 @@ metadata:
   version: "1.4"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Preliminary work items (`next/`)", "Superpowers Document
-> Placement", "Language Contract", and "Dispatch Model Policy".
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-backflow.md](../shared/contract/epic-backflow.md), [epic-line.md](../shared/contract/epic-line.md), [escalation.md](../shared/contract/escalation.md), [jira.md](../shared/contract/jira.md). Read the named references before acting.
 
 # Epic Elaboration (bounded-window fixpoint)
 
@@ -123,7 +121,7 @@ vocabulary, invariants, and Jira sync mechanics, read
 | Detekce režimu | `context.md` → `Jira:` prázdné/(bez tiketu) = JIRA-less |
 | Ledger status, next-window suggestion | `pwsh scripts/ledger-status.ps1 -LedgerFile <ledger.md>` (read-only) |
 | New ledger | Copy [ledger-template.md](ledger-template.md) → `memory-bank/epics/<epic>/ledger.md`, fill items from the source doc |
-| Backflow note from a design (contract, "Epic Backflow (design → epic)") | dirty-set row stamped `návrh <slug>`, or `memory-bank/epics/<epic>/notes.md` when no ledger existed — read at framing, folded into the dirty-set |
+| Backflow note from a design (contract/epic-backflow.md, "Epic Backflow (design → epic)") | dirty-set row stamped `návrh <slug>`, or `memory-bank/epics/<epic>/notes.md` when no ledger existed — read at framing, folded into the dirty-set |
 | Design conversation inside a window | brainstorming skill's method (one question at a time, sections as you go), scoped to the agenda |
 | Preliminary design draft structure | design-document sections (## Cíl, ## Scope, ## Technický návrh — scaled to what is known), saved as `proposals/next/design_<slug>.md`; detailed plans are NOT written ahead |
 | Sub-dispatch models | [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy": read-only reality-verification dispatch = cheapest capable tier; review scaled per superpowers Model Selection |

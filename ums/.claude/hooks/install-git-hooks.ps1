@@ -6,7 +6,7 @@
 
 .DESCRIPTION
     Git hooks live in untracked .git/hooks/, so the guarantee described in
-    UMS_MEMORY_BANK_CONTRACT.md ("Publication Contract") exists only once
+    (contract, "Publication Contract") exists only once
     this script has been run against a given clone — vendoring the source
     file under ums/.claude/hooks/ is not enough by itself.
 
@@ -76,8 +76,8 @@
          (possibly stale), or the hook's built-in patterns when there is none;
          the run reads that back and names it rather than assuming
 
-    CONFIGURATION. The protected-branch patterns are configuration (contract:
-    "Repository Configuration"), not hook body: pre-push is POSIX sh and
+    CONFIGURATION. The protected-branch patterns are configuration
+    (contract/repository-configuration.md, "Repository Configuration"), not hook body: pre-push is POSIX sh and
     cannot read JSON, so this script materializes memory-bank/ums-repo.json's
     `protectedBranches` into <git-common-dir>/ums-protected-branches, one glob
     per line. That means a CHANGE TO THE CONFIGURATION TAKES EFFECT ONLY AFTER
@@ -90,8 +90,8 @@
     loader or an unwritable list still installs pre-push and still exits 4,
     because the hook's own fallback IS the built-in list: landing at built-in
     protection is right, landing at NO protection would invert the very
-    principle the hook states about its fallback (contract: "Repository
-    Configuration"). Such a run then READS THE LIST BACK off disk — no loader
+    principle the hook states about its fallback
+    (contract/repository-configuration.md, "Repository Configuration"). Such a run then READS THE LIST BACK off disk — no loader
     and no JSON parser is needed for a text file — and names the patterns
     genuinely in force, because a list left by an earlier run is non-empty and
     the built-in fallback therefore never fires. The rule: never name a

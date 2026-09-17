@@ -9,7 +9,10 @@ je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMOR
 
 | Prostředek | Cesta | Popis |
 |---|---|---|
-| Kontrakt v2 | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár), Target-MB discovery, harvest a playbook gate, dispatch model policy, fail-closed |
+| Kontrakt v2 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár), harvest a playbook gate, dispatch model policy, fail-closed — mechanicky vynucený rozpočet řádků |
+| Kontrakt v2 (reference) | [shared/contract/](contract/) | Per-tématické reference vyňaté z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon, epic-line, worktree-pool, now-block, message-protocol, escalation, architect-review, epic-backflow, cross-branch-visibility, brainstorming-paths); citovat jako `(contract/<soubor>.md, "Sekce")` |
+| Doklad ke kontraktu | [shared/contract/doklad/](contract/doklad/) | Evidenční poznámky (měření, historie rozhodnutí) vyňaté z jádra a referencí; nikdy necitovat jako normativní zdroj |
+| Changelog kontraktu | [shared/CHANGELOG.md](CHANGELOG.md) | Historie verzí kontraktu (v1 → v2 → v3) |
 | Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů |
 | Overlay fragmenty | [shared/overlays/](overlays/README.md) | UMS bloky aplikované do vendorovaných skillů |
 

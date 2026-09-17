@@ -5,8 +5,8 @@
 <!-- ASSERT: **2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
-**The plan file itself carries a `## Ověřovací sada` section**, per the
-contract's Publication Contract, section "Integration" — add it before
+**The plan file itself carries a `## Ověřovací sada` section**, per
+(contract/integration.md, "Integration") — add it before
 presenting the options below. **The shape is ONE FENCED code block under that
 heading, one command per line**, because a single reader parses all three homes
 of the set and it reads the fence; a bulleted or plain list under a correct
@@ -28,8 +28,8 @@ than left to look valid.
 
 **If Fresh Session chosen:**
 
-1. Write the session intent baton per `../shared/UMS_MEMORY_BANK_CONTRACT.md`,
-   section "Session Intent Baton": `Kind: plan-execution`, the plan path, the
+1. Write the session intent baton per
+   (contract/session-intent-baton.md, "Session Intent Baton"): `Kind: plan-execution`, the plan path, the
    spec path, the branch, the slug, the ticket when there is one, and an
    `Instruction:` line naming subagent-driven-development.
 2. Report in Czech, ONE short paragraph, and END THERE. Do not dispatch

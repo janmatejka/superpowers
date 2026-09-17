@@ -118,8 +118,8 @@ Notes on fields that are easy to misread:
   line" OR "the last line was rejected by the reader's character-class check";
   the two are not distinguishable from the JSON, so a renderer must not
   present `""` as a fact about the ledger's content.
-- **`progress.now` is the `NOW` block of the slot's ledger** (contract,
-  section "The `NOW` Block"). `late` is COMPUTED by the script against its own
+- **`progress.now` is the `NOW` block of the slot's ledger**
+  (contract/now-block.md, "The `NOW` Block"). `late` is COMPUTED by the script against its own
   clock — strictly `clock > dueAt` — and is never read from the file;
   `-NowUtc` pins that clock for a whole run and exists so the derivation can be
   asserted deterministically. Every string that leaves the ledger (the six

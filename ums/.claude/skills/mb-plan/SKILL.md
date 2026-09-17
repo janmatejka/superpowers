@@ -7,10 +7,11 @@ metadata:
   version: "2.0"
 ---
 
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md). Read it before acting.
+
 # Command: mb-plan (deprecated)
 
-Retired in Memory Bank v2 — Superpowers is the driving workflow
-(see `../shared/UMS_MEMORY_BANK_CONTRACT.md`).
+Retired in Memory Bank v2 — Superpowers is the driving workflow.
 
 **Instead:** describe what you want to build. The `brainstorming` skill picks
 it up, runs Target-MB Discovery & Pinning (A/B/C question, Jira question, pin

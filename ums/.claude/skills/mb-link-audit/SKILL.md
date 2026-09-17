@@ -7,8 +7,7 @@ metadata:
   version: "1.0"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Link Conventions" and "Scope Lock".
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md). Read it before acting — especially "Link Conventions" and "Scope Lock".
 
 # Command: mb-link-audit
 

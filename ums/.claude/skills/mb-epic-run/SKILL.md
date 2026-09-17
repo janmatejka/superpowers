@@ -8,12 +8,10 @@ metadata:
 allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git branch:*), Bash(git for-each-ref:*), Bash(git fetch:*), Bash(git stash list:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(claude agents:*), Bash(pwsh:*), PowerShell(git status:*), PowerShell(git rev-parse:*), PowerShell(git log:*), PowerShell(git branch:*), PowerShell(git for-each-ref:*), PowerShell(git fetch:*), PowerShell(git stash list:*), PowerShell(git add:*), PowerShell(git commit:*), PowerShell(git push:*), PowerShell(claude agents:*), PowerShell(pwsh:*), Read, Grep, Glob, Edit, Skill
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Worktree Policy" (the pool-slot exception), "Workspace
-> Discipline" and its subsection on a pool slot's freedom being derived from
-> per-worktree signals only, "Publication Contract", "Cross-Branch Visibility"
-> and "Message Protocol" — every message this skill sends to a ticket session
-> is governed there, marking included.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-line.md](../shared/contract/epic-line.md), [worktree-pool.md](../shared/contract/worktree-pool.md), [now-block.md](../shared/contract/now-block.md), [message-protocol.md](../shared/contract/message-protocol.md), [escalation.md](../shared/contract/escalation.md), [integration.md](../shared/contract/integration.md). Read the named references before acting.
+>
+> Every message this skill sends to a ticket session is governed by
+> (contract/message-protocol.md, "Message Protocol"), marking included.
 
 # Command: mb-epic-run
 
@@ -160,8 +158,8 @@ skill's job.
      absence.
    - **`progress.now` is not `null`** — the actionable case, and the reason
      this column exists at all: lead the cell with `now.state` translated
-     through the Czech mapping the contract fixes (contract, section "The
-     `NOW` Block": `stalled` → stojím, `waiting-for-subagent` → čekám na
+     through the Czech mapping the contract fixes
+     (contract/now-block.md, "The `NOW` Block"): `stalled` → stojím, `waiting-for-subagent` → čekám na
      subagenta, `waiting-for-human` → čekám na člověka, `waiting-for-manager`
      → čekám na správce), and append **`(po termínu)`** when `now.late` is
      `true`. **`po termínu` is COMPUTED, never read**: the script derives it
@@ -174,8 +172,8 @@ skill's job.
      it is already spelled that way; the same trap applies to `items.since`
      and `items.due`.
    - **`progress.now` is `null`** — the contract makes "no block" and "a
-     malformed block" the same answer on purpose (contract, section "The
-     `NOW` Block"); render this as **`bez bloku`**, never as a claim about the
+     malformed block" the same answer on purpose
+     (contract/now-block.md, "The `NOW` Block"); render this as **`bez bloku`**, never as a claim about the
      session ("stalled", "unknown" or similar), and fall back to the plain
      signal: `lines` — the same `-1` unreadable-sentinel exception as
      `Špinavé`/`Nepushnuté` below applies here too, render it as `nečitelné`,
@@ -208,8 +206,8 @@ skill's job.
      due time" and "past due" are for the first time CHECKABLE, so leaving the
      session alone is now a decision made on evidence instead of a guess.
    - **The table decides where to look, never whether to integrate.** The
-     contract fixes this boundary for the block itself (contract, section
-     "The `NOW` Block") and it applies unchanged to this rendering: a
+     contract fixes this boundary for the block itself
+     (contract/now-block.md, "The `NOW` Block") and it applies unchanged to this rendering: a
      fast-forward rests on the Handoff gate and on the checks of
      `mb-epic-run integrate`, never on what this column says.
 6. Print `excluded` as a separate short list (why a worktree is not a slot),
@@ -535,7 +533,7 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
     ticket named in that row's `Předpokládá o (tiket)`: it owes the
     confirming commit (a TEST asserting the behaviour where `Druh` is
     `chování`, a reading where it is `text`) and then its own SHA in
-    `Potvrzeno (SHA)` (contract, "The epic line", the decision registry).
+    `Potvrzeno (SHA)` (contract/epic-line.md, "The epic line"); the decision registry.
     `Vlastník (tiket)` is **context to report** — whose decision is waiting
     — never the actor to wait for: no commit of the owner can satisfy a
     column defined as a commit of `<TIKET>`, and the owner's session may be
@@ -579,7 +577,7 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
 
   **The source side must be the raw SHA** — never `HEAD`, never a branch name,
   never absent: that is the fourth of the four conditions under which
-  `guard-git-push.mjs` grants the exception (contract, "The epic line"), and
+  `guard-git-push.mjs` grants the exception (contract/epic-line.md, "The epic line"), and
   the other three are properties of the destination the configuration already
   decides. **The overlookable assumption:** the `pre-push` hook judges
   reachability from the remote-tracking refs of THIS clone, so the manager must
@@ -641,8 +639,8 @@ no manager.
 | The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a resend |
 | Answer the handing-over ticket session | mandatory, both on a landed fast-forward and on a STOP; without it that session's Confirmation phase never runs |
 | Re-run the handoff gate | `Test-UmsHandoffGate -RepoRoot … -Sha … -BaseRef origin/epic/<KLÍČ>` — `-BaseRef` always explicit |
-| Run the epic checks | `Test-UmsEpicGate -RepoRoot … -LedgerPath $ledgerPath -Ticket <TIKET> -Epic <KLÍČ>` — the path Input matched, `-RepoRoot` always passed; `spawn-epic` and `decision-ack`, both mechanical, both pure (contract, "The epic line") |
-| Source side of the integration refspec | the raw 40-hex `<SHA>`, never `HEAD`, never a branch name (contract, "The epic line", condition four) |
+| Run the epic checks | `Test-UmsEpicGate -RepoRoot … -LedgerPath $ledgerPath -Ticket <TIKET> -Epic <KLÍČ>` — the path Input matched, `-RepoRoot` always passed; `spawn-epic` and `decision-ack`, both mechanical, both pure (contract/epic-line.md, "The epic line") |
+| Source side of the integration refspec | the raw 40-hex `<SHA>`, never `HEAD`, never a branch name (contract/epic-line.md, "The epic line"); condition four |
 | Is a branch checked out anywhere | ticket code as a case-sensitive SUBSTRING of the union of `slots[].branch` and `excluded[].branch` — never `git worktree list`, never equality |
 | Which epic owns a ticket | scan `memory-bank/epics/*/ledger.md` for the code; zero or more than one is a STOP |
 | Dependency graph oracle | the `mb-epic-graph` **skill** — never `epic-graph.ps1` directly (Jira mode refuses without `-InputFile`) |

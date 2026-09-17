@@ -7,8 +7,7 @@ metadata:
   version: "1.0"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Memory Bank Document Set" and "Document Ownership".
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [harvest.md](../shared/contract/harvest.md). Read the named references before acting.
 
 # Command: mb-migrate-docs
 

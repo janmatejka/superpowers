@@ -1,8 +1,8 @@
 #!/bin/sh
 # UMS pre-push guard (Publication Contract) v3
 #
-# This is the actual enforcement boundary for the Publication Contract (see
-# UMS_MEMORY_BANK_CONTRACT.md, "Publication Contract"). Once the gate below
+# This is the actual enforcement boundary for the Publication Contract
+# (contract, "Publication Contract"). Once the gate below
 # decides the push is worth judging at all, it judges a push to a protected
 # branch by its CONTENT rather than by branch name alone: a push is let
 # through when it is a fast-forward onto commits already reachable from this
@@ -75,8 +75,8 @@
 # and every check in the layer resolves the hook through
 # `git rev-parse --git-path hooks/pre-push`, which honours it. What remains is
 # provenance and scope, settled by the `UMS pre-push guard` marker below — see
-# UMS_MEMORY_BANK_CONTRACT.md, the paragraph on a configured core.hooksPath at
-# the end of the Publication Contract's push-policy discussion.
+# (contract, "Publication Contract"), the paragraph on a configured
+# core.hooksPath at the end of its push-policy discussion.
 #
 # Invocation: $1 = remote name, $2 = remote URL. Stdin lines:
 #   <local ref> SP <local sha1> SP <remote ref> SP <remote sha1> LF
@@ -170,7 +170,7 @@ to_lower() {
 }
 
 # Protected-branch patterns come from the repository configuration
-# (contract: "Repository Configuration"), materialized as one glob per line
+# (contract/repository-configuration.md, "Repository Configuration"), materialized as one glob per line
 # by install-git-hooks.ps1 — this is POSIX sh, there is no JSON parser here.
 # A missing, empty or comment-only file falls back to the built-in list:
 # degradation must always lead to MORE protection, never less.

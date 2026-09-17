@@ -14,8 +14,8 @@ Freedom is derived from PER-WORKTREE signals only. In a linked worktree just
 HEAD and the index are per-worktree; refs/stash and refs/heads are SHARED, so
 `git stash list` and `git log --branches --not --remotes` answer the same from
 every slot and would freeze the whole pool over one stash or one unpushed
-commit anywhere. See the contract, "A pool slot's freedom is derived from
-per-worktree signals only".
+commit anywhere.
+See (contract/workspace-discipline.md, "A pool slot's freedom is derived from per-worktree signals only").
 
 Occupancy is read from the harness (`claude agents --json --cwd <slot>`), not
 from git: a slot whose session has just started, before it reaches its pin
@@ -50,7 +50,8 @@ Harness executable used for the occupancy probe. Empty (the default) resolves
 .PARAMETER NowUtc
 The instant this run reads as "now", as ISO-8601 UTC. Empty (the default) is
 the real clock. The `late` flag of a slot's NOW block is COMPUTED against this
-value (contract, "The `NOW` Block": lateness is never written into the block),
+value (contract/now-block.md, "The `NOW` Block"); lateness is never written
+into the block,
 so without an injectable clock no test of that flag could assert anything —
 one that derived its expectation from [datetime]::UtcNow the same way the
 script does would assert nothing at all. Validated BEFORE any work, like -Json.
@@ -73,7 +74,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
-# --- NOW block constants (contract, "The `NOW` Block") -----------------------
+# --- NOW block constants (contract/now-block.md, "The `NOW` Block") ---------
 # The markers are HTML comments and not a heading, so nothing that merely LOOKS
 # like a heading can move the region boundary.
 $NowBegin  = '<!-- UMS-NOW BEGIN -->'
@@ -295,8 +296,9 @@ function Get-SlotPin([string] $SlotPath) {
     # Returns @{ Pin = <pscustomobject>|$null; Unreadable = $true|$false }.
     #
     # Three facts collapse to Pin=$null, and ALL THREE are legitimately IDLE
-    # per the contract ("ACTIVE and IDLE are state NAMES, not tokens in the
-    # file ... a block with no pin is the IDLE state"): the file is absent,
+    # per (contract, "`context.md` Schema & Writers") — ACTIVE and IDLE are
+    # state NAMES, not tokens in the file; a block with no pin is the IDLE
+    # state: the file is absent,
     # the file reads as empty/whitespace, or the file is READABLE but its
     # Active Work block carries no full pin pair (a PARTIAL pin — slug without
     # target, or vice versa — is not a pin).
@@ -340,7 +342,7 @@ function Get-SlotPin([string] $SlotPath) {
 function Test-LedgerText([string] $Text) {
     if ($null -eq $Text) { return $false }
     if ($Text -match '[<>]') { return $false }
-    # Cc AND Cf. The contract states the class once ("Session Intent Baton":
+    # Cc AND Cf. (contract/session-intent-baton.md, "Session Intent Baton") states the class once:
     # an angle bracket, a control character or a FORMAT character); the reason
     # the format category belongs in it is that U+202E RIGHT-TO-LEFT OVERRIDE,
     # U+200B and the U+2066..U+2069 isolates carry no glyph, survive .Trim()
@@ -382,8 +384,9 @@ function ConvertTo-LedgerExcerpt([string] $Text) {
 
 function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
     # Returns the parsed block, or $null. ABSENT and MALFORMED are deliberately
-    # the same answer (contract: "A malformed block is treated exactly as an
-    # ABSENT one"), and absence sends the reader to go and look at the slot.
+    # the same answer (contract/now-block.md, "The `NOW` Block") — a malformed
+    # block is treated exactly as an ABSENT one — and absence sends the reader
+    # to go and look at the slot.
     $begins = @()
     $ends = @()
     for ($i = 0; $i -lt $Lines.Count; $i++) {
@@ -408,8 +411,9 @@ function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
     $fields = [ordered] @{}
     for ($i = $b + 1; $i -lt $e; $i++) {
         $line = [string] $Lines[$i]
-        # A blank line inside the region is SKIPPED, not malformed (contract,
-        # "The `NOW` Block"), the same as the Session Intent Baton's reader:
+        # A blank line inside the region is SKIPPED, not malformed
+        # (contract/now-block.md, "The `NOW` Block"), the same as the Session
+        # Intent Baton's reader:
         # the region is bounded by its markers, not by its content.
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         # The key is everything before the FIRST colon; the value is the rest of
@@ -470,9 +474,9 @@ function Get-NowBlock([string[]] $Lines, [datetimeoffset] $Now) {
 # what it emits. `Get-SlotPin` lifts it with `(?<v>\S+)`, and `\S+` admits
 # `../../..`; `Join-Path` would then resolve outside the slot and this reader
 # would emit the last line of any `progress.md` the process can reach.
-# The shape is the layer's own slug convention (contract, "Active Work Item
-# (Design + Plan Pair)": lowercase snake case, ASCII only, no diacritics),
-# with a length ceiling so the path stays bounded too.
+# The shape is the layer's own slug convention
+# (contract, "Active Work Item (Design + Plan Pair)") — lowercase snake case,
+# ASCII only, no diacritics, with a length ceiling so the path stays bounded too.
 function Test-SlotSlug([string] $Slug) {
     if ([string]::IsNullOrWhiteSpace($Slug)) { return $false }
     if ($Slug.Length -gt $SlugMaxLength) { return $false }

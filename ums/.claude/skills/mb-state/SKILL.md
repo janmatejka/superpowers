@@ -7,10 +7,7 @@ metadata:
   version: "2.3"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Workspace Discipline", "Repository Configuration",
-> "Base Sync & Drift Detection", "Cross-Branch Visibility",
-> "Active Work Item (Design + Plan Pair)" and "`context.md` Schema & Writers".
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [workspace-discipline.md](../shared/contract/workspace-discipline.md), [repository-configuration.md](../shared/contract/repository-configuration.md). Read the named references before acting.
 
 # Command: mb-state
 
@@ -131,8 +128,10 @@ performing one. Reading another branch's state never checks that branch out.
     line in the report and a next-step suggestion, not a hard failure. Failing
     closed on it is the entry gate's job (Workspace Discipline).
 - **A free workspace** is a derived state, read every time from these four
-  commands and never from a flag or a bookkeeping file (contract, Workspace
-  Discipline):
+  commands and never from a flag or a bookkeeping file — the definition, the
+  rationale for each signal and the In-the-way/Merely-present split all live in
+  (contract/workspace-discipline.md, "Workspace Discipline"); `<slug>` is the
+  `Work item` slug read from `context.md` further down this list:
 
   ```bash
   git status --porcelain
@@ -141,30 +140,9 @@ performing one. Reading another branch's state never checks that branch out.
   git ls-files --error-unmatch <MB_ROOT>/.superpowers/playbook-candidates/<slug>.md
   ```
 
-  The fourth command is the fourth signal, and the three before it cannot report
-  it: `.superpowers/` is git-ignored, so a non-empty **untracked** candidate file of
-  the CURRENT slug is invisible to `git status --porcelain` while the evidence
-  exists only in this workspace. Probe it directly — does it exist, is it non-empty,
-  is it tracked. `<slug>` is the `Work item` slug read from `context.md` further
-  down this list; with no pin there is no current slug and this signal is simply
-  clear (files of other slugs are merely present, never in the way).
-
-  All four clear = "no leftovers". Otherwise split the findings in two, and keep
-  the split in the report:
-
-  - **In the way** — a dirty working tree, a stash, and a **non-empty untracked
-    candidate file of the CURRENT slug**. They block a safe branch switch and have
-    to be resolved before one. The candidate file is in the way because it is
-    non-recoverable: switching away leaves it attached to no branch, and committing
-    it is what `mb-park`'s named exception exists for (contract, Playbook Contract).
-  - **Merely present** — unpushed commits of other branches, candidate files of
-    other slugs, and a **tracked** candidate file of the current slug (`mb-park`
-    already committed it, so it is recoverable from `origin` — tracked means live,
-    and only the harvest removes it). Announced only; mb-state neither touches nor
-    recommends touching them beyond naming the owner.
-
-  The boundary behind the split: the agent never destroys anything it cannot get
-  back from `origin`. Suggest resolutions, never perform them.
+  All four clear = "no leftovers". Otherwise split per the reference above and
+  keep the split in the report; mb-state suggests resolutions, never performs
+  them.
 - **Parked work across local branches.** For every local branch matching
   `ticketPattern` from `<CTX_DIR>/ums-repo.json` (never a hardcoded prefix such
   as `UMS-`; without the configuration the built-in generic pattern applies),
@@ -188,7 +166,7 @@ performing one. Reading another branch's state never checks that branch out.
   alias)? Pin present = ACTIVE; the `(No active work - IDLE phase)` marker, or a
   block with no pin = IDLE.
 - **Resolve the effective base, its origin and its protection** — once, before
-  the two checks below (contract, "Repository Configuration": the effective base
+  the two checks below (contract/repository-configuration.md, "Repository Configuration"); the effective base
   of a work item, and the invariant that an integration branch is always a
   protected branch):
 

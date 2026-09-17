@@ -1,9 +1,8 @@
 // PreToolUse guard: superpowers spec/plan documents belong to
-// <PLAN_MB>/proposals/active/ in this repository (see
-// .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md, "Superpowers Document
-// Placement"). Deny Write/Edit into the upstream default locations so a
-// session that skipped Target-MB discovery fails closed instead of creating
-// docs/superpowers/.
+// <PLAN_MB>/proposals/active/ in this repository
+// (contract, "Superpowers Document Placement"). Deny Write/Edit into the
+// upstream default locations so a session that skipped Target-MB discovery
+// fails closed instead of creating docs/superpowers/.
 let raw = '';
 process.stdin.on('data', (c) => (raw += c));
 process.stdin.on('end', () => {

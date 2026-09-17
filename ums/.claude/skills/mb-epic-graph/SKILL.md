@@ -7,6 +7,8 @@ metadata:
   version: "1.5"
 ---
 
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-backflow.md](../shared/contract/epic-backflow.md), [jira.md](../shared/contract/jira.md). Read the named references before acting.
+
 # Command: mb-epic-graph
 
 **Action:** Generate the epic dependency graph FROM Jira links (or, in

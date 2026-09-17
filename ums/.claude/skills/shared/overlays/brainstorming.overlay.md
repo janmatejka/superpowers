@@ -10,7 +10,7 @@
 This repository injects a Memory Bank document layer. Read
 `../shared/UMS_MEMORY_BANK_CONTRACT.md` before writing the design document.
 
-**Three paths (per the contract's "Brainstorming Paths" subsection).**
+**Three paths** (contract/brainstorming-paths.md, "Brainstorming Paths").
 **architectural** and **bounded** both run the entry gate below in full and
 both produce `design_<slug>.md`; they diverge only after approval — bounded
 writes no plan and does not run subagent-driven-development. **spike** runs
@@ -35,13 +35,13 @@ Adjustments to the checklist above:
   **Entry gate** step always, and the **Choose the base** / **Create the
   ticket branch** steps only once the spike is to touch the tree; the
   **Target-MB discovery**, **Jira ticket**, **Activation** and **Write the
-  pin** steps are skipped — a spike pins nothing (contract, "Brainstorming
-  Paths"). Each step does only what it can do at its
+  pin** steps are skipped — a spike pins nothing
+  (contract/brainstorming-paths.md, "Brainstorming Paths"). Each step does only what it can do at its
   point in the sequence, and only the **Create the ticket branch**, **Activation**
   and **Write the pin** steps touch the working tree.
 
-  1. **Entry gate.** Run the entry gate of the contract's "Workspace Discipline"
-     section — the whole gate, not a part of it. Its eligibility, leftover-inventory
+  1. **Entry gate.** Run the entry gate of (contract/workspace-discipline.md, "Workspace Discipline")
+     — the whole gate, not a part of it. Its eligibility, leftover-inventory
      and park-or-discard phases belong here; its intent and pin-write phases are
      the **Create the ticket branch** and **Write the pin** steps below. Skipping
      the inventory and that one park-or-discard decision is the failure mode to
@@ -74,8 +74,8 @@ Adjustments to the checklist above:
      here. A failing `git fetch origin` is a hard failure too; a missing
      `<CTX_DIR>/ums-repo.json` is only reported once ("built-in defaults apply") and
      never blocks entry.
-  2. **Target-MB discovery — READ-ONLY.** Per the contract's "Target-MB Discovery &
-     Pinning" section: scan active work items, run the mb-doc-index skill with
+  2. **Target-MB discovery — READ-ONLY.** Per
+     (contract/target-mb-discovery.md, "Target-MB Discovery & Pinning"): scan active work items, run the mb-doc-index skill with
      `-Json <path>` — the printed table has no path column, and that step's
      normalization to the owning `memory-bank/` root needs `entries[].path` — and
      take the candidate set as the union of the local scan and the index over
@@ -96,8 +96,8 @@ Adjustments to the checklist above:
      check work here at all: the design document does not exist yet, so with an
      empty local set an undeclared run cannot tell a collision from ordinary
      parallel work.
-  4. **Choose the base** — the entry gate's intent phase decision, per the
-     contract's "Repository Configuration" section (the effective base and the
+  4. **Choose the base** — the entry gate's intent phase decision, per
+     (contract/repository-configuration.md, "Repository Configuration") (the effective base and the
      invariant that an integration branch is always a protected branch). Build the
      candidate list mechanically, never by hand — `<mb-shared>` is this layer's
      `skills/shared/` directory, the sibling of the skill directory this overlay is
@@ -134,7 +134,7 @@ Adjustments to the checklist above:
      work item belongs — renaming a legacy `proposal_*` draft to `design_<slug>.md`
      during the move (the only permitted legacy conversion), and reuse its slug and
      ticket. A draft that lives on a foreign branch is taken over by blob copy per
-     the contract's "Cross-Branch Visibility" section, never a cherry-pick, and
+     (contract/cross-branch-visibility.md, "Cross-Branch Visibility"), never a cherry-pick, and
      records `**Převzato z:** <branch>@<sha>` in its header.
   7. **Write the pin** — the entry gate's pin-write phase: `Target MB Pin`, `Jira`,
      `Work item` slug and `Started` into `memory-bank/context.md` — and **DECIDE**
@@ -153,7 +153,7 @@ Adjustments to the checklist above:
 - **The "Write design doc" phase (architectural path; on bounded, writing
   the chat-approved design)**: save to
   `<PLAN_MB>/proposals/active/design_<slug>.md` (Czech content, header per
-  the contract's "Superpowers Document Placement" section) instead of the
+  (contract, "Superpowers Document Placement")) instead of the
   default `docs/superpowers/specs/` path. **By the time you reach this phase the
   ticket branch already exists** — the **Create the ticket branch** step
   above created it — so here you only confirm you are on it and not on the base. **Do
@@ -168,7 +168,7 @@ Adjustments to the checklist above:
   `git fetch origin`, **immediately followed by `git branch
   --unset-upstream`** (Publication Contract, the first-publication rule),
   where the chosen base defaults to `baseRef` from
-  `<CTX_DIR>/ums-repo.json` (the contract's "Repository Configuration" section)
+  `<CTX_DIR>/ums-repo.json` (contract/repository-configuration.md, "Repository Configuration")
   unless the user picked a different protected branch in the **Choose the
   base** step above. The implicit form, without a starting point, branches off whatever
   happens to be checked out: run on a foreign ticket branch it pulls that
@@ -179,7 +179,7 @@ Adjustments to the checklist above:
   empty or absent and `context.md` is IDLE. If it is not, STOP, delete the
   just-created branch and repeat; an ACTIVE base means a work item was
   integrated without a harvest, and that is the finding to
-  report (the contract's "Cross-Branch Visibility" section).
+  report (contract/cross-branch-visibility.md, "Cross-Branch Visibility").
 
   After committing the design, push the branch — the agent pushes its OWN ticket
   branch after every commit, always announcing the branch and the outgoing commits
@@ -199,15 +199,15 @@ Adjustments to the checklist above:
   document" continues to hold.
 
   **On this path the design also carries the `## Ověřovací sada` section**
-  (contract, "Brainstorming Paths"; the shape and the reason are the
+  (contract/brainstorming-paths.md, "Brainstorming Paths"); the shape and the reason are the
   Publication Contract's, section "Integration") — agree its commands with
   your human partner before writing the file. Bounded is the only path where
   nothing else writes it: the plan step, where every other work item declares
   its set, is precisely the step bounded skips.
 - **Agentic opposition offer (architectural path only — after the user
   approves the written spec, BEFORE the Architect Review Gate offer):**
-  offer an independent agentic opposition of the design per the contract's
-  "Agentic Design Opposition (oponentura)" section — an offer, never an
+  offer an independent agentic opposition of the design per
+  (contract/architect-review.md, "Agentic Design Opposition (oponentura)") — an offer, never an
   automatic run. On acceptance: dispatch the opponent (most capable model,
   highest exposed reasoning effort, both explicit), triage the findings
   per that section (uncontested → fold into the design; contested or
@@ -236,7 +236,7 @@ Adjustments to the checklist above:
   Gate and the integration path apply to it exactly as to architectural work.
   Spike — a reported recommendation, no MB artifact and no finishing.
 - **Epic Backflow check (after the design is finally approved):** per the
-  contract's "Epic Backflow (design → epic)" section. When the Architect
+  (contract/epic-backflow.md, "Epic Backflow (design → epic)"). When the Architect
   Review Gate above hands the work off, the design is not finally approved
   yet — the check then belongs to `mb-architect-review` resume, not here; run
   it here only when no review takes place (no ticket → the whole step is

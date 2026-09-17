@@ -33,7 +33,7 @@
   a live review cycle.
 
   At that boundary, when the remaining context looks insufficient for another
-  task: write the session intent baton (contract, "Session Intent Baton") with
+  task: write the session intent baton (contract/session-intent-baton.md, "Session Intent Baton") with
   `Kind: plan-resume`, the plan path, the ledger path, the branch, the slug, the
   number of the next incomplete task and the required `Instruction:` line naming
   subagent-driven-development; append a plain note to the ledger that the session
@@ -62,8 +62,8 @@
 - **Authority and the Spec field:** where the upstream text above says "the
   spec is the binding authority, the plan is its argument", read it with the
   contract's subject split — a conflict between the design and the plan is
-  resolved per the contract's "Active Work Item (Design + Plan Pair)"
-  section: WHAT should be built is the design's to decide, HOW and in what
+  resolved per (contract, "Active Work Item (Design + Plan Pair)"):
+  WHAT should be built is the design's to decide, HOW and in what
   order is the plan's (the plan was written against the code). The
   plan header carries `**Spec:** [design_<slug>.md](design_<slug>.md)`, so
   the upstream instruction "if the plan names a Spec, read that too" is
@@ -75,7 +75,7 @@
   the whole batch.
 - **Rulings vs playbook candidates:** a ruling is a decision, a candidate is
   a procedure — a ruling becomes a candidate only when it carries `Happened`
-  evidence reaching beyond this work item (contract, "Playbook Contract").
+  evidence reaching beyond this work item (contract/playbook-contract.md, "Playbook Contract").
 - **The `NOW` block:** the progress ledger opens with it, per
   `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "The `NOW` Block" — the markers,
   the six items, the closed state class, the marker behaviour and the reader's
@@ -101,9 +101,9 @@
   in the existing working directory. Isolation comes from the workspace, and the
   **workspace is the user's choice** — the user creates it and picks it; the
   session runs in the workspace where the work already is and never provisions
-  another one (contract, "Workspace Discipline"). "One session per workspace",
+  another one (contract/workspace-discipline.md, "Workspace Discipline"). "One session per workspace",
   including the pool carve-out, is that same section's own rule — see it by
-  name (contract, "Workspace Discipline", "One session per workspace") rather
+  name (contract/workspace-discipline.md, "Workspace Discipline"); "One session per workspace" rather
   than a restatement here.
   Where the upstream text above says "outside this worktree", read "outside
   this clone/workspace" — worktrees are banned here.
@@ -136,10 +136,10 @@
   rephrase entries; the playbook gate presents them to the user.
 - **Base sync:** before dispatching the first task — a phase boundary — run
   `git fetch origin` and then `git merge <effective base>` on the ticket branch
-  (the effective base per the contract's "Repository Configuration" section: the
+  (the effective base per (contract/repository-configuration.md, "Repository Configuration"): the
   `Báze:` line of `context.md`, else `baseRef` from `<CTX_DIR>/ums-repo.json`),
   followed by the intersection assessment and the verification that follows from it
-  per the contract's "Base Sync & Drift Detection" section.
+  per (contract, "Base Sync & Drift Detection").
   **Never merge the base in the middle of a task** — a task that starts on one
   tree and finishes on another cannot be reviewed against its own brief. The
   mandatory baseline build/test check before the first dispatch stays mandatory,

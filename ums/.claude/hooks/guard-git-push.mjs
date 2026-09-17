@@ -174,12 +174,12 @@ const loadProtected = (cwd) => {
 
 // Reads `epicBranchPattern` and derives `<baseBranch>` from `baseRef`; a
 // missing, empty or non-string value of either yields no exception (null).
-// See UMS_MEMORY_BANK_CONTRACT.md, "The epic line".
+// See (contract/epic-line.md, "The epic line").
 //
 // `baseRef` here is the CONFIGURATION KEY, by name, and not the effective base
-// of a work item — the escape the contract's effective-base rule provides,
+// of a work item — the escape the effective-base rule provides,
 // taken deliberately. Why, and what residual risk it leaves and which control
-// covers that: contract, "The epic line", condition 3. Not restated here.
+// covers that: (contract/epic-line.md, "The epic line"), condition 3. Not restated here.
 const loadEpicRule = (cwd) => {
   try {
     const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
@@ -192,14 +192,14 @@ const loadEpicRule = (cwd) => {
     const baseRef = (typeof parsed.baseRef === 'string' ? parsed.baseRef : '').trim();
     // A `refs/`-prefixed spelling (`refs/remotes/origin/develop`) is
     // DECLINED, not parsed: the accepted shape is `origin/<branch>`
-    // (contract: "Repository Configuration").
+    // (contract/repository-configuration.md, "Repository Configuration").
     if (/^refs\//i.test(baseRef)) return null;
     // <baseBranch> = baseRef minus the remote and the SINGLE following slash.
     const baseBranch = baseRef.replace(/^[^/]+\//, '');
     // No usable base name (absent, empty, non-string, whitespace-only, or a
     // `origin/` that reduces to nothing) -> no exception, and never a
     // guessed base. Why declining is the right degradation here: see
-    // UMS_MEMORY_BANK_CONTRACT.md, "The epic line".
+    // (contract/epic-line.md, "The epic line").
     if (baseBranch === '') return null;
     return { re: globToRe(pat), baseBranch };
   } catch { return null; }
@@ -222,7 +222,7 @@ const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(re
 //      the same way stripRef and the pre-push hook compare branch names).
 //
 // Why each condition is there, and what the exception is for, is written
-// once — see UMS_MEMORY_BANK_CONTRACT.md, "The epic line". Not restated
+// once — see (contract/epic-line.md, "The epic line"). Not restated
 // here, because a rule has exactly one home.
 const isEpicFastForward = (dest, src, patterns, epic) =>
   epic !== null &&
@@ -572,7 +572,7 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true, epic = null
   // first place; otherwise `develop` in a heredoc body would be a push target.
   //
   // A destination that satisfies isEpicFastForward is STEPPED OVER here — the
-  // one narrow exception to the actor rule (contract: "The epic line").
+  // one narrow exception to the actor rule (contract/epic-line.md, "The epic line").
   if (problems.length === 0 || atCommandPosition) {
     // An INDEX, not the value: the source that decides the exception is only
     // reachable through the position the destination was found at.

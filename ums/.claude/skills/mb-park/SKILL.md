@@ -7,12 +7,9 @@ metadata:
   version: "1.0"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Workspace Discipline", which names park as the third end of a work
-> item's life cycle and owns the recoverability boundary, plus "Repository
-> Configuration" (the effective base and the protected-branch invariant), the
-> "Playbook Contract", the "Publication Contract" and "`context.md` Schema &
-> Writers". This skill is the set-aside path beside `mb-harvest` (completion) and
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [workspace-discipline.md](../shared/contract/workspace-discipline.md), [playbook-contract.md](../shared/contract/playbook-contract.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md). Read the named references before acting.
+>
+> This skill is the set-aside path beside `mb-harvest` (completion) and
 > `mb-abort` (abandonment).
 
 # Command: mb-park
@@ -48,7 +45,7 @@ needs. Whoever parks may switch afterwards, at a phase boundary, on a clean tree
 - IDLE — the `(No active work - IDLE phase)` marker, or a block with no pin —
   means **there is nothing to park**: say so and stop, without committing
   anything.
-  - Invalidate the session intent baton (contract, "Session Intent Baton") before
+  - Invalidate the session intent baton (contract/session-intent-baton.md, "Session Intent Baton") before
     reporting. The reason for parking is unchanged by there being nothing to park.
 - Record for the report: the slug, the `Jira` line, and the current branch
   (`git rev-parse --abbrev-ref HEAD`).
@@ -126,7 +123,7 @@ candidates were appended afterwards.
   it and stop; do not manufacture an empty commit. It is a derived state, read
   from git and from the file every time, never from a flag or a bookkeeping file
   that can go stale.
-  - Invalidate the session intent baton (contract, "Session Intent Baton") before
+  - Invalidate the session intent baton (contract/session-intent-baton.md, "Session Intent Baton") before
     reporting. The reason for parking is unchanged by there being nothing to park.
 - Anything else continues through steps 2–4 — including a clean tree whose only
   leftover is a fresh untracked candidate file. Step 3 then carries the single
@@ -184,9 +181,8 @@ committed, nor deleted.
 
 ### 4. Publication
 
-Per the Publication Contract, a commit that is not pushed is work only this
-workspace can see — and parked work whose commits sit locally is not recoverable
-from `origin`, which is the whole promise of parking.
+The publication rule and the post-push reachability check are
+(contract, "Publication Contract"); this step only applies them.
 
 - **Push, unless a protected branch got here past a skipped step 0.** By
   construction the current branch is always the actor's OWN, unprotected branch
@@ -198,8 +194,7 @@ from `origin`, which is the whole promise of parking.
   branch together with the outgoing commits (`git log --oneline @{u}..HEAD`, or
   against `<effective base>` when the branch has no upstream yet — `$base.Ref`
   from step 0's resolution above).
-- **Re-verify reachability AFTER the push**, per the contract's Publication
-  Contract, subsection "Integration":
+- **Re-verify reachability AFTER the push:**
 
   ```bash
   git fetch origin
@@ -209,7 +204,7 @@ from `origin`, which is the whole promise of parking.
   An empty result then means the park is not published, so the claim "recoverable
   from `origin`" is false — a fail-closed STOP with an offer to publish, never a
   warning.
-- Invalidate the session intent baton (contract, "Session Intent Baton"). Local
+- Invalidate the session intent baton (contract/session-intent-baton.md, "Session Intent Baton"). Local
   point: it belongs HERE, after the publication STOP above, not at the top of
   the workflow. Reaching that STOP means the park did not complete, and a baton
   destroyed there was still valid. On the two step-0 STOPs (protected branch,

@@ -1,5 +1,5 @@
 # Worktree Pool Slots
-Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (contract/worktree-pool.md, "Worktree Policy").
+Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (contract/worktree-pool.md, "Worktree Pool Slots").
 
 
 Doklad: doklad/worktree-pool.md, "The ban does not rest on disk cost"

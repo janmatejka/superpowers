@@ -7,12 +7,10 @@ metadata:
   version: "1.4"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Architect Review Gate" (normative for this skill), "Base Sync &
-> Drift Detection", "Repository Configuration", "Active Work
-> Item (Design + Plan Pair)" and "`context.md` Schema & Writers". Bitbucket
-> link mechanics (git preconditions, SHA stabilization, commit-pinned URLs,
-> description-line refresh) are reused from
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [architect-review.md](../shared/contract/architect-review.md), [epic-backflow.md](../shared/contract/epic-backflow.md), [repository-configuration.md](../shared/contract/repository-configuration.md). Read the named references before acting.
+>
+> Bitbucket link mechanics (git preconditions, SHA stabilization, commit-pinned
+> URLs, description-line refresh) are reused from
 > [mb-jira-update](../mb-jira-update/SKILL.md) §5–7b — do not re-derive them.
 
 # Command: mb-architect-review
@@ -109,7 +107,7 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
 2. **Be on the ticket branch before anything is committed.** Normally
    brainstorming created it, and then this step only confirms you are on it and
    not on `<effective base>` — the work item's effective base throughout this
-   skill (contract, "Repository Configuration": the `- **Báze:**` line of
+   skill (contract/repository-configuration.md, "Repository Configuration"); the `- **Báze:**` line of
    `context.md` when present, else `baseRef` from `<CTX_DIR>/ums-repo.json`).
    Otherwise, in this order — the checks come BEFORE any `switch -c`, because a
    linear reader who creates the branch first can strand the very commit the
@@ -151,8 +149,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    uncommitted design → user-confirmed local commit, else STOP.
 4. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
    `git merge <effective base>` on the ticket branch, then the intersection assessment
-   and, where it applies, the offered verification, per the contract's "Base Sync
-   & Drift Detection" section. In the design phase the role of the own set is
+   and, where it applies, the offered verification, per
+   (contract, "Base Sync & Drift Detection"). In the design phase the role of the own set is
    played by the target areas named in the design document and nothing is built,
    so verification is purely an offer. Conflicts: resolve only in files this
    branch changed itself, a `context.md` conflict always targeted with
@@ -215,7 +213,7 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    of the design (goal, scope, technical approach, impacts, risks) — no
    Jira write, no assignee change, no flag: every side effect outside the
    clone waits for the Publish step below. Offer the agentic opposition as
-   an aide (contract, "Agentic Design Opposition (oponentura)"): on
+   an aide (contract/architect-review.md, "Agentic Design Opposition (oponentura)"): on
    acceptance dispatch the opponent per that section and feed its findings
    into the assessment below — they inform the notes, they never edit the
    design (in respond the design belongs to the resolver), and the triage
@@ -249,8 +247,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    architect's comments and summarize them in Czech.
 3. **Base sync — resolver side (phase boundary):** `git fetch origin`, then
    `git merge <effective base>` on the ticket branch, with the intersection assessment
-   and the offered verification per the contract's "Base Sync & Drift Detection"
-   section (same mechanics and same conflict rules as request step 4). Resume
+   and the offered verification per (contract, "Base Sync & Drift Detection")
+   (same mechanics and same conflict rules as request step 4). Resume
    merges the base because it is the resolver's side; respond never does.
 4. Transition the ticket to **"In Progress"**, clear the flag, remove the
    `Review:` line from `context.md` and commit that removal here (Czech commit
@@ -264,8 +262,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    like a handoff, and it too needs only the one push.
 6. Continue per workflow state: fold the notes into the design
    (brainstorming-style dialog over the architect's points, update the design
-   file) → after user approval run the **Epic Backflow check** per the
-   contract's "Epic Backflow (design → epic)" section (the design is finally
+   file) → after user approval run the **Epic Backflow check** per
+   (contract/epic-backflow.md, "Epic Backflow (design → epic)") (the design is finally
    approved here, which is that step's trigger point; fail-open) → then
    invoke writing-plans.
 
@@ -290,8 +288,8 @@ comment — a linked ticket is context, not a state machine.
 3. Read the target MB's documents (`brief.md`, `architecture.md`,
    `tech.md`, `playbook.md` — those that exist; legacy shape per the
    contract's Memory Bank Document Set).
-4. Dispatch the opponent and run the triage per the contract's "Agentic
-   Design Opposition (oponentura)" section — most capable model, highest
+4. Dispatch the opponent and run the triage per
+   (contract/architect-review.md, "Agentic Design Opposition (oponentura)") — most capable model, highest
    exposed reasoning effort, both explicit; findings with evidence only;
    contested and scope-changing findings go to the user in the batched
    dialog.
@@ -308,8 +306,8 @@ Composing the request summary is summarization work — when delegated, dispatch
 on the cheapest capable tier (contract, Dispatch Model Policy). Respond and
 resume are interactive; no dispatch by default.
 
-The opposition dispatch (oppose mode, or the respond aide) follows the
-contract's "Agentic Design Opposition (oponentura)" section: the most
+The opposition dispatch (oppose mode, or the respond aide) follows
+(contract/architect-review.md, "Agentic Design Opposition (oponentura)"): the most
 capable available model with the highest reasoning effort the harness
 exposes, both stated explicitly — the one dispatch of this skill that must
 never run on a cheap tier.

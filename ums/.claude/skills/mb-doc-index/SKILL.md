@@ -7,9 +7,7 @@ metadata:
   version: "1.1"
 ---
 
-> Follow [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) —
-> especially "Cross-Branch Visibility", "Publication Contract" and
-> "Target-MB Discovery & Pinning".
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [cross-branch-visibility.md](../shared/contract/cross-branch-visibility.md). Read the named references before acting.
 
 # Command: mb-doc-index
 

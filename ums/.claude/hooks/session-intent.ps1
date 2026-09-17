@@ -1,5 +1,5 @@
 #Requires -Version 7
-# Session intent baton reader (UMS Memory Bank contract, "Session Intent Baton").
+# Session intent baton reader (contract/session-intent-baton.md, "Session Intent Baton").
 #
 # Delivers the previous session's intent across a /clear. Runs as a SessionStart
 # hook; SessionStart is informational, so this file MUST never be able to stop a
@@ -312,8 +312,8 @@ try {
     # Fixed English text, never derived from the baton: this string becomes the
     # session's first USER message, so nothing attacker-chosen may reach it.
     # Ordering is load-bearing — the bootstrap checks are a PRECONDITION of
-    # acting on a baton, never the other way round (contract, "Session Intent
-    # Baton", Precedence).
+    # acting on a baton, never the other way round — the Precedence subsection of
+    # (contract/session-intent-baton.md, "Session Intent Baton").
     #
     # Field verified against the Claude Code hooks reference:
     # https://code.claude.com/docs/en/hooks#sessionstart-decision-control
