@@ -49,9 +49,7 @@ The overwrite licence for the CURRENT slug's file is narrow and keyed to git —
   resumed: work continues by APPENDING to it, and only the harvest removes it,
   after its content has reached `playbook.md`.
 
-The former single fixed path assumed strictly serial work, so once live tickets
-were interleaved its overwrite rule deleted living evidence; the tracked/untracked
-test is what keeps the same accident from returning through a resumed slug.
+Doklad: doklad/playbook-contract.md, "Why the overwrite licence is keyed to git"
 
 **`mb-park` commits the current slug's file to the ticket branch** (`git add -f`,
 because `.superpowers/` is git-ignored), and the harvest deletes it after writing

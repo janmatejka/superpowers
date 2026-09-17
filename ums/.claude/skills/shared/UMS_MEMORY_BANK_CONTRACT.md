@@ -167,13 +167,8 @@ Other rules:
   | `[X](#mimo-rozsah)` (same file) | `sekce „Mimo rozsah“` |
   | `[X](KicSetup.iss#L253-L254)` | `[KicSetup.iss](KicSetup.iss), řádky 253–254` |
 
-  The reason is not style: heading slugs are **renderer-specific**. Bitbucket
-  Cloud, GitHub and IDE preview each derive a different slug from the same
-  heading, so an anchor that resolves in one viewer silently dead-ends in the
-  others, and no single spelling can be correct everywhere. A section title is
-  stable across all of them, survives a renderer change, and stays meaningful in
-  a plain-text read. It follows that headings must never be reworded merely to
-  make a slug come out a particular way.
+Doklad: contract/doklad/link-conventions.md, "Why no #fragment anchors"
+
 - **A link whose target cannot be determined is not left dangling.** Drop the
   link syntax, keep the text, and mark it with the dead path inside the marker:
   `` `TestBase.cs` [ODKAZ K OVĚŘENÍ: ../TestBase.cs] ``. The marker is greppable
@@ -402,12 +397,8 @@ Readers MUST tolerate its absence; that is the normal state.
 entry gate (Workspace Discipline, phase 4) writes the line when the chosen base
 differs from `baseRef` and **DELETES any line already in the file** when it does
 not — unconditionally, exactly as it rewrites `Jira:`, and for the same reason.
-The line has two ways to outlive the work item that wrote it: the IDLE reset below
-keeps it on purpose, and the integration push carries that IDLE `context.md` onto
-the base itself, from where every later work item's branch is cut. A pin write that
-only ever ADDS the line therefore lets one work item's maintenance branch become
-the silent default for all the work that follows it — base sync, harvest diff and
-the integration command would all name a branch nobody chose.
+
+Doklad: contract/doklad/core.md, "Why the pin write decides the Báze line"
 
 The `Review:` line is OPTIONAL — present only between an architect-review
 request and its resume (see Architect Review Gate). While present, the
@@ -422,21 +413,9 @@ INTEGRATION that follows still needs `<baseBranch>`: dropping the line there
 would silently send the integration command at the default base — the one branch
 the work was deliberately not targeting.
 
-**`Jira:` goes because of the invariant this reset exists to keep: the
-post-harvest `context.md` of every ticket integrating into the same branch is
-byte-for-byte identical.** That is what makes the integration merge
-conflict-free — the ticket's net contribution to the file is nothing, so the
-three-way merge has nothing to reconcile. A residual `Jira:` line breaks it,
-because on a branch many tickets integrate into every ticket writes a different
-value into that one line, and "the last work item" then names not an identity but
-whoever integrated most recently. The ticket's identity lives in the design
-document's header; it was never this line's job. The rule is **not**
-epic-specific: every shared branch that more than one ticket integrates into
-collects that residue.
+Doklad: contract/doklad/core.md, "Why the IDLE reset drops Jira"
 
-Note for whoever changes this reset: `mb-jira-update` runs after the harvest
-(Publication Contract, "Integration"), so the change must verify where
-`mb-jira-update` takes the ticket key from at that point.
+Doklad: contract/doklad/core.md, "Note for whoever changes the IDLE reset"
 
 **ACTIVE and IDLE are state NAMES, not tokens in the file.** The word `ACTIVE`
 never appears in `context.md`, so no skill may look for it — a grep for it
@@ -507,8 +486,7 @@ or branch 2 of the test clearly names a different document — never for a
 "both" fact that is already placed. Without this rule two successive harvests
 can move the same fact back and forth.
 
-The third case carries the rule. Duplication does not arise for facts that
-clearly belong somewhere — it arises for the ones that belong in both.
+Doklad: contract/doklad/core.md, "Document Ownership, the third case"
 
 **Moving a fact is a legal operation.** `mb-harvest` and `mb-sync` may move a
 fact between documents of the same MB. The order is binding: **write into the
@@ -582,25 +560,9 @@ would otherwise make every check below it pass silently; and it runs the
 chained foreign hook and exits with ITS result, so a chained hook can reject a
 push here even where this one enforces nothing of its own.
 
-**That is a guarantee of auditability, not of review.** The publication rule
-lets the agent publish its own ticket branch unassisted, so it can make any
-commit reachable on `origin` and then fast-forward the base onto it. The rule
-that the MOMENT of integration belongs to the human is carried by the
-PreToolUse layer alone — therefore only in harnesses that have one, and only
-for command shapes it can parse; the epic line is its one deliberate carve-out
-(Repository Configuration, "The epic line"). Elsewhere it is a contract
-obligation like every other rule of this layer, and server-side branch
-permissions remain the real backstop.
+Doklad: contract/doklad/publication.md, "Auditability, not review"
 
-Read the reachability claim narrowly: the hook never contacts the remote. It
-asks whether the pushed tip is reachable from THIS CLONE's own
-`refs/remotes/<remote>/*` for the remote being pushed to. Those refs are local,
-writable artifacts — a `git update-ref` satisfies the test with nothing
-published, and a stale tracking ref left behind by an earlier fetch answers
-just as confidently. That is accepted, and it is why the paragraph above calls
-the result auditability rather than proof of publication: what keeps an agent
-away from the push that would exploit it is the actor rule, in the harnesses
-that carry one.
+Doklad: contract/doklad/publication.md, "What the reachability claim proves"
 
 **Two bans hold on every branch the hook polices** — its scope is
 `refs/heads/*` — not only on protected ones: deleting a branch through a push,
@@ -649,16 +611,8 @@ silently) — without that second half a hook that cannot execute at all also
 "rejects" everything and passes as verified. **The marker on that pipe is
 load-bearing**: outside an agent session the hook deliberately enforces
 nothing, so an unmarked pipe proves only that the gate works.
-`install-git-hooks.ps1` runs these checks itself after installing — with the
-marker set on each run — reports the result and exits non-zero whenever the
-guarantee is not in place. The substring
-`UMS pre-push guard (Publication Contract)` is what the installer recognizes
-its OWN hook by, so a pre-v2 hook is still recognized as ours and overwritten
-rather than treated as a foreign hook; the version suffix is compared by
-ORDERING against the layer's own source header, not by equality against a
-literal, so it distinguishes a hook that is at least as new as the layer from
-one a stale workspace still carries, and an older one is repaired by
-re-running the installer.
+
+Doklad: contract/doklad/publication.md, "How the installer recognizes its own hook"
 
 **The hook is plain git; the marker is not.** The guarantee therefore reaches a
 harness only once `MB_AGENT_SESSION` is in the environment the push runs in,
@@ -684,13 +638,7 @@ layer, which DENIES any push carrying the variable — only the agent's own tool
 calls reach that layer, and the agent must never set it. `UMS_ALLOW_SHARED_PUSH`
 is accepted during the transition and answered with a deprecation line.
 
-The hook announces the escape on stderr whenever it honours it. Of its
-rejections only the shared-branch one names the escape; the deletion and
-force-push rejections do not, so a human who hits either of those two walls has
-to know the escape already. That the agent never sets it is contract text, like
-every other rule of this layer that no mechanism can enforce — which is why the escape is a
-named variable rather than a flag the agent could plausibly have typed by
-accident.
+Doklad: contract/doklad/publication.md, "Which rejections name the escape"
 
 **Two spellings, deliberately different.** The command handed to the user for
 an integration is the PLAIN `! git push origin HEAD:<baseBranch>` — the refspec
@@ -714,18 +662,7 @@ of the guarantee, never the documented way to publish `develop`: it disables
 every hook in the repository, so it is exactly as unsafe as it looks, and
 `guard-git-push.mjs` denies it on sight (escape or no escape).
 
-A **configured** `core.hooksPath` (local or global — routine with tools like husky
-or pre-commit) is a different thing and is **not** a bypass. It moves the
-directory git looks in, and every check in this layer resolves the hook through
-`git rev-parse --git-path hooks/pre-push`, which honours it: the installer
-installs there and proves the hook live there, and `mb-state` and the entry gate
-find it there. The remaining concern is **provenance and scope**, not bypass — a
-shared hooks directory may already hold another repository's `pre-push`, and an
-install or a removal in it reaches every repository using that config. The
-`UMS pre-push guard` marker check settles provenance, and an absolute value is
-therefore reported as a scope warning rather than a missing guarantee (a relative
-value is resolved per working tree instead, so each linked worktree needs its own
-install). A missing or unmarked hook stays fail-closed either way.
+Doklad: contract/doklad/publication.md, "A configured core.hooksPath is not a bypass"
 
 A **foreign `pre-push`** already in the hooks directory is not a reason to
 leave the workspace unguarded: the installer moves it aside to `pre-push.ums-chained`,
@@ -742,70 +679,7 @@ marker deep in its body rather than in its header, and a move that simply fails
 not installed in that workspace at all, the run exits 2, and the publication
 guarantee is absent there until someone resolves the foreign hook by hand.
 
-The PreToolUse hook (`.claude/hooks/guard-git-push.mjs`) is not a guarantee —
-it does not see shell syntax the way git itself does. What it carries is the
-actor rule, so on what it DOES recognize as a `git push` it leans
-fail-CLOSED: a push whose destination it cannot read is denied rather than
-waved through. Two conditions bound that arm, both named in the file itself: an
-unreadable token carrying a shell EXPANSION excuses the problem it caused,
-because such a token names something that is genuinely not in the string at
-all; and the arm fires only where the `git` token is visibly at a COMMAND
-POSITION, which anything other than a closed list of left neighbours hides — a
-newline, a separator glued to the previous token (`cd /repo; git push …`) or to
-the `git` token itself (`X=1|git push …`), and a shell KEYWORD that is not an
-operator (`if true; then git push …`). An accepted gap in every one of those
-shapes, because promoting them to
-separators would re-open the heredoc case this rule exists to protect. What
-that gap does NOT cost is the deny on a target the guard can read in plain
-text: a cleanly-written invocation naming a protected branch is judged whether
-or not command position holds. Shell REDIRECTION is a separate thing from those
-separators and is handled the way a real shell handles it: it is REMOVED from
-the invocation's arguments (with its target, whether that sits in the next token
-or glued to the operator) and the scan carries on past it, so `git push origin
-<branch> 2>&1 | tail -3` is read as the push it is and `… > develop` writes a
-file rather than pushing a branch — while a protected branch written AFTER a
-redirection is still judged, because in a shell it is still an argument. That
-holds for a redirection standing between `git` and its SUBCOMMAND as well
-(`git 2>&1 push origin develop`, which a shell hands to git as plain `push
-origin develop`); until the pre-subcommand scan stepped over redirections the
-same way, that shape made the `push` token invisible and was a silent ALLOW.
-PowerShell's all-streams spellings (`*>`, `*>>`, `*>&1`) count as redirections
-here too, because this fork's sessions run on the PowerShell tool.
-**Two routes reach past the guard's judgement altogether, both
-named and neither closed.** A
-`git` token it cannot recognize as one at all (`bash -c 'git push …'`, whose
-token is `'git`, quote and all) never reaches it; and neither does a recognized
-`git` whose SUBCOMMAND token is not `push` because a git ALIAS stands in for it
-(`git -c alias.zz=push zz origin <base>`, measured ALLOW with the guard silent —
-the pre-subcommand loop skips `-c` and its argument exactly as intended, and `zz`
-is simply not `push`). The alias route costs more than the first one: `pre-push`
-still stops a non-fast-forward, but the integration FAST-FORWARD — precisely what
-the actor rule reserves for the human — goes through in a single ordinary tool
-call. Closing it would mean asking git what a token means, the class of parsing
-this layer was deliberately demoted for, so it is named here instead. The count
-is TWO and not three because the redirection-before-subcommand shape, which
-belonged to the alias's own class (a recognized `git` whose subcommand token is
-not `push`), is closed — it needed no knowledge of what git makes of a token,
-only shell syntax this file already reads. The command-position carriers listed
-further up are a weaker, separate class and are deliberately not counted among
-these two: they blunt the fail-closed arm, but a protected target the guard can
-read in plain text is still denied through them — measured on a newline, on
-`cd /repo;`, and on the keywords `then`, `do` and `{`, all five DENY. The one
-entry in that list which is NOT merely weaker is `X=1|git push …`: there the
-token IS `X=1|git`, so it is the first route above wearing a command-position
-disguise, and nothing about the push is judged at all. Subcommands
-other than `push` are not its concern either, and `git fetch` keeps its own
-narrower, best-effort refspec rule. Two checks deliberately read the raw command TEXT
-rather than a parsed invocation — the escape variable's name, and
-`--no-verify` — and the accepted price is that an agent merely WRITING either
-one from a shell tool is denied as well. Read the verdict from `evaluatePush`
-itself; this contract deliberately does not restate its branches, because every
-earlier summary of them went stale. Neither hook stops a determined adversary; server-side
-branch permissions on `origin` remain the real backstop for that. A harness without a
-PreToolUse layer follows the actor rule by contract text only, as with every
-other rule of this layer. `mb-git-commit` never pushes — publication is a
-workflow step governed by the publication rule above, not a job of the commit
-tool.
+Doklad: contract/doklad/publication.md, "The PreToolUse guard, what it reads and what it misses"
 
 ## Dispatch Model Policy
 
@@ -878,12 +752,7 @@ branch in the existing working directory (never work on main/master without
 explicit user consent).
 ## Message Protocol
 
-**A message does not do harm by INTERRUPTING. It does harm by carrying
-authority and getting written down.** Measured: one orchestrator sent, twice in
-a single day, a factually WRONG justification for a step that was itself
-correct, and both would have landed in a ledger as fact. The recipients caught
-it; the orchestrator did not. Everything below follows from that sentence, and
-none of it is about how often anyone writes.
+Doklad: contract/doklad/message-protocol.md, "Why a message carries a mark"
 
 **Every message from an orchestrator to a session or subagent it coordinates —
 an epic's manager to a ticket session, a plan's orchestrator to an implementer
@@ -992,11 +861,7 @@ never put to the user — reading upstream's word "merge" as covering it
 would turn the mandatory base sync before the first dispatch into a
 question.
 
-Context rotation, on the other hand, IS a fifth class, introduced by the
-subagent-driven-development overlay — and a differently shaped one: the four are
-escalation stops (stop, ask, continue here), while rotation is a handoff stop
-(this session ends, a fresh one continues), like the Architect Review Gate. It is
-additive and weakens none of the four.
+Doklad: contract/doklad/escalation.md, "Context rotation as a fifth class"
 
 ## Resolution Protocol
 

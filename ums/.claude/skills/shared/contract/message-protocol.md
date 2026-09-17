@@ -19,16 +19,7 @@ its own mark: `Mark: instruction` over an explanation of a cause is a
 conjecture whatever its first line says.
 
 
-**The measured case behind the cause rule, because without it the rule reads as
-general advice.** A warning about a `CS0246` error was delivered to a ticket
-session one minute before that session measured its baseline. It did not help:
-the session's own first step was a restore, so it never saw the symptom the
-warning described. It then hit a SECOND trap that presented the same way —
-another red build straight after the same merge, from a different stale
-artifact entirely — and had it applied the explanation it had been sent, it
-would have gone off repairing a restore that was perfectly fine. The step the
-message pushed for was right; the cause attached to it was wrong, and the cause
-is the half that travels into the next decision.
+Doklad: doklad/message-protocol.md, "The measured case behind the cause rule"
 
 **Relay timing is decided by IMMEDIACY, not by importance.** Send a change of
 premise immediately ONLY when the recipient is acting on that premise right

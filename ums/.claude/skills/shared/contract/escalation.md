@@ -2,11 +2,7 @@
 Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (contract/escalation.md, "Escalation & Autonomy").
 
 
-The qualifier in the first rule is exact rather than defensive. The block's
-lifetime is stated in "The `NOW` Block" (its closing paragraph, on where the
-block does not exist), and outside that lifetime the wait is named in the
-report and nowhere else; a rule demanding a state class there would demand an
-artifact that does not exist.
+Doklad: doklad/escalation.md, "Why the turn-ending rule's qualifier is exact"
 
 **The quantity an operator DOES set is who decides which KIND of escalation.**
 The list has three bands, and two of them are fixed.
@@ -33,21 +29,12 @@ it is discharged, for all three bands.
   `waiting-for-human`, by the naming rule above. Fail-Closed Behavior owns the
   STOPs themselves; this band owns only the answer to "who is asked".
 
-A kind escalated in a message and in neither form has no addressee at all on a
-harness without messaging, and this layer uses no messaging tool anywhere
-today.
+Doklad: doklad/escalation.md, "Why every band needs an artifact form"
 
 
-**The floor is not a new set of stops.** Its rows are already covered by
-Fail-Closed Behavior and by the stop classes that section maps this layer onto;
-what this table adds is only that no autonomy level touches them.
+Doklad: doklad/escalation.md, "The floor adds no new stops"
 
-**The last row is not distrust**, and saying so matters because it reads as
-distrust otherwise: the threat model of "The epic line" is mistake and not
-intent. Widening a privilege is a DECISION, and Repository Configuration
-already requires approval for every change to the configuration after the
-first. Naming it here only stops an autonomy level from being read as a licence
-to move it.
+Doklad: doklad/escalation.md, "The last row of the floor is not distrust"
 
 **Always the manager — and this band does not move DOWN**, because taking
 precisely these off the human is what a manager is for:
@@ -95,12 +82,7 @@ section's artifact requirement applied to this kind: the epic's evidence ledger
 behaviour) and a hint written into the affected ticket's `design_<slug>.md`.
 A message may carry it sooner; it never carries it instead.
 
-The `immediately` in the table is not a second timing rule. It is
-`## Message Protocol`'s immediacy rule with its answer already known: a class-3
-finding changes a premise the neighbouring session is acting on right now, by
-definition of the class. The other three classes wait for the boundary the same
-rule sends them to. What a relay may CARRY is likewise that section's, and is
-not restated here.
+Doklad: doklad/escalation.md, "Why a class-3 finding is reported immediately"
 
 **The movable band — this is the quantity**
 

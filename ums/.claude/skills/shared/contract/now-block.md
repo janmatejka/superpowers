@@ -16,11 +16,7 @@ marker pair per ledger; a second pair is not a variant but a malformed block
 (Language Contract), its state class included; `mb-epic-run status` translates
 on render, the same translate-on-presentation split as `Ruling:` lines.
 
-**It has two readers and they take different items from it:** the session's
-own successor after this one dies — that is where the SHAPE of the items comes
-from — and the epic manager looking in from outside through `mb-epic-run
-status`, which is where the state class and the due time come from. A block
-written for only one of the two omits precisely what the other came for.
+Doklad: doklad/now-block.md, "The block's two readers"
 
 **The boundary is MACHINE, not a heading**, and that is the first rule:
 comment markers, because a section inserted before a TEXTUAL anchor once
@@ -77,14 +73,7 @@ reader inherits that behaviour rather than inventing a second one.
   separated by `; `. Pointers only, which is what keeps this item from
   becoming the home of a fact.
 
-**Why an unparseable timestamp is malformed rather than tolerated.** `dueAt`
-and `late` are mandated outputs of the reader that renders this block, and
-neither exists without a `Due:` it can parse; the two ways of tolerating one —
-emitting a partial object, or a `late` that is null — are both forbidden by the
-shape that reader must produce, so there is nothing left to degrade to. A
-`Since:` that cannot be an instant is the same class of defect, and both get
-the same fail-closed answer the state class already gets for a value outside
-its enum.
+Doklad: doklad/now-block.md, "Why an unparseable timestamp is malformed"
 
 **The state class is a CLOSED enum of exactly four values.** This is the
 `idle` ambiguity a manager guessed wrong four times; it is an enumerated
@@ -134,16 +123,7 @@ re-render, size bound and character-class check as the block itself. A reader
 that sanitizes the block and then emits a raw line from three lines below it
 has sanitized nothing.
 
-**What does NOT carry over from the baton, and why** — the quantifier above is
-bounded on purpose. **Consume-on-read does not:** the baton is a one-shot
-instruction renamed away the moment it is emitted, while the `NOW` block is a
-STANDING artifact re-read on every look, and renaming a live progress ledger
-would destroy the execution it reports on. Neither does the `Instruction`
-skill-name validation, nor the `Branch`/`Slug` origin binding, nor the rule
-that the reader exits 0 silently on every failure path: those are the baton's
-DELIVERY and identity rules, owned by a `SessionStart` hook that must never
-stop a session from starting. This block's reader is a status command and may
-fail loudly like any other.
+Doklad: doklad/now-block.md, "What does not carry over from the baton"
 
 **Marker behaviour is defined rather than left to chance.** The region runs
 from the FIRST begin marker to the FIRST end marker after it. A further begin

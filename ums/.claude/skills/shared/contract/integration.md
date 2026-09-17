@@ -188,15 +188,7 @@ reached through — the `mb-abort` skill, or Discard in
    checked out, and a ticket workspace has no local base branch to return to) and
    delete the **local** branch. The remote branch is never deleted.
 
-Step 3 is the step that is not obvious and therefore the one that gets skipped. An
-abandon that is not published exists only in the local `.git` that performed
-it (a pool slot shares that `.git` with every other slot, so the commit is
-visible there too) — but never on `origin`: the branch still carries the
-ACTIVE pin there, with the pair still in `active/`,
-so `mb-doc-index` keeps reporting that slug and that ticket as active work — a
-`KOLIZE AKTIVNÍ PRÁCE` no later session can clear, which means the ticket can never
-be picked up again. The exemption granted to an integrated branch does not help
-here: the index keys by phase, and `abandoned/` is not an active phase.
+Doklad: doklad/integration.md, "Why an unpublished abandon is a collision nobody can clear"
 
 `mb-abort` performs steps 1–3 and deletes no branches; step 4 belongs to the
 finishing Discard path, which is the caller that ends the branch as well as the work
