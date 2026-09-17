@@ -23,7 +23,7 @@ After the user chooses and BEFORE executing the choice:
   PASSES means the agent-session marker is absent here, so the guarantee does
   not apply to this session — STOP and report; do not integrate.
 - **Option 1, 2, or 3** (Merge Locally / Push and Create PR / Keep As-Is) →
-  invoke the `mb-harvest` skill. It harvests knowledge into the affected
+  invoke the `mb-harvest` skill, which runs (contract/harvest.md, "Harvest Contract"). It harvests knowledge into the affected
   Memory Bank documents, runs the playbook gate (asks the user which collected
   experiences to persist), archives the design document to
   `proposals/completed/` (deleting the implementation plan), resets
@@ -56,8 +56,8 @@ After the user chooses and BEFORE executing the choice:
   destination branch of the **Handoff** phase — take it from the helper, never
   derive it in your head. Do NOT execute the upstream Option 1 block: no
   `git checkout <base-branch>`, no `git pull`, no local merge, no
-  `git branch -d`. The sequence instead, per the contract's Publication
-  Contract, subsection "Integration" — **one procedure whatever the effective
+  `git branch -d`. The sequence instead, per
+  (contract/integration.md, "Integration") — **one procedure whatever the effective
   base is**; refer to its phases by these names, never by number:
 
   - **Sync** (BEFORE the harvest, a phase boundary): `git fetch origin`,
@@ -87,7 +87,7 @@ After the user chooses and BEFORE executing the choice:
     epic line"). One test — does `$base.Branch` match
     `$cfg.EpicBranchPattern`? — picks the set's home here and the artifact's
     rendering in the **Handoff** phase. The gate itself never resolves this
-    (contract, Publication Contract, "Integration"): it only compares what it
+    (contract/integration.md, "Integration"): it only compares what it
     is handed, so finding the set's home is this phase's job, not the gate's.
     - **The base matches** (a ticket that belongs to an epic) → the set lives
       in the epic's own ledger, declared once for the whole epic so every one
@@ -143,7 +143,7 @@ After the user chooses and BEFORE executing the choice:
       **Which document depends on what this work item HAS**, and that is the
       only choice here: `plan_<slug>.md` where there is a plan,
       `design_<slug>.md` for a **bounded** work item, which writes no plan at
-      all (contract, Publication Contract, "Integration", the verification-set
+      all (contract/integration.md, "Integration"; the verification-set
       homes; and "Brainstorming Paths" for why the design half always exists).
       A missing plan on this path is the EXPECTED shape and never by itself a
       STOP. **This is the ONE call — do not run a plan-only variant first:**
@@ -322,8 +322,8 @@ After the user chooses and BEFORE executing the choice:
       commands with their output. Its exact wire protocol is the epic
       orchestration's (`mb-epic-run`, integration mode) — do not invent one
       here. **This session does not end its turn on a push**; it waits for the
-      manager's answer — which the manager owes on both outcomes (contract,
-      Publication Contract, "Integration", the Handoff phase) — and continues
+      manager's answer — which the manager owes on both outcomes
+      (contract/integration.md, "Integration"), the Handoff phase — and continues
       with the **Confirmation** phase once the manager reports the fast-forward
       landed.
 

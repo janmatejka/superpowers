@@ -462,7 +462,7 @@ that artifact and performs the fast-forward under the actor-rule exception
 below by these names and never by number.
 
 **Input — the handoff artifact, and only what it carries.** Its four fields are
-the contract's (Publication Contract, "Integration", the Handoff phase). Read
+(contract/integration.md, "Integration"), the Handoff phase. Read
 them out of the artifact as given: do not reconstruct a field the ticket
 session did not send, and do not accept a summary in place of the verification
 output (same section, for why that field is what it is). **A missing field is a

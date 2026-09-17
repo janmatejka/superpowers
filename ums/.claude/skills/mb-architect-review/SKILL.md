@@ -79,7 +79,7 @@ being the first commit of all.
    ambiguous candidates: always ask. The branch name has the shape
    `<TICKET>-<kebab-slug>` (contract, Architect Review Gate), and the ticket
    code is recognised by `ticketPattern` from `<CTX_DIR>/ums-repo.json`
-   (contract section "Repository Configuration") — never by a hardcoded prefix
+   (contract/repository-configuration.md, "Repository Configuration") — never by a hardcoded prefix
    such as `UMS-`; without the configuration the built-in generic pattern
    applies. Existing branches carrying diacritics are NOT renamed.
 2. Require a clean working tree; dirty = STOP and report (no auto-stash).
@@ -280,8 +280,8 @@ comment — a linked ticket is context, not a state machine.
    explicitly (a queued draft in `proposals/next/` is a valid target too).
    No design document → report there is nothing to oppose and stop.
 2. **Shared-branch guard.** When the current branch matches any pattern of
-   the effective `protectedBranches` (`Test-UmsProtectedBranch`, contract
-   section "Repository Configuration"), the fold step below is
+   the effective `protectedBranches` (`Test-UmsProtectedBranch`,
+   (contract/repository-configuration.md, "Repository Configuration")), the fold step below is
    unavailable: offer a read-only run (findings and closing summary only,
    no edits) or STOP and let the user pick a branch. A design is never
    edited on a shared branch.

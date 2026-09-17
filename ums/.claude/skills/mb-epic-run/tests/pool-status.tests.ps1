@@ -318,7 +318,7 @@ finally {
 }
 
 # ============================================================================
-# The `NOW` block — contract, section "The NOW Block".
+# The `NOW` block — (contract/now-block.md, "The `NOW` Block").
 #
 # pool-status.ps1 parses the block out of a git-ignored SDD progress ledger in
 # a FOREIGN working tree and `mb-epic-run status` renders the result into the

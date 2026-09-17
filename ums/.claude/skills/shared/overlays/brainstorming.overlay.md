@@ -7,8 +7,10 @@
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
 
-This repository injects a Memory Bank document layer. Read
-`../shared/UMS_MEMORY_BANK_CONTRACT.md` before writing the design document.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [workspace-discipline.md](../shared/contract/workspace-discipline.md), [target-mb-discovery.md](../shared/contract/target-mb-discovery.md), [brainstorming-paths.md](../shared/contract/brainstorming-paths.md), [architect-review.md](../shared/contract/architect-review.md), [epic-backflow.md](../shared/contract/epic-backflow.md), [cross-branch-visibility.md](../shared/contract/cross-branch-visibility.md). Read the named references before acting.
+
+This repository injects a Memory Bank document layer. Read the contract core
+before writing the design document.
 
 **Three paths** (contract/brainstorming-paths.md, "Brainstorming Paths").
 **architectural** and **bounded** both run the entry gate below in full and

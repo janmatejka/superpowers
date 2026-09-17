@@ -7,6 +7,8 @@
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
 
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [playbook-contract.md](../shared/contract/playbook-contract.md), [now-block.md](../shared/contract/now-block.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md). Read the named references before acting.
+
 - **Model selection:** follow the Model Selection section above — UMS pins no
   models. One UMS guard (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Dispatch
   Model Policy"): summarization-only dispatches (Czech commit messages, Jira
@@ -77,7 +79,7 @@
   a procedure — a ruling becomes a candidate only when it carries `Happened`
   evidence reaching beyond this work item (contract/playbook-contract.md, "Playbook Contract").
 - **The `NOW` block:** the progress ledger opens with it, per
-  `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "The `NOW` Block" — the markers,
+  (contract/now-block.md, "The `NOW` Block") — the markers,
   the six items, the closed state class, the marker behaviour and the reader's
   rules live THERE and are not repeated here. What is local to this loop is
   WHEN: write the block before the first dispatch, and rewrite it at every
@@ -87,8 +89,8 @@
 - **Finish:** `rm -rf <workspace>` removes `.superpowers/sdd/<plan-basename>/`
   only. The playbook-candidate file lives in
   `.superpowers/playbook-candidates/`, OUTSIDE the plan workspace, and
-  survives the workspace deletion — only the harvest removes it (contract,
-  "Playbook Contract").
+  survives the workspace deletion — only the harvest removes it
+  (contract/playbook-contract.md, "Playbook Contract").
 - **Language:** dispatch prompts, task briefs, implementer/reviewer reports
   and the progress ledger stay English. Commit messages produced by
   implementer subagents MUST be Czech — state this in every implementer
@@ -131,8 +133,8 @@
   (ordinary git-ignored scratch, left over from a slug whose work finished or was
   abandoned); a **tracked** file is parked evidence, so APPEND to it and leave its
   removal to the harvest. Files of FOREIGN slugs have their own paths and are
-  never overwritten and never deleted (see
-  `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Playbook Contract"). Do not
+  never overwritten and never deleted
+  (contract/playbook-contract.md, "Playbook Contract"). Do not
   rephrase entries; the playbook gate presents them to the user.
 - **Base sync:** before dispatching the first task — a phase boundary — run
   `git fetch origin` and then `git merge <effective base>` on the ticket branch
