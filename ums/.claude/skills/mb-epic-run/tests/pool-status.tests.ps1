@@ -129,6 +129,24 @@ finally {
     Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue
 }
 
+# --- case 5b: two live sessions in one slot is a conflict, not plain occupancy
+$fx = & $NewFixture -SlotCount 1 -Label 'multisession'
+try {
+    Set-SlotMarker $fx.Slots[0]; Set-SlotIdle $fx.Slots[0]
+
+    $env:MBPOOL_STUB_MODE = 'multi'
+    $r = Invoke-Status $fx.Main
+    $slot = Get-Slot $r.Data 'slot01'
+    Assert-Eq $slot.session.state 'live' 'dvě sezení jsou stále live'
+    Assert-Eq $slot.session.count 2 'počet živých sezení je v JSON'
+    Assert-True (-not $slot.free) 'slot se dvěma sezeními není volný'
+    Assert-True ((@($slot.reasons) -match 'multiple live sessions \(pids 101, 102\)').Count -eq 1) 'důvod jmenuje konflikt a oba pidy'
+}
+finally {
+    $env:MBPOOL_STUB_MODE = 'empty'
+    Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue
+}
+
 # --- case 6: the ledger is paired to the slug FROM THE PIN ------------------
 # A slot carrying two sdd directories, the foreign one sorting first.
 $env:MBPOOL_STUB_MODE = 'empty'

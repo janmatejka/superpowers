@@ -4,6 +4,7 @@
 # MBPOOL_STUB_MODE selects a single mode applied to every --cwd (the default,
 # back-compat path used by most cases):
 #   live     -> one record WITH a pid                (slot occupied)
+#   multi    -> two records, both WITH pids            (multiple live sessions)
 #   nopid    -> one record WITHOUT a pid              (finished background session; ignored)
 #   empty    -> empty array                           (slot free)
 #   garbage  -> unparseable output                    (occupancy unknown, fail-closed)
@@ -37,6 +38,7 @@ function Get-StubMode([object[]] $RestArgs) {
 $mode = Get-StubMode $Rest
 switch ($mode) {
     'live'     { Write-Output '[{"name":"UMS-0000","pid":29404,"state":"idle"}]'; exit 0 }
+    'multi'    { Write-Output '[{"name":"UMS-0001","pid":101,"state":"idle"},{"name":"UMS-0001-old","pid":102,"state":"idle"}]'; exit 0 }
     'nopid'    { Write-Output '[{"name":"UMS-0000","state":"exited"}]';           exit 0 }
     'garbage'  { Write-Output 'not json at all';                                  exit 0 }
     'silent'   { exit 0 }

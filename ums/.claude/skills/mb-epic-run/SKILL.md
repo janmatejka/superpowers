@@ -196,6 +196,11 @@ skill's job.
    **epic-relative**: the script then adds a reason for a slot holding a
    ticket branch of that epic, so a slot free for one epic can be non-free
    for another.
+   A reason beginning with `multiple live sessions` renders as **`konflikt:
+   víc živých sezení`** — this is a finding FOR THE HUMAN (which session
+   continues), not ordinary occupancy: one session per workspace is the rule
+   this reason exists to protect, and `session.count` in the JSON confirms
+   how many are live.
 5. **A `Postup v plánu` cell says where to look, never what to do about it.**
    Two rules follow from the state class, both about the READER of this
    table, not about `pool-status.ps1`:

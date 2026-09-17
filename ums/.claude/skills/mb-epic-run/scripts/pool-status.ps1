@@ -583,7 +583,10 @@ foreach ($c in $candidates) {
     }
 
     $session = Get-SlotSession $claude $c.Path
-    if ($session.state -eq 'live') { $reasons += "live session (pid $($session.pids -join ', '))" }
+    if ($session.state -eq 'live') {
+        if (@($session.pids).Count -gt 1) { $reasons += "multiple live sessions (pids $($session.pids -join ', ')) — conflict, one session per workspace" }
+        else { $reasons += "live session (pid $($session.pids -join ', '))" }
+    }
     if ($session.state -eq 'unknown') { $reasons += 'occupancy unknown (fail-closed)' }
 
     # Ruling B: case-sensitive (-cmatch). Global Constraint requires
@@ -605,7 +608,7 @@ foreach ($c in $candidates) {
         unpushedSource = $unpSource
         pin            = $pin
         progress       = $progress
-        session        = [pscustomobject] @{ state = $session.state; pids = @($session.pids) }
+        session        = [pscustomobject] @{ state = $session.state; pids = @($session.pids); count = @($session.pids).Count }
         free           = ($reasons.Count -eq 0)
         reasons        = @($reasons)
     }
