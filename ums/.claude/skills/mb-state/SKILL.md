@@ -124,6 +124,14 @@ performing one. Reading another branch's state never checks that branch out.
     repository's own; say which of the two is in force rather than implying the
     configured ones do. This item is informational — a missing configuration is
     reported, never treated as a defect (contract, Repository Configuration).
+  - **Nasazení vrstvy proti zdroji** — pouze uvnitř tohoto forku, poznatelného
+    přítomností `ums/.claude/`. Uvnitř forku porovnej `Contract-Version` a
+    SHA256 hash všech souborů pod `shared/**`, `mb-*/**` a `hooks/**` mezi
+    `ums/.claude/` (zdroj) a `.claude/` (nasazení). Jakýkoli rozdíl je nález
+    „nasazení za zdrojem" s příkazem obnovy podle playbooku, sekce „Obnova
+    nasazené kopie v tomto repu". Mimo fork (`ums/.claude/` neexistuje) se
+    položka **přeskočí** s poznámkou — nikoli mlčky vynechá, protože kontrola,
+    která zmizí, je od kontroly, která prošla, k nerozeznání.
   - mb-state **reports**, it never stops work: an unverified hook is the loudest
     line in the report and a next-step suggestion, not a hard failure. Failing
     closed on it is the entry gate's job (Workspace Discipline).
@@ -284,7 +292,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ⚠️ LFS pre-push řetěz chybí nebo je neúplný> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)>
+Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ⚠️ LFS pre-push řetěz chybí nebo je neúplný> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)> <+ ⚠️ nasazení za zdrojem (obnov dle playbooku, „Obnova nasazené kopie v tomto repu") | + ℹ️ mimo fork — kontrola nasazení přeskočena>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
@@ -340,6 +348,13 @@ without `✅`. A missing or incomplete LFS `pre-push` chain is not a missing
 guarantee either — the guard itself is installed and working, something running
 alongside it is what is broken — so it too rides next to `✅ způsobilý` rather
 than replacing it, the same way the absolute-`core.hooksPath` warning does.
+Neither is the deployment-drift finding — it too rides next to `✅ způsobilý`
+when present, since a stale deployment does not mean the guarantee above is
+missing, only that this repo's own layer content is stale. Outside the fork
+the item is never a finding at all — it is **skipped** with `ℹ️ mimo fork —
+kontrola nasazení přeskočena`, on purpose: a check that silently vanishes
+outside the fork would be indistinguishable from a check that ran and found
+no drift, so the report always names which of the two happened.
 
 A third note, on the `Báze:` line: `(z context.md | výchozí z ums-repo.json)` is
 `$base.Source` (`context` / `config`) translated to Czech — read from the resolve

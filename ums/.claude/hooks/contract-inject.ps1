@@ -49,7 +49,19 @@ try {
     $coreText = Get-Content -LiteralPath $corePath -Raw -Encoding utf8
     if ($null -eq $coreText -or [Text.Encoding]::UTF8.GetByteCount($coreText) -gt $MaxPayloadBytes) { Emit-Context $Event $FallbackText; exit 0 }
 
-    $parts = @('<contract-core>', $coreText.TrimEnd(), '</contract-core>', '')
+    $parts = @()
+    if ($hasRoot) {
+        $sourceCorePath = Join-Path $root 'ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md'
+        if (Test-Path -LiteralPath $sourceCorePath -PathType Leaf) {
+            $deployedHash = (Get-FileHash -LiteralPath $corePath -Algorithm SHA256).Hash
+            $sourceHash = (Get-FileHash -LiteralPath $sourceCorePath -Algorithm SHA256).Hash
+            if ($deployedHash -ne $sourceHash) {
+                $warning = 'WARNING: deployed contract core differs from source ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md — refresh the deployment (playbook, "Obnova nasazené kopie v tomto repu").'
+                $parts = @($warning, '')
+            }
+        }
+    }
+    $parts += @('<contract-core>', $coreText.TrimEnd(), '</contract-core>', '')
     $ctxLines = @('(context.md missing)')
     if ($hasRoot) {
         $ctxPath = Join-Path (Join-Path $root 'memory-bank') 'context.md'

@@ -148,4 +148,28 @@ Assert-Match $settings.hooks.SessionStart[0].hooks[0].command 'contract-inject\.
 Assert-Match $settings.hooks.PostCompact[0].hooks[0].command 'contract-inject\.ps1' 'PostCompact[0] names contract-inject.ps1'
 Assert-Match $settings.hooks.UserPromptSubmit[0].hooks[0].command 'contract-inject\.ps1' 'UserPromptSubmit[0] names contract-inject.ps1'
 
+# 14. deployment drift inside the fork: the repo carries a source core
+# (ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) that differs from the
+# deployment's own core → the warning is the FIRST line of the payload. Then,
+# with an IDENTICAL source core, the warning must NOT fire — but a warning
+# that never fires would also pass a lazily-written "no warning" assertion
+# (e.g. one that only checks the hook didn't crash), so pair it with a
+# positive assertion on the same payload: the core itself is still emitted in
+# full, proving the hash comparison ran and simply found no drift, not that
+# the whole feature silently no-oped.
+$d4 = New-Deployment $core
+$rDrift = New-Repo $ctxActive
+$sourceDir = Join-Path $rDrift 'ums\.claude\skills\shared'
+New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
+$differentCore = $core + "`n- extra source-only line`n"
+[IO.File]::WriteAllText((Join-Path $sourceDir 'UMS_MEMORY_BANK_CONTRACT.md'), $differentCore, (New-Object Text.UTF8Encoding($false)))
+$json = (Invoke-Hook $d4 $rDrift 'SessionStart').Out | ConvertFrom-Json
+Assert-Match $json.hookSpecificOutput.additionalContext '^WARNING: deployed contract core differs from source ums/\.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT\.md — refresh the deployment \(playbook, "Obnova nasazené kopie v tomto repu"\)\.' 'drift → warning is the first line of the payload'
+
+[IO.File]::WriteAllText((Join-Path $sourceDir 'UMS_MEMORY_BANK_CONTRACT.md'), $core, (New-Object Text.UTF8Encoding($false)))
+$json = (Invoke-Hook $d4 $rDrift 'SessionStart').Out | ConvertFrom-Json
+Assert-True (-not ($json.hookSpecificOutput.additionalContext -match 'WARNING: deployed')) 'identical source → no drift warning'
+Assert-Match $json.hookSpecificOutput.additionalContext '<contract-core>[\s\S]*Contract-Version:\*\* 3\.0[\s\S]*</contract-core>' 'identical source → core is still emitted in full (hash check ran, found no drift)'
+Remove-Item -Recurse -Force $d4, $rDrift
+
 Complete-Tests
