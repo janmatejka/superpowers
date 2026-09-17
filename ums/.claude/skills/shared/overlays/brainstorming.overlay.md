@@ -249,8 +249,7 @@ Adjustments to the checklist above:
   yet — the check then belongs to `mb-architect-review` resume, not here; run
   it here only when no review takes place (no ticket → the whole step is
   skipped silently; review declined but ticket linked → run it after the
-  user's spec approval). On a finding concerning this ticket: queue the
-  ledger note and continue — the step does NOT offer an inline elaboration
+  user's spec approval). On a finding concerning this ticket: write the finding into memory-bank/epics/<epic_snake>/tickets/<TICKET>.md, section ## Backflow, on the ticket branch (contract/epic-backflow.md, "The per-ticket epic file") — never into a shared notes.md on the base and continue — the step does NOT offer an inline elaboration
   window, does NOT switch branches, and does NOT put anything to the user;
   only the epic's manager opens elaboration. Fail-open: an oracle failure or
   missing Jira skips the step with a one-line announcement.

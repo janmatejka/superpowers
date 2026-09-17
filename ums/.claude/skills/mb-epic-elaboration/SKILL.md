@@ -50,7 +50,7 @@ only in Jira.
 
 | # | Phase | Gate |
 |---|-------|------|
-| 1 | **Framing handshake** — propose window boundary + agenda (item IDs + open questions), suggest from ledger (dirty first, then leverage; dirty rows stamped `návrh <slug>` and the epic's `notes.md`, both queued by the contract's Epic Backflow step, count as dirty input here — fold `notes.md` lines into the dirty-set and delete the file in this window's closing commit) | Human confirms or narrows BEFORE any design/verification work |
+| 1 | **Framing handshake** — propose window boundary + agenda (item IDs + open questions), suggest from ledger (dirty rows stamped `návrh <slug>`, queued by the contract's Epic Backflow step, count as dirty input here) and from the `## Backflow` lines of each in-scope ticket's per-ticket epic file, read from the base ref per protocol §0.3 — both feed the leverage-ordered candidate list | Human confirms or narrows BEFORE any design/verification work |
 | 2 | **Reality verification** — read-only exploration limited to the window's domain; every factual claim confirmed/refuted with `file:line` in CURRENT code; list newly-found items | No claim without evidence |
 | 3 | **Already-solved check** — scan `proposals/completed/` of affected component MBs | Don't re-solve |
 | 4 | **Decide** — targeted questions to the human ONE AT A TIME; each answer folds in before the next question | No batched question lists, no "otevřené otázky" files deferred to the end |
@@ -121,7 +121,7 @@ vocabulary, invariants, and Jira sync mechanics, read
 | Detekce režimu | `context.md` → `Jira:` prázdné/(bez tiketu) = JIRA-less |
 | Ledger status, next-window suggestion | `pwsh scripts/ledger-status.ps1 -LedgerFile <ledger.md>` (read-only) |
 | New ledger | Copy [ledger-template.md](ledger-template.md) → `memory-bank/epics/<epic>/ledger.md`, fill items from the source doc |
-| Backflow note from a design (contract/epic-backflow.md, "Epic Backflow (design → epic)") | dirty-set row stamped `návrh <slug>`, or `memory-bank/epics/<epic>/notes.md` when no ledger existed — read at framing, folded into the dirty-set |
+| Backflow note from a design (contract/epic-backflow.md, "Epic Backflow (design → epic)") | written by the ticket session into its per-ticket epic file (contract/epic-backflow.md, "The per-ticket epic file"), section `## Backflow`, on the ticket branch — read from the base ref at framing per protocol §0.3 |
 | Design conversation inside a window | brainstorming skill's method (one question at a time, sections as you go), scoped to the agenda |
 | Preliminary design draft structure | design-document sections (## Cíl, ## Scope, ## Technický návrh — scaled to what is known), saved as `proposals/next/design_<slug>.md`; detailed plans are NOT written ahead |
 | Sub-dispatch models | [UMS_MEMORY_BANK_CONTRACT.md](../shared/UMS_MEMORY_BANK_CONTRACT.md), section "Dispatch Model Policy": read-only reality-verification dispatch = cheapest capable tier; review scaled per superpowers Model Selection |

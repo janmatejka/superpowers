@@ -16,7 +16,7 @@ dispatch prompts are English (Language Contract).
    window #1, subject to the same handshake.
 3. Run `pwsh <this skill>/scripts/ledger-status.ps1 -LedgerFile <ledger.md>`
    for state + next-window suggestion. Fix reported ledger inconsistencies
-   before proposing new work.
+   before proposing new work. Read memory-bank/epics/<epic_snake>/tickets/*.md from the base ref (git ls-tree -r --name-only <baseRef> memory-bank/epics/<epic_snake>/tickets/ then git show) — the pulled backflow and handoff of integrated tickets; each entry is an agenda candidate.
 4. Run the `mb-doc-index` skill (read-only, `-BaseRef` = the repo's base
    branch) **with `-Json <MB_ROOT>/.superpowers/doc-index.json`** and keep
    that path for the rest of the session as `<INDEX_JSON>` (the
@@ -73,6 +73,11 @@ Wait for confirmation or narrowing. The human always decides the agenda.
    proposal(s) in scope + their header dependency fields (`Blokováno:`/
    `Blokuje:`/`Souvisí:`/`Vyčleněno z:`/`Vyčleněno do:`) and the linked
    sibling proposals (both directions), instead of tickets + Jira links.
+   For each in-scope ticket, also read its per-ticket epic file from the
+   base ref, when one exists — `git show <baseRef>:memory-bank/epics/<epic_snake>/tickets/<TICKET>.md`
+   (contract/epic-backflow.md, "The per-ticket epic file") — its `## Backflow`
+   and `## Předání` lines are additional input context, not a substitute for
+   the ticket/proposal reading above.
 2. **Reality verification:** dispatch a READ-ONLY exploration (cheapest
    capable tier — read-only inspection) that confirms/refutes EVERY factual
    claim of the tickets/items in scope

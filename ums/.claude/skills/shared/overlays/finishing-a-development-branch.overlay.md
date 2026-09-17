@@ -189,7 +189,10 @@ After the user chooses and BEFORE executing the choice:
   - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
     the ticket branch.
   - **Publish.** `git fetch origin` and `git merge <effective base>` once
-    more — the base may have moved while the harvest ran — and push.
+    more — the base may have moved while the harvest ran — and push. When the
+    ticket belongs to an epic, this push already includes the per-ticket
+    epic file's `## Předání` line, committed before this point per the
+    Handoff phase below (contract/epic-backflow.md, "The per-ticket epic file").
   - **Green verification** on the merged tree: **run `$verificationSet` —
     those commands, verbatim, in that order.** That is what "green" means for
     this work item; it is not "the build and tests you would have picked", and
@@ -334,6 +337,8 @@ After the user chooses and BEFORE executing the choice:
     does not treat handing that command over as the end of its work. Conversely,
     on a non-matching base it sends no message to any manager. Exactly one
     rendering happens — never both, never neither.
+
+    When the ticket belongs to an epic (Jira parent, or the design header's Epic line), append one line to memory-bank/epics/<epic_snake>/tickets/<TICKET>.md, section ## Předání — date, <sha>, destination branch, the verification commands, the outgoing commit count — and commit it on the ticket branch BEFORE the Publish phase's final push, so the handoff travels with the integration (contract/epic-backflow.md, "The per-ticket epic file"). This is the handoff artifact for a ticket that integrates without an epic line; the message to the manager, where there is one, is an acceleration over it.
   - **Confirmation.** Re-verify reachability **from the base ref** after the
     push landed, whoever ran it: `git fetch origin`, then
     `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the

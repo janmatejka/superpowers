@@ -29,17 +29,12 @@ fail-open and never blocks an approved design.
 
 **On a finding:**
 
-**Queue the note, always.** Append a dirty-set row to the epic's ledger
-(`<MB_ROOT>/memory-bank/epics/<epic_key_snake>/ledger.md`):
-„Položka/Tiket" = this ticket, „Zašpiněno oknem" = `návrh <slug>` (the
-dirt came from a design, not a window), „Důvod" = one line
-`návrh <slug> změnil <co>; okno by mělo přehodnotit <co>`. When no ledger
-exists, write the same line into
-`<MB_ROOT>/memory-bank/epics/<epic_key_snake>/notes.md` (created with the
-heading `# Poznámky pro elaboraci — <EPIC>`); the next elaboration window
-reads it at framing time. The note is committed on the ticket branch like
-any other commit of this work item — it is this work item's record, so it
-legitimately rides the ticket branch into the base at integration.
+**Write the finding, always.** Append it to the per-ticket epic file
+(contract/epic-backflow.md, "The per-ticket epic file"), section
+`## Backflow` — never a shared `notes.md` on the base. The line is
+committed on the ticket branch like any other commit of this work item —
+it is this work item's record, so it legitimately rides the ticket branch
+into the base at integration.
 
 **The ticket session then continues — there is no offer and no choice left
 to make here.** The step does NOT offer an inline elaboration window, does
@@ -78,3 +73,32 @@ ruling is lost, a finding is orphaned, or a conflict opens over a shared
 file.
 
 Doklad: doklad/epic-backflow.md, "Granularity"
+
+### The per-ticket epic file
+
+For a ticket that belongs to an epic, ONE file is the whole behaviour of
+both backflow and handoff:
+`memory-bank/epics/<epic_snake>/tickets/<TICKET>.md`. It lives on the
+ticket branch and reaches the base by the same integration as everything
+else in the ticket's own history — it can therefore never conflict, unlike
+a shared `notes.md` on the base, which did (Doklad: doklad/epic-backflow.md,
+"Granularity").
+
+Header: `# <TICKET> — epic <EPIC>`. Two sections, each append-only:
+
+- `## Backflow` — one line per finding:
+  `- <YYYY-MM-DD> <nález> (zdroj: mb-epic-graph -Check)`.
+- `## Předání` — one line per handoff:
+  `- <YYYY-MM-DD> <sha> → <báze>; sada: <příkazy>; commity: <n>`.
+
+The epic is identified from the Jira field `parent` (Jira mode) or from the
+design header's `- **Epic:** <KEY>` line (Proposals mode). **A ticket with
+no epic writes nothing and misses nothing** — no file exists for it, and
+none is expected.
+
+The epic's manager reads the file from the base by ref, never from a working
+tree that may not carry it: `git show
+<baseRef>:memory-bank/epics/<epic_snake>/tickets/<TICKET>.md` for one
+ticket, or `git ls-tree -r --name-only <baseRef>
+memory-bank/epics/<epic_snake>/tickets/` to enumerate every integrated
+ticket's file at once.

@@ -214,7 +214,11 @@ skill's job.
    and the repository-wide `stash` count as ONE line that is explicitly NOT a
    property of any slot.
 7. When an epic is in play, add the epic view: for every ticket in its ledger,
-   whether some slot holds it.
+   whether some slot holds it, plus a column `Předáno`: for each ticket,
+   `git ls-tree -r --name-only <baseRef> memory-bank/epics/<epic_snake>/tickets/`
+   then `git show` the matching file (contract/epic-backflow.md, "The per-ticket epic file")
+   and render the last `## Předání` line if one exists, or empty when the
+   ticket has no per-ticket epic file at the base yet.
 
 ### `ready <EPIK>`
 
@@ -585,6 +589,15 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   the handoff step and the gate's own fetch cover that only because they run in
   this same clone immediately before the push — a fetch performed anywhere else,
   or before the ticket agent's push, does not.
+- **Per-ticket epic file, now on the epic line.** The fast-forward already
+  carried the ticket's own `memory-bank/epics/<epic_snake>/tickets/<TICKET>.md`
+  (contract/epic-backflow.md, "The per-ticket epic file") when the ticket
+  session committed its `## Předání` line before its Publish phase's push;
+  read it now from the epic line's new tip —
+  `git show <SHA>:memory-bank/epics/<epic_snake>/tickets/<TICKET>.md` — to
+  confirm the handed-over `## Předání` line matches the artifact's fields.
+  Nothing is written here; this is a read, not a second record of the
+  handoff.
 - **Ledger note and resync prompt.** Record the integration in the epic's
   ledger, in the ticket's `## Rozjetí` row: the `Verdikt` vocabulary is closed
   and the columns are parsed positionally, so the fact goes into `Pasti` as a
