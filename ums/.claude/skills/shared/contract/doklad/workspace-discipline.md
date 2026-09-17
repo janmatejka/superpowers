@@ -4,7 +4,9 @@ Part of contract 3.x — evidence read on demand, never the home of a rule.
 ## Why a pool slot's freedom needs per-worktree signals
 
 A pool slot (Worktree Policy) shares `.git` with every other slot, so the
-three-signal derivation above does not hold there as written. Measured: in a
+three-signal derivation of contract/workspace-discipline.md, in the paragraph
+beginning "A free workspace" is a derived state, not a record, does not hold
+there as written. Measured: in a
 linked worktree only `HEAD` and the index are per-worktree; `refs/stash` and
 `refs/heads` are SHARED — `git -C <slot> rev-parse --git-path refs/stash`
 returns the same file from two different slots. `git stash list` therefore

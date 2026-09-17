@@ -1,5 +1,5 @@
 # Epic Backflow
-Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (contract/epic-backflow.md, "Epic Backflow (design -> epic)").
+Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (contract/epic-backflow.md, "Epic Backflow (design → epic)").
 
 ## Epic Backflow (design → epic)
 

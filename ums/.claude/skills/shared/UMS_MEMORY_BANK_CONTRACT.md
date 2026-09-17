@@ -1,25 +1,20 @@
 # UMS Memory Bank Contract
 
+- **Contract-Version:** 2.19
 
 ## Purpose & Roles
 
-Superpowers skills are the **driving workflow** in this repository
-(`brainstorming → writing-plans → subagent-driven-development / executing-plans
-→ finishing-a-development-branch`). The Memory Bank (MB) is the **document and
-knowledge layer** injected into that workflow. This contract defines where
-superpowers artifacts live inside the MB tree, how the target MB is selected
-and pinned, what `context.md` contains, and how knowledge is harvested when a
-branch finishes.
-
-Consumers of this contract:
-
-1. **Vendored superpowers skills** — via `CLAUDE.md` preferences and the marked
-   `<!-- UMS-OVERLAY -->` blocks (brainstorming, subagent-driven-development,
-   finishing-a-development-branch).
-2. **`mb-*` utility skills** — `mb-init`, `mb-state`, `mb-scan`, `mb-sync`,
-   `mb-harvest`, `mb-abort`, `mb-park`, `mb-git-commit`, `mb-git-message`,
-   `mb-jira-update`.
-3. Any other agent or session working with Memory Bank documents.
+Superpowers skills are the **driving workflow** (`brainstorming → writing-plans →
+subagent-driven-development / executing-plans → finishing-a-development-branch`);
+the Memory Bank (MB) is the **document and knowledge layer** injected into it.
+This contract defines where superpowers artifacts live in the MB tree, how the
+target MB is selected and pinned, what `context.md` contains, and how knowledge is
+harvested when a branch finishes. Its consumers are the 17 live `mb-*` utility
+skills (plus the deprecated `mb-act` / `mb-plan` stubs), the four
+`<!-- UMS-OVERLAY -->` overlays over vendored skills (`brainstorming`,
+`writing-plans`, `subagent-driven-development`, `finishing-a-development-branch`),
+this layer's hooks (`pre-push`, `guard-git-push.mjs`, `deny-superpowers-docs.mjs`,
+`session-intent.ps1`), and any other agent working with Memory Bank documents.
 
 ## Three-Tier Directory Model
 
@@ -77,7 +72,7 @@ Before reading or writing any Memory Bank file, verify that
   `context.md` absent. The orchestration root is not
   bound by the mandatory core (see Memory Bank Document Set). After `mb-init`,
   the next step is the superpowers workflow — Target-MB Discovery & Pinning
-  (below) creates `context.md` during brainstorming.
+  (`contract/target-mb-discovery.md`) creates `context.md` during brainstorming.
 - **Project MB (`PLAN_MB`)** — creates `<MB_ROOT>/<path>/memory-bank/` with
   `proposals/{next,active,completed,abandoned}/` and project docs. Used when
   initializing project MBs for new components. Does not touch `CTX_DIR`.
@@ -86,8 +81,8 @@ Before reading or writing any Memory Bank file, verify that
 
 **Mandatory core of a project MB:** `brief.md`, `architecture.md`, `tech.md`.
 
-**First-class optional:** `playbook.md` — prescriptive procedures (see
-Document Ownership and the Playbook Contract below).
+**First-class optional:** `playbook.md` — prescriptive procedures (see Document
+Ownership below, and the Playbook Contract in `contract/playbook-contract.md`).
 
 **Free extension:** any further document the MB needs (`data-flows.md`,
 `use-cases.md`, `open-questions.md`, `tasks.md`, …). These carry no normative
@@ -96,9 +91,10 @@ status; skills update them when they exist and never create them speculatively.
 The orchestration root (`CTX_DIR`) is NOT bound by the core — it holds
 `context.md` plus whatever navigation the orchestrated tree needs.
 
-`brief.md` covers what earlier versions split between `brief.md` and
-`product.md`. Canonical section order (sections without content are omitted,
-never created empty):
+`brief.md` covers the whole of what the product is and what state it is in; a
+separate `product.md` is legacy shape only (see Legacy shape tolerance).
+Canonical section order (sections without content are omitted, never created
+empty):
 
 ```markdown
 # Brief — <name>
@@ -152,7 +148,7 @@ Other rules:
 
 - Do not hardcode machine-specific or repository-root absolute paths.
 
-### Link Conventions
+## Link Conventions
 
 - **Relative to the containing file, always.** A link in a Memory Bank document
   is resolved from the directory of the file it stands in — never from the
@@ -167,7 +163,10 @@ Other rules:
   | `[X](#mimo-rozsah)` (same file) | `sekce „Mimo rozsah“` |
   | `[X](KicSetup.iss#L253-L254)` | `[KicSetup.iss](KicSetup.iss), řádky 253–254` |
 
-Doklad: contract/doklad/link-conventions.md, "Why no #fragment anchors"
+  A heading is therefore **never reworded merely to make a slug come out a
+  particular way**: slugs are a renderer's business, headings are the document's.
+
+  Doklad: contract/doklad/link-conventions.md, "Why no #fragment anchors"
 
 - **A link whose target cannot be determined is not left dangling.** Drop the
   link syntax, keep the text, and mark it with the dead path inside the marker:
@@ -453,7 +452,7 @@ as authoritative context, and note in the design when it is stale (the fix for
 staleness is `mb-sync` or the harvest at finish, not ad-hoc edits).
 
 Every link WRITTEN into a Memory Bank document — by any skill, harvest or
-ad-hoc edit — follows Link Conventions (Scope Lock): relative to the containing
+ad-hoc edit — follows Link Conventions: relative to the containing
 file, no `#fragment` anchors.
 
 ## Document Ownership
@@ -590,42 +589,25 @@ upstream is a protected branch is a finding, not a normal state.
 The actual guarantee is the git `pre-push` hook (`.claude/hooks/pre-push`,
 scoped to `refs/heads/*` — none of the checks below look at a tag push, though
 the fail-closed buffer arm above them rejects the whole push, tags included,
-whenever it fires), installed into each workspace by
-`install-git-hooks.ps1` — hooks do
-not travel with a clone, which is why the entry gate verifies them (Workspace
-Discipline). Verify it
-non-destructively — never with a real `git push origin develop`, which
-either publishes real commits if the hook turns out to be inert (this is
-exactly how a linked-worktree installation gap was first confirmed) or
-prints a misleading "Everything up-to-date" when there is nothing to push:
-resolve the installed path with `git rev-parse --git-path hooks/pre-push`,
-confirm it exists and carries the marker
-`UMS pre-push guard (Publication Contract)` within its first five lines with
-a version no lower than the layer's own source header
-(`ums/.claude/hooks/pre-push`, line 2), then pipe a synthetic line straight
-into it (`printf 'refs/heads/develop
-<sha> refs/heads/develop <sha>\n' | MB_AGENT_SESSION=1 <hook path> origin
-verify`), expecting a non-zero exit and the `UMS:` message, AND the
-mirror-image accept case (a synthetic ticket-branch creation must exit 0,
-silently) — without that second half a hook that cannot execute at all also
-"rejects" everything and passes as verified. **The marker on that pipe is
-load-bearing**: outside an agent session the hook deliberately enforces
-nothing, so an unmarked pipe proves only that the gate works.
+whenever it fires), installed into each workspace by `install-git-hooks.ps1` —
+hooks do not travel with a clone, which is why the entry gate verifies them
+(Workspace Discipline). **Verify it non-destructively, and in both directions**:
+never with a real `git push origin develop`, and never with the reject half
+alone, because a hook that cannot execute at all also "rejects" everything. The
+recipe — the marker, the version comparison, the two synthetic pipes — is in
+`contract/integration.md`, section "Publication mechanics".
 
 Doklad: contract/doklad/publication.md, "How the installer recognizes its own hook"
 
-**The hook is plain git; the marker is not.** The guarantee therefore reaches a
-harness only once `MB_AGENT_SESSION` is in the environment the push runs in,
-and `sync-with-monorepo.ps1` writes it into each harness's own documented
-mechanism: Claude Code through the `env` block of this layer's `settings.json`,
-Codex through `config.toml` `[shell_environment_policy].set`, Gemini through a
-`.env` file in its config directory. For **Kilo Code no documented mechanism to
-inject an environment variable was found**, so there the marker never arrives,
-the gate never opens, and the hook enforces nothing of its own — on that
-harness the publication guarantee rests on contract text alone. The entry
-gate's check is what surfaces this per session: a synthetic protected-branch
-line that PASSES is exactly this state, and is reported as a missing
-guarantee.
+**The hook is plain git; the marker is not.** The guarantee reaches a harness
+only once `MB_AGENT_SESSION` is in the environment the push runs in, which
+`sync-with-monorepo.ps1` arranges per harness (`contract/integration.md`, section
+"Publication mechanics"). Where a harness offers no documented way to inject an
+environment variable the marker never arrives, the gate never opens, and the hook
+enforces nothing of its own — on that harness the publication guarantee rests on
+contract text alone. The entry gate's check is what surfaces this per session: a
+synthetic protected-branch line that PASSES is exactly this state, and is
+reported as a missing guarantee.
 
 **The human escape: `MB_HUMAN_PUSH=1`.** It means "a human takes
 responsibility for THIS push" and lifts the whole guard — the protected-branch
@@ -678,6 +660,15 @@ marker deep in its body rather than in its header, and a move that simply fails
 (a locked or read-only file). **A refusal is not a fallback:** our hook is then
 not installed in that workspace at all, the run exits 2, and the publication
 guarantee is absent there until someone resolves the foreign hook by hand.
+
+**What neither layer promises.** The `PreToolUse` guard is not a guarantee: it
+sees only what it RECOGNIZES as a `git push`, and on what it does recognize it
+leans fail-CLOSED. Neither hook stops a determined adversary — **server-side
+branch permissions on `origin` are the real backstop**, and nothing in this layer
+substitutes for them. A harness with no `PreToolUse` layer at all follows the
+actor rule by contract text only, as it does every other rule here. And
+**`mb-git-commit` never pushes**: publication is a workflow step of this
+contract, not a job of the commit tool.
 
 Doklad: contract/doklad/publication.md, "The PreToolUse guard, what it reads and what it misses"
 
@@ -750,7 +741,12 @@ and `Bash(git worktree:*)`/`PowerShell(git worktree:*)`,
 superpowers isolation step resolves to **branch-in-place**: create a feature
 branch in the existing working directory (never work on main/master without
 explicit user consent).
+
 ## Message Protocol
+
+**A message does no harm by INTERRUPTING; it does harm by carrying authority
+and getting written down.** Everything in this section follows from that
+sentence, and none of it is about how often anyone writes.
 
 Doklad: contract/doklad/message-protocol.md, "Why a message carries a mark"
 
@@ -781,13 +777,13 @@ Three consequences, and they are why the mark exists at all:
 
 - **The recipient MAY refuse a conjecture, and refusing is NORMAL behaviour,
   not friction.** It needs no permission and no round trip: name the conjecture
-  being refused, say what was measured instead, and carry on. This direction of
-  traffic is where the measured value sits — six agent → orchestrator
-  corrections in one day, every one of them substantive.
+  being refused, say what your own measurement showed instead, and carry on.
+  This direction of traffic is where the mark pays for itself.
 - **A conjecture is NEVER written into the ledger as fact.** Either it is not
-  written at all, or it is written attributed and unverified ("the manager
-  believes X; unmeasured"). Once the recipient has measured it, what the ledger
-  records is the MEASUREMENT — never the message that predicted it.
+  written at all, or it is written attributed and flagged as unverified ("the
+  manager believes X; not verified here"). Once the recipient has a measurement,
+  what the ledger records is the MEASUREMENT — never the message that predicted
+  it.
 - **The recipient MUST refuse an instruction that contradicts a written
   rule** — a rule of this contract, of the plan it is executing, or of the
   skill it is running. It names the rule, states what it refused, does not
@@ -809,7 +805,7 @@ bind every session in this layer, epic work or not:
 > and do that part immediately**, in the same turn as the question.
 **The floor — always a human, and no autonomy level moves it off one**
 
-| Kind | Measured example |
+| Kind | Example |
 |---|---|
 | Publication into the delivery line | the exit of an epic |
 | An irreversible or destructive operation | deleting a branch, a force push, rewriting history |
@@ -863,41 +859,32 @@ question.
 
 Doklad: contract/doklad/escalation.md, "Context rotation as a fifth class"
 
-## Resolution Protocol
+## Citation & Versioning
 
-This file is shared across multiple skills in the following directory
-structure:
+**Citation form.** A rule of this core is cited by contract plus section name —
+`(contract, "Fail-Closed Behavior")`; a rule of a reference file, by reference
+path plus section name — `(contract/epic-line.md, "The epic line")`. The section
+is named in words, spelled exactly as its heading reads, so every citation is
+mechanically checkable against the heading index — never as a `#fragment` anchor
+(Link Conventions). Evidence is never cited as a rule: `contract/doklad/*.md` is
+read on demand and settles no question this contract does not settle itself.
 
-```
-<skills_root>/
-├── shared/
-│   ├── UMS_MEMORY_BANK_CONTRACT.md   ← this file
-│   ├── SKILLS_MANIFEST.md
-│   ├── VENDORED_FROM.md
-│   └── overlays/
-├── <skill-1>/
-│   └── SKILL.md
-└── ...
-```
+**File placement.** The core is `<skills_root>/shared/UMS_MEMORY_BANK_CONTRACT.md`,
+its references `<skills_root>/shared/contract/*.md`, their evidence
+`<skills_root>/shared/contract/doklad/*.md`. A `SKILL.md` resolves the core as
+`../shared/UMS_MEMORY_BANK_CONTRACT.md` relative to its own directory, falling back
+to `<skills_root>/shared/UMS_MEMORY_BANK_CONTRACT.md`. **Never search the filesystem
+recursively.** If both paths fail, stop with:
+`UMS_MEMORY_BANK_CONTRACT.md not found at <skills_root>/shared/.` Skills and docs
+link this contract relatively from their own directory.
 
-When referencing this file from `SKILL.md`:
-
-1. **Primary path:** resolve `../shared/UMS_MEMORY_BANK_CONTRACT.md` relative
-   to the skill file directory.
-2. **Fallback:** `<skills_root>/shared/UMS_MEMORY_BANK_CONTRACT.md`.
-3. **DO NOT use recursive filesystem search.** If both paths fail, stop with:
-   `UMS_MEMORY_BANK_CONTRACT.md not found at <skills_root>/shared/.`
-
-Skills and docs that reference this contract must use relative links from
-their own directory.
-
-## Versioning & Vendoring
-
-- The vendored superpowers upstream version is pinned in
-  `shared/VENDORED_FROM.md` (tag, commit, skill list).
-- UMS modifications to vendored skills exist ONLY as marked
-  `<!-- UMS-OVERLAY BEGIN/END -->` blocks, generated from
-  `shared/overlays/*.overlay.md` by `.claude/scripts/revendor-superpowers.ps1`.
-  Never edit vendored files by hand outside those blocks.
-- Upgrading upstream: re-run the vendoring script per the procedure in
-  `VENDORED_FROM.md`; an overlay anchor miss is the upstream-drift detector.
+**Version lives in the core only.** The `Contract-Version` line at the top of this
+file is the single authority for the contract's version; no reference or evidence
+file carries one, and the per-version history is kept in `shared/CHANGELOG.md`. The
+vendored superpowers upstream version is pinned separately in
+`shared/VENDORED_FROM.md` (tag, commit, skill list). UMS modifications to vendored
+skills exist ONLY as marked `<!-- UMS-OVERLAY BEGIN/END -->` blocks, generated from
+`shared/overlays/*.overlay.md` by `.claude/scripts/revendor-superpowers.ps1`; never
+edit vendored files by hand outside those blocks. Upgrading upstream: re-run the
+vendoring script per the procedure in `VENDORED_FROM.md` — an overlay anchor miss
+is the upstream-drift detector, not a defect to work around.

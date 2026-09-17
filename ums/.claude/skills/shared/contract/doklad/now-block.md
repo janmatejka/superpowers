@@ -22,8 +22,8 @@ its enum.
 
 ## What does not carry over from the baton
 
-**What does NOT carry over from the baton, and why** — the quantifier above is
-bounded on purpose. **Consume-on-read does not:** the baton is a one-shot
+**What does NOT carry over from the baton, and why** — the quantifier in
+contract/now-block.md, in the reader-safety paragraph, is bounded on purpose. **Consume-on-read does not:** the baton is a one-shot
 instruction renamed away the moment it is emitted, while the `NOW` block is a
 STANDING artifact re-read on every look, and renaming a live progress ledger
 would destroy the execution it reports on. Neither does the `Instruction`

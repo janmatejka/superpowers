@@ -132,7 +132,8 @@ The phases, in order:
   step; the first reading, in the Sync phase, picks a HOME and likewise never a
   step:
   - **no manager** → the artifact is rendered as the PLAIN human command with the
-    outgoing commits enumerated (per the two spellings above). The user runs it:
+    outgoing commits enumerated (per the two spellings of the core's
+    `## Publication Contract`). The user runs it:
     the base is a protected branch and the moment of integration belongs to the
     human, so the agent never pushes it itself, not even as the fast-forward the
     `pre-push` hook would accept.
@@ -140,7 +141,8 @@ The phases, in order:
     the session holding the epic's elaboration branch, who performs the
     fast-forward under the actor-rule exception ("The epic line"). Only a manager
     performs that fast-forward; where there is none, no agent does it either and
-    the artifact falls back to the human-command rendering above. **The manager
+    the artifact falls back to the no-manager rendering above — the plain human
+    command of the core's `## Publication Contract`. **The manager
     owes the handing-over session an answer on both outcomes** — landed: the
     target branch and the new tip SHA; STOP: the blocking check — because that
     session's Confirmation phase is gated on it and never runs without it.
@@ -193,3 +195,40 @@ Doklad: doklad/integration.md, "Why an unpublished abandon is a collision nobody
 `mb-abort` performs steps 1–3 and deletes no branches; step 4 belongs to the
 finishing Discard path, which is the caller that ends the branch as well as the work
 item.
+
+### Publication mechanics
+
+The mechanics behind the core's `## Publication Contract`: how the `pre-push`
+hook is verified in a workspace, and how the `MB_AGENT_SESSION` marker reaches
+each harness. The RULES are the core's; only the recipe is here.
+
+**Verifying the installed `pre-push` hook.** Never with a real
+`git push origin develop`, which either publishes real commits if the hook turns
+out to be inert (this is exactly how a linked-worktree installation gap was first
+confirmed) or prints a misleading "Everything up-to-date" when there is nothing to
+push. Instead:
+
+1. resolve the installed path with `git rev-parse --git-path hooks/pre-push`;
+2. confirm it exists and carries the marker
+   `UMS pre-push guard (Publication Contract)` within its first five lines, with a
+   version no lower than the layer's own source header (`ums/.claude/hooks/pre-push`,
+   line 2);
+3. pipe a synthetic protected-branch line straight into it
+   (`printf 'refs/heads/develop <sha> refs/heads/develop <sha>\n' |
+   MB_AGENT_SESSION=1 <hook path> origin verify`), expecting a non-zero exit and the
+   `UMS:` message;
+4. and the mirror-image ACCEPT case — a synthetic ticket-branch creation must exit 0,
+   silently.
+
+Without step 4 a hook that cannot execute at all also "rejects" everything and
+passes as verified. **The marker on those pipes is load-bearing**: outside an agent
+session the hook deliberately enforces nothing, so an unmarked pipe proves only
+that the gate works.
+
+**Delivering `MB_AGENT_SESSION` per harness.** `sync-with-monorepo.ps1` writes it
+into each harness's own documented mechanism: Claude Code through the `env` block of
+this layer's `settings.json`, Codex through `config.toml`
+`[shell_environment_policy].set`, Gemini through a `.env` file in its config
+directory. For **Kilo Code no documented mechanism to inject an environment variable
+was found**, so there the marker never arrives — the state the core calls a missing
+guarantee.

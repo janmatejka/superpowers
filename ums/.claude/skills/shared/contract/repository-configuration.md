@@ -19,7 +19,7 @@ introduced:**
 | Key | Consumers |
 |---|---|
 | `baseRef` | `mb-doc-index`, ticket-branch creation, base sync, integration |
-| `protectedBranches` | the `pre-push` hook (through the generated list below), `guard-git-push.mjs` |
+| `protectedBranches` | the `pre-push` hook (through the plain-text list the installer generates — the core's `## Publication Contract`), `guard-git-push.mjs` |
 | `epicBranchPattern` | `guard-git-push.mjs` (the actor-rule exception) |
 | `ticketPattern` | `mb-state`, the entry gate, `mb-architect-review` |
 | `projectMarkers`, `sharedRoots` | the intersection heuristic (see Base Sync & Drift Detection) |
@@ -30,7 +30,8 @@ Doklad: doklad/repository-configuration.md, "Why the pool is not repository conf
 `origin/ums-memory-bank`) and is used as-is wherever git READS the base: a merge
 source, a merge-base, a diff endpoint, a `switch --detach` target — the
 `switch -c` start point that creates a ticket branch is a partial case, covered
-below (the effective-base carve-out). It is never prefixed with `origin/` a
+below in this file — the effective-base carve-out, in the paragraph beginning
+"One site is deliberately NOT the effective base". It is never prefixed with `origin/` a
 second time — `origin/origin/develop` resolves to nothing.
 
 **`<baseBranch>` is a derivation, not a config key:** `baseRef` minus its remote

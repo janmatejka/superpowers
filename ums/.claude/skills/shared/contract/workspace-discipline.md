@@ -6,8 +6,8 @@ Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (co
 A **workspace** is a clone the user works in. The user creates it and chooses
 it; it is used repeatedly and it carries the leftovers of previous work. A
 pool slot (Worktree Policy) is likewise a workspace in this contract's sense,
-even though it is a linked worktree rather than a clone, and "one session per
-workspace" below therefore holds per slot. The layer therefore treats a
+even though it is a linked worktree rather than a clone, and the "One session per
+workspace" rule below in this file therefore holds per slot. The layer treats a
 workspace as found, never as one the SESSION provisioned: the one provisioning
 tool this layer has (`pool-provision.ps1`, Worktree Policy) belongs to the
 operator and refuses to run under an agent-session marker.

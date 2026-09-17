@@ -127,5 +127,5 @@ earlier summary of them went stale. Neither hook stops a determined adversary; s
 branch permissions on `origin` remain the real backstop for that. A harness without a
 PreToolUse layer follows the actor rule by contract text only, as with every
 other rule of this layer. `mb-git-commit` never pushes — publication is a
-workflow step governed by the publication rule above, not a job of the commit
-tool.
+workflow step governed by the publication rule of the core's
+`## Publication Contract`, not a job of the commit tool.

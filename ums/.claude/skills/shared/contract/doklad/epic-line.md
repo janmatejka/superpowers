@@ -5,7 +5,8 @@ Part of contract 3.x — evidence read on demand, never the home of a rule.
 
 **The residual risk, plainly:** in a repository whose work items integrate into
 maintenance branches other than `baseRef`, combined with an over-broad
-`epicBranchPattern` (`*` is contemplated below as a realistic mistake),
+`epicBranchPattern` (`*` is contemplated as a realistic mistake in
+contract/epic-line.md, in the four-condition list),
 condition 3 excludes `baseRef`'s own branch and nothing else — so the actual
 delivery line of such a work item is excluded by conditions 1 and 2 only.
 **The control that covers it is not another condition here**, and adding one

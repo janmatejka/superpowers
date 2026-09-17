@@ -7,8 +7,9 @@ Part of contract 3.x — evidence read on demand, never the home of a rule.
 authority and getting written down.** Measured: one orchestrator sent, twice in
 a single day, a factually WRONG justification for a step that was itself
 correct, and both would have landed in a ledger as fact. The recipients caught
-it; the orchestrator did not. Everything below follows from that sentence, and
-none of it is about how often anyone writes.
+it; the orchestrator did not. Everything the core's `## Message Protocol` and
+contract/message-protocol.md say follows from that sentence, and none of it is
+about how often anyone writes.
 
 ## The measured case behind the cause rule
 

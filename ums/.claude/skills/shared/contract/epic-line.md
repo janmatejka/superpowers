@@ -1,7 +1,7 @@
 # The epic line
 Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (contract/epic-line.md, "The epic line").
 
-### The epic line
+## The epic line
 
 **The epic line is the code integration branch of an epic**, named
 `epic/<EPIC-KEY>`, and it is the effective base of every ticket branch cut for
@@ -29,15 +29,16 @@ elaboration. "Committed before either implements against it" is therefore an
 ordering claim about the queue, not a licence to write the stub directly onto
 the epic line.
 
-**It belongs in `protectedBranches`**, so the invariant above — an integration
-branch is always a protected branch — holds for it literally, and both
+**It belongs in `protectedBranches`**, so the invariant of
+contract/repository-configuration.md — an integration branch is always a
+protected branch — holds for it literally, and both
 enforcement layers resolve its protection by their usual routes.
 
 **`epicBranchPattern` does NOT govern protection.** Its one job is the
 actor-rule exception that lets the agent's own tool call fast-forward such a
 branch (Publication Contract). A missing, empty or non-string value therefore
 means **no exception at all** — never "every branch" — which is the same
-safer-side degradation the keys above follow.
+safer-side degradation the keys of contract/repository-configuration.md follow.
 
 **An unusable `baseRef` likewise means no exception**, and the fallback to
 `origin/develop` does NOT apply here. Missing, non-string, empty, whitespace
@@ -60,7 +61,8 @@ bite.
    not a branch name, not an absent source.
 
 **Condition 3 needs the CONFIGURATION KEY `baseRef` itself, by name, and says
-so** — this is the escape the effective-base rule above provides ("a site that
+so** — this is the escape the effective-base rule of
+contract/repository-configuration.md provides ("a site that
 instead needs the config key itself, by name, says so"), taken deliberately and
 not by omission. The reason is what evaluates the condition: a `pre-push` hook
 and a `PreToolUse` guard both fire without a work item in hand. Neither can know

@@ -3,8 +3,10 @@ Part of contract 3.x — evidence read on demand, never the home of a rule.
 
 ## Why the pin write decides the Báze line
 
-The line has two ways to outlive the work item that wrote it: the IDLE reset below
-keeps it on purpose, and the integration push carries that IDLE `context.md` onto
+The line has two ways to outlive the work item that wrote it: the IDLE reset of the
+core's `` ## `context.md` Schema & Writers `` (whose own consumers are
+contract/harvest.md and contract/integration.md) keeps it on purpose, and the
+integration push carries that IDLE `context.md` onto
 the base itself, from where every later work item's branch is cut. A pin write that
 only ever ADDS the line therefore lets one work item's maintenance branch become
 the silent default for all the work that follows it — base sync, harvest diff and

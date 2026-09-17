@@ -78,7 +78,8 @@ author, so the status of each is stated instead of implied:
   conjecture out of the ledger as fact.
 - **A requirement on the DESIGN of an escalation band**, checked when the band
   is written and never at runtime: that the band has an artifact form.
-- **A bound on the scope of everything above rather than a rule of its own:**
+- **A bound on the scope of everything the core's `## Message Protocol` states,
+  rather than a rule of its own:**
   the other direction carries no mark, so none of the duties, rights and
   defaults listed here attach to a report, a correction or a handoff artifact
   travelling back up.
