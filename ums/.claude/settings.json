@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Before your first response this session, invoke the Skill tool with skill: using-superpowers to establish how to find and use skills. Then read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md (Memory Bank contract v2) and memory-bank/context.md (Target MB Pin) before relying on any Memory Bank-aware behavior. Ověř, že publikační záruka platí na tuhle session: `git rev-parse --git-path hooks/pre-push` musí existovat, nést v prvních pěti řádcích značku `UMS pre-push guard (Publication Contract)` s verzí **ne nižší, než jakou nese druhý řádek `.claude/hooks/pre-push`** ve vrstvě, **a obě poloviny jeho syntetického self-checku musí v TOMTO prostředí dopadnout správně**: řádek chráněné větve (`refs/heads/develop 0123456789abcdef0123456789abcdef01234567 refs/heads/develop 0123456789abcdef0123456789abcdef01234567` na stdin hooku, argumenty `origin verify`) musí skončit NENULOVĚ s hláškou `UMS: `, a zrcadlový řádek tiketové větve (`refs/heads/feature/x 0123456789abcdef0123456789abcdef01234567 refs/heads/feature/x 0000000000000000000000000000000000000000`) musí skončit NULOU a mlčky. Je-li verze nižší nebo hook chybí, spusť `pwsh -NoProfile -File .claude/hooks/install-git-hooks.ps1 -RepoRoot .` a ověř znovu; projde-li syntetický pipe chráněné větve nulou, značka agentní session v tomhle harnessu chybí a záruka na tebe neplatí; selže-li naopak pipe tiketové větve, hook se tu vůbec nespouští (špatný shebang, chybějící execute bit, jiné umístění) a jeho zamítání nedokazuje nic — v obou případech to ohlas uživateli a nepokračuj v práci, která končí pushem. Pokud vykonáváš plán, přečti si i ledger toho plánu: .superpowers/sdd/<plan-basename>/progress.md (adresář na plán; plochý progress.md neexistuje).\"}}'"
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/contract-inject.ps1\""
           }
         ]
       },
@@ -78,7 +78,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"systemMessage\":\"Context was just compacted. Before continuing, invoke the Skill tool with skill: using-superpowers to re-establish how to find and use skills, re-read .claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md and memory-bank/context.md (Target MB Pin); if you are executing a plan, also re-read the ledger of the plan you are executing: .superpowers/sdd/<plan-basename>/progress.md (per-plan directory; there is no flat progress.md).\"}'"
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/contract-inject.ps1\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/contract-inject.ps1\""
           }
         ]
       }
