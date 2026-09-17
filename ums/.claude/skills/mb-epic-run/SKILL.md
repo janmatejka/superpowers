@@ -543,6 +543,11 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
     column defined as a commit of `<TIKET>`, and the owner's session may be
     finished and closed. So report the decision AND its owner, and send the
     remedy to the session that handed the artifact over.
+- **Dirty-set warnings.** Print `$epicGate.Warnings` in Czech under
+  „Varování (neblokují)" — never as a STOP. An open `## Dirty-set` row naming
+  `<TIKET>` means work was deferred onto it: before the fast-forward,
+  re-own the row or close it with a reason, otherwise the finding is
+  orphaned once `<TIKET>` integrates (contract/escalation.md, "Ledger evidence rules").
 - **Cross-cutting judgement check.** By judgement, because nothing mechanical
   covers it: does the handoff contradict anything in the epic's own evidence —
   the ledger, its neighbouring tickets, what the epic already decided? This

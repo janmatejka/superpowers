@@ -111,7 +111,7 @@ function Test-UmsEpicGate {
     if (-not (Test-Path -LiteralPath $ledger -PathType Leaf)) {
         & $add 'spawn-epic' $true "ledger $ledger neexistuje - kontrola nemá vstup, prochází triviálně"
         & $add 'decision-ack' $true "ledger $ledger neexistuje - kontrola nemá vstup, prochází triviálně"
-        return [pscustomobject]@{ Ok = $true; Checks = @($checks); Blocking = @() }
+        return [pscustomobject]@{ Ok = $true; Checks = @($checks); Blocking = @(); Warnings = @() }
     }
 
     $lines = @(Get-Content -LiteralPath $ledger)
@@ -173,10 +173,23 @@ function Test-UmsEpicGate {
         & $add 'decision-ack' $false "nepotvrzené rozhodnutí jmenující $Ticket ve sloupci Předpokládá o (tiket): $names"
     }
 
+    # 3. Warnings — dirty-set rows still open AND naming the integrating
+    # ticket. This never blocks: it is information for the human deciding
+    # whether to re-own the row or close it with a reason before the
+    # fast-forward, since once THIS ticket integrates, an open row that
+    # names it becomes orphaned (contract/escalation.md, "Ledger evidence rules").
+    # -ceq is deliberately case-sensitive, same convention as the two checks above.
+    $dirtyRows = Get-UmsLedgerSectionTable $lines 'Dirty-set'
+    $warnings = @()
+    foreach ($d in @($dirtyRows | Where-Object { $_.Count -ge 3 -and $_[0] -ceq $Ticket -and ($_.Count -lt 4 -or [string]::IsNullOrWhiteSpace($_[3])) })) {
+        $warnings += "otevřený řádek dirty-setu jmenuje integrující tiket $Ticket`: $($d[2]) (zašpiněno oknem $($d[1]))"
+    }
+
     $blocking = @($checks | Where-Object { -not $_.Passed } | ForEach-Object { $_.Name })
     return [pscustomobject]@{
         Ok       = ($blocking.Count -eq 0)
         Checks   = @($checks)
         Blocking = $blocking
+        Warnings = @($warnings)
     }
 }

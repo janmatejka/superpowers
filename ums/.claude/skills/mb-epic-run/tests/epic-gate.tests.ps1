@@ -133,4 +133,25 @@ finally { Set-Location $origCwd }
 Assert-True $r.Ok 'absolutní cesta při nesouvisejícím -RepoRoot: brána projde (cesta se bere, jak je)'
 Assert-True (($r.Checks | Where-Object { $_.Name -eq 'spawn-epic' })[0].Passed) 'absolutní cesta: spawn-epic PASS'
 
+# --- Warnings: otevřený řádek dirty-setu jmenující integrující tiket --------
+# Also carries the case-sensitivity fixture case the playbook requires: the
+# fixture has a SECOND open dirty row whose Položka/Tiket cell ('ums-3520')
+# differs from $g's -Ticket ('UMS-3520') ONLY in letter case. If -ceq were
+# ever loosened to a case-insensitive comparator, that second row would also
+# match and Warnings.Count would be 2, not 1 -- this is what makes the
+# comparator mutation-testable, not just a sentence in a docstring.
+
+$ledgerDirty = Join-Path $fx 'ledger-dirty-open.md'
+$ledgerClean = Join-Path $fx 'ledger-dirty-clean.md'
+$repo = $PSScriptRoot
+
+$g = Test-UmsEpicGate -RepoRoot $repo -LedgerPath $ledgerDirty -Ticket 'UMS-3520' -Epic 'UMS-3517'
+Assert-True $g.Ok 'otevřený dirty řádek neblokuje'
+Assert-Eq (@($g.Warnings).Count) 1 'jedno varování za otevřený dirty řádek jmenující tiket (case-varianta se nepočítá)'
+Assert-Match $g.Warnings[0] 'adoptér dialplanové půlky' 'varování nese důvod'
+Assert-Match $g.Warnings[0] 'zašpiněno oknem W03' 'varování nese okno'
+
+$g2 = Test-UmsEpicGate -RepoRoot $repo -LedgerPath $ledgerClean -Ticket 'UMS-3520' -Epic 'UMS-3517'
+Assert-Eq (@($g2.Warnings).Count) 0 'vyčištěný nebo cizí řádek varování nedává'
+
 Complete-Tests
