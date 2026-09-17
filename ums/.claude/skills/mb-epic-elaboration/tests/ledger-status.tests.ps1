@@ -111,11 +111,24 @@ Assert-Match $rb.Out 'UMS-5003.*nalezeno: 4, potřeba nejméně 6' 'and the mess
 $script = Join-Path $PSScriptRoot '..\scripts\ledger-status.ps1'
 $fixtures = Join-Path $PSScriptRoot 'fixtures'
 $floorOut = (& pwsh -NoProfile -File $script -LedgerFile (Join-Path $fixtures 'ledger_floor.md') 2>&1 | Out-String)
-Assert-Match $floorOut '## Podlaha testů \(3\)' 'sekce podlahy je vypsaná s počtem řádků'
+Assert-Match $floorOut '## Podlaha testů \(4\)' 'sekce podlahy je vypsaná s počtem řádků'
 Assert-Match $floorOut 'Podlaha testů musí být množina jmen testů, ne číslo: «8/705/12/725»' 'číselná podlaha je issue'
 Assert-Match $floorOut 'slibuje jména, která nedorazila' 'slib bez jmen je issue'
 Assert-Match $floorOut 'nemá podmínky běhu' 'chybějící podmínky jsou issue'
 Assert-Match $floorOut 'Hlavička nenese „Ověřeno proti"' 'chybějící Ověřeno proti je poznámka'
-Assert-True (-not ($floorOut -match 'ChannelResync_ReconnectsAfterDrop.*issue')) 'pojmenovaný test s podmínkami issue nedostane'
+# The fixture's numeric row (8/705/12/725) trips BOTH the numeric-floor rule
+# AND the missing-conditions rule at once, so it cannot isolate the latter.
+# A dedicated row — a real name, a real ticket, an empty conditions cell —
+# is needed to prove the missing-conditions rule fires on its own.
+Assert-Match $floorOut 'Řádek podlahy «WfKic\.Test\.SlotResume_KeepsQueuePosition» nemá podmínky běhu' 'pojmenovaný test bez podmínek dostane izolovaně jen tento nález'
+# The one guard against over-firing must be checked against the program's
+# ACTUAL Czech finding vocabulary (the literal «test» quoting used by all
+# three finding messages), not an English word ("issue") that never appears
+# in the output — a check against a word absent from the vocabulary can
+# never match and so can never fail. A row named ChannelResync..., with a
+# real ticket and non-empty conditions, must trip NONE of the three finding
+# sentences that name it.
+Assert-NotMatch $floorOut 'ChannelResync_ReconnectsAfterDrop».*(ne číslo|nedorazila|nemá podmínky běhu)' 'pojmenovaný test s podmínkami nedostane žádný z nálezů podlahy'
+Assert-NotMatch $floorOut '(ne číslo|nedorazila|nemá podmínky běhu).*«ChannelResync_ReconnectsAfterDrop' 'ani v opačném pořadí buňky a nálezu'
 
 Complete-Tests

@@ -37,6 +37,7 @@
 | WfKic.Test.ChannelResync_ReconnectsAfterDrop | červený | UMS-3520 | čistá ústředna, develop@0a13ef1, 2026-09-16 | |
 | 8/705/12/725 | červený | UMS-3518 | | číslo z jiného stromu |
 | výsledek dodá sezení | červený | UMS-3520 | dávka | |
+| WfKic.Test.SlotResume_KeepsQueuePosition | červený | UMS-3521 | | |
 
 ## Ověřovací sada
 
