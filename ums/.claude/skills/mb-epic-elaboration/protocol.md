@@ -118,6 +118,7 @@ Wait for confirmation or narrowing. The human always decides the agenda.
    When this step's design settles a signature two tickets will share, found
    the epic line's stub for it now, before either ticket starts implementing
    (contract, The epic line).
+   Ticket text follows the template and its budget (contract/jira.md, "Ticket description template"); the elaboration itself goes into the draft.
 7. **Impact on neighbors:** enumerate every other ticket this window changed
    the premises of (moved item, changed/new dependency, corrected claim, new
    ticket) → dirty-set rows (`Zašpiněno oknem` = this window, with reason).
@@ -182,10 +183,9 @@ A window closes only when its slice is internally consistent. Order:
 7. **Refresh proposal links (post-commit):** for every ticket the window
    created or whose proposal it changed — plus any window ticket still missing
    the link — set/refresh ONE line in the Jira description:
-   `**Návrh (proposal):** [<proposal filename>](<commit-pinned URL>)`. The URL
-   is the commit-first Bitbucket permalink from `mb-jira-update` §5–7
-   (`src/<sha>/<relative-path>`, `<sha>` = the window commit, branch fallback
-   disabled). Idempotent: replace an existing such line, otherwise insert it
+   `**Návrh (design):** [<design filename>](<commit-pinned URL>)`. The URL is
+   the permalink from `Get-UmsPermalink.ps1` (contract/jira.md, "Permalink"),
+   `<sha>` = the window commit, branch fallback disabled. Idempotent: replace an existing such line, otherwise insert it
    near the top; touch nothing else in the description. The permalink resolves
    immediately — the branch was published in the previous step. `mb-epic-graph
    -Check` reports `TIKET BEZ ODKAZU NA PROPOSAL` (VAROVÁNÍ) until the line is
@@ -225,7 +225,7 @@ A window closes only when its slice is internally consistent. Order:
    window builds on old verification).
 5. Placement and language per the MB contract.
 6. Every ticket that owns a proposal carries an up-to-date
-   `**Návrh (proposal):**` commit-pinned link to it in its Jira description
+   `**Návrh (design):**` commit-pinned link to it in its Jira description
    (`mb-epic-graph -Check` → `TIKET BEZ ODKAZU NA PROPOSAL` when missing,
    `ODKAZ NA NEEXISTUJÍCÍ PROPOSAL` when stale). Jira mode only — JIRA-less
    nodes are the proposal files themselves.
@@ -233,9 +233,9 @@ A window closes only when its slice is internally consistent. Order:
 ## 6. Edge cases
 
 - **New ticket needed:** create it in the closure sync (epic child, Czech
-  summary/description with owned item IDs), add links, add a ledger Tikety
-  row, re-own its items. Its proposal starts as preliminary in the owning
-  component MB's `next/`.
+  summary/description with owned item IDs), add links, add a row to
+  `## Členové (proposaly)`, re-own its items. Its proposal starts as
+  preliminary in the owning component MB's `next/`.
 - **Item spanning components:** split the item (new IDs suffixed `a`/`b`
   with distinct owners) rather than sharing one item between tickets.
 - **Refuted premise of a NOT-in-scope ticket discovered mid-window:** dirty

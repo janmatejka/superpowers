@@ -209,11 +209,8 @@ Scope lock remains active until command completion.
 - A published link to an unreachable commit is the failure this gate exists to
   prevent.
 
-### 7. Bitbucket Link Format
-- Generate commit-first URLs only:
-  - `https://bitbucket.org/workspace/repo/src/<commit-sha>/<relative-path>`
-  - where `<commit-sha>` is stable SHA from step 5/6 and `<relative-path>` is repo-relative path.
-- Branch fallback is disabled by default.
+### 7. Permalink Format
+- URL from Get-UmsPermalink.ps1 (contract/jira.md, "Permalink"); branch fallback stays disabled.
 - Only explicit user override may enable branch fallback; without explicit override stay fail-closed.
 
 ### 7b. Refresh the proposal link in the ticket description
@@ -229,6 +226,8 @@ Scope lock remains active until command completion.
   form `**Návrh (proposal):** …` — replace it (refresh SHA + path, re-point a
   stale plan/legacy filename to the design document); otherwise insert it
   near the top of the description. Change nothing else in the description.
+- Run `Test-UmsJiraDescription.ps1 -RequireSections` on the resulting
+  description before sending it; a finding is a STOP.
   Use `editJiraIssue` (contentFormat markdown).
 - The permalink resolves immediately: §6b's reachability gate guarantees the
   pinned commit is on `origin` before the link is published.
@@ -282,7 +281,7 @@ against a 10 202-character description.
 
    ```powershell
    $lines = Get-Content $orig
-   if ($lines[0] -notmatch '^\*\*Návrh \(design\):\*\* \[.+\]\(https://bitbucket\.org/\S+\)$') {
+   if ($lines[0] -notmatch '^\*\*Návrh \(design\):\*\* \[[^`\]]+\]\(https?://\S+\)$') {
        throw "první řádek nemá očekávaný tvar: $($lines[0])"
    }
    $lines[0] = '**Návrh (design):** [<design-file>.md](<commit-pinned URL>)'
@@ -333,9 +332,13 @@ method could not distinguish a faithful send from a slip reproduced twice.
   - **Affected databases / scripts:** migrations, update scripts, seeds, or other database-related changes.
   - **Affected modules / files:** list only the important changes; if the list is large or repetitive, replace it with a link to the whole module or directory and mention only the most important files.
   - **Verification and risks:** a short note on what was verified and what remains as risk.
-- Include the Bitbucket URLs as standard markdown links.
+- Include commit-pinned permalinks as markdown links whose text carries no backticks (contract/jira.md, "Link rules").
 - Use soft redaction for obvious secrets/tokens before publishing.
+- Run `Test-UmsJiraDescription.ps1` (without `-RequireSections`) on the comment
+  body before sending it; a finding is a STOP.
 - Use the MCP tool `mcp_atlassian-mcp-server_addCommentToJiraIssue` to post the formatted message to the target Jira Ticket ID.
+- Read the posted comment back and verify each link and each bold survived
+  (contract/jira.md, "Read-back verification").
 
 ### 9. Completion
 > "✅ Jira ticket updated."
