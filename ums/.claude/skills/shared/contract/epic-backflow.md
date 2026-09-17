@@ -63,3 +63,18 @@ on the ticket branch, the window on its own branch — neither sees the other
 until both reach the base) is cleaned by the first window that sees both;
 dirty rows are never deleted, cleaning is recorded (ledger maintenance
 rules).
+
+### Split criteria and the cost of a split
+
+Split criteria: a separately deliverable surface or component, a distinct
+blocker set, or scope growth — **and, at the same time**, a different
+actor or a different delivery. Without that second condition the default
+answer is phases in one plan, not a new ticket.
+
+The cost of a split is named, not assumed: its own design, plan, gate,
+harvest, Jira comments, decision-registry rows, and a handoff — for every
+ticket beyond the first. Every boundary between tickets is a place where a
+ruling is lost, a finding is orphaned, or a conflict opens over a shared
+file.
+
+Doklad: doklad/epic-backflow.md, "Granularity"

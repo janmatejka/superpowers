@@ -206,6 +206,12 @@ Adjustments to the checklist above:
   your human partner before writing the file. Bounded is the only path where
   nothing else writes it: the plan step, where every other work item declares
   its set, is precisely the step bounded skips.
+- **Decomposition (upstream "too large for a single spec"):** in this
+  repository decomposition aims at PHASES of one plan first; a separate
+  work item is created only under the split criteria
+  (contract, "Work Item Granularity"), and then as a preliminary draft in
+  proposals/next/ with a framing ticket
+  (contract/jira.md, "Ticket description template").
 - **Agentic opposition offer (architectural path only — after the user
   approves the written spec, BEFORE the Architect Review Gate offer):**
   offer an independent agentic opposition of the design per

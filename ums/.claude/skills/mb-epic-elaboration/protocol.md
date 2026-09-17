@@ -85,8 +85,12 @@ Wait for confirmation or narrowing. The human always decides the agenda.
 4. **Boundaries & partition:** for each item in scope assign EXACTLY ONE
    owner: this ticket / another existing ticket / a new ticket. Split
    criteria: distinct surface or component releasable independently, distinct
-   blocker set, or scope growth. Merge criteria conversely. Ownership moves
-   and new tickets are decisions (step 5), not unilateral acts.
+   blocker set, or scope growth. A criterion alone does not split: the parts
+   must also belong to a different actor or a different delivery, otherwise
+   they are phases of one plan (contract, "Work Item Granularity"). Name the
+   cost of the split in the ledger note when you do split. Merge criteria
+   conversely. Ownership moves and new tickets are decisions (step 5), not
+   unilateral acts.
 5. **Clarification:** binding decisions from the human, one question at a
    time. Record each decision immediately in the artifact it belongs to
    (proposal "Závazná rozhodnutí" section with date), not in a side file.

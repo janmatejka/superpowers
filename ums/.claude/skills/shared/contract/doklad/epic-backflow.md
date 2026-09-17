@@ -18,3 +18,12 @@ Part of contract 3.x — evidence read on demand, never the home of a rule.
 **The OFFER dies here, not the finding.** Without a manager, the queued row
 simply waits for the next elaboration window — exactly as a dirty-set row
 waits today. Nothing is lost; it is deferred.
+
+## Granularity
+
+| Measurement | Value | Conditions |
+|---|---|---|
+| Requester's stated experience | fewer large tickets with TDD outperform many small related ones | 2026-09-17 |
+| UMS-3505, completed as one ticket | 50 commits, 27 suites, 1,434 assertions, 26 verification points | final review 2026-09-08 |
+| Coordination cost across tickets, UMS-3517 | 3 rulings lost in a message, 1 orphaned finding after the adopter was integrated, 12 hours of idle time across two tickets with no handoff artifact, 2 modify/delete conflicts over `notes.md` | manager's session report, 2026-09-17 |
+| Same brainstorming session | condensed four candidate items into two without losing scope | 2026-09-17 |

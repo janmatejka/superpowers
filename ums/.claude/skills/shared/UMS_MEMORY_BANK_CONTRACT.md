@@ -283,6 +283,16 @@ Pinning), a legacy `proposal_*` draft being renamed to `design_<slug>.md` in tha
 move — the only permitted legacy conversion; its content is the design seed
 whatever its structure, and brainstorming refines it rather than starting over.
 
+## Work Item Granularity
+
+A work item is as large as the coherent whole one verification set can
+verify. It is split only by the split criteria
+(contract/epic-backflow.md, "Split criteria and the cost of a split"),
+never for size: size is carried by a plan with phases and TDD, not by the
+number of tickets. Fewer large tickets beat many small related ones —
+every ticket boundary is a place where a ruling is lost, a finding is
+orphaned or a shared file conflicts.
+
 ## Superpowers Document Placement
 
 This implements the upstream escape hatch — brainstorming and writing-plans both
@@ -749,6 +759,31 @@ as covering it would turn the mandatory base sync before the first dispatch into
 a question.
 
 Doklad: contract/doklad/escalation.md, "Context rotation as a fifth class"
+
+## Phase Map
+
+Which reference a skill or overlay reads for a given operation, and what
+it owns there:
+
+| Operation | Owning skill / overlay | Reference |
+|---|---|---|
+| Workspace Discipline, slot freedom, entry gate | overlay brainstorming, `mb-state`, `mb-park`, `mb-epic-run` | `workspace-discipline.md` |
+| Target-MB Discovery & Pinning | overlay brainstorming | `target-mb-discovery.md` |
+| Brainstorming Paths | overlay brainstorming, overlay finishing | `brainstorming-paths.md` |
+| Repository Configuration (minus the epic line) | `mb-init`, `mb-state`, overlays, hook docs | `repository-configuration.md` |
+| The epic line, decision registry | `mb-epic-run`, `mb-epic-elaboration`, `guard-git-push.mjs` (comment) | `epic-line.md` |
+| Playbook Contract | overlay SDD, `mb-harvest`, `mb-park` | `playbook-contract.md` |
+| Session Intent Baton | `session-intent.ps1`, `mb-park`, `mb-abort`, `mb-harvest`, overlay writing-plans, overlay SDD | `session-intent-baton.md` |
+| The `NOW` Block | overlay SDD, `mb-epic-run` | `now-block.md` |
+| Harvest Contract, Document Ownership procedure | `mb-harvest`, `mb-sync`, `mb-migrate-docs` | `harvest.md` |
+| Integration, Abandon | overlay finishing, `mb-epic-run`, `mb-abort`, `mb-jira-update` | `integration.md` |
+| Cross-Branch Visibility | `mb-doc-index`, overlay brainstorming | `cross-branch-visibility.md` |
+| Architect Review Gate, Agentic Design Opposition | `mb-architect-review`, overlay brainstorming | `architect-review.md` |
+| Epic Backflow, per-ticket epic file | overlay brainstorming, `mb-architect-review`, `mb-epic-elaboration` | `epic-backflow.md` |
+| Message Protocol beyond the core | `mb-epic-run` | `message-protocol.md` |
+| Bands, conflict classes, autonomy levels, ledger rules | `mb-epic-run`, `mb-epic-elaboration`, overlay SDD | `escalation.md` |
+| Worktree Policy — the slot exception | `mb-epic-run`, `pool-provision.ps1` | `worktree-pool.md` |
+| Ticket description template, links | `mb-jira-update`, `mb-epic-elaboration`, `mb-architect-review`, `mb-epic-graph` | `jira.md` |
 
 ## Citation & Versioning
 
