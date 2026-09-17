@@ -63,8 +63,17 @@ try {
 
     if ($hasRoot) {
         $slugLine = @($ctxLines | Where-Object { $_ -match '\*\*(Work item|Proposal):\*\*\s+(?<s>\S+)' })
-        if ($slugLine.Count -gt 0 -and $slugLine[0] -match '\*\*(Work item|Proposal):\*\*\s+(?<s>\S+)') {
-            $ledger = Join-Path $root (".superpowers/sdd/plan_" + $Matches['s'] + "/progress.md")
+        $slug = $null
+        if ($slugLine.Count -gt 0 -and $slugLine[0] -match '\*\*(Work item|Proposal):\*\*\s+(?<s>\S+)') { $slug = $Matches['s'] }
+        # Slug reaches a filesystem path below (Join-Path into .superpowers/sdd/),
+        # and it is attacker-reachable text from context.md — a value like
+        # "x/../../../../outside" is a valid \S+ match but a path traversal once
+        # joined. Whitelisting the charset (no `/`, `\`, or `..`-enabling
+        # separators) before it goes anywhere near Join-Path is the fix; a slug
+        # that fails simply yields no NOW block, same as any other unreadable
+        # ledger.
+        if ($null -ne $slug -and $slug -match '^[A-Za-z0-9_.-]+$') {
+            $ledger = Join-Path $root (".superpowers/sdd/plan_" + $slug + "/progress.md")
             if (Test-Path -LiteralPath $ledger -PathType Leaf) {
                 $l = @(Get-Content -LiteralPath $ledger -Encoding utf8)
                 $b = [array]::IndexOf($l, '<!-- UMS-NOW BEGIN -->'); $e = [array]::IndexOf($l, '<!-- UMS-NOW END -->')

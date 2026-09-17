@@ -24,6 +24,15 @@ function Invoke-Hook([string] $Deployment, [string] $Repo, [string] $Event) {
     finally { Pop-Location }
     return @{ Out = $out; Code = $code }
 }
+# Production never passes -Event: Claude Code pipes {"hook_event_name":"..."}
+# on stdin. No other case in this file drives that route, so it is otherwise
+# untested — this helper is the one case that does.
+function Invoke-HookStdin([string] $Deployment, [string] $Repo, [string] $EventJson) {
+    Push-Location $Repo
+    try { $out = $EventJson | & pwsh -NoProfile -File (Join-Path $Deployment 'hooks\contract-inject.ps1') 2>&1 | Out-String; $code = $LASTEXITCODE }
+    finally { Pop-Location }
+    return @{ Out = $out; Code = $code }
+}
 
 $core = "# UMS Memory Bank Contract`n`n- **Contract-Version:** 3.0`n`n## Language Contract`n- AI-facing text is English.`n"
 $ctxActive = "# Context`n`n## Active Work`n`n- **Jira:** UMS-1 (https://x/UMS-1)`n- **Target MB Pin:** memory-bank/`n- **Work item:** demo_slug`n- **Started:** 2026-09-17`n"
@@ -91,14 +100,47 @@ $json = (Invoke-Hook $d3 $r 'SessionStart').Out | ConvertFrom-Json
 Assert-Match $json.hookSpecificOutput.additionalContext 'Read .*\(contract core\)' 'payload over 48 kB falls back to the read instruction'
 Assert-True (-not ($json.hookSpecificOutput.additionalContext -match 'xxxxxxxxxx')) 'oversize content is not emitted'
 
-# 10. outside a git repo → exit 0, fallback
+# 10. outside a git repo → exit 0, and the hook still measurably does its job.
+# $res.Code 0 alone is vacuous: this hook exits 0 on every path by design, so
+# that assertion is green even if the hook silently did nothing (or crashed
+# into the empty catch — see case 6's note below). Outside a repo there is no
+# root to read memory-bank/context.md from, but the deployment's own core file
+# ($d has real content) is still readable and still emitted in full — assert
+# that positively, alongside the exit code.
 $nogit = Join-Path ([IO.Path]::GetTempPath()) ("mbnogit-" + [guid]::NewGuid().ToString('N').Substring(0, 8)); New-Item -ItemType Directory -Path $nogit | Out-Null
 $res = Invoke-Hook $d $nogit 'SessionStart'
 Assert-Eq $res.Code 0 'no git → exit 0'
+Assert-Match $res.Out '<contract-core>' 'no git → core is still emitted (not a silent no-op or a crash)'
 
-Remove-Item -Recurse -Force $d, $d2, $d3, $r, $r2, $nogit
+# 11. path traversal in the pinned slug must not reach the filesystem.
+# context.md's Work item value is attacker-reachable text (contract-inject.ps1
+# only re-renders known keys from it, never echoes it verbatim) and it used to
+# flow straight into Join-Path: a slug of "x/../../../../outside" resolved to a
+# ledger several directories above the repo. Plant a real progress.md there,
+# at the exact path the unguarded code would have read, and confirm the hook
+# refuses to open it — no <now-block>, and (paired positive assertion, so this
+# cannot pass merely because the hook produced nothing or crashed) the core and
+# context pin are still emitted normally.
+$rTrav = New-Repo "# Context`n`n## Active Work`n`n- **Work item:** x/../../../../outside`n"
+$outsideDir = Join-Path (Split-Path -Parent $rTrav) 'outside'
+New-Item -ItemType Directory -Force -Path $outsideDir | Out-Null
+$leak = "# Ledger`n<!-- UMS-NOW BEGIN -->`nState: LEAKED-FROM-OUTSIDE`nWaiting on: nobody`nSince: 2026-09-17T09:00:00Z`nDue: 2026-09-17T09:30:00Z`nTask: 0 — n/a`nLook at: nowhere`n<!-- UMS-NOW END -->`n"
+[IO.File]::WriteAllText((Join-Path $outsideDir 'progress.md'), $leak, (New-Object Text.UTF8Encoding($false)))
+$json = (Invoke-Hook $d $rTrav 'SessionStart').Out | ConvertFrom-Json
+Assert-Match $json.hookSpecificOutput.additionalContext '<contract-core>' 'traversal slug: core is still emitted'
+Assert-Match $json.hookSpecificOutput.additionalContext 'Work item:\*\* x/\.\./\.\./\.\./\.\./outside' 'traversal slug: context pin is still re-rendered'
+Assert-True (-not ($json.hookSpecificOutput.additionalContext -match '<now-block>')) 'traversal slug → no NOW block'
+Assert-True (-not ($json.hookSpecificOutput.additionalContext -match 'LEAKED-FROM-OUTSIDE')) 'traversal slug → outside ledger content never reaches the payload'
+Remove-Item -Recurse -Force $outsideDir
 
-# 11. registration shape check: SessionStart, PostCompact and UserPromptSubmit
+# 12. production invocation shape: stdin JSON, no -Event at all.
+$json = (Invoke-HookStdin $d $r '{"hook_event_name":"SessionStart"}').Out | ConvertFrom-Json
+Assert-Eq $json.hookSpecificOutput.hookEventName 'SessionStart' 'stdin route: event name recovered from JSON'
+Assert-Match $json.hookSpecificOutput.additionalContext '<contract-core>' 'stdin route: payload is produced, not just a non-crash'
+
+Remove-Item -Recurse -Force $d, $d2, $d3, $r, $r2, $rTrav, $nogit
+
+# 13. registration shape check: SessionStart, PostCompact and UserPromptSubmit
 # all name this hook (Step 6 of the task brief — a shape check, not a new suite).
 $settingsPath = Join-Path $PSScriptRoot '..\..\settings.json'
 $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding utf8 | ConvertFrom-Json
