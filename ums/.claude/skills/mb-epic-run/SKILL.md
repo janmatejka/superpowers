@@ -431,12 +431,12 @@ In this order, and the order is the point.
    nothing. Re-run `pool-status.ps1` and require a record for that slot with
    `session.state == live`.
 
-   **Give the session a few seconds, and retry once.** A probe fired the
-   instant the launcher returns can legitimately read `none` — the child has
-   not registered yet — and reporting that as "no session appeared" is a false
-   alarm on a healthy launch. Wait briefly, probe, and on `none` or `unknown`
-   wait once more and probe again. Two negative probes are the finding; one is
-   noise.
+   Wait on a CONDITION, not on a count of probes: re-run pool-status.ps1 every
+   30 s for up to 5 minutes until the slot's session.state == live; while
+   waiting report „čekám na registraci sezení (Ns)", never „neobjevilo se".
+   Only the timeout is the finding: „žádné nové sezení se neobjevilo do 5
+   minut — ověř na obrazovce". Measured 2026-09-17: two probes ~40 s apart
+   both read none for a session that registered later.
 
    Either report „sezení potvrzeno" or „**žádné nové sezení se neobjevilo —
    ověř na obrazovce**". Never report „spuštěno" as „běží".
@@ -444,6 +444,24 @@ In this order, and the order is the point.
    no `⚠ Transcript saving is off` in the status line, and is the WHOLE prompt
    in the first input? Into Jira the ticket goes as running only after the
    first commit on its branch.
+
+### Addressing a session
+
+Two registries answer different questions, and neither alone proves a
+session's absence. `ListAgents` (or `claude agents --json`) enumerates live
+processes with their `cwd`, `sessionId`, and `kind`; the desktop's
+`list_sessions` carries titles and session state instead. A session missing
+from one registry may still be present in the other — check both before
+concluding a session does not exist.
+
+An agent's NAME rotates; the identity that persists across that rotation is
+its `sessionId`. Before every send, re-resolve the name against `cwd` +
+`sessionId` — a name reused for a different session receives the wrong
+message, and this is not hypothetical: a real handoff in this repository was
+delivered to a name that later resolved to a different session.
+
+A ruling reaches the ledger before any message mentions it, and the message
+carries the SHA (contract, "Message Protocol").
 
 ### `attach <TIKET>`
 
