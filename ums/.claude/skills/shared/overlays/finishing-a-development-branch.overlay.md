@@ -189,10 +189,18 @@ After the user chooses and BEFORE executing the choice:
   - **Harvest.** Run the harvest above, commit its Memory Bank changes and push
     the ticket branch.
   - **Publish.** `git fetch origin` and `git merge <effective base>` once
-    more — the base may have moved while the harvest ran — and push. When the
-    ticket belongs to an epic, this push already includes the per-ticket
-    epic file's `## Předání` line, committed before this point per the
-    Handoff phase below (contract/epic-backflow.md, "The per-ticket epic file").
+    more — the base may have moved while the harvest ran. **Before this
+    phase's push:** when the ticket belongs to an epic (Jira `parent`, or the
+    design header's `- **Epic:**` line), verify that
+    `memory-bank/epics/<epic_snake>/tickets/<TICKET>.md` already carries a
+    `## Předání` line for this handoff and is committed on the ticket branch;
+    if it is not, write it now and commit it — `<sha>` the merged tree's
+    current `HEAD`, `<báze>` = `$base.Branch`, `<příkazy>` = `$verificationSet`,
+    `<n>` = the outgoing commit count (`git rev-list <effective base>..HEAD
+    --count`) — so the line is part of what this push carries
+    (contract/epic-backflow.md, "The per-ticket epic file"). A ticket with no
+    epic writes nothing here and misses nothing, same as everywhere else this
+    file is mentioned. Only THEN push.
   - **Green verification** on the merged tree: **run `$verificationSet` —
     those commands, verbatim, in that order.** That is what "green" means for
     this work item; it is not "the build and tests you would have picked", and
@@ -338,7 +346,7 @@ After the user chooses and BEFORE executing the choice:
     on a non-matching base it sends no message to any manager. Exactly one
     rendering happens — never both, never neither.
 
-    When the ticket belongs to an epic (Jira parent, or the design header's Epic line), append one line to memory-bank/epics/<epic_snake>/tickets/<TICKET>.md, section ## Předání — date, <sha>, destination branch, the verification commands, the outgoing commit count — and commit it on the ticket branch BEFORE the Publish phase's final push, so the handoff travels with the integration (contract/epic-backflow.md, "The per-ticket epic file"). This is the handoff artifact for a ticket that integrates without an epic line; the message to the manager, where there is one, is an acceleration over it.
+    When the ticket belongs to an epic (Jira parent, or the design header's Epic line), the line for this handoff — date, <sha>, destination branch, the verification commands, the outgoing commit count — was already appended to memory-bank/epics/<epic_snake>/tickets/<TICKET>.md, section ## Předání, and committed by the Publish phase above, before its final push (contract/epic-backflow.md, "The per-ticket epic file") — this phase does not write it again, it only reads what Publish already carried into the integration. This is the handoff artifact for a ticket that integrates without an epic line; the message to the manager, where there is one, is an acceleration over it.
   - **Confirmation.** Re-verify reachability **from the base ref** after the
     push landed, whoever ran it: `git fetch origin`, then
     `git merge-base --is-ancestor <sha> <effective base>` (non-zero exit = the
