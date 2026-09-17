@@ -355,6 +355,36 @@ removes (resume) the `Review:` line only. The v1 fields `Status`, `Run Mode`,
 `Execution Mode`, `Loop Mode`, `Affected MBs`, `Implementation Checklist` and
 `Auto Loop State` are abolished — do not write them; ignore them in stale files.
 
+## Session Eligibility
+
+Phase 0 of the entry gate (Workspace Discipline), run at session start and
+again at the start of `finishing-a-development-branch`. Fail-closed except
+where stated:
+
+- `git fetch origin` — hard failure.
+- The resolved `pre-push` (`git rev-parse --git-path hooks/pre-push`) exists,
+  carries the marker `UMS pre-push guard (Publication Contract)` within its
+  first five lines, at a version no lower than the layer's own source header
+  (`ums/.claude/hooks/pre-push`, line 2) — compared by ORDERING via
+  `Get-UmsHookVersion.ps1`, never by equality against a literal, so a stale
+  layer copy cannot downgrade a newer installed hook. Lower or absent: run
+  `install-git-hooks.ps1` and recheck, not proceed. `ums-repo.json` is
+  informational only.
+- The synthetic self-check, both halves, in THIS session's own environment.
+  The rejecting line MUST use an UNPUBLISHED commit — a dangling object made
+  with `git commit-tree`, never an already-published tip, which the content
+  rule would let through for the wrong reason: piping
+  `refs/heads/<protected> <dangling-sha> refs/heads/<protected> <head-sha>`
+  into `pre-push origin verify` must exit NON-ZERO with a `UMS:` message;
+  passing means the agent-session marker is absent in this harness and the
+  guarantee does not bind this session. The mirror line
+  `refs/heads/UMS-0000-probe <dangling-sha> refs/heads/UMS-0000-probe
+  0000000000000000000000000000000000000000` must exit ZERO, silently; failing
+  means the hook does not run here at all (wrong shebang, missing execute
+  bit, different location) and its rejections prove nothing either.
+
+Either failure is a STOP for any work ending in a push.
+
 ## MB Context Reading Rule
 
 Before proposing approaches (brainstorming) and before writing the implementation

@@ -106,36 +106,8 @@ Leftovers split in two:
 
 **Entry gate**, in four phases:
 
-0. **Eligibility**, fail-closed except where stated: `MB_ROOT`, `memory-bank/`,
-   `git fetch origin`, and a **fail-closed check that the publication guarantee
-   applies to THIS session** — the resolved `pre-push` exists, carries the
-   marker `UMS pre-push guard (Publication Contract)` within its first five
-   lines with a version no lower than the layer's own source header
-   (`ums/.claude/hooks/pre-push`, line 2), and rejects a synthetic
-   protected-branch line **run in this session's own
-   environment** — together with the mirror-image accept case the Publication
-   Contract prescribes beside it, because a hook that cannot execute at all
-   "rejects" everything while still carrying its marker line.
-   A protected-branch line that PASSES means the agent-session marker
-   is absent in this harness, so the hook disables itself here: that is a
-   missing guarantee, reported as such. A hook older than the layer's own
-   source header is repaired by re-running `install-git-hooks.ps1` and
-   re-checking, not by proceeding.
-   The same check runs at session start and again at the beginning of
-   `finishing-a-development-branch`, because the session that integrates never
-   passes this gate.
-   `core.hooksPath` is inspected but is **informational**: the hook check resolves
-   through `git rev-parse --git-path hooks/pre-push`, which honours
-   `core.hooksPath`, so a marked hook found there is the hook git will actually
-   execute — the value does not bypass anything. An **absolute** value is reported
-   as a **scope** warning (the hooks directory is shared with other repositories,
-   so an install or a removal there reaches all of them, and the file may have been
-   placed there by another repository), and the marker check is what settles that
-   provenance. The repository configuration is inspected here too,
-   but the item is **informational only** — a missing `ums-repo.json` is reported
-   once ("built-in defaults apply", Repository Configuration) and never blocks
-   entry, because a repository that has not been migrated yet must still be
-   workable. The hook check and the fetch stay hard failures.
+0. Phase 0 is the core's (contract, "Session Eligibility"); the phases below
+   assume it passed.
 1. **Leftover inventory** per the split above.
 2. **Exactly one user decision**, and only when something non-recoverable is in
    the way: **park** it or **discard** it, with the confirmation spelled out.
