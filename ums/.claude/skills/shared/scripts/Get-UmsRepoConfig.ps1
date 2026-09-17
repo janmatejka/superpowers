@@ -34,6 +34,7 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
         ProjectMarkers    = @()
         SharedRoots       = @()
         EpicBranchPattern = ''
+        PermalinkTemplate = ''
         Source            = 'default'
     }
 
@@ -86,6 +87,13 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
     # failure mode below, which is only an analogy, not this key's own.
     if ($propNames -contains 'epicBranchPattern' -and $json.epicBranchPattern -is [string] -and $json.epicBranchPattern.Trim() -ne '') {
         $cfg.EpicBranchPattern = [string]$json.epicBranchPattern
+    }
+    # permalinkTemplate: contract "Permalinks". Same -is [string] guard as
+    # epicBranchPattern above — a non-string value (e.g. a JSON number) must
+    # degrade to the safer default (empty, meaning "derive from origin
+    # host") rather than crash on .Trim() or silently stringify.
+    if ($propNames -contains 'permalinkTemplate' -and $json.permalinkTemplate -is [string] -and $json.permalinkTemplate.Trim() -ne '') {
+        $cfg.PermalinkTemplate = [string]$json.permalinkTemplate
     }
     foreach ($pair in @(
             @{ Key = 'protectedBranches'; Field = 'ProtectedBranches' },

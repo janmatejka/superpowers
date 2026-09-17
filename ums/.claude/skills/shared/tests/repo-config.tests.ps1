@@ -141,4 +141,22 @@ $r = New-ConfigFixture '{ "epicBranchPattern": 42 }'
 Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'nestringova hodnota degraduje na prazdno, nestringifikuje se'
 Remove-Item -Recurse -Force $r
 
+# ---------------------------------------------------------------------------
+# permalinkTemplate (task 15 of UMS-3551).
+# ---------------------------------------------------------------------------
+Write-Host "== permalinkTemplate: soubor se sablonou -> PermalinkTemplate rovno"
+$r = New-ConfigFixture '{ "permalinkTemplate": "https://git.example/{sha}/{path}" }'
+Assert-Eq (Get-UmsRepoConfig $r).PermalinkTemplate 'https://git.example/{sha}/{path}' 'permalinkTemplate se nacte z konfigurace'
+Remove-Item -Recurse -Force $r
+
+Write-Host "== permalinkTemplate: chybejici klic -> prazdno"
+$r = New-ConfigFixture '{ "baseRef": "origin/develop" }'
+Assert-Eq (Get-UmsRepoConfig $r).PermalinkTemplate '' 'chybejici permalinkTemplate degraduje na prazdno'
+Remove-Item -Recurse -Force $r
+
+Write-Host "== permalinkTemplate: cislo misto stringu -> prazdno"
+$r = New-ConfigFixture '{ "permalinkTemplate": 42 }'
+Assert-Eq (Get-UmsRepoConfig $r).PermalinkTemplate '' 'nestringova hodnota degraduje na prazdno, nestringifikuje se'
+Remove-Item -Recurse -Force $r
+
 Complete-Tests
