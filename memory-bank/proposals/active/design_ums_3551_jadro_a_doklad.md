@@ -183,13 +183,23 @@ artefakty, které pravidlo tvoří):
 
 ### 3. Mechanické načtení jádra
 
-- `SessionStart` (všechny zdroje startu) a `PostCompact` volají
-  `contract-inject.ps1` místo dnešního `echo` s pokynem „přečti si soubor".
-- Hook emituje `additionalContext` s obsahem: jádro kontraktu doslova; obsah
-  `memory-bank/context.md`; blok `NOW` aktivního plánu, existuje-li ledger
-  slugu z pinu; a pokyn vyvolat `using-superpowers` a znovu skill, který
-  sezení vykonává. Payload je anglický (Language Contract, hook s výstupem
-  pro model).
+- `SessionStart` (všechny zdroje startu), `PostCompact` a `UserPromptSubmit`
+  volají `contract-inject.ps1` místo dnešního `echo` s pokynem „přečti si
+  soubor". Hook pozná událost z `hook_event_name` na stdin.
+- `SessionStart` emituje `additionalContext` s obsahem: jádro kontraktu
+  doslova; obsah `memory-bank/context.md`; blok `NOW` aktivního plánu,
+  existuje-li ledger slugu z pinu; a pokyn vyvolat `using-superpowers` a
+  znovu skill, který sezení vykonává. Payload je anglický (Language
+  Contract, hook s výstupem pro model).
+- `PostCompact` `additionalContext` nepřijímá (dokumentace hooků Claude
+  Code, ověřeno 2026-09-17; přijímá jen `systemMessage`). Hook proto zapíše
+  marker `.superpowers/contract-reload.flag` a emituje `systemMessage`
+  s pokynem načíst jádro znovu.
+- `UserPromptSubmit`: existuje-li marker, hook vloží jádro stejným
+  `additionalContext` jako při startu a marker smaže; jádro se tak vrací
+  mechanicky s prvním promptem po kompaktaci. Mezi kompaktací uprostřed tahu
+  a dalším promptem nese spolehlivost pokyn ze `systemMessage` a
+  znovuvyvolání skillu, který referenci načte znovu.
 - Blok `NOW` a cokoli vyzdvižené z ledgeru prochází stejným uzavřeným
   re-renderem a stejnou znakovou třídou jako baton (reference
   `session-intent-baton.md`, „Reader safety").
@@ -206,7 +216,8 @@ artefakty, které pravidlo tvoří):
   `contract-inject.tests.ps1`: platný JSON, jádro přítomné celé, `NOW` blok
   přítomný jen s ledgerem slugu z pinu, chybějící jádro → fallback pokyn,
   chybějící `context.md` → jádro přesto, znaková třída odmítne formátovací
-  znaky, mez payloadu.
+  znaky, mez payloadu, `PostCompact` zapíše marker, `UserPromptSubmit`
+  s markerem vloží jádro a marker smaže, bez markeru mlčí.
 
 ### 4. Granularita pracovní položky
 
