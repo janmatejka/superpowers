@@ -6,6 +6,7 @@
 - **Zdroj položek:** <repo-relativní cesta k dokumentu nálezů/požadavků, např. Doc/security-risk-assessment.md>
 - **Založeno:** <YYYY-MM-DD>
 - **Poslední aktualizace:** <YYYY-MM-DD> (okno <W##>)
+- **Ověřeno proti:** <větev>@<sha>, <YYYY-MM-DD> — stav větví, proti kterému správce naposledy přeměřil ledger; po kompaktaci kontextu je to první řádek, který se přečte
 - **Graf závislostí:** generuje se z Jira linků (Jira) nebo z proposal odkazů (Proposals) skillem `mb-epic-graph` — nikdy needitovat ručně
 
 > **Pravidla údržby.** Každá položka má právě jednoho vlastníka — Jira klíč
@@ -74,6 +75,17 @@ sloupec zůstává v každé tabulce poslední.
 | Tiket | Datum | Slot | Verdikt | Draft (větev + cesta) | Autonomie | Pasti |
 |-------|-------|------|---------|-----------------------|-----------|-------|
 | <UMS-0000> | <YYYY-MM-DD> | <jméno slotu nebo —> | <rozjeto \| odloženo \| selhalo> | <větev> @ <cesta k draftu> | <dohled \| sdílená \| delegovaná \| —> | <krátce, co může překvapit> |
+
+## Podlaha testů
+
+Podlaha je množina jmen toho, co je červené PRÁVĚ TEĎ — ne číslo. Číslo
+nejde příštím sezením přeměřit, nejde přiřadit ke stromu, na kterém bylo
+naměřeno, a nejde odškrtnout; číslo napočtené na jiném stromu (jiná větev,
+jiná konfigurace) není podlaha vůbec.
+
+| Test (jméno) | Stav | Naměřil (tiket) | Podmínky běhu | Pozn. |
+|---|---|---|---|---|
+| <jméno testu> | <červený \| náladový> | <UMS-0000> | <strom, konfigurace, datum> | |
 
 ## Ověřovací sada
 

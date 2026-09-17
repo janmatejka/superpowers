@@ -101,4 +101,21 @@ Assert-NotMatch $rb.Out 'UMS-5003.*rozjeto' 'a spawn row too short to carry the 
 # this report, so the filter and a named inconsistency go together.
 Assert-Match $rb.Out 'Řádek rozjetí «UMS-5003» nemá dost sloupců' 'a row the filter removed is still reported by name'
 Assert-Match $rb.Out 'UMS-5003.*nalezeno: 4, potřeba nejméně 6' 'and the message says how many cells it found and how many are needed'
+
+# --- section Podlaha testů ----------------------------------------------------
+# A test floor is a set of NAMES of what is red right now, never a number: a
+# numeric first cell, a cell promising names will arrive later ("dodá"), and a
+# row with no run conditions are each their own finding. The header's own
+# "Ověřeno proti" bullet is checked alongside it because both answer the same
+# question ("is this evidence current"); its absence is a NOTE, not an issue.
+$script = Join-Path $PSScriptRoot '..\scripts\ledger-status.ps1'
+$fixtures = Join-Path $PSScriptRoot 'fixtures'
+$floorOut = (& pwsh -NoProfile -File $script -LedgerFile (Join-Path $fixtures 'ledger_floor.md') 2>&1 | Out-String)
+Assert-Match $floorOut '## Podlaha testů \(3\)' 'sekce podlahy je vypsaná s počtem řádků'
+Assert-Match $floorOut 'Podlaha testů musí být množina jmen testů, ne číslo: «8/705/12/725»' 'číselná podlaha je issue'
+Assert-Match $floorOut 'slibuje jména, která nedorazila' 'slib bez jmen je issue'
+Assert-Match $floorOut 'nemá podmínky běhu' 'chybějící podmínky jsou issue'
+Assert-Match $floorOut 'Hlavička nenese „Ověřeno proti"' 'chybějící Ověřeno proti je poznámka'
+Assert-True (-not ($floorOut -match 'ChannelResync_ReconnectsAfterDrop.*issue')) 'pojmenovaný test s podmínkami issue nedostane'
+
 Complete-Tests

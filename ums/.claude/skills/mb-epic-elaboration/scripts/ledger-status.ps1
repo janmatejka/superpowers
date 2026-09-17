@@ -55,6 +55,7 @@ if (@($tickets).Count -eq 0) { $tickets = Get-UmsLedgerSectionTable $lines 'Tike
 $windows = Get-UmsLedgerSectionTable $lines 'Okna'
 $dirty   = Get-UmsLedgerSectionTable $lines 'Dirty-set'
 $spawns  = Get-UmsLedgerSectionTable $lines 'Rozjetí'
+$floor   = Get-UmsLedgerSectionTable $lines 'Podlaha testů'
 $verificationSet  = Get-UmsLedgerVerificationSet -LedgerPath $LedgerFile
 $decisionRegistry = Get-UmsLedgerDecisionRegistry -LedgerPath $LedgerFile
 
@@ -116,6 +117,32 @@ foreach ($s in $spawns) {
     }
 }
 
+# --- "Ověřeno proti" header bullet -------------------------------------------
+# Read the same way as the '- **Epic:**'/'- **Autonomie:**' bullets above: a
+# local single-pass regex over $lines, not a new shared parser, because this
+# is one bullet consumed only here. Its absence is a NOTE, not an issue: an
+# epic without the bullet yet is not inconsistent, just undated — the note
+# says so without failing the gate the way a Nekonzistence would.
+$notesFound = @()
+$overenoProti = ''
+foreach ($ln in $lines) {
+    if ($ln -match '^\s*-\s+\*\*Ověřeno proti:\*\*\s*(.*)$') { $overenoProti = $Matches[1].Trim(); break }
+}
+if (-not $overenoProti) {
+    $notesFound += 'Hlavička nenese „Ověřeno proti" — stav větví není datovaný.'
+}
+
+# --- Podlaha testů (test floor) -----------------------------------------------
+# A floor row must be a NAME of what is red now, never a number (unmeasurable
+# by the next session), never a promise that names "will follow" (dodá — the
+# row is dirty until they arrive), and never without run conditions (a red
+# test without the tree/config it was measured on is not evidence).
+foreach ($f in @($floor | Where-Object { $_.Count -ge 1 -and $_[0] -and $_[0] -notmatch '^<' })) {
+    if ($f[0] -match '^[\d\s/]+$') { $issuesFound += "Podlaha testů musí být množina jmen testů, ne číslo: «$($f[0])»" }
+    elseif ($f[0] -match 'dodá') { $issuesFound += "Řádek podlahy «$($f[0])» slibuje jména, která nedorazila" }
+    if ($f.Count -lt 4 -or [string]::IsNullOrWhiteSpace($f[3])) { $issuesFound += "Řádek podlahy «$($f[0])» nemá podmínky běhu" }
+}
+
 # --- duplicate item IDs (partition violation) --------------------------------
 $dupIds = @($items | Group-Object { $_[0] } | Where-Object Count -gt 1)
 foreach ($d in $dupIds) { $issuesFound += "Duplicitní položka «$($d.Name)» ($($d.Count)×) — porušení disjunktního rozkladu." }
@@ -168,6 +195,7 @@ foreach ($s in $spawns) {
 $epicLine = ($lines | Where-Object { $_ -match '^\s*-\s+\*\*Epic:\*\*' } | Select-Object -First 1)
 Write-Output "# Stav evidence ledgeru"
 if ($epicLine) { Write-Output $epicLine.Trim() }
+if ($overenoProti) { Write-Output "Ověřeno proti: $overenoProti" }
 Write-Output ''
 Write-Output "## Položky ($($items.Count) celkem)"
 foreach ($s in $byState) { Write-Output ("- {0}: {1}" -f $s.Name, $s.Count) }
@@ -205,6 +233,16 @@ foreach ($s in $spawns) {
     Write-Output ("- {0} ({1}): {2}, slot {3}{4}{5}" -f $s[0], $s[1], $s[3], $s[2], $auto, $trap)
 }
 Write-Output ''
+$floorRows = @($floor | Where-Object { $_.Count -ge 1 -and $_[0] -and $_[0] -notmatch '^<' })
+Write-Output "## Podlaha testů ($($floorRows.Count))"
+if ($floorRows.Count -eq 0) { Write-Output '- žádná' }
+foreach ($f in $floorRows) {
+    $stav      = if ($f.Count -ge 2) { $f[1] } else { '' }
+    $namerenTiket = if ($f.Count -ge 3) { $f[2] } else { '' }
+    $podminky  = if ($f.Count -ge 4) { $f[3] } else { '' }
+    Write-Output ("- {0} — {1}, {2}, {3}" -f $f[0], $stav, $namerenTiket, $podminky)
+}
+Write-Output ''
 Write-Output "## Ověřovací sada ($($verificationSet.Count))"
 if ($verificationSet.Count -eq 0) { Write-Output '- žádná (sada není deklarována)' }
 foreach ($cmd in $verificationSet) { Write-Output "- $cmd" }
@@ -221,6 +259,11 @@ if ($issuesFound.Count -gt 0) {
     foreach ($i in $issuesFound) { Write-Output "- $i" }
     Write-Output ''
     $script:ExitCode = 2
+}
+if ($notesFound.Count -gt 0) {
+    Write-Output '## Poznámky'
+    foreach ($n in $notesFound) { Write-Output "- $n" }
+    Write-Output ''
 }
 Write-Output '## Doporučení dalšího okna'
 if ($dirtyOpen.Count -gt 0) {
