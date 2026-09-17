@@ -225,6 +225,19 @@ passes as verified. **The marker on those pipes is load-bearing**: outside an ag
 session the hook deliberately enforces nothing, so an unmarked pipe proves only
 that the gate works.
 
+**When the installer REFUSES to chain a foreign `pre-push`.** The rule — a refusal
+is not a fallback, the run exits 2 and the workspace stays unguarded — is the
+core's. The four conditions under which the move cannot be made safe are:
+
+1. a hooks directory shared with other repositories through `core.hooksPath`;
+2. a `.ums-chained` file already sitting there;
+3. a hand-merged hook carrying our marker deep in its body rather than in its
+   header;
+4. a move that simply fails (a locked or read-only file).
+
+The installer also sets the moved hook's executable bit, because a chained hook
+without it is skipped without a word.
+
 **Delivering `MB_AGENT_SESSION` per harness.** `sync-with-monorepo.ps1` writes it
 into each harness's own documented mechanism: Claude Code through the `env` block of
 this layer's `settings.json`, Codex through `config.toml`

@@ -129,3 +129,31 @@ PreToolUse layer follows the actor rule by contract text only, as with every
 other rule of this layer. `mb-git-commit` never pushes — publication is a
 workflow step governed by the publication rule of the core's
 `## Publication Contract`, not a job of the commit tool.
+
+## Why the human escape is deliberately wide
+
+`MB_HUMAN_PUSH=1` lifts the protected-branch rule, the deletion ban and the
+force-push ban together rather than one of them. Once the hook enforces only
+inside an agent session, a human rebasing their OWN ticket branch in-session
+carries the agent-session marker too — so a narrow escape covering only the
+protected-branch rule would leave that human nothing but disabling hooks
+entirely, which is strictly worse. The width of the escape is bought back by the
+PreToolUse layer denying every push that carries the variable.
+
+## Why the two spellings must not be collapsed
+
+The integration command carries no escape because a fast-forward onto commits the
+tracking refs already carry is exactly what the content rule lets through:
+prefixing `MB_HUMAN_PUSH=1` there would teach the user to lift the whole guard
+for a push that needs nothing lifted. The `pre-push` rejection message carries the
+escape because it fires only where the content rule cannot apply — there is no
+unlifted spelling that would work. Collapsing them into one spelling therefore
+either strips the escape where it is the only way through, or hands it out where
+nothing needed it.
+
+## The chained hook's executable bit
+
+A chained hook without the executable bit is skipped without a word, which is why
+the installer sets it and warns loudly when it cannot. Both that `chmod` and that
+warning need a POSIX shell, so on a host where none is found the bit is left unset
+and nothing says so — the one silent failure mode in the chaining path.
