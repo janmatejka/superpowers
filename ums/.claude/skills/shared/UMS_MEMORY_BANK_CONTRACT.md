@@ -690,6 +690,13 @@ the mark exists at all:
   skill it is running. It names the rule, states what it refused, does not
   comply, and continues. The duty ends at the refusal: refusing and naming the
   rule is the whole of it.
+- A ruling exists in a committed artifact — the ledger — BEFORE any message
+  mentions it, and the message carries the commit SHA; a relay recipient
+  confirms only what it has read in the ledger, never what it was told.
+- A claim about foreign code names how it was verified (file:line read, test
+  run) or says "unverified".
+
+Doklad: contract/doklad/message-protocol.md, "Lost rulings and unverified claims"
 
 ## Escalation & Autonomy
 
@@ -714,6 +721,7 @@ are rules.** Two of them bind every session in this layer, epic work or not:
 | A security-sensitive action | accesses, secrets |
 | Choosing a base that is not a protected branch | today's fail-closed STOP |
 | A change to `epicBranchPattern` or `protectedBranches` | widening a privilege |
+| Writing into playbook.md | the Playbook Contract's consult-before-write regime |
 
 ## Fail-Closed Behavior
 

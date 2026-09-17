@@ -125,3 +125,20 @@ text of the rule and costs nobody a decision, so it is no band's business.
 Only where the rule is GENUINELY ambiguous is there a question at all, and that
 question goes to the HUMAN, never to the manager — the manager is a party to
 that dispute.
+
+### Ledger evidence rules
+
+**(a)** A failing-test floor is a set of NAMES, never a number. A row that
+promises "names will follow" is a dirty row until the names arrive —
+`ledger-status.ps1` reports it as such.
+
+**(b)** Every measured number in the ledger carries its run conditions: the
+tree, a clean vs. a batch hub run, and the date.
+
+**(c)** A ruling that defers work onto another ticket is a dirty-set row owned
+by THAT ticket, and it names what happens if that ticket finishes first.
+`mb-epic-run integrate` and the Handoff gate print open rows naming the
+integrating ticket.
+
+**(d)** The ledger's header carries `Ověřeno proti: <branch>@<sha>, <datum>`,
+and a ticket description's mirror carries the same fetch stamp.

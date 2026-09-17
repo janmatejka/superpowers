@@ -11,6 +11,22 @@ it; the orchestrator did not. Everything the core's `## Message Protocol` and
 contract/message-protocol.md say follows from that sentence, and none of it is
 about how often anyone writes.
 
+## Lost rulings and unverified claims
+
+**Measured on UMS-3517: three rulings existed only in messages before they
+existed in the ledger**, and each one had to be re-derived or re-asked for
+because the message that first carried it was gone by the time anyone went
+looking for it. A ruling is only as durable as the artifact it lives in; a
+chat turn is not that artifact.
+
+**The same epic produced the case for naming verification.** A claim about
+`switch_channel.c:1005` — foreign code, not the claimant's own — was carried
+forward messages at a time without anyone having opened the file at that line
+or run a test against it. The line number by itself reads as evidence; it is
+not evidence unless a read or a run stands behind it, and the rule this session
+draws from it is exact: name the file:line read or the test run, or say
+"unverified".
+
 ## The measured case behind the cause rule
 
 **The measured case behind the cause rule, because without it the rule reads as
