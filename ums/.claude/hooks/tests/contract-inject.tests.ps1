@@ -4,14 +4,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $hookSrc = Join-Path $PSScriptRoot '..\contract-inject.ps1'
 
-function New-Deployment([string] $CoreText) {
+function New-Deployment($CoreText) {
     $d = Join-Path ([IO.Path]::GetTempPath()) ("mbinject-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path (Join-Path $d 'hooks'), (Join-Path $d 'skills\shared') | Out-Null
     Copy-Item $hookSrc (Join-Path $d 'hooks\contract-inject.ps1')
     if ($null -ne $CoreText) { [IO.File]::WriteAllText((Join-Path $d 'skills\shared\UMS_MEMORY_BANK_CONTRACT.md'), $CoreText, (New-Object Text.UTF8Encoding($false))) }
     return $d
 }
-function New-Repo([string] $ContextText) {
+function New-Repo($ContextText) {
     $r = Join-Path ([IO.Path]::GetTempPath()) ("mbrepo-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path (Join-Path $r 'memory-bank'), (Join-Path $r '.superpowers') | Out-Null
     git -C $r init -q
