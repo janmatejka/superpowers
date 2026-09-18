@@ -29,6 +29,17 @@ Zelená sada končí řádkem `<N> passed` a nulovým exit kódem; při selhán�
   doběhla v rámci timeoutu 600000 ms. To ale dokazuje jen bezpečnost náhrady
   pro průběžné ověřování; u citace vůči Handoff bráně je rozhodující shoda
   s deklarovaným textem, ne funkční ekvivalence.
+- **Deklarovaný ověřovací příkaz obsahující `\"` spolu s `$(...)`/`$var` spusť
+  přes `cmd.exe /c` (Windows) — příkazový TEXT zůstává doslovný (to je to, co
+  Handoff brána porovnává), mění se jen spouštěč.** Neopravuj escaping
+  v plánu uprostřed exekuce: citovaný text je předmět porovnání a editace ho
+  rozbije proti každému dřívějšímu měření.
+  Proč: `\"` je MSVCRT argv escaping. Bash na stejném příkazu udělal command
+  substituci uvnitř uvozovek (`/usr/bin/bash: line 1: unsetenv.FullName:
+  command not found`); PowerShell ukončil řetězcový literál na prvním `\"`
+  (backslash není v PowerShellových řetězcích escape) a spadl na
+  `ParserError: Za unárním operátorem ++ chybí výraz`. `cmd.exe /c` předal
+  příkaz beze změny a ten proběhl správně přes všech 33 sad.
 
 Konvence, které nová sada musí dodržet:
 
@@ -125,6 +136,14 @@ Konvence, které nová sada musí dodržet:
   <soubor>` izolovaně vrátilo jen ten jeden soubor, RED běh selhal přesně
   podle předpovědi briefu a `git stash pop` vše obnovil beze zbytku
   (`git status` čistý mimo zamýšlené změny po popnutí).
+- **Pro RED běh proti hooku, který se v jednom commitu edituje SPOLU se svým
+  colokovaným testem, `git stash push -- <cesta-k-hooku>` (jen ten jeden
+  soubor, bez `--keep-index`) vrátí přesně hook do committnutého stavu
+  s novým test case už na místě** — spusť RED, pak `git stash pop`.
+  Proč: přesně tenhle tvar (hook + colokovaný test upravované ve stejném
+  commitu) potvrdil čistý RED běh proti nezměněnému hooku s novým case
+  přítomným, bez nutnosti rekonstruovat syntetickou „pre-change" verzi hooku
+  ručně nebo sahat po samostatném worktree jen pro poctivou červenou.
 - **Že mutace opravdu proběhla, nikdy neodvozuj z výsledku sady — udělej ji
   sebedokazující.** Vypiš cílový řádek před smazáním, smaž ho podle ČÍSLA
   ŘÁDKU (krátkým Python snippetem, ne `sed`em se shellově escapovaným
@@ -222,6 +241,20 @@ Konvence, které nová sada musí dodržet:
   hodila `Cannot process argument transformation`, tutéž chybu, kterou
   guard měl odstranit, jen jinde — ověř tvar spuštěním sady pod mutací, obě
   varianty vypadají v diffu identicky.
+- **Totéž pravidlo platí na VOLACÍ STRANĚ, ne jen u indexeru: je-li argument
+  `[bool]`-typovaného parametru sestavený jako `(<pipeline-nebo-array-match>).
+  <vlastnost-nebo-srovnání>`, koncové `-eq`/`-gt`/apod. srovnání musí být
+  UVNITŘ TÉŽE vnější závorky jako pipeline, ne jen uvnitř vnitřní.** Bez toho
+  PowerShell zpracuje operátor srovnání a jeho pravou stranu jako DALŠÍ
+  poziční argumenty volání — u striktně typovaného `[bool]` parametru to
+  skončí stejnou `Cannot process argument transformation` chybou, jakou má
+  guard hlídat, jen na jiném místě.
+  Proč: brief navržená aserce `Assert-True (@($slot.reasons) -match '...').
+  Count -eq 1 '...'` by se takhle neparsovala — nezávorkovaný `.Count -eq 1`
+  za paren-wrapped pipeline se váže jako přebytečné poziční argumenty, přesně
+  ta past, kterou existující pravidlo výše řeší, jen tentokrát na straně
+  volání funkce, ne indexu do pole. Chybu zachytil a opravil ruling tasku
+  ještě před spuštěním, ale je to druhý, samostatný výskyt téhož footgunu.
 - **Před psaním indexových guardů spusť mutaci a přečti, KTERÝ index selže
   první — guarduj celou kolekci, kterou mutace zasahuje, ne jen indexy,
   které review vzorkovalo.** Redundantní `Count -ge N` u indexu NECH i tam,
@@ -302,6 +335,39 @@ Konvence, které nová sada musí dodržet:
   „žádný blok": nové případy předávaly parametr, který ještě neexistoval,
   `pwsh` invokaci odmítl, žádný JSON nevznikl a null-safe accessory vrátily
   `$null`. Běh měřil „skript neběžel", ne „hlídka funguje".
+- **Tvrzení briefu „tahle konkrétní asercie je právě teď červená" ověř
+  spuštěním sady v TOMTO běhu, nikdy převzetím z briefu, review nebo z toho,
+  že jiné pravidlo to naznačuje.** Loose substring aserce (celý soubor jako
+  řetězec) může být zelená dřív, než ji task vůbec upraví, protože stejný
+  literál leží jinde v souboru už z dřívějška — předpověď „červená → zelená"
+  se nesplní a task na tom nic nezmění.
+  Proč: floor-line aserce pro `playbook.md` byla `ok` ještě PŘED editem
+  tasku 9 — je to substring match nad celým souborem, ne kontrola konkrétní
+  řádky escalation tabulky, a literál `playbook.md` už ležel jinde v core
+  z dřívějších tasků. Reálný nový řádek floor tabulky tedy nezměnil počet
+  výsledků sady vůbec, přesný opak toho, co brief předpověděl.
+- **Aserce o TABULKOVÉM ŘÁDKU musí číst datové řádky té tabulky, nikdy celý
+  soubor jako řetězec.** `(($lines -join "`n") -match [regex]::Escape($klíč))`
+  zůstane zelená i po smazání řádku s tím klíčem, pokud token klíče existuje
+  ještě jinde v souboru. Spáruj kontrolu KAŽDÉHO klíče („právě jeden řádek")
+  s kontrolou POČTU řádků tabulky — první chytí smazaný řádek, druhá přidaný
+  řádek bez asserčního klíče, ani jedna nechytí to, co chytá ta druhá. Před
+  psaním substring aserce grepni token přes celý soubor a vyžaduj počet 1.
+  Proč: smazání řádku `| Writing into playbook.md | … |` z escalation-floor
+  tabulky nechalo `Assert-True` zelenou — token `playbook.md` se v souboru
+  vyskytuje ještě na 8 dalších řádcích. Náhrada (přečti řádky tabulky, ověř
+  „každý klíč právě v jednom řádku" a „počet řádků == 6") pod stejnou mutací
+  zčervenala s `got '5', want '6'` a `got '0', want '1'`.
+- **V kontrole „X je referencováno odněkud" vylučuj z prohledávané množiny
+  VLASTNÍ soubor X.** Referenční soubor v hlavičce sám sebe cituje
+  (`cite as`), takže bez vyloučení je aserce „každá reference má konzumenta"
+  splněná bezpodmínečně a nemůže zčervenat ani pro throwaway referenci bez
+  jediného externího konzumenta. Ověř throwaway referencí, kterou nic
+  nepoužívá — je to levnější negativní test než mazání reálného konzumenta a
+  nezanechá strom v polorozbitém stavu.
+  Proč: throwaway `zzz-probe.md` bez konzumenta prošel kontrolou nezměněně,
+  dokud scan zahrnoval i vlastní hlavičku souboru; po vyloučení vlastního
+  souboru dala stejná sonda „každá reference má konzumenta: zzz-probe.md".
 - **Počty asercí v dokumentaci vždy získej spuštěním CELÉ sady ve stejném
   sezení jako úpravu**, nikdy aritmetikou nad čísly z review nebo staršího
   zápisu. Nové číslo rekonciliuj proti předchozímu přes delty, které jsi sám
@@ -651,6 +717,65 @@ Konvence, které nová sada musí dodržet:
   chyby a bez varování. Všechny výstupy této vrstvy jsou česky, takže je to
   past, na kterou se tu naráží opakovaně. Kontroluj ji greppem přes celý
   skript, ne jen tam, kde chybu čekáš.
+- **Potřebuje-li `.ps1` v této vrstvě typografickou uvozovku uvnitř řetězce
+  v dvojitých uvozovkách, napiš ji jako `` `u{201E} `` (obecně `` `u{N} ``)
+  a důvod zapiš do komentáře; ověř snippet zápisem do SOUBORU a spuštěním
+  `pwsh -NoProfile -File`, nikdy přes `-Command` s tím znakem na příkazové
+  řádce.**
+  Proč: transkripce briefova shape-suite snippetu se znakem „ v `[`"„]`
+  doslova nešla parsovat (`ParserError … Ve volání metody chybí ).`,
+  exit 1); izolováno na dvou řádcích spadlo i na `Neočekávaný token ]`.
+  PowerShell 7.6.6 bere U+201E jako alternativní ukončovací uvozovku, takže
+  se řetězec uzavře na „. Náhrada `` `u{201E} `` na stejném místě naparsovala
+  a vytiskla `p[„]q` beze změny významu. Testování přes
+  `pwsh -NoProfile -Command '…'` bylo navíc zbytečné: konzolová code page
+  znak cestou do argv potomka zmangluje, takže sonda musí být soubor.
+- **Parametr, kterým se má předávat `$null` jako „žádná hodnota", nikdy
+  nedávej typ `[string]` (ani jiný hodnotový typ) — PowerShell `$null`
+  argument do `[string]`-typovaného parametru tiše převede na `''` PŘED
+  tělem funkce**, takže `if ($null -ne $Param)` uvnitř vidí prázdný řetězec
+  a vyhodnotí ho jako „hodnota byla předána". Nech parametr netypovaný, nebo
+  guardni `[string]::IsNullOrEmpty`.
+  Proč: `New-Repo`/`New-Deployment` deklarovaly `[string] $ContextText`/
+  `[string] $CoreText`; volání s úmyslem „žádný obsah" zapsalo reálný
+  prázdný `context.md` a bisekce k tomu vedla přes falešnou stopu — mylný
+  závěr, že soubor píše proces MIMO session (padlo za tím i hlášení
+  „mystery writer"), než se ukázalo, že je to typová koerce parametru. Past
+  se týká libovolného PowerShellového test helperu, který má tvar
+  `[string]`/`[int]` a znamená „`$null` pro nepřítomné".
+- **Nikdy nepojmenuj lokální proměnnou `$host` (ani `$error`, `$input`,
+  `$args`, `$matches`, `$pwd`, `$true`/`$false`/`$null` a další automatické
+  proměnné)** — kolize se čtenářsky nepozná (vypadá jako běžné lokální
+  přiřazení) a selže až při PRVNÍM volání, ne při parsování.
+  Proč: `$host = $m.Groups['host'].Value.ToLowerInvariant()`
+  v `Get-UmsPermalink.ps1` shodilo novou sadu hned na prvním volání hláškou
+  „Proměnnou Host nelze přepsat, protože je jen pro čtení nebo je konstanta"
+  pod `Set-StrictMode -Version Latest` — automatická proměnná `$Host` (host
+  aplikace) zápis odmítla. Přejmenování na `$originHost` (přiřazení,
+  `$out.Host`, subjekt `switch`, interpolace v `Reason`) obě sady zezelenilo
+  beze změny chování; brief-supplied snippet nebyl bezpečný transkribovat
+  beze spuštění.
+- **Backtick zamýšlený jako markdown code-span uvnitř PowerShellového
+  řetězce v DVOJITÝCH uvozovkách piš zdvojený (`` `` ``), nebo fixturu
+  postav z řetězce v JEDNODUCHÝCH uvozovkách — osamocený backtick
+  následovaný neescapovaným znakem se v double-quoted stringu tiše smaže.**
+  Před důvěřováním asercii nad takovou fixturou izoluj řádek a vytiskni
+  `$s.Length`/`$s.Contains(...)` v zahazovací sondě.
+  Proč: fixtura `"`n**tučné `kód` uvnitř**"` v transkribovaném testu ztratila
+  OBĚ backticky kolem `kód` (`` `k `` a osamocený zpětný apostrof před
+  mezerou nejsou rozpoznané escape sekvence, PowerShell je odstraní), takže
+  asercie „tučné kolem code spanu je nález" selhala i se správnou, doslovnou
+  implementací — fixtura sama nikdy nenesla tvar, který tvrdila.
+- **Test's regex, který potřebuješ vidět bez truncation, nikdy nerekonstruuj
+  přepsáním do throwaway PowerShellového skriptu — spusť REÁLNÝ testovací
+  soubor** (přesměrovaný do ASCII-bezpečného souboru, `pwsh -File ... >
+  out.txt`) a čti TEN výstup.
+  Proč: přepsání shape-testové legacy-citation regexe do throwaway skriptu
+  tiše ztratilo literální backtick (`` `? `` v řetězci v dvojitých
+  uvozovkách je nerozpoznaná escape sekvence, PowerShell backtick zahodí a
+  ponechá následující znak), takže rekonstrukce matchla užší množinu než
+  reálný test a podhodnotila legacy nálezy o 3 (27 místo 28) — rozdíl se
+  odhalil až křížovou kontrolou proti výstupu skutečného testu.
 - **Když hodnota musí být vždy kolekce, obal do `@()` CELÝ výraz, který ji
   produkuje — nikdy jen jednotlivou větev uvnitř něj.** Platí pro
   `Get-Content` (jednořádkový soubor vrací skalární `String`, `.Count` pod
@@ -1043,6 +1168,17 @@ Konvence, které nová sada musí dodržet:
   whitelistem klíčů a byl re-renderován doslovně, čímž předčasně uzavřel
   wrapper; první oprava pokryla jen ASCII hláskování a homoglyf U+2011 ji
   obešel — obojí měřeno end-to-end.
+- **Než se spolehneš na doslovný `Select-String -Path <adresář> ...
+  -Recurse` z briefu, ověř `(Get-Command Select-String).Parameters.Keys`
+  v INSTALOVANÉM PowerShellu — `-Recurse` v této vrstvě (PowerShell 7.6.6)
+  u `Select-String` VŮBEC neexistuje.** Fallback je `Get-ChildItem -Path
+  <adresář> -Recurse -File | Select-String -Pattern ...`; do reportu napiš
+  oba tvary, doslovný i náhradní.
+  Proč: `Select-String -Path ums/.claude -Pattern 'Work Item Granularity'
+  -Recurse` spadlo s `Select-String: Nenašel se parametr odpovídající
+  názvu parametru Recurse` — nešlo o chybu použití, ale o skutečně
+  chybějící parametr v tomto buildu; `Get-ChildItem -Recurse -File |
+  Select-String ...` dal shodný výsledek (4 soubory).
 
 ## Git hooky (POSIX sh)
 
@@ -2088,6 +2224,160 @@ obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
   brief, by pod sebe přeparentoval pět následujících odstavců — včetně
   invariantu, který nová podsekce sama cituje —, protože ta sekce žádnou
   podsekci neměla.
+- **Nadpis úrovně H1 (`# Title`) reference v `contract/`, který duplikuje
+  vlastní `###`/`##` nadpis pod ním, NEMAZAT jako kosmetický duplikát —
+  shape-suita indexuje jen `^#{2,4}\s+`, H1 nikdy.** Před úklidem
+  duplicitního nadpisu v kontraktovém stromu zjisti, které úrovně nadpisů
+  shape-suita indexuje; reference citovaná vlastním titulkem potřebuje ten
+  titulek jako `##`, ne jen jako `#` souboru.
+  Proč: `epic-line.md` nese `# The epic line` přímo nad `### The epic
+  line`; smazání H1 duplikátu by proměnilo zelenou citaci v červenou — tři
+  reference, které nesou titulek JEN jako H1 (`escalation.md`,
+  `message-protocol.md`, `worktree-pool.md`), jsou z přesně tohoto důvodu
+  už červené. Duplikát se místo mazání povýšil `###` → `##`.
+- **Dokumentuj syntax citace ŽIVOU instancí té syntaxe, nikdy
+  metasyntaktickým placeholderem** (`` `(contract, "<section>")` ``).
+  Placeholder prochází stejným scannerem jako každá jiná citace v souboru a
+  shape-suita ho vyhodnotí jako reálnou (rozbitou) citaci.
+  Proč: sekce „Citation & Versioning" s placeholderovým příkladem
+  `` `(contract, "<section>")` `` vyrobila 24. špatnou citaci proti
+  `UMS_MEMORY_BANK_CONTRACT.md` — červenou asserci zplozenou právě větou,
+  která pravidlo vysvětluje. Náhrada živými, rozpoznatelnými příklady
+  (`(contract, "Fail-Closed Behavior")`, `(contract/epic-line.md, "The
+  epic line")`) obě resolvují, takže příklad ověřuje stejný běh, který
+  ověřuje všechno ostatní, a nemůže tiše zestárnout.
+- **Hlavička nové `contract/<jméno>.md` reference v „cite as" příkladu musí
+  jmenovat REÁLNÝ vlastní nadpis souboru** (jako všech 16 existujících
+  referencí), ne generický placeholder typu `"Section"`, i když to brief
+  transkribuje doslova jako fixní text. Než napíšeš hlavičku nové
+  reference, přečti hlavičku existující — placeholder v template slotu se
+  nepřepisuje stejně jako fixní próza.
+  Proč: shape-suitin citační scanner traktuje KAŽDÝ výskyt
+  `(contract/<file>.md, "…")` v celé vrstvě jako citaci k ověření — i
+  uvnitř hlavičky reference, která o citační konvenci jen MLUVÍ. Doslovný
+  placeholder `"Section"` z briefu proto spadl na „každá citace má cíl",
+  protože žádná sekce s tím jménem v souboru neexistuje.
+- **Citaci `(contract[/soubor.md], "Název sekce")` piš celou na JEDNÉ
+  fyzické řádce zdroje — nikdy ji nenech rozlomit editorovým soft-wrapem,
+  vlastním zalomením prózy, ani zalomeným `#`-komentářem v `.ps1`.**
+  Shape-suita čte citace řádkovým regexem, a znaková třída v `[^"]+`
+  matchne i `\n` — zalomená citace se buď stane „citace bez cíle" (regex ji
+  nenajde vůbec), nebo se do uvozovek vtáhne konec řádku místo mezery. Po
+  každé úpravě/přidání citace zkontroluj `grep -n '(contract' <soubor>`
+  a potvrď, že celý zápis vyšel na jeden výstupní řádek.
+  Proč: na jednom work itemu padla tahle past ČTYŘIKRÁT, ve čtyřech různých
+  tvarech: (1) reflow okolní prózy kolem citace při zkracování řádků, (2)
+  editorův vlastní soft-wrap při psaní nové overlay-bullet citace, (3)
+  zalomený `#`-komentář v `epic-gate.ps1`, kde citace byla poslední větou
+  víceřádkového anglického komentáře, (4) citace dopsaná do plynoucí prózy
+  v `protocol.md`. Všechny čtyři dělaly z existující, správně cílené
+  citace „citace nemá cíl" — defekt neviditelný při vizuální četbě
+  zalomeného markdownu.
+- **Briefova tabulka „skill → přiřazená reference" řídí jen skillovu
+  hlavičkovou řádku „References:" — inline citace UVNITŘ těla skillu může
+  legitimně mířit na jinou referenci, než jakou hlavička jmenuje.**
+  Shape-suita ověřuje jen to, že se citace resolvuje na NĚJAKÝ existující
+  nadpis (v jádru nebo v libovolné referenci) a že každá reference má
+  NĚJAKÉHO konzumenta — nekontroluje shodu banner/citace per skill.
+  Opravuj takovou citaci na referenci, která tu citovanou sekci opravdu
+  nese, bez ohledu na členství v banner sadě.
+  Proč: `mb-jira-update` cituje `repository-configuration.md`, který není
+  v jeho vlastní přiřazené referenční sadě podle briefovy tabulky — přesto
+  je to platná, existující citace, kterou by „oprava" podle tabulky
+  zbytečně přesměrovala.
+- **Mechanický split Markdown dokumentu podle nadpisového regexu
+  (`^(##|###) `) musí nejdřív vyloučit nadpisy UVNITŘ ohraničených bloků
+  kódu — postav tabulku ohraničení (`^\s*(```|~~~)`) PŘED tabulkou nadpisů
+  a nadpisy uvnitř ohraničení vyřaď.** Zakóduj rozdělení jako explicitní
+  tabulku 1-based inclusive řádkových rozsahů přes CELÝ soubor a nech
+  skript `throw`, dokud rozsahy nesloží souvislou partition (`From` každého
+  rozsahu = předchozí `To + 1`, poslední `To` = počet řádků) a každý cíl
+  nemá metadata — kontrola partition je silnější a dřívější záruka než
+  downstream multiset test: selže s číslem řádku v okamžiku editace
+  tabulky rozsahů, ne až po zápisu poškozených souborů.
+  Proč: 5 ze 44 řádků matchujících `^#{1,3} ` v
+  `UMS_MEMORY_BANK_CONTRACT.md` bylo UVNITŘ ohraničených bloků (šablona
+  `# Brief — <name>` na 200–206, `## <short title>` na 293, `# Context`/
+  `## Active Work` na 1579/1581) — naivní splitter by rozřezal `## Memory
+  Bank Document Set`, `### Playbook Contract` a `## context.md Schema &
+  Writers` uprostřed jejich vlastních příkladů. Deset ohraničení bylo
+  v souboru, všechna vyvážená, jedno odsazené o dvě mezery
+  (`  ```markdown` na 1450), takže regex ohraničení potřebuje `^\s*`.
+- **`[IO.File]::ReadAllText(...) -split "`n"` na souboru končícím novým
+  řádkem vrátí o jeden prázdný element víc, než je řádků** — u
+  LF-terminated souboru odstraň poslední prázdný element explicitně a
+  ověř výsledný počet proti číslu získanému NEZÁVISLE (`git show <ref> |
+  Measure-Object -Line`, nebo počet LF bajtů).
+  Proč: `UMS_MEMORY_BANK_CONTRACT.md` má 3066 řádků, ale
+  `ReadAllText -split "`n"` dal pole o 3067 prvcích — partition self-check
+  (`expected 3066`) to okamžitě odhalil. Stejné `+1` platí obráceně při
+  zpětném počítání řádků z napsaného souboru (`.Count - 1` je správný
+  počet). Nezávislé měření (`([IO.File]::ReadAllBytes($p) | Where-Object
+  {$_ -eq 10}).Count` = 3066) navíc potvrdilo, že soubor je čistě LF, bez
+  BOM, s koncovým novým řádkem.
+- **Ověřování „přežilo tohle pravidlo kompresi?" dělej
+  `[regex]::IsMatch($text, $vzor, 'IgnoreCase')` s KAŽDOU mezerou ve vzoru
+  napsanou jako `\s+`, nikdy `String.Contains`.** Token extrahovaný z páru
+  zpětných apostrofů je jen KANDIDÁT k posouzení, ne verdikt — každý nález
+  rozřaď na PŘESUNUTO / ILUSTRACE / SKUTEČNÁ ZTRÁTA v reportu, protože jen
+  třetí kategorie je defekt.
+  Proč: substring test `$new.Contains('fast-forward push whose tip')`
+  nahlásil 4 ze 46 sledovaných frází jako CHYBĚJÍCÍ, a všechny čtyři byly
+  falešně pozitivní — soubor se zalamuje na ~80 znacích, takže
+  `fast-forward\npush whose tip` je přítomné doslova, jen rozdělené
+  zalomením; jedna fráze navíc selhala jen proto, že komprese změnila
+  velikost písmen (`Never search` → `never search`) uvnitř sloučené věty.
+  Pátá třída šla opačným směrem: extraktor tokenů mezi backticky nahlásil
+  `` ` → slug ` `` jako ztracený code span, přestože je to jen text MEZI
+  dvěma code spany.
+- **Kompresi normativního textu ověřuj proti PRE-WAVE COMMITU, ne proti
+  tomu, že testová sada zůstává zelená.** Pin SHA před prvním editem
+  a spusť na konci token-úrovňový diff (`git show <pre-wave-sha>:<cesta>`)
+  proti výslednému souboru — sada dokazuje, že tvar (nadpisy, floor klíče,
+  evidence markery) přežil, jen diff dokazuje, že přežil i OBSAH.
+  Proč: komprese 20 sekcí ve třech vlnách nechala sadu na stejných
+  8 červených (z 890 řádků na 751) po celou dobu — sada je slepá vůči
+  ztrátě pravidla, protože kontroluje jen šest floor klíčů, pět nadpisů
+  sekcí a evidence markery. Nezaznamenala ani dvě ilustrace, které
+  komprese skutečně odstranila, ani `additionalContext` příklad odstraněný
+  a pak vrácený zpět — jen token diff proti pre-wave SHA je odhalil.
+- **Je-li task gatovaný nástrojem, který ověřuje „zachovej každý řádek"
+  (line-preservation), přečti nástrojův allow-pattern PŘED vykonáním move
+  mapy a zkontroluj proti němu KAŽDOU položku mapy, která žádá textovou
+  změnu nadpisu** (např. povýšení úrovně při přesunu). Kde se mapa
+  a nástroj rozejdou, vyhrává nástroj a odchylka se hlásí; neoslabuj
+  allow-pattern (širší `-AllowExtraPattern` by udělal běh zeleným, ale
+  tiše dovolil libovolné nové `## ` řádky kdekoli).
+  Proč: `Test-UmsContractMove`ův default `AllowExtraPattern` je
+  `'^(# |Part of contract|Doklad: )'` — nezachytí `## Link Conventions`
+  (druhý znak není mezera po `#`). Briefova move mapa žádala právě tohle
+  povýšení (`### Link Conventions` → `## Link Conventions` při přesunu do
+  jádra); provedení by dalo `Missing = ['### Link Conventions']` a
+  `UnexpectedExtra = ['## Link Conventions']`, `Ok=False` — vlastní
+  akceptační kritérium kroku. Brief a nástroj byly vzájemně nesplnitelné
+  a nástroj rozhodl.
+- **Novou `###` podsekci do kontraktové reference vkládej na PŘIROZENOU
+  hranici sekce (konec souboru, nebo hned za příbuznou sesterskou
+  podsekcí), nikdy doprostřed dvou odstavců, které pokračují v JEDNÉ
+  myšlence.** Po vložení si okolní prózu přečti znovu jako celek, ne jen
+  diff — narušenou návaznost citační shape-test nezachytí.
+  Proč: vložení nové podsekce mezi „On a finding..." a „The ticket session
+  then continues..." v `epic-backflow.md` rozdělilo jedinou myšlenkovou
+  linku tak, že věta „The ticket session then continues" četla, jako by
+  odkazovala na novou podsekci, ne na finding odstavec nad ní —
+  strukturálně matoucí i přesto, že to shape-suita neumí poznat; opraveno
+  přesunem podsekce na konec souboru.
+- **Když acceptance check tasku pojmenovává GLOBÁLNÍ invariant (grep na
+  retirující se termín), grepuj CELOU vrstvu, ne jen briefův seznam Files,
+  dřív, než ho prohlásíš vyčerpaným.** Briefův seznam může minout
+  konzumenta, kterého Interfaces/Steps nejmenují, ale který je stejným
+  invariantem vázán.
+  Proč: po úklidu sdíleného `notes.md` podle briefova seznamu popisoval
+  `mb-epic-elaboration/SKILL.md` (mimo seznam) zrušené chování na dvou
+  místech dál jako živé — Step 5 grep by nahlásil víc než jeden
+  substantivní (non-doklad, non-negation) výskyt `notes.md` a task by
+  spadl na vlastní acceptance check, přestože každý soubor z briefova
+  seznamu byl opraven správně.
 
 ## Psaní plánů, návrhů a commitů
 

@@ -10,15 +10,28 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 3.0 | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 3.0, jádro 798 řádků (rozpočet 800, `contract-shape.tests.ps1`) | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 4 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`, `writing-plans`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
+
+## Tvar kontraktu: jádro, reference, doklad, changelog
+
+Kontrakt 3.0 je čtyři soubory/adresáře v `ums/.claude/skills/shared/`, každý
+s jiným čtenářem a jiným rozpočtem (mechanika a citační tvar jsou v
+[architecture.md](architecture.md), sekce „Jádro kontraktu"):
+
+| Vrstva | Cesta | Čtenář | Rozpočet |
+|---|---|---|---|
+| Jádro | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) | každé sezení, mechanicky hookem `contract-inject.ps1` | 800 řádků (aktuálně 798), vynuceno `contract-shape.tests.ps1` |
+| Reference | [`shared/contract/*.md`](../ums/.claude/skills/shared/contract/) — 17 souborů podle tématu | skill nebo overlay, který téma provádí (jádro, sekce „Phase Map") | bez rozpočtu, jedno téma na soubor |
+| Doklad | [`shared/contract/doklad/*.md`](../ums/.claude/skills/shared/contract/doklad/) — 14 souborů | autor změny pravidla, na vyžádání | bez rozpočtu |
+| Historie | [`shared/CHANGELOG.md`](../ums/.claude/skills/shared/CHANGELOG.md) | nikdo za běhu, jen při čtení historie verzí | bez rozpočtu |
 
 ## Konfigurace repozitáře (`ums-repo.json`)
 
 [`ums-repo.json`](ums-repo.json) v `CTX_DIR` nese repozitářově specifické
-hodnoty, které kontrakt zakazuje mít v tělech skillů nebo skriptů (kontrakt,
-Repository Configuration). Tento repozitář:
+hodnoty, které kontrakt zakazuje mít v tělech skillů nebo skriptů
+(kontrakt/repository-configuration.md, Repository Configuration). Tento repozitář:
 
 | Klíč | Hodnota |
 |---|---|
@@ -27,6 +40,7 @@ Repository Configuration). Tento repozitář:
 | `ticketPattern` | `^UMS-[0-9]+` |
 | `projectMarkers` | `package.json` |
 | `sharedRoots` | `ums/.claude/skills/shared/`, `ums/.gitattributes` |
+| `permalinkTemplate` | nenastaveno — odvozeno z hostu `origin` (`github.com`) skriptem `Get-UmsPermalink.ps1` |
 
 Loader [`Get-UmsRepoConfig.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsRepoConfig.ps1)
 nikdy nevyhazuje výjimku: chybějící nebo poškozený soubor degraduje po
@@ -64,7 +78,21 @@ stejnou konfiguraci vždy stejnou odpověď.
   (dvě epikové kontroly operace `integrate`, sekce 6),
   [`session-intent.ps1`](../ums/.claude/hooks/session-intent.ps1) (`SessionStart`
   hook, čtenář session intent batonu — viz [architecture.md](architecture.md),
-  sekce Session Intent Baton), hook `bpmn-validate.ps1`.
+  sekce Session Intent Baton),
+  [`contract-inject.ps1`](../ums/.claude/hooks/contract-inject.ps1) (`SessionStart`,
+  `PostCompact` a `UserPromptSubmit` hook, mechanická injektáž jádra kontraktu —
+  viz [architecture.md](architecture.md), sekce „Jádro kontraktu"),
+  [`Get-UmsPermalink.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsPermalink.ps1)
+  (`Get-UmsPermalink` — `permalinkTemplate` s dosazením `{sha}`/`{path}`, jinak
+  odvození z hostu `origin`, `github.com` a `bitbucket.org`; neznámý host vrací
+  `Reason` a žádné `Url`; SHA musí být 40 malých hex znaků, cesta bez `..`),
+  [`Test-UmsJiraDescription.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsJiraDescription.ps1)
+  (`Test-UmsJiraDescription` — rozpočet 2 500 znaků, tvar odkazů, tučné ×
+  code span; `-RequireSections` pro popisy tiketů, bez přepínače pro
+  komentáře),
+  [`Test-UmsContractMove.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsContractMove.ps1)
+  (multiset porovnání řádků mezi zdrojem a cílem přesunu, vzor
+  `verify-deletion-only.ps1` z `mb-migrate-docs`), hook `bpmn-validate.ps1`.
 - **Node.js** (ESM, `"type": "module"`) — hooks
   [`deny-superpowers-docs.mjs`](../ums/.claude/hooks/deny-superpowers-docs.mjs)
   (čte JSON ze stdin, vrací `permissionDecision: deny`) a
@@ -88,7 +116,7 @@ Jira konvence, na které se vrstva spoléhá:
 - stavy `Design Review`, `In Progress`, `Test`; chybějící přechod do
   `Design Review` není stop — request spadne na existující stav `Review`
   a rozliší ho marker `[DESIGN REVIEW]` na první řádce request komentáře
-  (kontrakt, Architect Review Gate, „Design Review" fallback); fail-closed
+  (kontrakt/architect-review.md, Architect Review Gate, „Design Review" fallback); fail-closed
   stop nastává až bez přechodu do `Review`,
 - pole `Flagged` s hodnotou Impediment jako signál „práce se ti vrací",
 - `customfield_11248` (AgentSessions, Paragraph) — append jednoho řádku
@@ -106,8 +134,9 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 | Klíč | Obsah |
 |---|---|
 | `env` | `MB_AGENT_SESSION: "1"` — vstupní marker agentní relace; bez něj `pre-push` hook nevynucuje nic vlastního (viz níže) |
-| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) `additionalContext`: vyvolat `using-superpowers`, pak přečíst kontrakt a `memory-bank/context.md`; entry gate stejného kroku navíc fail-closed ověří verzi `pre-push` hooku (značka `UMS pre-push guard (Publication Contract)` s verzí ne nižší, než jakou nese zdrojová hlavička vrstvy) a spustí synteticky obě poloviny jeho self-checku (zamítnutí i propuštění) — postup je v [playbook.md](playbook.md). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
-| `hooks.PostCompact` | `systemMessage`: po kompaktaci znovu načíst kontrakt, `context.md` a při exekuci plánu i `.superpowers/sdd/<plan-basename>/progress.md` |
+| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) spouští `contract-inject.ps1`, který emituje `additionalContext`: jádro kontraktu doslova, řádky `context.md` a (existuje-li ledger slugu z pinu) blok `NOW`, plus pokyn vyvolat `using-superpowers` a spustit fázi 0 vstupní brány (jádro, sekce „Způsobilost sezení" — fail-closed ověření verze `pre-push` hooku a obě poloviny jeho syntetického self-checku). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
+| `hooks.PostCompact` | Spouští `contract-inject.ps1`; protože `PostCompact` `additionalContext` nepřijímá (jen `systemMessage`), hook zapíše marker `.superpowers/contract-reload.flag` a vrátí `systemMessage` s pokynem jednat podle shrnutí a znovu vyvolat vykonávaný skill |
+| `hooks.UserPromptSubmit` | Spouští `contract-inject.ps1`; s markerem z `PostCompact` vloží jádro stejným `additionalContext` jako `SessionStart` a marker smaže, bez markeru mlčí — jádro se tak mechanicky vrací s prvním promptem po kompaktaci |
 | `hooks.PreToolUse` (`Write|Edit`) | `deny-superpowers-docs.mjs` — blokuje zápis do `docs/superpowers/**` a `docs/plans/**` |
 | `hooks.PreToolUse` (`Bash|PowerShell`) | `guard-git-push.mjs` — nese pravidlo podle AKTÉRA (jen vlastní tool-cally agenta, ne příkazy uživatele psané přes `!`): na rozpoznaný `git push` leans fail-CLOSED (nečitelný cíl zamítá, nečeká na vyjasnění), zamítá push agenta na chráněnou větev včetně integračního fast-forwardu, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a `--no-verify` bez kontextu; NENÍ záruka publikace — tou zůstává git `pre-push` hook (níže), který navíc vynucuje jen uvnitř agentní relace |
 | `hooks.PostToolUse` (`Write|Edit`) | `bpmn-validate.ps1` — validace BPMN v monorepu |
@@ -206,8 +235,12 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 28 sad, dohromady
-1502 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou):
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 33 sad, dohromady
+1609 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou; dvě asercie
+`pool-launch.tests.ps1` — Gate 3, „cíl Start-Process, který reálně nespustí
+proces" — v tomto prostředí selhávají, protože sandbox neumožňuje ověřit
+skutečné spuštění procesu; skript samotný na této větvi nese jen změnu
+citačního tvaru, ne funkční změnu):
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -216,11 +249,13 @@ v [playbook.md](playbook.md).
   + fixtures (proposal dokumenty ve starém i novém pojmenování, Jira JSON
   snapshoty, `fixtures/doc-index/*.json`).
 - [`mb-epic-elaboration/tests/`](../ums/.claude/skills/mb-epic-elaboration/tests/) —
-  `ledger-status.tests.ps1` (41; sekce ledgeru „## Rozjetí" — pozičně
+  `ledger-status.tests.ps1` (49; sekce ledgeru „## Rozjetí" — pozičně
   parsovaná tabulka řádků záměru o SEDMI sloupcích, poslední dva jsou
   `Autonomie` a `Pasti` — její orphan případ, tiket v řádku záměru bez
   odpovídajícího člena epiku, a řádek ze šestisloupcové éry, který se hlásí
-  jako nedostatečný, nikdy se nečte jako úroveň autonomie),
+  jako nedostatečný, nikdy se nečte jako úroveň autonomie; plus podlaha
+  ledgeru — číselný slib bez jmen selhávajících testů je špinavý, dokud
+  jména nedorazí, fixture `ledger_floor.md`),
   `ledger-evidence.tests.ps1` (40; ověřovací sada a registr rozhodnutí)
   + fixtures (`ledger_rozjeti.md`, `ledger_rozjeti_orphan.md`,
   `ledger_verification_set.md`, `ledger_decision_registry.md`).
@@ -228,7 +263,7 @@ v [playbook.md](playbook.md).
   mechaniky poolu (`mb-epic-run`, viz [architecture.md](architecture.md),
   sekce 6), vlastní `_assert.ps1` a fixture builder
   `new-pool-fixture.ps1` (skutečné linked worktrees se sdíleným `.git`, ne
-  simulace): `pool-status.tests.ps1` (120; volnost jen z per-worktree signálů,
+  simulace): `pool-status.tests.ps1` (124; volnost jen z per-worktree signálů,
   marker, obsazenost stubovaná `tests/stubs/claude-stub.ps1`, ledger podle
   slugu z pinu, `-1` jako nečitelný sentinel u `dirtyCount`/`unpushedCount`,
   blok `NOW` včetně tvarů, které ho dělají malformovaným, znaková třída
@@ -239,7 +274,7 @@ v [playbook.md](playbook.md).
   promptu, stavové slovo na vlastní řádce), `pool-provision.tests.ps1` (28;
   guard proti agentní relaci, marker, kontrola sdíleného hooku — verze
   porovnaná uspořádáním proti zdrojové hlavičce, ne rovností — exit 5 při
-  nepotvrzené publikační záruce), `epic-gate.tests.ps1` (39; brána předání
+  nepotvrzené publikační záruce), `epic-gate.tests.ps1` (44; brána předání
   a její čtyři kontroly, vazba fast-forwardu na vlastní epik, nepotvrzený
   řádek registru rozhodnutí jako mechanická zábrana),
   `frontmatter.tests.ps1` (2).
@@ -291,8 +326,27 @@ v [playbook.md](playbook.md).
   — verze čtená z hlavičky (`v2`, `v3`, hook bez přípony jako 0, cizí hook
   jako `$null`), značka pod pátým řádkem se nepočítá, a srovnání uspořádáním:
   novější nainstalovaná verze se nedegraduje, i když je zdrojová hlavička
-  starší).
-- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `pre-push.tests.ps1` (255;
+  starší), `contract-shape.tests.ps1` (27; jádro do 800 řádků a nese
+  `Contract-Version`, každé jméno sekce citované kdekoli v `ums/` existuje
+  právě v jednom souboru jádra nebo referencí, každá reference má konzumenta
+  v banneru skillu nebo overlaye, eskalační dno a Fail-Closed STOPy jsou
+  v jádře, jádro nenese značky dokladu ani verzní preambuli),
+  `contract-move.tests.ps1` (9; `Test-UmsContractMove` — multiset řádků mezi
+  zdrojem a cílem přesunu, ztracený řádek i nepovolený nový řádek shazují
+  verdikt, vzor `verify-deletion-only.ps1`), `permalink.tests.ps1` (9;
+  `Get-UmsPermalink` — šablona s `{sha}`/`{path}`, odvození z hostu
+  `github.com`/`bitbucket.org`, neznámý host i krátké SHA i cesta s `..`
+  jsou odmítnuté), `jira-description.tests.ps1` (8; `Test-UmsJiraDescription`
+  — rozpočet 2 500 znaků, tvar odkazů, tučné × code span, `-RequireSections`
+  jen pro popis tiketu, ne pro komentář).
+- [`hooks/tests/`](../ums/.claude/hooks/tests/) — `contract-inject.tests.ps1`
+  (36; platný JSON, jádro přítomné celé, blok `NOW` jen s ledgerem slugu
+  z pinu a jen v uzavřeném tvaru, chybějící jádro i mez 48 kB dávají fallback
+  pokyn ke čtení, chybějící `context.md` nezastaví injektáž jádra, znaková
+  třída odmítá formátovací znaky, `PostCompact` zapíše marker a vrátí
+  `systemMessage`, `UserPromptSubmit` s markerem vloží jádro a marker smaže,
+  bez markeru mlčí, varování při rozchodu nasazené a zdrojové kopie jádra),
+  `pre-push.tests.ps1` (255;
   end-to-end proti skutečnému lokálnímu bare remote: marker `MB_AGENT_SESSION`
   jako vstupní brána, obsahové pravidlo fast-forwardu na už dosažitelný tip,
   lidská výjimka `MB_HUMAN_PUSH`/zastaralé `UMS_ALLOW_SHARED_PUSH`,

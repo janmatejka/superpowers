@@ -48,7 +48,11 @@ Nasazené kopie v tomto repu (`.claude/`, `.agents/skills/`) jsou **netrackovan�
 (upstream `.gitignore` ignoruje každý `.claude/`) a mohou být za zdrojem —
 autoritou je vždy `ums/.claude/`. Sezení v tomto repu ale běží nad nasazenou
 kopií, takže po změně zdroje je nutné nasazení obnovit, jinak agent pracuje se
-starou verzí vrstvy.
+starou verzí vrstvy. `mb-state` tento drift hlásí strojově: porovná
+`Contract-Version` a SHA256 hash všech souborů pod `shared/**`, `mb-*/**`
+a `hooks/**` mezi `ums/.claude/` a `.claude/` a rozdíl vypíše jako nález
+„nasazení za zdrojem" s příkazem obnovy z playbooku; `contract-inject.ps1`
+nese totéž porovnání jen pro jádro kontraktu (viz níže).
 
 ## 2. Workflow Superpowers a body zásahu UMS
 
@@ -85,12 +89,62 @@ flowchart TD
     HARV --> DONE["merge, PR nebo ponechani vetve"]
 ```
 
+### Jádro kontraktu: tři vrstvy, injektáž a bannery
+
+Kontrakt (`ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`, v3.0) není
+jeden soubor — je to **tři vrstvy podle čtenáře**, doplněné historií:
+
+- **Jádro** (soubor výše, 798 řádků, rozpočet 800) nese jen pravidla platná
+  v každé fázi práce — fail-closed STOPy, eskalační dno, publikační pravidlo,
+  Language Contract, Dispatch Model Policy — a mapu `Phase Map`: tabulku
+  operace → vlastnící skill/overlay → reference. Jádro se nikdy neodkazuje na
+  doklad kvůli platnosti pravidla; platnost nese samo.
+- **Reference** (`shared/contract/<téma>.md`, 17 souborů) nesou postup a jeho
+  artefakty pro JEDNO téma — čte je skill nebo overlay, který téma provádí,
+  ne každé sezení. `Phase Map` v jádře řekne, kterou referenci má který skill
+  otevřít; skill sám ji jmenuje ve vlastním banneru.
+- **Doklad** (`shared/contract/doklad/<téma>.md`, 14 souborů) nese zdůvodnění,
+  měření a historii — čte ho autor změny pravidla, na vyžádání, nikdy
+  vykonavatel pravidla.
+- **`shared/CHANGELOG.md`** nese verzní historii; jádro si nechává jen aktuální
+  číslo (`Contract-Version: 3.0`) a odkaz na changelog.
+
+Tabulkový a souborový rozpad je v [tech.md](tech.md), sekce „Tvar kontraktu:
+jádro, reference, doklad, changelog".
+
+**Citace** má dva tvary — `(kontrakt, „<sekce>")` pro pravidlo jádra,
+`(kontrakt/<soubor>.md, „<sekce>")` pro pravidlo reference — a sekce je vždy
+jmenovaná slovy přesně podle nadpisu, nikdy jako `#fragment` odkaz, takže je
+strojově ověřitelná proti indexu nadpisů (`contract-shape.tests.ps1`). Banner
+`mb-*` skillu i overlaye jmenuje jádro a vlastní reference hned na začátku
+těla (`> Contract core: … · References: …`) a skill si je čte jako první
+krok — parafráze pravidla v těle skillu nahradila citace, takže pravidlo má
+právě jeden domov.
+
+**Mechanická injektáž** dělá hook
+[`contract-inject.ps1`](../ums/.claude/hooks/contract-inject.ps1) — nahrazuje
+dřívější pokyn „přečti si kontrakt" v `additionalContext`. Registrace ve třech
+`SessionStart`/`PostCompact`/`UserPromptSubmit` bodech je v [tech.md](tech.md),
+sekce „Konfigurace pro Claude Code". Hook vloží jádro DOSLOVA, řádky
+`context.md` a (existuje-li ledger aktivního slugu) blok `NOW` téhož uzavřeného
+tvaru jako baton (sekce „Session Intent Baton" níže) — a protože `PostCompact`
+neumí `additionalContext`, jen `systemMessage`, hook si mezi kompaktací a
+dalším promptem nechává vlastní marker (`.superpowers/contract-reload.flag`),
+který `UserPromptSubmit` přečte a jádro dosadí mechanicky s prvním promptem.
+Hook je fail-open na každé chybové cestě (chybějící jádro, mez 48 kB, chybějící
+git) — nikdy nezablokuje start sezení, jen se vrátí k pokynu „přečti si". Když
+zdrojové jádro ve forku existuje a liší se hashem od nasazené kopie, hook
+k payloadu přidá jednu varovnou řádku — týž nález o zastaralé nasazené kopii,
+který trvale hlásí `mb-state` (porovnáním `Contract-Version` a SHA256 hashů
+`shared/**`, `mb-*/**` a `hooks/**` mezi `ums/.claude/` a nasazenou kopií
+`.claude/`, viz sekce 1 výše).
+
 ### Overlay 1 — `brainstorming`
 
 Fragment [`brainstorming.overlay.md`](../ums/.claude/skills/shared/overlays/brainstorming.overlay.md),
 ukotvený na konec souboru. Upstream v6.3.0 nejdřív klasifikuje request na tři
 cesty (spike / bounded / architectural) a fragment je mapuje na dokumentovou
-vrstvu (kontrakt, podsekce „Brainstorming Paths"): architektonická i bounded
+vrstvu (kontrakt/brainstorming-paths.md, „Brainstorming Paths"): architektonická i bounded
 cesta běží vstupní bránu celou a obě produkují `design_<slug>.md` — bounded
 pak nepíše plán a nepouští SDD; spike nepinuje nic, větev dostane, jen když
 sahá na strom, a do `proposals/` nezapisuje. Na upstream checklist fragment
@@ -137,8 +191,8 @@ položky). Zásahy do architektonické cesty:
   Přijetí znamená konec workflow v tomto sezení — pokračuje se až režimem
   resume. Na bounded cestě se gate nenabízí — přání review je signál pro
   upgrade cesty.
-- **Epic Backflow check** po finálním schválení návrhu (kontrakt, sekce „Epic
-  Backflow (design → epic)"): s tiketem a dostupnou Jirou se spustí
+- **Epic Backflow check** po finálním schválení návrhu (kontrakt/epic-backflow.md,
+  sekce „Epic Backflow (design → epic)"): s tiketem a dostupnou Jirou se spustí
   `mb-epic-graph -Check`; nález k tomuto tiketu vždy zafrontuje poznámku do
   dirty-setu ledgeru epiku (bez ledgeru do `notes.md` vedle něj) a tiketové
   sezení pak pokračuje dál — krok nic nenabízí, nepřepíná větev a elaboraci
@@ -964,7 +1018,7 @@ bounded položky bez plánu. Domov se volí ve fázi Sync porovnáním cíle pro
 chybějící sada v obou domovech je fail-closed STOP při první integraci.
 
 **Čtyři třídy konfliktu nebo červeného buildu po mergi, a kdo je vlastní**
-(kontrakt, „Escalation & Autonomy"): rozhodující otázka je jediná — „čí
+(kontrakt/escalation.md, „Escalation & Autonomy"): rozhodující otázka je jediná — „čí
 zapsané rozhodnutí by se muselo změnit, aby to fungovalo" — a je záměrně
 jiná než „čí je to soubor", protože sdílený `.csproj` je na cestě všech.
 Třídy **1** (prostředí — nezmění se ničí rozhodnutí, jen strom je zastaralý)
