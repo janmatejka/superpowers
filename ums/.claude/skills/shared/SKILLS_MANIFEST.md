@@ -3,18 +3,29 @@
 ## Přehled
 
 Skill pack MB v2: Superpowers (vendorované, v6.3.0) řídí workflow, Memory Bank
-je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt v2](UMS_MEMORY_BANK_CONTRACT.md).
+je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.0](UMS_MEMORY_BANK_CONTRACT.md).
 
 ## Sdílené prostředky
 
 | Prostředek | Cesta | Popis |
 |---|---|---|
-| Kontrakt v2 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár), harvest a playbook gate, dispatch model policy, fail-closed — mechanicky vynucený rozpočet řádků |
-| Kontrakt v2 (reference) | [shared/contract/](contract/) | Per-tématické reference vyňaté z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon, epic-line, worktree-pool, now-block, message-protocol, escalation, architect-review, epic-backflow, cross-branch-visibility, brainstorming-paths); citovat jako `(contract/<soubor>.md, "Sekce")` |
-| Doklad ke kontraktu | [shared/contract/doklad/](contract/doklad/) | Evidenční poznámky (měření, historie rozhodnutí) vyňaté z jádra a referencí; nikdy necitovat jako normativní zdroj |
-| Changelog kontraktu | [shared/CHANGELOG.md](CHANGELOG.md) | Historie verzí kontraktu (v1 → v2 → v3) |
-| Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů |
+| Kontrakt 3.0 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár) a jeho granularita, způsobilost sezení, publikace, message protocol, eskalace, fail-closed, Phase Map a citační forma — jediné, co nese `Contract-Version`; rozpočet řádků vynucuje `tests/contract-shape.tests.ps1` |
+| Kontrakt 3.0 (reference) | [shared/contract/](contract/) | 17 per-tématických referencí vyňatých z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon + Publication mechanics, epic-line, epic-backflow, worktree-pool, now-block, message-protocol, escalation, architect-review, cross-branch-visibility, brainstorming-paths, jira); načítá je vlastnící skill podle `Phase Map` v jádře, citovat jako `(contract/<soubor>.md, "Sekce")` |
+| Doklad ke kontraktu | [shared/contract/doklad/](contract/doklad/) | Evidenční vrstva (měření, historie rozhodnutí, zdůvodnění) vyňatá z jádra a referencí; čte se na vyžádání a nikdy se necituje jako normativní zdroj |
+| Changelog kontraktu | [shared/CHANGELOG.md](CHANGELOG.md) | Historie verzí kontraktu (v1 → v2 → 3.0); jediný domov per-verzní historie, jádro nese jen `Contract-Version` |
+| Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů a re-vendor postup |
 | Overlay fragmenty | [shared/overlays/](overlays/README.md) | UMS bloky aplikované do vendorovaných skillů |
+
+## Sdílené skripty a sady
+
+| Skript | Cesta | Popis |
+|---|---|---|
+| Zachování řádků při přesunu | [shared/scripts/Test-UmsContractMove.ps1](scripts/Test-UmsContractMove.ps1) | Multimnožinové srovnání neprázdných řádků před a po přesunu kontraktu (`Compare-UmsLineMultiset`) |
+| Permalink | [shared/scripts/Get-UmsPermalink.ps1](scripts/Get-UmsPermalink.ps1) | Jediný domov tvaru permalinku: z `permalinkTemplate`, jinak odvozený z hostu `origin` |
+| Kontrola popisu tiketu | [shared/scripts/Test-UmsJiraDescription.ps1](scripts/Test-UmsJiraDescription.ps1) | Rozpočet, odkazy, tučné, sekce — před zápisem do Jiry |
+| Konfigurace repa | [shared/scripts/Get-UmsRepoConfig.ps1](scripts/Get-UmsRepoConfig.ps1) | Čtení `ums-repo.json` včetně klíče `permalinkTemplate` |
+| Injektáž jádra | [hooks/contract-inject.ps1](../../hooks/contract-inject.ps1) | Vloží jádro kontraktu do kontextu při startu sezení a s prvním promptem po kompaktaci (marker `.superpowers/contract-reload.flag`); registrován v `settings.json` |
+| Sady vrstvy | `shared/tests/*.tests.ps1`, `hooks/tests/*.tests.ps1`, `mb-*/tests/*.tests.ps1` | Bezzávislostní `.ps1` sady s vlastním `_assert.ps1`; nové v 3.0: `contract-move`, `contract-shape`, `permalink`, `jira-description`, `contract-inject` |
 
 ## Vendorované Superpowers skilly (v6.3.0)
 

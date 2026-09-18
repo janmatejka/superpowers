@@ -198,9 +198,44 @@ item.
 
 ### Publication mechanics
 
-The mechanics behind the core's `## Publication Contract`: how the `pre-push`
-hook is verified in a workspace, and how the `MB_AGENT_SESSION` marker reaches
-each harness. The RULES are the core's; only the recipe is here.
+The mechanics behind the core's `## Publication Contract`: the first publication of
+a fresh ticket branch, the two push spellings, the accepted bypasses, how the
+`pre-push` hook is verified in a workspace, how a foreign hook is chained, and how
+the `MB_AGENT_SESSION` marker reaches each harness. The core states each of these
+as a rule in one line; the procedure that carries it is here.
+
+**The first publication of a fresh ticket branch uses `-u`.** A freshly created
+ticket branch is DETACHED from its inherited upstream, and its first publication is
+`git push -u origin <branch>` — never a bare `git push`.
+`git switch -c <branch> <chosen base>` sets the new branch's upstream to the BASE,
+a typically protected destination it must never publish to. What stops a bare push
+in that state is git's own `push.default=simple` plus `pre-push` — **not** the
+`PreToolUse` guard, which on a bare push resolves the target as the CURRENT BRANCH
+NAME and allows it ("The epic line", where that mechanism is written once). Two
+steps, both at the source: run `git branch --unset-upstream` immediately after the
+`switch -c`, and publish the first time with `-u`. A ticket branch whose upstream
+is a protected branch is a finding, not a normal state.
+
+**Two spellings, deliberately different — do not collapse them into one.** An
+integration command handed to the user is the PLAIN
+`! git push origin HEAD:<baseBranch>`, refspec form and NO escape; that is what
+`guard-git-push.mjs` hands over when it denies the agent's own push to a
+protected branch. The escape (`MB_HUMAN_PUSH=1`, the core's human escape) appears
+only in the OTHER spelling,
+`! MB_HUMAN_PUSH=1 git push <remote> HEAD:<branch>`, handed over by the
+`pre-push` hook's rejection message — the only rejection that offers the escape
+at all.
+
+Doklad: doklad/publication.md, "Why the two spellings must not be collapsed"
+
+**Two known, accepted bypasses**, both requiring deliberate visible intent:
+`git push --no-verify` skips the hook entirely, and a one-shot
+`git -c core.hooksPath=<other> push` points git at a hooks directory this layer
+never installed into. `--no-verify` is a BYPASS of the guarantee, never the
+documented way to publish `develop` — it disables every hook in the repository,
+and `guard-git-push.mjs` denies it on sight, escape or no escape.
+
+Doklad: doklad/publication.md, "A configured core.hooksPath is not a bypass"
 
 **Verifying the installed `pre-push` hook.** Never with a real
 `git push origin develop`, which either publishes real commits if the hook turns
@@ -225,9 +260,15 @@ passes as verified. **The marker on those pipes is load-bearing**: outside an ag
 session the hook deliberately enforces nothing, so an unmarked pipe proves only
 that the gate works.
 
-**When the installer REFUSES to chain a foreign `pre-push`.** The rule — a refusal
-is not a fallback, the run exits 2 and the workspace stays unguarded — is the
-core's. The four conditions under which the move cannot be made safe are:
+**Chaining a foreign `pre-push`, and when the installer REFUSES to.** A foreign
+`pre-push` already in the hooks directory is not a reason to leave the workspace
+unguarded: the installer moves it aside to `pre-push.ums-chained` and this hook
+runs it with the same ref list, so installing the layer cannot silently turn
+someone's LFS or lint hook off. It REFUSES to chain where it cannot make the move
+safe, and **a refusal is not a fallback:** our hook is then not installed in that
+workspace at all, the run exits 2, and the publication guarantee is absent there
+until someone resolves the foreign hook by hand. The four conditions under which
+the move cannot be made safe are:
 
 1. a hooks directory shared with other repositories through `core.hooksPath`;
 2. a `.ums-chained` file already sitting there;
@@ -237,6 +278,8 @@ core's. The four conditions under which the move cannot be made safe are:
 
 The installer also sets the moved hook's executable bit, because a chained hook
 without it is skipped without a word.
+
+Doklad: doklad/publication.md, "The chained hook's executable bit"
 
 **Delivering `MB_AGENT_SESSION` per harness.** `sync-with-monorepo.ps1` writes it
 into each harness's own documented mechanism: Claude Code through the `env` block of

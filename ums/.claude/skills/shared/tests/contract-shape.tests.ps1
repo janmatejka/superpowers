@@ -8,14 +8,49 @@ $core = Join-Path $shared 'UMS_MEMORY_BANK_CONTRACT.md'
 $refDir = Join-Path $shared 'contract'
 $coreLines = @(Get-Content -LiteralPath $core -Encoding utf8)
 
-Assert-True ($coreLines.Count -le 600) "jádro má nejvýš 600 řádků (má $($coreLines.Count))"
+# Rozpočet jádra = 800 řádků, odvozeno MĚŘENÍM, ne odhadem.
+# Návrh (sekce 2.2) odhadoval ~470 řádků, jenže ten odhad byl nad PRÓZOU. Soubor
+# je markdown: naměřeno 258 ze 790 řádků (32,7 %) nejsou próza vůbec — 34 nadpisů
+# (každý je cíl citace), 135 markdownem vynucených prázdných řádků, 46 řádků
+# tabulek, 30 řádků fenced bloků a 13 ukazatelů `Doklad:`. Tuhle část nelze
+# stlačit, aniž by se rozbily cíle citací. Próza sama je 532 řádků po dvou
+# kolech komprese (Task 4), nezávislé revizi, která větu po větě potvrdila, že
+# nezmizelo žádné pravidlo, kvalifikátor, STOP ani artefakt, a třetím kole
+# v Task 19 (první publikace s `-u`, dvojí zápis pushe, dvě přijaté obchůzky
+# a odmítnutí řetězení cizího hooku se přesunuly do `contract/integration.md`,
+# sekce „Publication mechanics" — jádro je jmenuje a odkazuje).
+# Smysl asercie je zabránit tomu, aby jádro znovu narostlo do 3066řádkového
+# dokumentu, ze kterého vzniklo — ne trvale svítit červeně. Naměřeno 790,
+# zaokrouhleno nahoru na 800.
+Assert-True ($coreLines.Count -le 800) "jádro má nejvýš 800 řádků (má $($coreLines.Count))"
 Assert-Match ($coreLines -join "`n") '(?m)^- \*\*Contract-Version:\*\* \d+\.\d+' 'jádro nese Contract-Version'
 Assert-True (-not (($coreLines -join "`n") -match '(?m)^- (Supersedes|v\d+\.\d+ superseded)')) 'verzní preambule v jádře není'
 foreach ($h in @('## Escalation & Autonomy', '## Fail-Closed Behavior', '## Publication Contract', '## Language Contract', '## Message Protocol', '## Session Eligibility', '## Work Item Granularity', '## Phase Map')) {
     Assert-True (($coreLines -match ('^' + [regex]::Escape($h) + '\s*$')).Count -eq 1) "jádro má právě jednu sekci $h"
 }
+# Podlaha eskalace: aserce MUSÍ číst datové řádky TABULKY, ne celý soubor.
+# Celosouborový substring match nedokáže smazání řádku podlahy vidět — token
+# `playbook.md` stojí v jádře na sedmi dalších místech, takže smazaná řádka
+# `| Writing into playbook.md | … |` nechala asercii zelenou. Ostatní klíče jsou
+# bezpečné jen náhodou (každý je v souboru právě jednou). Proto: najdi tabulku,
+# vezmi jen její datové řádky, a asertuj OBOJÍ — že každý klíč je právě v jedné
+# řádce, a že řádek je přesně šest. Počet chytá řádku PŘIDANOU bez aserčního
+# klíče, na kterou je per-klíčová půlka slepá.
+$floorRows = @()
+$floorHeader = -1
+for ($i = 0; $i -lt $coreLines.Count; $i++) {
+    if ($coreLines[$i] -match '^\|\s*Kind\s*\|\s*Example\s*\|\s*$') { $floorHeader = $i; break }
+}
+Assert-True ($floorHeader -ge 0) 'tabulka podlahy eskalace je v jádře nalezena'
+if ($floorHeader -ge 0) {
+    for ($j = $floorHeader + 2; $j -lt $coreLines.Count; $j++) {
+        if ($coreLines[$j] -notmatch '^\s*\|') { break }
+        $floorRows += $coreLines[$j]
+    }
+}
+Assert-Eq @($floorRows).Count 6 'tabulka podlahy eskalace má právě 6 datových řádků'
 foreach ($k in @('Publication into the delivery line', 'irreversible or destructive', 'security-sensitive', 'not a protected branch', 'epicBranchPattern', 'playbook.md')) {
-    Assert-True ((($coreLines -join "`n") -match [regex]::Escape($k))) "řádek dna «$k» je v jádře"
+    Assert-Eq @($floorRows | Where-Object { $_ -match [regex]::Escape($k) }).Count 1 "řádek dna «$k» je právě v jedné řádce tabulky podlahy"
 }
 Assert-True (-not (($coreLines -join "`n") -match 'Measured|measured 2026|Earlier versions|superseded v|once claimed')) 'jádro nenese značky dokladu'
 
@@ -58,9 +93,16 @@ Assert-Eq @($bad).Count 0 ("každá citace má cíl: " + ($bad -join '; '))
 Assert-Eq @($legacy).Count 0 ("žádný legacy tvar citace: " + ($legacy -join '; '))
 
 # --- every reference has a consumer -------------------------------------------
+# Reference se cituje sama ve své hlavičce (`cite as (contract/<jméno>.md, …)`),
+# a `$scan` obsahuje i soubory referencí — takže bez vyloučení VLASTNÍHO souboru
+# je aserce splněná bezpodmínečně a nemůže nikdy zčervenat. Jednou tak zeleně
+# proseděla reference s nulovým skutečným konzumentem.
 $noConsumer = @()
 foreach ($r in $refs) {
-    $hits = @($scan | Where-Object { (Get-Content -LiteralPath $_.FullName -Raw -Encoding utf8) -match [regex]::Escape("contract/$($r.Name)") })
+    $hits = @($scan | Where-Object {
+        $_.FullName -ne $r.FullName -and
+        (Get-Content -LiteralPath $_.FullName -Raw -Encoding utf8) -match [regex]::Escape("contract/$($r.Name)")
+    })
     if ($hits.Count -eq 0) { $noConsumer += $r.Name }
 }
 Assert-Eq @($noConsumer).Count 0 ("každá reference má konzumenta: " + ($noConsumer -join ', '))

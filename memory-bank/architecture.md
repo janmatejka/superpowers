@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v2.19, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v3.0, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -351,7 +351,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v2.19, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v3.0, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -604,7 +604,7 @@ odhodlanému obejití zůstává ochrana větví na serveru.
 
 ### Epiková linie
 
-Normativní zdroj: kontrakt v2.19, sekce **The epic line** (Repository
+Normativní zdroj: kontrakt v3.0, sekce **The epic line** (Repository
 Configuration). Epik dostává **dvě větve** s odlišnými rolemi: **epikovou
 linii** (`epic/<KLÍČ-EPIKU>`, kódová integrační větev — efektivní báze
 každého tiketu odštěpeného pro tento epik, nese kód i sklizené MB dokumenty
@@ -665,7 +665,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v2.19](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v3.0](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -832,7 +832,7 @@ instrukční Markdown.
 
 ## 6. Pool: mechanika slotů a spuštění sezení na tiket
 
-Normativní zdroj: kontrakt v2.19, sekce **Worktree Policy** (výjimka pro
+Normativní zdroj: kontrakt v3.0, sekce **Worktree Policy** (výjimka pro
 slot poolu a její přepsané měření disku), **Workspace Discipline** (podsekce
 „A pool slot's freedom is derived from per-worktree signals only") a
 **Session Intent Baton** (proč záměr do slotu baton nenese). Mechanika

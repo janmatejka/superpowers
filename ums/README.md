@@ -13,7 +13,40 @@ optional Architect Review Gate (`mb-architect-review`, request/resume) for
 non-trivial designs with a linked Jira ticket — while it is pending,
 writing-plans does not start. The normative rules are in
 [`.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md)
-(contract v2).
+(contract 3.0).
+
+## Contract: core, references, evidence — and how the core reaches a session
+
+As of contract **3.0** the rules are no longer one 3 066-line document. They are:
+
+- **The core**, `.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md` — everything
+  every session needs regardless of what it is doing: the directory model, the
+  document set, the design+plan pair and its granularity, session eligibility,
+  the Publication Contract, the Message Protocol, escalation and fail-closed
+  behaviour, plus a `Phase Map` saying which reference owns which operation. Its
+  size is budgeted and the budget is enforced by
+  `.claude/skills/shared/tests/contract-shape.tests.ps1`.
+- **17 references**, `.claude/skills/shared/contract/*.md` — one per topic, read
+  on demand by the skill or overlay that owns the operation (the `Phase Map`
+  names the owner). Cited as `` (contract/<file>.md, "Section") ``; a rule of
+  the core is cited as `` (contract, "Section") ``. Both forms are checked
+  mechanically against the heading index, so a citation cannot point at a
+  section that does not exist.
+- **The evidence tier**, `.claude/skills/shared/contract/doklad/*.md` — the
+  measurements, rejected alternatives and reasons behind the rules. Read on
+  demand, never cited as normative: it settles no question the contract does not
+  settle itself. A `Doklad:` line in the core or a reference points into it.
+
+The version lives in the core's `Contract-Version` line only; the per-version
+history is [`shared/CHANGELOG.md`](.claude/skills/shared/CHANGELOG.md).
+
+**The core reaches a session through a hook, not through a reading habit.**
+`.claude/hooks/contract-inject.ps1` is registered in `settings.json` and injects
+the core as `additionalContext` at session start and again with the first prompt
+after a compaction (it tracks that with the marker file
+`.superpowers/contract-reload.flag`). A harness with no session-start injection
+falls back to the instructions-file rule in `CLAUDE.md.sample` — the layer's
+harness compatibility matrix below says which is which.
 
 ## Layout
 
@@ -36,10 +69,13 @@ ums/
     │   │                                 only activate once the agent-session marker reaches it)
     │   ├── install-git-hooks.ps1      ← installs pre-push per clone (git hooks are untracked; required — see below)
     │   ├── session-intent.ps1         ← SessionStart hook — delivers the session intent baton
+    │   ├── contract-inject.ps1        ← SessionStart/PostCompact hook — injects the contract CORE as context
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
-        ├── shared/           ← contract v2.18, manifest, VENDORED_FROM.md, overlays/*.overlay.md
+        ├── shared/           ← contract 3.0 core + contract/ references + contract/doklad/ evidence,
+        │                       CHANGELOG.md, manifest, VENDORED_FROM.md, scripts/, tests/,
+        │                       overlays/*.overlay.md
         ├── mb-epic-run/      ← pool status/launch/provision (see its own README.md)
         │   ├── SKILL.md
         │   ├── scripts/      ← pool-status.ps1, pool-launch.ps1, pool-provision.ps1

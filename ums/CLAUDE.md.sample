@@ -2,7 +2,11 @@
 
 ## Memory Bank contract
 
-Na začátku práce (a znovu po jakékoli kompaktaci/sumarizaci kontextu) načti a dodržuj kontrakt v [.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md). Definuje `MB_ROOT` discovery, třívrstvý model adresářů (`CTX_DIR`/`PLAN_MB`/`AFFECTED_MBS`), pár návrh+plán (work item), Target-MB discovery, harvest a fail-closed chování.
+Na začátku práce (a znovu po jakékoli kompaktaci/sumarizaci kontextu) načti a dodržuj **jádro** kontraktu v [.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md). Definuje `MB_ROOT` discovery, třívrstvý model adresářů (`CTX_DIR`/`PLAN_MB`/`AFFECTED_MBS`), pár návrh+plán (work item) a jeho granularitu, Target-MB discovery, způsobilost sezení, publikaci, message protocol, harvest a fail-closed chování.
+
+V Claude Code tohle čtení dělá hook [.claude/hooks/contract-inject.ps1](.claude/hooks/contract-inject.ps1) registrovaný v [.claude/settings.json](.claude/settings.json): jádro vloží do kontextu při startu sezení a znovu s prvním promptem po kompaktaci, takže si ho nemusíš načítat ručně. Tenhle odstavec platí i tak — je to pravidlo pro harness, kde hook není.
+
+Jádro není celý kontrakt. Podrobnosti k jednotlivým tématům jsou v referencích `.claude/skills/shared/contract/*.md` a načítá je vždy ten skill nebo overlay, který danou operaci vlastní — tabulka `Phase Map` v jádře říká která ke které. Zdůvodnění a měření leží v `.claude/skills/shared/contract/doklad/*.md`; čte se na vyžádání a **nikdy se necituje jako pravidlo**. Citační forma: `(contract, "Sekce")` pro jádro, `(contract/<soubor>.md, "Sekce")` pro referenci.
 
 ## Superpowers × Memory Bank (uživatelské preference)
 

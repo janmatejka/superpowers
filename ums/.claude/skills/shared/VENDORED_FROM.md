@@ -28,3 +28,7 @@
 2. `pwsh .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly` -> commit (UMS overlay)
 3. An `ANCHOR-BEFORE` miss means upstream moved the anchored text - fix the fragment in
    `shared/overlays/` and re-run step 2. Never edit vendored files by hand outside overlay blocks.
+
+This file pins the VENDORED UPSTREAM version only. The UMS contract has its own,
+separate version: `Contract-Version` at the top of `UMS_MEMORY_BANK_CONTRACT.md`,
+with the per-version history in [shared/CHANGELOG.md](CHANGELOG.md).

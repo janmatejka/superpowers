@@ -1,7 +1,29 @@
 # Contract changelog
 
-- **Contract-Version:** 2.19
-- Supersedes v2.18 (the pre-push hook version is compared by ORDERING against
+- **Contract-Version:** 3.0
+- 3.0 — core / references / doklad split; Session Eligibility; Work Item
+  Granularity; Phase Map; Message Protocol ordering; escalation floor row for
+  playbook.md; jira.md; permalinkTemplate; contract-inject hook (UMS-3551).
+  The 3 066-line contract becomes a core plus 17 `contract/*.md` references plus
+  a `contract/doklad/*.md` evidence tier; every rule keeps its wording, only its
+  home moves. The core carries a heading-checked citation form
+  (`(contract, "Section")` / `(contract/file.md, "Section")`), a `Phase Map`
+  saying which reference each skill and overlay reads, and a line budget
+  enforced by `tests/contract-shape.tests.ps1`. New in the core: `Session
+  Eligibility` (phase 0 of the entry gate, including the two-way synthetic
+  pre-push self-check on an UNPUBLISHED commit), `Work Item Granularity` (a work
+  item is as large as one verification set can verify), a `playbook.md` row in
+  the escalation floor, and two Message Protocol ordering rules. The first
+  publication with `-u`, the two push spellings, the two accepted bypasses and
+  the foreign-hook chaining refusal move from the core into
+  `contract/integration.md`, section "Publication mechanics"; the core states
+  each as a rule and points there. New: `contract/jira.md` (ticket description
+  template, budget, links), the `permalinkTemplate` repository-configuration key
+  with `scripts/Get-UmsPermalink.ps1` as the single home of the permalink shape,
+  `scripts/Test-UmsJiraDescription.ps1`, `scripts/Test-UmsContractMove.ps1`, and
+  the `contract-inject.ps1` hook that injects the core at session start and on
+  the first prompt after a compaction.
+- v2.19 superseded v2.18 (the pre-push hook version is compared by ORDERING against
   the layer's own source header rather than by equality against a literal, so
   a stale layer copy can no longer downgrade a newer installed hook; adds the
   installer's restore of a clobbered Git LFS chain and the `mb-state`

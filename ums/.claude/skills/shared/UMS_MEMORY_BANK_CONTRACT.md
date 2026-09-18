@@ -1,6 +1,6 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 2.19
+- **Contract-Version:** 3.0
 
 ## Purpose & Roles
 
@@ -14,7 +14,8 @@ skills (plus the deprecated `mb-act` / `mb-plan` stubs), the four
 `<!-- UMS-OVERLAY -->` overlays over vendored skills (`brainstorming`,
 `writing-plans`, `subagent-driven-development`, `finishing-a-development-branch`),
 this layer's hooks (`pre-push`, `guard-git-push.mjs`, `deny-superpowers-docs.mjs`,
-`session-intent.ps1`), and any other agent working with Memory Bank documents.
+`session-intent.ps1`, `contract-inject.ps1` — which injects this core into every
+session), and any other agent working with Memory Bank documents.
 
 ## Three-Tier Directory Model
 
@@ -508,16 +509,12 @@ the two accepted bypasses evade them as they evade everything else here.
 Doklad: contract/doklad/publication.md, "Auditability, not review"
 Doklad: contract/doklad/publication.md, "What the reachability claim proves"
 
-**A freshly created ticket branch is DETACHED from its inherited upstream, and its
-first publication is `git push -u origin <branch>` — never a bare `git push`.**
-`git switch -c <branch> <chosen base>` sets the new branch's upstream to the BASE,
-a typically protected destination it must never publish to. What stops a bare push
-in that state is git's own `push.default=simple` plus `pre-push` — **not** the
-`PreToolUse` guard, which on a bare push resolves the target as the CURRENT BRANCH
-NAME and allows it ("The epic line", where that mechanism is written once). Two
-steps, both at the source: run `git branch --unset-upstream` immediately after the
-`switch -c`, and publish the first time with `-u`. A ticket branch whose upstream
-is a protected branch is a finding, not a normal state.
+**A freshly created ticket branch is DETACHED from its inherited upstream and is
+first published with `git push -u origin <branch>`, never a bare `git push`.** That
+procedure, the two deliberately different push spellings, the two accepted bypasses
+and the installer's refusal to chain a foreign hook are all mechanism behind the
+rules above: they live in `contract/integration.md`, section "Publication
+mechanics", and nothing here is weakened by their living there.
 
 The guarantee itself is that `pre-push` hook (`.claude/hooks/pre-push`), installed
 into each workspace by `install-git-hooks.ps1`; hooks do not travel with a clone,
@@ -544,37 +541,6 @@ answered with a deprecation line.
 
 Doklad: contract/doklad/publication.md, "Which rejections name the escape"
 Doklad: contract/doklad/publication.md, "Why the human escape is deliberately wide"
-
-**Two spellings, deliberately different — do not collapse them into one.** An
-integration command handed to the user is the PLAIN
-`! git push origin HEAD:<baseBranch>`, refspec form and NO escape; that is what
-`guard-git-push.mjs` hands over when it denies the agent's own push to a
-protected branch. The escape appears only in the OTHER spelling,
-`! MB_HUMAN_PUSH=1 git push <remote> HEAD:<branch>`, handed over by the
-`pre-push` hook's rejection message — the only rejection that offers the escape
-at all.
-
-Doklad: contract/doklad/publication.md, "Why the two spellings must not be collapsed"
-
-Two known, accepted bypasses, both requiring deliberate visible intent:
-`git push --no-verify` skips the hook entirely, and a one-shot
-`git -c core.hooksPath=<other> push` points git at a hooks directory this layer
-never installed into. `--no-verify` is a BYPASS of the guarantee, never the
-documented way to publish `develop` — it disables every hook in the repository,
-and `guard-git-push.mjs` denies it on sight, escape or no escape.
-
-Doklad: contract/doklad/publication.md, "A configured core.hooksPath is not a bypass"
-
-A **foreign `pre-push`** already in the hooks directory is not a reason to leave
-the workspace unguarded: the installer moves it aside to `pre-push.ums-chained`
-and this hook runs it with the same ref list, so installing the layer cannot
-silently turn someone's LFS or lint hook off. It REFUSES to chain where it cannot
-make the move safe (the four conditions are in `contract/integration.md`, section
-"Publication mechanics"), and **a refusal is not a fallback:** our hook is then
-not installed in that workspace at all, the run exits 2, and the publication
-guarantee is absent there until someone resolves the foreign hook by hand.
-
-Doklad: contract/doklad/publication.md, "The chained hook's executable bit"
 
 **What neither layer promises.** The `PreToolUse` guard is not a guarantee: it
 sees only what it RECOGNIZES as a `git push`, and on what it does recognize it
