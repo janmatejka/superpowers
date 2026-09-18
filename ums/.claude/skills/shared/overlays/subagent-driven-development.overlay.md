@@ -10,14 +10,14 @@
 > Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [playbook-contract.md](../shared/contract/playbook-contract.md), [now-block.md](../shared/contract/now-block.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md). Read the named references before acting.
 
 - **Model selection:** follow the Model Selection section above — UMS pins no
-  models. One UMS guard (see `../shared/UMS_MEMORY_BANK_CONTRACT.md`, "Dispatch
-  Model Policy"): summarization-only dispatches (Czech commit messages, Jira
+  models. One UMS guard (contract, "Dispatch Model Policy"):
+  summarization-only dispatches (Czech commit messages, Jira
   comments, harvest notes) use the cheapest capable tier. Always set the model
   explicitly on every dispatch.
 - **Rulings and STOPs:** rule on conflicts per the SKILL text above; this
-  layer's fail-closed STOPs already fall within the four stop classes — see
-  `../shared/UMS_MEMORY_BANK_CONTRACT.md`, section "Fail-Closed Behavior",
-  paragraph "Rulings and these STOPs". Locally: merging the effective base
+  layer's fail-closed STOPs already fall within the four stop classes
+  (contract, "Fail-Closed Behavior"), paragraph "Rulings and these STOPs".
+  Locally: merging the effective base
   into the agent's OWN ticket branch is NOT the "side effect outside this
   worktree" the four classes mean — it is mandatory at phase boundaries
   (Base sync below) and is never put to the user.

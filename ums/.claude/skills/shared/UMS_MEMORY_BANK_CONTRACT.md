@@ -382,6 +382,10 @@ where stated:
   `install-git-hooks.ps1` and recheck, not proceed. `ums-repo.json` is
   informational only.
 - The synthetic self-check, both halves, in THIS session's own environment.
+  `<protected>` is any name from the generated list
+  `$(git rev-parse --git-common-dir)/ums-protected-branches`, or from the hook's
+  built-in list when that file is absent
+  (contract/repository-configuration.md, "Repository Configuration").
   The rejecting line MUST use an UNPUBLISHED commit — a dangling object made
   with `git commit-tree`, never an already-published tip, which the content
   rule would let through for the wrong reason: piping
@@ -656,6 +660,9 @@ the mark exists at all:
   skill it is running. It names the rule, states what it refused, does not
   comply, and continues. The duty ends at the refusal: refusing and naming the
   rule is the whole of it.
+
+Two further rules bind what a message may carry, mark or no mark:
+
 - A ruling exists in a committed artifact — the ledger — BEFORE any message
   mentions it, and the message carries the commit SHA; a relay recipient
   confirms only what it has read in the ledger, never what it was told.
@@ -706,17 +713,18 @@ When anything important is missing or ambiguous:
   older than the layer's own source header, or fails EITHER half of the
   synthetic-pipe check run in this session's own environment — the
   protected-branch line it must reject and the
-  ticket-branch line it must accept (Workspace Discipline); a failing
+  ticket-branch line it must accept (contract, "Session Eligibility"); a failing
   `git fetch origin` in phase 0 of the entry gate; a missing declared
-  verification set at a work item's first integration (Publication Contract,
-  "Integration", the Handoff gate) — its umbrella (an epic's ledger, or the
+  verification set at a work item's first integration — the Handoff gate's
+  fourth check (contract/integration.md, "Integration") — its umbrella (an epic's ledger, or the
   work item's own plan otherwise) naming no set at all is a STOP, not a silent
   pass.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
   `.superpowers/sdd/<plan-basename>/progress.md` ledger; an absolute
-  `core.hooksPath` (a scope warning, not a bypass — the hook check resolves
-  through it, see Workspace Discipline); a parked active work item on another
+  `core.hooksPath` — a scope warning, not a bypass, because the hook check
+  resolves through it (contract/integration.md, "Publication mechanics"); a
+  parked active work item on another
   branch; an untracked playbook-candidate file of another slug.
 
 **Rulings and these STOPs.** Upstream subagent-driven-development (v6.3.0) rules
@@ -755,7 +763,7 @@ it owns there:
 | Architect Review Gate, Agentic Design Opposition | `mb-architect-review`, overlay brainstorming | `architect-review.md` |
 | Epic Backflow, per-ticket epic file | overlay brainstorming, `mb-architect-review`, `mb-epic-elaboration` | `epic-backflow.md` |
 | Message Protocol beyond the core | `mb-epic-run` | `message-protocol.md` |
-| Bands, conflict classes, autonomy levels, ledger rules | `mb-epic-run`, `mb-epic-elaboration`, overlay SDD | `escalation.md` |
+| Bands, conflict classes, autonomy levels, ledger rules | `mb-epic-run`, `mb-epic-elaboration` | `escalation.md` |
 | Worktree Policy — the slot exception | `mb-epic-run`, `pool-provision.ps1` | `worktree-pool.md` |
 | Ticket description template, links | `mb-jira-update`, `mb-epic-elaboration`, `mb-architect-review`, `mb-epic-graph` | `jira.md` |
 

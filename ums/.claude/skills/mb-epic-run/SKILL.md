@@ -8,7 +8,7 @@ metadata:
 allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git branch:*), Bash(git for-each-ref:*), Bash(git fetch:*), Bash(git stash list:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(claude agents:*), Bash(pwsh:*), PowerShell(git status:*), PowerShell(git rev-parse:*), PowerShell(git log:*), PowerShell(git branch:*), PowerShell(git for-each-ref:*), PowerShell(git fetch:*), PowerShell(git stash list:*), PowerShell(git add:*), PowerShell(git commit:*), PowerShell(git push:*), PowerShell(claude agents:*), PowerShell(pwsh:*), Read, Grep, Glob, Edit, Skill
 ---
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-line.md](../shared/contract/epic-line.md), [worktree-pool.md](../shared/contract/worktree-pool.md), [now-block.md](../shared/contract/now-block.md), [message-protocol.md](../shared/contract/message-protocol.md), [escalation.md](../shared/contract/escalation.md), [integration.md](../shared/contract/integration.md). Read the named references before acting.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-line.md](../shared/contract/epic-line.md), [worktree-pool.md](../shared/contract/worktree-pool.md), [now-block.md](../shared/contract/now-block.md), [message-protocol.md](../shared/contract/message-protocol.md), [escalation.md](../shared/contract/escalation.md), [integration.md](../shared/contract/integration.md), [workspace-discipline.md](../shared/contract/workspace-discipline.md). Read the named references before acting.
 >
 > Every message this skill sends to a ticket session is governed by
 > (contract/message-protocol.md, "Message Protocol"), marking included.

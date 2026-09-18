@@ -34,6 +34,26 @@ $coreLines = @(Get-Content -LiteralPath $core -Encoding utf8)
 # a zapiš ho sem i s tím, co přibylo. Nadpisy nikdy nekomprimuj — jsou cíle
 # citací a hlídá je aserce o sekcích níž.
 Assert-True ($coreLines.Count -le 800) "jádro má nejvýš 800 řádků (má $($coreLines.Count))"
+
+# DRUHÝ rozpočet na TENTÉŽ artefakt, a proto stojí tady, ne u hooku: kdo jádro
+# zvětšuje, čte tenhle soubor. Vynucovaný rozpočet počítá ŘÁDKY, ale hook
+# `hooks/contract-inject.ps1` měří BAJTY a při překročení `$MaxPayloadBytes`
+# mlčky spadne na jednořádkovou náhradu „přečti si soubor" — exit 0, žádná
+# chyba, žádný červený test. Jádro přitom může uvnitř svého řádkového rozpočtu
+# vyrůst hluboko za bajtový strop (800 řádků osmdesátisloupcové prózy je ~64 kB),
+# a hlavní funkce téhle větve by se tím tiše vypnula. Testy hooku posílají skrz
+# hook jen šestiřádkové syntetické jádro, takže tuhle kolizi neuvidí NIKDY.
+# Strop se čte ze zdroje hooku, ne z literálu, aby obě čísla nemohla rozejít.
+# Obálka (warning o nasazení, `<contract-core>`, context.md, NOW blok, instrukce)
+# je konzervativně 1 kB; naměřeno v Task 19 review: jádro 44 725 B, celá payload
+# 45 539 B — obálka pod 1 kB.
+$injectHook = Get-Content -LiteralPath (Join-Path $layer 'hooks\contract-inject.ps1') -Raw -Encoding utf8
+$maxMatch = [regex]::Match($injectHook, '(?m)^\s*\$MaxPayloadBytes\s*=\s*(?<n>\d+)')
+Assert-True $maxMatch.Success 'strop payloadu je ve zdroji hooku čitelný'
+$maxBytes = [int] $maxMatch.Groups['n'].Value
+$coreBytes = [Text.Encoding]::UTF8.GetByteCount((Get-Content -LiteralPath $core -Raw -Encoding utf8))
+$envelopeBytes = 1024
+Assert-True (($coreBytes + $envelopeBytes) -le $maxBytes) "jádro + obálka se vejde do stropu hooku ($coreBytes + $envelopeBytes B vs $maxBytes B; rezerva $($maxBytes - $envelopeBytes - $coreBytes) B)"
 Assert-Match ($coreLines -join "`n") '(?m)^- \*\*Contract-Version:\*\* \d+\.\d+' 'jádro nese Contract-Version'
 Assert-True (-not (($coreLines -join "`n") -match '(?m)^- (Supersedes|v\d+\.\d+ superseded)')) 'verzní preambule v jádře není'
 foreach ($h in @('## Escalation & Autonomy', '## Fail-Closed Behavior', '## Publication Contract', '## Language Contract', '## Message Protocol', '## Session Eligibility', '## Work Item Granularity', '## Phase Map')) {
@@ -95,7 +115,13 @@ foreach ($f in $scan) {
     }
     # U+201E is spelled with `u{201E} on purpose: PowerShell 7 treats a literal „
     # as a smart-quote string delimiter, so the brief's literal spelling does not parse.
-    foreach ($m in [regex]::Matches($text, "contract's\s+[`"`u{201E}]|UMS_MEMORY_BANK_CONTRACT\.md`?,\s*[`"`u{201E}]|\(contract,\s+section\s")) {
+    # Zpětné apostrofy v `md``?` jsou ZDVOJENÉ zcela záměrně. Vzor je v DVOJITÝCH
+    # uvozovkách, takže jediný zpětný apostrof by PowerShell spolkl jako escape
+    # a do regexu by dorazilo `md?,` — tedy „volitelné d" místo „volitelný
+    # uzavírací zpětný apostrof". Nejpřirozenější markdownový zápis legacy citace,
+    # `UMS_MEMORY_BANK_CONTRACT.md`, "sekce", by tak zůstal NEODHALENÝ. Stejná
+    # třída chyby už tenhle plán trefila dvakrát jinde.
+    foreach ($m in [regex]::Matches($text, "contract's\s+[`"`u{201E}]|UMS_MEMORY_BANK_CONTRACT\.md``?,\s*[`"`u{201E}]|\(contract,\s+section\s")) {
         $legacy += "$($f.Name): $($m.Value)"
     }
 }

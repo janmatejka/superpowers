@@ -7,7 +7,7 @@ metadata:
   version: "1.4"
 ---
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [architect-review.md](../shared/contract/architect-review.md), [epic-backflow.md](../shared/contract/epic-backflow.md), [repository-configuration.md](../shared/contract/repository-configuration.md). Read the named references before acting.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [architect-review.md](../shared/contract/architect-review.md), [epic-backflow.md](../shared/contract/epic-backflow.md), [repository-configuration.md](../shared/contract/repository-configuration.md), [jira.md](../shared/contract/jira.md). Read the named references before acting.
 >
 > Bitbucket link mechanics (git preconditions, SHA stabilization, commit-pinned
 > URLs, description-line refresh) are reused from
