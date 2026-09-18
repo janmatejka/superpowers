@@ -16,8 +16,10 @@
   the escalation floor, and two Message Protocol ordering rules. The first
   publication with `-u`, the two push spellings, the two accepted bypasses and
   the foreign-hook chaining refusal move from the core into
-  `contract/integration.md`, section "Publication mechanics"; the core states
-  each as a rule and points there. New: `contract/jira.md` (ticket description
+  `contract/integration.md`, section "Publication mechanics"; the core states the
+  `-u` rule itself and NAMES the other three in one pointer sentence, so a
+  core-only reader learns they exist and where to read them — it does not restate
+  them. New: `contract/jira.md` (ticket description
   template, budget, links), the `permalinkTemplate` repository-configuration key
   with `scripts/Get-UmsPermalink.ps1` as the single home of the permalink shape,
   `scripts/Test-UmsJiraDescription.ps1`, `scripts/Test-UmsContractMove.ps1`, and

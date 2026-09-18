@@ -22,6 +22,17 @@ $coreLines = @(Get-Content -LiteralPath $core -Encoding utf8)
 # Smysl asercie je zabránit tomu, aby jádro znovu narostlo do 3066řádkového
 # dokumentu, ze kterého vzniklo — ne trvale svítit červeně. Naměřeno 790,
 # zaokrouhleno nahoru na 800.
+#
+# CO DĚLAT, AŽ TAHLE ASERCE ZČERVENÁ (deset řádků rezervy je západka, ne prostor
+# k růstu — proto tenhle odstavec): číslo NEZVYŠUJ reflexivně. Nejdřív znovu změř
+# podíl neprózy výše uvedeným rozpadem a podívej se na PŘIBYLÉ řádky. Je-li mezi
+# nimi výklad, zdůvodnění, zopakované pravidlo nebo příklad, patří do
+# `contract/<téma>.md` (mechanismus) nebo `contract/doklad/<téma>.md` (měření
+# a zdůvodnění) — komprimuj prózu, strop nech být. Strop zvyš jedině tehdy, když
+# přibylé řádky jsou samy pravidla nebo artefakty (nadpis jako cíl citace,
+# tabulka, fenced blok, ukazatel `Doklad:`), a nové číslo odvoď stejným měřením
+# a zapiš ho sem i s tím, co přibylo. Nadpisy nikdy nekomprimuj — jsou cíle
+# citací a hlídá je aserce o sekcích níž.
 Assert-True ($coreLines.Count -le 800) "jádro má nejvýš 800 řádků (má $($coreLines.Count))"
 Assert-Match ($coreLines -join "`n") '(?m)^- \*\*Contract-Version:\*\* \d+\.\d+' 'jádro nese Contract-Version'
 Assert-True (-not (($coreLines -join "`n") -match '(?m)^- (Supersedes|v\d+\.\d+ superseded)')) 'verzní preambule v jádře není'

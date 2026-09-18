@@ -201,8 +201,10 @@ item.
 The mechanics behind the core's `## Publication Contract`: the first publication of
 a fresh ticket branch, the two push spellings, the accepted bypasses, how the
 `pre-push` hook is verified in a workspace, how a foreign hook is chained, and how
-the `MB_AGENT_SESSION` marker reaches each harness. The core states each of these
-as a rule in one line; the procedure that carries it is here.
+the `MB_AGENT_SESSION` marker reaches each harness. The core states the `-u` rule
+itself and NAMES the rest in one pointer sentence rather than restating them —
+their full wording, and the procedure that carries each, are here. A rule of this
+section is therefore cited from here, never from the core.
 
 **The first publication of a fresh ticket branch uses `-u`.** A freshly created
 ticket branch is DETACHED from its inherited upstream, and its first publication is
