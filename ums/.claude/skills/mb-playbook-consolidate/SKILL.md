@@ -52,7 +52,11 @@ sibling `shared/`, `<MB_ROOT>` the repository root. Every path handed to
 file) is **repository-relative**; the script joins `<MB_ROOT>`. The chain and
 tree functions take the repository-relative Memory Bank directory (e.g.
 `memory-bank/`, `Common/X/memory-bank/`), never an absolute path;
-`Test-UmsPlaybookShape -Playbook` takes an absolute path.
+`Test-UmsPlaybookShape -Playbook` takes an absolute path. Whenever the
+current directory is not `<MB_ROOT>` — e.g. a dry run over another repository
+— pass `-RepoRoot <MB_ROOT>` to every `consolidate-playbook.ps1` call
+(`-Stats -Tree . -RepoRoot <path>`); the script otherwise takes the repository
+of the current directory.
 
 ```powershell
 . <mb-shared>/scripts/Test-UmsPlaybookShape.ps1   # also loads Read-UmsPlaybook, Get-UmsPlaybookChain, Get-UmsMbTree, Get-UmsMbLowestCommonAncestor
@@ -112,8 +116,8 @@ own ticket (contract/playbook-contract.md, "Consolidation").
    ```
 
    `Položka` is the `id` from `-Parse` plus the first words; `Do` is the target
-   (file, part, section) for every move; `Pozn.` names every citation rewrite
-   of the row (step 6). A row moving to an ancestor lists the count and the
+   (file, part, section) for every move; every citation rewrite is a row of
+   its own (step 6). A row moving to an ancestor lists the count and the
    Memory Banks that inherit the rule (every `Get-UmsMbTree` entry below that
    ancestor).
 4. **Approval — consult before writing.** The user approves the table and may
@@ -129,8 +133,8 @@ own ticket (contract/playbook-contract.md, "Consolidation").
    | Návrh v tabulce | `verdict` | Pole |
    |---|---|---|
    | `ponechat` (new-shape file only) | `ponechat` | `id` |
-   | rewritten item (round 1 shortening, `Důkaz:`) | `prepsat` | `id`, `text` |
-   | `sloučit do <položka>` | `sloucit` | `id` (the merged-away item), `into` (the kept item's `id`), `text` (the merged item) |
+   | rewritten item in place (`Proč:` shortening, `Důkaz:`) — new-shape file or legacy patch only | `prepsat` | `id`, `text` |
+   | `sloučit do <položka>` — new-shape file or legacy patch only | `sloucit` | `id` (the merged-away item), `into` (the kept item's `id`), `text` (the merged item) |
    | `vyřadit (<důvod>)` | `vyradit` | `id`, `reason` |
    | `přesunout do tech.md` | `do-tech` | `id`, `target` (`<MB dir>/tech.md`), optional `text` |
    | `převést na test <kde>` | `prevest-na-test` | `id`, `test` — the test is written first, in this batch |
@@ -141,13 +145,22 @@ own ticket (contract/playbook-contract.md, "Consolidation").
    is Czech, in the item shape. Merging duplicates into one item where none of
    them stays (a cluster moved to an ancestor): `presunout` one of them with the
    merged `text`, `vyradit` the others with `reason` `nahrazeno «<položka>»`.
+   On a legacy CONVERSION the script holds no in-place items, so `prepsat` and
+   `sloucit` fail there: every rewrite of round 1 over a legacy file travels as
+   `presunout` with its `text`.
 6. **Citation rewrites (round 1, and every batch that renames or moves a
    section).** For every old section name the batch renames or moves, grep the
    repository outside the playbook — `git grep -n -F "<old name>"` — and
-   rewrite each citation to the new name in the same batch, citation text only
-   (contract/playbook-contract.md, "Writes outside PLAN_MB"). Hits in Memory
-   Bank documents outside the run's scope are not rewritten: list them in
-   `Pozn.` and in the report.
+   rewrite each citation to the new name in the same batch, citation text only.
+   Every hit is its own named row of the batch table (file, line, old → new
+   text), so the user approves it with the batch.
+   - Memory Bank documents of the run's scope — rewritten under (contract/playbook-contract.md, "Writes outside PLAN_MB").
+   - Tracked files that are no Memory Bank document (scripts, tests, skills,
+     READMEs) — outside the lock, which governs Memory Bank document writes only (contract, "Scope Lock (Memory Bank documents only)"); rewritten too.
+   - Never touch `proposals/active/` or `proposals/completed/` — their hits are
+     listed, not rewritten.
+   - Memory Bank documents outside the run's scope — not rewritten; listed in
+     `Pozn.` and in the report.
 7. **Apply.** Note each target file's line count, then:
 
    ```powershell
@@ -171,8 +184,9 @@ own ticket (contract/playbook-contract.md, "Consolidation").
      new decisions file; never a hand edit of the playbook.
 9. **Commit.** `mb-git-commit`, playbook batch: it stages exactly `written`
    plus the citation rewrites of step 6 (and a test written for
-   `prevest-na-test`, and a `-Baseline` file). The message's LAST paragraph
-   carries the trailer next to the other trailers:
+   `prevest-na-test`, and a `-Baseline` file). Hand `mb-git-commit` the
+   trailer line as a REQUIRED line of the message's last paragraph, next to
+   the other trailers:
 
    ```
    Playbook-Consolidation: <run>/<batch>
@@ -181,6 +195,16 @@ own ticket (contract/playbook-contract.md, "Consolidation").
    Git reads trailers only from the last paragraph, and `-Resume` reads them
    from there. One batch, one commit — the source and the target of a move
    are never split.
+
+   **REQUIRED check right after the commit:**
+
+   ```powershell
+   git log -1 --format='%(trailers:key=Playbook-Consolidation,valueonly)'
+   ```
+
+   It must print `<run>/<batch>`. If it does not, amend the (unpushed) commit's
+   message and check again, or stop and report. Never continue to the next
+   batch without it — `-Resume` would silently treat the batch as not done.
 10. **Publish** the own ticket branch per (contract, "Publication Contract"),
     never a shared branch.
 
@@ -195,8 +219,9 @@ first line). `-Apply` converts a legacy file only when the batch has
 leaves any item undecided or marks one `ponechat`; a batch with neither
 patches the file in place instead. If the converted file is over 600 lines, `-Apply` writes its
 ratchet unless the batch grew the file — then the shape check reports
-`[ráčna-chybí]` and step 8 applies. Round 1 merges nothing; a new-shape file
-skips round 1.
+`[ráčna-chybí]` and step 8 applies. Round 1 merges nothing. A new-shape file
+skips the conversion, but its round 1 rewrites (`Proč:` shortening,
+`Důkaz:`) may still run, as `prepsat` rows.
 
 **Round 2** merges, retires, moves, converts to code (`sloucit`, `vyradit`,
 `presunout`, `do-tech`, `prevest-na-test`). A section still over 40 items
@@ -247,7 +272,8 @@ When a file or a chain is still over its threshold after round 2, stop cutting
 at the achieved size (step 8), then draft the report in Czech, show it to the
 user, and write it only after approval, as
 `<MB>/proposals/next/design_<mb-slug>_playbook_eskalace.md` — in its own batch
-`eskalace-<…>`, committed like any other. In `-Tree` mode one report per
+`eskalace-<subtree-slug>` (the slug of the run's scope in single-MB mode),
+committed like any other. In `-Tree` mode one report per
 subtree, placed in the Memory Bank returned by
 `Get-UmsMbLowestCommonAncestor` over the Memory Banks still over a threshold;
 when that Memory Bank lies outside the run's scope, ask the user where it goes.
@@ -291,6 +317,10 @@ Sizes come from `-Stats` (`lines`, `chainLines`), cluster sizes from the
 `lineCount` of the `-Parse` items.
 
 ## Resume
+
+Resume only over a clean tree: a batch applied but not committed is first
+committed (with its trailer check) or restored — otherwise `-Resume` counts it
+as not done while its writes are already in the files.
 
 ```powershell
 pwsh -NoProfile -File <skill>/scripts/consolidate-playbook.ps1 -Resume <run>
