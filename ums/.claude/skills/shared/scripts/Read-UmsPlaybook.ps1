@@ -45,7 +45,13 @@ function Read-UmsPlaybook([string] $Path) {
     $partTitles = @($script:UmsPlaybookPartTitles.Values)
     $h2 = @($headings | Where-Object Level -eq 2)
     $isNew = ($h2.Count -gt 0) -and (@($h2 | Where-Object { $partTitles -notcontains $_.Title }).Count -eq 0)
-    $firstH2 = if ($h2.Count) { $h2[0].Line } else { $n }
+    # Ruling R3: with no ## heading at all, PreambleEnd is 0 (nothing precedes
+    # the content) and the item scan starts at line index 0 — the old $n
+    # fallback made the scan loop below empty and silently dropped every
+    # item in an H2-less file. With a ## heading present, behaviour is
+    # unchanged: $firstH2 is that heading's 0-based line, which doubles as
+    # the 1-based line number of the line just before it.
+    $firstH2 = if ($h2.Count) { $h2[0].Line } else { 0 }
 
     $parts = @{}
     $sections = [Collections.Generic.List[object]]::new()

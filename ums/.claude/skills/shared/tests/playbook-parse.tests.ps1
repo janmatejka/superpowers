@@ -77,6 +77,20 @@ Assert-Eq $pb.Items[0].LineCount 1 'rule LineCount is unchanged by the blank lin
 Assert-Eq $pb.Items[1].Kind 'prose' 'text after the blank line is its own item, not absorbed into the rule'
 Assert-Eq $pb.Items[1].Title 'Prostý text za pravidlem.' 'prose item text'
 
+Write-Host "== no ## heading at all (Ruling R3)"
+$p = Write-Fx 'no-h2.md' @'
+# Kopie
+
+Nějaký text.
+- **Pravidlo X.** Proč: x.
+'@
+$pb = Read-UmsPlaybook $p
+Assert-Eq $pb.Shape 'legacy' 'H2-less file is legacy'
+Assert-Eq $pb.PreambleEnd 0 'no ## heading means PreambleEnd is 0'
+Assert-Eq $pb.Items.Count 2 'items are not silently dropped'
+Assert-Eq $pb.Items[0].Kind 'prose' 'prose item before the rule is kept'
+Assert-Eq $pb.Items[1].Kind 'pravidlo' 'rule item is kept'
+
 Write-Host "== legacy bold bullets"
 $p = Write-Fx 'legacy-bullets.md' @'
 # Playbook
