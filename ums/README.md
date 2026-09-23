@@ -13,7 +13,7 @@ optional Architect Review Gate (`mb-architect-review`, request/resume) for
 non-trivial designs with a linked Jira ticket — while it is pending,
 writing-plans does not start. The normative rules are in
 [`.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md)
-(contract 3.0).
+(contract 3.1).
 
 ## Contract: core, references, evidence — and how the core reaches a session
 
@@ -73,7 +73,7 @@ ums/
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
     ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
     └── skills/
-        ├── shared/           ← contract 3.0 core + contract/ references + contract/doklad/ evidence,
+        ├── shared/           ← contract 3.1 core + contract/ references + contract/doklad/ evidence,
         │                       CHANGELOG.md, manifest, VENDORED_FROM.md, scripts/, tests/,
         │                       overlays/*.overlay.md
         ├── mb-epic-run/      ← pool status/launch/provision (see its own README.md)

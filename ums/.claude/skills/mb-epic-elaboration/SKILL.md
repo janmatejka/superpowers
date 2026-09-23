@@ -7,7 +7,7 @@ metadata:
   version: "1.4"
 ---
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-backflow.md](../shared/contract/epic-backflow.md), [epic-line.md](../shared/contract/epic-line.md), [escalation.md](../shared/contract/escalation.md), [jira.md](../shared/contract/jira.md). Read the named references before acting.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-backflow.md](../shared/contract/epic-backflow.md), [epic-line.md](../shared/contract/epic-line.md), [escalation.md](../shared/contract/escalation.md), [jira.md](../shared/contract/jira.md), [playbook-contract.md](../shared/contract/playbook-contract.md). Read the named references before acting.
 
 # Epic Elaboration (bounded-window fixpoint)
 

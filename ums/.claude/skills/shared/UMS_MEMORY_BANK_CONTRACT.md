@@ -9,7 +9,7 @@ subagent-driven-development / executing-plans → finishing-a-development-branch
 the Memory Bank (MB) is the **document and knowledge layer** injected into it.
 This contract defines where superpowers artifacts live in the MB tree, how the
 target MB is selected and pinned, what `context.md` contains, and how knowledge is
-harvested when a branch finishes. Its consumers are the 17 live `mb-*` utility
+harvested when a branch finishes. Its consumers are the 18 live `mb-*` utility
 skills (plus the deprecated `mb-act` / `mb-plan` stubs), the four
 `<!-- UMS-OVERLAY -->` overlays over vendored skills (`brainstorming`,
 `writing-plans`, `subagent-driven-development`, `finishing-a-development-branch`),
@@ -755,7 +755,7 @@ it owns there:
 | Brainstorming Paths | overlay brainstorming, overlay finishing | `brainstorming-paths.md` |
 | Repository Configuration (minus the epic line) | `mb-init`, `mb-state`, overlays, hook docs | `repository-configuration.md` |
 | The epic line, decision registry | `mb-epic-run`, `mb-epic-elaboration`, `guard-git-push.mjs` (comment) | `epic-line.md` |
-| Playbook Contract | overlay SDD, `mb-harvest`, `mb-park` | `playbook-contract.md` |
+| Playbook Contract | overlay SDD, `mb-harvest`, `mb-park`, `mb-playbook-consolidate` | `playbook-contract.md` |
 | Session Intent Baton | `session-intent.ps1`, `mb-park`, `mb-abort`, `mb-harvest`, overlay writing-plans, overlay SDD | `session-intent-baton.md` |
 | The `NOW` Block | overlay SDD, `mb-epic-run` | `now-block.md` |
 | Harvest Contract, Document Ownership procedure | `mb-harvest`, `mb-sync`, `mb-migrate-docs` | `harvest.md` |

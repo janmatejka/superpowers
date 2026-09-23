@@ -3,14 +3,14 @@
 ## Přehled
 
 Skill pack MB v2: Superpowers (vendorované, v6.3.0) řídí workflow, Memory Bank
-je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.0](UMS_MEMORY_BANK_CONTRACT.md).
+je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.1](UMS_MEMORY_BANK_CONTRACT.md).
 
 ## Sdílené prostředky
 
 | Prostředek | Cesta | Popis |
 |---|---|---|
-| Kontrakt 3.0 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár) a jeho granularita, způsobilost sezení, publikace, message protocol, eskalace, fail-closed, Phase Map a citační forma — jediné, co nese `Contract-Version`; rozpočet řádků vynucuje `tests/contract-shape.tests.ps1` |
-| Kontrakt 3.0 (reference) | [shared/contract/](contract/) | 17 per-tématických referencí vyňatých z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon + Publication mechanics, epic-line, epic-backflow, worktree-pool, now-block, message-protocol, escalation, architect-review, cross-branch-visibility, brainstorming-paths, jira); načítá je vlastnící skill podle `Phase Map` v jádře, citovat jako `(contract/<soubor>.md, "Sekce")` |
+| Kontrakt 3.1 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár) a jeho granularita, způsobilost sezení, publikace, message protocol, eskalace, fail-closed, Phase Map a citační forma — jediné, co nese `Contract-Version`; rozpočet řádků vynucuje `tests/contract-shape.tests.ps1` |
+| Kontrakt 3.1 (reference) | [shared/contract/](contract/) | 17 per-tématických referencí vyňatých z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon + Publication mechanics, epic-line, epic-backflow, worktree-pool, now-block, message-protocol, escalation, architect-review, cross-branch-visibility, brainstorming-paths, jira); načítá je vlastnící skill podle `Phase Map` v jádře, citovat jako `(contract/<soubor>.md, "Sekce")` |
 | Doklad ke kontraktu | [shared/contract/doklad/](contract/doklad/) | Evidenční vrstva (měření, historie rozhodnutí, zdůvodnění) vyňatá z jádra a referencí; čte se na vyžádání a nikdy se necituje jako normativní zdroj |
 | Changelog kontraktu | [shared/CHANGELOG.md](CHANGELOG.md) | Historie verzí kontraktu (v1 → v2 → 3.0); jediný domov per-verzní historie, jádro nese jen `Contract-Version` |
 | Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů a re-vendor postup |
@@ -54,6 +54,7 @@ UMS overlay bloky mají přesně 4: `brainstorming`, `subagent-driven-developmen
 | mb-architect-review | [mb-architect-review/SKILL.md](../mb-architect-review/SKILL.md) | Design review živým architektem přes Jira tiket (request/respond/resume, branch sync dle tiketu, publikace větve dle Publication Contract) |
 | mb-migrate-docs | [mb-migrate-docs/SKILL.md](../mb-migrate-docs/SKILL.md) | Migrace MB dokumentů na aktuální sadu (product.md → brief.md, tasks.md → playbook.md; mechanická fáze + mazací agent pod verifikátorem) |
 | mb-link-audit | [mb-link-audit/SKILL.md](../mb-link-audit/SKILL.md) | Kontrola a konsolidace odkazů v MB dle Link Conventions (kotvy → textové určení sekce, špatná hloubka `../`, zastaralý text odkazu, absolutní cesty; neurčitelné cíle se značkují) |
+| mb-playbook-consolidate | [mb-playbook-consolidate/SKILL.md](../mb-playbook-consolidate/SKILL.md) | Konsolidace playbooku jedné MB nebo celého stromu: slučování, vyřazování, převod tvaru, přesuny ve stromu, eskalační report. |
 
 ## Odstraněné v1 skilly (MB v1 → v2)
 

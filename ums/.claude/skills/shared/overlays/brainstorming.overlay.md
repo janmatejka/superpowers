@@ -7,7 +7,7 @@
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [workspace-discipline.md](../shared/contract/workspace-discipline.md), [target-mb-discovery.md](../shared/contract/target-mb-discovery.md), [brainstorming-paths.md](../shared/contract/brainstorming-paths.md), [architect-review.md](../shared/contract/architect-review.md), [epic-backflow.md](../shared/contract/epic-backflow.md), [cross-branch-visibility.md](../shared/contract/cross-branch-visibility.md). Read the named references before acting.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [workspace-discipline.md](../shared/contract/workspace-discipline.md), [target-mb-discovery.md](../shared/contract/target-mb-discovery.md), [brainstorming-paths.md](../shared/contract/brainstorming-paths.md), [architect-review.md](../shared/contract/architect-review.md), [epic-backflow.md](../shared/contract/epic-backflow.md), [cross-branch-visibility.md](../shared/contract/cross-branch-visibility.md), [playbook-contract.md](../shared/contract/playbook-contract.md). Read the named references before acting.
 
 This repository injects a Memory Bank document layer. Read the contract core
 before writing the design document.

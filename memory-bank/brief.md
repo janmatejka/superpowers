@@ -40,7 +40,7 @@ Historie: vrstva v5 je archivovaná v tagu `archive/mb-integrace-v5-era`, větev
 | [`skills/`](../skills/) | Vendorovatelný upstream skill pack (14 skillů). Na této větvi se needituje. |
 | [`ums/`](../ums/) | UMS vrstva — zrcadlo živé kopie z monorepa, jediné místo pro změny na této větvi. |
 | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v3.0, manifest, vendor pin, overlay fragmenty. |
-| [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | Utility skilly Memory Bank (17 aktivních + 2 deprecated stuby). |
+| [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | Utility skilly Memory Bank (18 aktivních + 2 deprecated stuby). |
 | [`memory-bank/`](.) | Memory Bank tohoto repozitáře — orchestrační kořen (`CTX_DIR`) i cílová MB (`PLAN_MB`). |
 | `.claude/`, `.agents/` | Netrackovaná **nasazení** vrstvy pro práci v tomto repu (viz [architecture.md](architecture.md), obnova v [playbook.md](playbook.md)). |
 | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/) | Upstream infrastruktura (bootstrap hooky, testy, dokumentace portování). |
