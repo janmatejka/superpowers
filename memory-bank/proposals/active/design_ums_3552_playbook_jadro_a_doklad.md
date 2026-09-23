@@ -52,7 +52,8 @@ a Technický návrh, měření v sekci Doklad na konci.
 - Nový skill `mb-playbook-consolidate` s režimem jedné MB a režimem `-Tree`.
 - Testy tvaru, řetězce a mechaniky nad fixturami; převod dvou už rozhodnutých
   lekcí na sadu `tests-hygiene.tests.ps1`.
-- Konsolidace `memory-bank/playbook.md` tohoto repa do rozpočtu.
+- Konsolidace `memory-bank/playbook.md` tohoto repa: pod práh, nebo s ráčnou
+  a eskalačním reportem (bod 10).
 - Běh `-Tree` nanečisto nad monorepem (bez zápisu) jako doklad.
 
 **Ven:**
@@ -200,12 +201,16 @@ okamžiku spuštění:
 - **Rozpočet řetězce:** 900 řádků — to, co sezení v dané MB skutečně čte.
   Kontrola řetězce běží pro každou MB v repu, takže nafouknutý kořen nebo
   podstromová část mezilehlé MB se ukáže u všech jejích potomků najednou.
-  - Řetězec složený **jen ze souborů v novém tvaru a v rozpočtu**, který přesto
-    přesáhne 900 řádků, je tvrdý nález. Náprava je konsolidace: přesun
-    k potomkovi, přeřazení do části projektu nebo sloučení.
-  - Řetězec, jehož některý úsek pochází ze souboru pod ráčnou nebo ve starém
-    tvaru, se hlásí jen jako varování s velikostí. Nemůže být v rozpočtu dřív
-    než jeho soubory a tvrdý nález by nešel odstranit žádnou akcí nad řetězcem.
+- **Rozpočet je eskalační práh, ne kritérium úspěchu.** Překročení souboru ani
+  řetězce není tvrdý nález, je to varování s velikostí. Říká, že playbook
+  pravděpodobně nese obsah, který by měl žít jinde. Konsolidace, která práh
+  nedosáhne bez ztráty pravidel stojících za svou cenu, končí **eskalačním
+  reportem** (bod 8) — pokynem řešit část obsahu jiným nástrojem než
+  playbookem —, ne škrtáním pod práh za každou cenu.
+- **Tvrdé nálezy** skriptu tvaru jsou jen tři, všechny u souboru v novém tvaru:
+  porušení tvaru (bod 1), růst nad ráčnu bez zaznamenaného lidského rozhodnutí
+  (níže) a soubor nad prahem bez ráčnového komentáře — ztracená ráčna je tak
+  hlasitá, ne tichá.
 - **Legacy režim (přechod).** Soubor ve starém tvaru (bod 1) dostává od skriptu
   tvaru jen varování — tvar, velikost i rozpočet — a harvest nezastaví.
   Harvestová brána hlasitě ohlásí, že legacy soubor roste, o kolik řádků,
@@ -217,12 +222,16 @@ okamžiku spuštění:
   a rozpočet souboru) a `-Tree <cesta>` (navíc řetězce všech MB podstromu);
   nálezy vrací česky. Volá ho sada vrstvy nad fixturami, harvestová brána nad
   dotčenými soubory a konsolidace na konci běhu.
-- **Ráčna bez nového souboru:** dokud playbook není v rozpočtu, nese na druhém
+- **Ráčna bez nového souboru:** soubor v novém tvaru nad prahem nese na druhém
   řádku HTML komentář `<!-- playbook-budget: 600; baseline: 2414 (2026-09-23) -->`.
-  Skript tvaru čte limit jako menší z rozpočtu a baseline; soubor smí jen
-  klesat. Po konsolidaci pod rozpočet se komentář odstraní a platí holý
-  rozpočet. Komentář cestuje se souborem, takže ráčna platí v každém klonu.
-  Řetězec vlastní komentář nemá; jeho pravidla jsou výše u rozpočtu řetězce.
+  Soubor nesmí přerůst baseline: harvest, který by ho zvětšil, musí přírůstek
+  vyrovnat (sloučit, nahradit, vyřadit), nebo člověk v bráně výslovně zvedne
+  baseline s důvodem — ten se zapíše do komentáře
+  (`baseline: 2430 (2026-10-02, <důvod>)`). Růst je tedy vždy viditelné lidské
+  rozhodnutí, nikdy tichý přírůstek. Konsolidace baseline po každé dávce sníží
+  na dosaženou velikost; pod prahem se komentář odstraní. Komentář cestuje se
+  souborem, takže ráčna platí v každém klonu. Řetězec ráčnu nemá — je součtem
+  svých úseků a hlídají ho jejich ráčny.
 
 ### 4. Sběr kandidátů (overlay SDD)
 
@@ -354,15 +363,33 @@ okamžiku spuštění:
 - **Scope Lock (změna jádra kontraktu).** Konsolidace zapisuje mimo
   `CTX_DIR`/`PLAN_MB` a mimo harvest, takže potřebuje jmenovanou výjimku:
   smí zapsat `playbook.md` a `playbook-retired.md` každé MB v rozsahu běhu
-  a `tech.md` jen u řádků s verdiktem `přesunout do tech.md` — autoritou je
+  a `tech.md` jen u řádků s verdiktem `přesunout do tech.md`, a do
+  `proposals/next/` jen schválený eskalační report (níže) — autoritou je
   člověkem schválená tabulka dávky, nic mimo ni. `mb-git-commit` dostane
   odpovídající pravidlo stagingu: stagne právě soubory, které schválená dávka
   jmenuje, takže přesun nemůže odejít bez zdrojové nebo cílové poloviny.
-- Spouští se ručně, nebo když skript tvaru zčervená; nikdy automaticky.
+- Spouští se ručně, nebo když skript tvaru hlásí tvrdý nález či soubor nad
+  prahem; nikdy automaticky.
 - **Dvě kola.** Kolo 1 převede tvar: rozdělí soubor na části, přeřadí položky
   do sekcí „Když …", zkrátí `Proč:` na větu a doplní `Důkaz:` ze SHA
   harvestového commitu podle `git log -S`. Kolo 2 slučuje, vyřazuje, přesouvá
   a převádí do kódu. Obě kola schvaluje člověk nad tabulkou.
+- **Eskalační report.** Zůstane-li soubor nebo řetězec po kole 2 nad prahem,
+  konsolidace neškrtá dál. Baseline nastaví na dosaženou velikost a sepíše
+  eskalační report jako předběžný návrh
+  `<MB>/proposals/next/design_<mb-slug>_playbook_eskalace.md` — ve frontě, kde
+  ho najde `mb-state` i `mb-doc-index` a odkud se aktivuje jako běžná
+  následná práce. Report nic neřeší, jen dává podklad:
+  - velikost souboru a řetězce proti prahu;
+  - zbylé položky seskupené do shluků podle tématu, s velikostí každého shluku;
+  - u každého shluku navržený jiný domov a proč: skill (postup vázaný na
+    konkrétní druh práce, který se má načíst jen při ní — například úpravy
+    BPMN), skript nebo test (mechanicky ověřitelné), samostatný referenční
+    dokument MB čtený na vyžádání, `tech.md`;
+  - odhad, o kolik by přesun playbook a dotčené řetězce zmenšil.
+
+  Kdo report vytvořil, ho nechá schválit stejně jako tabulku dávky; zápis do
+  `proposals/next/` je v rámci výjimky Scope Lock pro konsolidaci.
 - **Citace sekcí.** Přejmenování a přesun sekcí rozbije citace podle jména
   sekce, které míří do playbooku odjinud — dnes například `contract-inject.ps1`
   a jeho aserce v `contract-inject.tests.ps1`, `mb-state/SKILL.md` (sekce
@@ -413,8 +440,11 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
   v `.superpowers/playbook-consolidation/<běh>/` je git-ignorovaný pracovní
   soubor, který jde kdykoli vygenerovat znovu; neschválená práce tedy není
   neobnovitelný zbytek a Workspace Discipline se nemění.
-- **Konec běhu** — `Test-UmsPlaybookShape.ps1 -Tree` nad celým podstromem:
-  všechny soubory a řetězce v rozpočtu, nebo pod svou ráčnou.
+- **Konec běhu** — `Test-UmsPlaybookShape.ps1 -Tree` nad celým podstromem bez
+  tvrdého nálezu; každá MB, jejíž soubor nebo řetězec zůstal nad prahem, má
+  ráčnu na dosažené velikosti a eskalační report ve frontě. Report napříč
+  stromem je jeden za podstrom, ne jeden za MB, aby shluky, které se opakují
+  ve víc MB (kandidáti na společný skill), byly vidět pohromadě.
 
 ### 10. Akceptace
 
@@ -424,21 +454,24 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
   nejnižšího společného předka, přesun nahoru i dolů přes `-Apply` s kontrolou,
   že neschválené položky zůstaly doslova, rozpočet souboru i řetězce včetně
   ráčny a čtení legacy tvaru bez částí. Navíc: kořen jako jediná MB s částí
-  „Jen pro tento projekt"; řetězec ze souborů v rozpočtu, který přesto přesáhne
-  900 řádků (tvrdý nález); legacy soubor nad rozpočtem, který harvest
-  nezastaví; git-ignorovaná a vnořená `memory-bank/`, které se do stromu
-  nezapočítají; položka druhu postup s blokem příkazů.
-- **Toto repo.** Plná konsolidace `memory-bank/playbook.md` (2 414 řádků) do
-  rozpočtu ve dvou kolech nad schválenou tabulkou: sekce podle okamžiku
-  spuštění, vyřazené v seznamu, skript tvaru zelený bez ráčny. Playbook je tu
+  „Jen pro tento projekt"; soubor a řetězec nad prahem (varování, ne tvrdý
+  nález) a z nich vygenerovaný eskalační report; růst nad ráčnu bez
+  zaznamenaného rozhodnutí (tvrdý nález) a se zaznamenaným zvýšením baseline
+  (prochází); soubor nad prahem bez ráčny (tvrdý nález); legacy soubor nad
+  prahem, který harvest nezastaví; git-ignorovaná a vnořená `memory-bank/`,
+  které se do stromu nezapočítají; položka druhu postup s blokem příkazů.
+- **Toto repo.** Plná konsolidace `memory-bank/playbook.md` (2 414 řádků) ve
+  dvou kolech nad schválenou tabulkou: nový tvar, sekce podle okamžiku
+  spuštění, vyřazené v seznamu, skript tvaru bez tvrdého nálezu. Playbook je tu
   jen kořenový a zároveň `PLAN_MB`, takže jeho pravidla o artefaktech vrstvy
   patří do části „Jen pro tento projekt" — jde o test velikosti, ne stromu.
-  Cíl 600 řádků znamená při dnešních 195 tučných odrážkách v průměru asi tři
-  řádky na položku, nebo vyřazení či převod do kódu zhruba třetiny položek;
-  kolo 2 to rozhodne nad tabulkou. Kdyby rozpočet nešel splnit bez ztráty
-  pravidel, která stojí za svou cenu, soubor zůstane pod ráčnou na dosažené
-  velikosti a akceptace se vyhodnotí jako nesplněná s měřením, ne jako
-  splněná.
+  Akceptace je splněná jedním ze dvou výsledků, oba s měřením v Dokladu:
+  soubor pod prahem 600 řádků, nebo soubor nad prahem s ráčnou na dosažené
+  velikosti a eskalačním reportem ve frontě `proposals/next/`. Práh při
+  dnešních 195 tučných odrážkách znamená v průměru asi tři řádky na položku
+  nebo vyřazení či převod do kódu zhruba třetiny položek; kolo 2 rozhodne nad
+  tabulkou, kolik z toho jde bez ztráty. Samotný přesun obsahu podle reportu
+  (například do skillů) je následná práce mimo tento tiket.
 - **Monorepo nanečisto.** `-Tree` nad `d:\_datasys\ums` v krocích 1 a 3 bez
   zápisu. Výstupem je inventura a tabulka přesunů napříč MB, přiložená do
   sekce Doklad — důkaz, že parser unese všechny tři tvary položek a že strom
@@ -482,12 +515,17 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
   potřebují, se jim tiše nepředá. Kryje kritérium 3 brány, verdikt
   `přeřadit do části` v konsolidaci a kolo 2a, které hledá stejné pravidlo
   v sourozencích.
-- **Nafouknutý kořen.** Kořen čte každé sezení. Kryje rozpočet řetězce
-  kontrolovaný pro každou MB, takže přírůstek v kořeni zčervená všude.
+- **Nafouknutý kořen.** Kořen čte každé sezení. Kryje ráčna (růst jen
+  zaznamenaným lidským rozhodnutím), dopad vypsaný u každého zápisu k předkovi
+  a práh řetězce kontrolovaný pro každou MB, takže přírůstek v kořeni se ukáže
+  jako varování všude.
+- **Práh jako věčné varování.** Soubor nad prahem s eskalačním reportem, na
+  který nikdo nenaváže, zůstane varováním napořád. Kryje jen to, že report leží
+  ve frontě a `mb-state` ho vypisuje; rozhodnutí o následné práci je lidské.
 - **Falešný `Happened` v kandidátovi.** Triage ho neodhalí (UMS-3505 #15);
   kryje jen pozdější měření a `Důkaz:` odkaz, který jde ověřit.
-- **Ráčna schovaná v komentáři se ztratí přepisem souboru.** Skript tvaru bez
-  komentáře uplatní holý rozpočet, tedy zčervená; ztráta je hlasitá.
+- **Ráčna schovaná v komentáři se ztratí přepisem souboru.** Soubor v novém
+  tvaru nad prahem bez komentáře je tvrdý nález; ztráta je hlasitá.
 - **Parser tvarů monorepa.** Ověřuje se nad reálným stromem už zde, nanečisto.
 
 ## Odložená rozšíření
