@@ -37,7 +37,14 @@ a Technický návrh, měření v sekci Doklad na konci.
   pastí, čtení řetězce po stromu.
 - Změna jádra kontraktu: pravidlo čtení kontextu MB (MB Context Reading Rule)
   čte řetězec místo jednoho playbooku; harvest smí zapsat playbook předka
-  (rozšíření `AFFECTED_MBS`, viz Technický návrh bod 5).
+  (rozšíření `AFFECTED_MBS`, viz Technický návrh bod 5); jmenovaná výjimka
+  Scope Lock pro konsolidaci (bod 8).
+- Legacy režim pro playbooky ve starém tvaru, aby nasazení nezablokovalo
+  harvesty v monorepu (bod 3).
+- Přizpůsobení všech čtenářů a zapisovatelů playbooku (bod 2), včetně
+  `mb-init` (postupy build a test) a `mb-git-commit` (staging schválené dávky).
+- Oprava stávajících testovacích sad, které porušují pravidlo sady hygieny
+  (bod 6).
 - Sdílené skripty `Get-UmsPlaybookChain.ps1`, `Test-UmsPlaybookShape.ps1`,
   `Find-UmsPlaybookMatch.ps1`.
 - Harvestová brána v `mb-harvest`; sběr kandidátů v overlay SDD (dedup proti
@@ -79,11 +86,18 @@ okamžiku spuštění:
 ```
 
 - **Část** říká, komu pravidlo platí; **sekce** říká, kdy si ho sezení má
-  vybavit. Obě osy jsou povinné — pravidlo mimo část nebo mimo sekci je nález
-  skriptu tvaru.
-- **Kořenový playbook** (`<MB_ROOT>/memory-bank/playbook.md`) má jen část
-  „Pro celý podstrom"; část „Jen pro tento projekt" v něm je nález, protože
-  kořen není projekt.
+  vybavit. V novém tvaru jsou obě osy povinné — položka mimo část nebo mimo
+  sekci je nález skriptu tvaru. Soubor ve starém tvaru se řídí legacy režimem
+  (bod 3).
+- **Nový tvar poznáš mechanicky:** soubor obsahuje aspoň jeden z doslovných
+  nadpisů `## Pro celý podstrom` / `## Jen pro tento projekt` a žádný jiný
+  nadpis druhé úrovně. Cokoli jiného — včetně playbooků, které nadpisy `##`
+  používají jako položky (kořen monorepa) — je starý tvar.
+- **Kořenový playbook** (`<MB_ROOT>/memory-bank/playbook.md`) nese hlavně část
+  „Pro celý podstrom". Smí nést i „Jen pro tento projekt": platí jen pro práci
+  připnutou přímo na kořenovou MB a žádný potomek ji nečte — to je případ
+  repozitářů s jedinou MB, kde je kořen `CTX_DIR` i `PLAN_MB` (jako tento
+  fork). V monorepu, kde kořen je jen orchestrační, zůstane prázdná.
 - **Listový playbook** (MB bez potomka s playbookem) má typicky jen část „Jen
   pro tento projekt". Pravidlo, které v listu platí šíř, patří k předkovi
   a konsolidace ho tam přesune.
@@ -105,10 +119,24 @@ okamžiku spuštění:
   | Když nasazuješ nebo revendoruješ | sync, obnova nasazené kopie, instalace hooků, revendor a kotvy | Nasazení vrstvy (22 včetně podsekcí), Upgrade upstreamu (5) |
   | Když píšeš plán, návrh nebo commit | ohraničovače v plánu, diakritika v commitu, briefy | Psaní plánů, návrhů a commitů (3) |
 
-- **Položka:** jedno imperativní pravidlo na jednom řádku, tučně uvozené; pak
+  Sekce, která po kole 2 konsolidace pořád přesahuje 40 položek, se rozdělí na
+  užší sekce „Když …" — dnešní „Testy vrstvy" (51) a „Kontrakt a skilly" (57)
+  jsou první kandidáti (například „Když píšeš negativní test nebo mutaci",
+  „Když měníš skill nebo overlay").
+- **Dva druhy položek.** Obojí žije v sekcích „Když …" a počítá se do rozpočtu:
+  - **Pravidlo** — to, čím playbook hlavně je; tvar níže, nejvýš 4 řádky.
+  - **Postup** — tučný název na vlastním řádku, pak nejvýš 15 řádků kroků,
+    blok příkazů nebo tabulka parametrů, a `Proč:` a `Důkaz:` jako u pravidla,
+    je-li co doložit. Nese to, co pravidlo neunese: build a test příkazy,
+    instalaci hooků, obnovu nasazení. `mb-init` zakládá detekované build
+    a test příkazy jako postupy v sekci „Když stavíš nebo spouštíš testy"
+    a baseline krok SDD je čte odtud.
+- **Pravidlo:** jedno imperativní pravidlo na jednom řádku, tučně uvozené; pak
   `Proč:` na jednu větu; pak `Důkaz:` — SHA harvestového commitu, archivovaný
-  návrh (`proposals/completed/design_<slug>.md`) nebo jméno testu, který
-  pravidlo hlídá. Nejvýš čtyři řádky po 80 znacích. Příklad:
+  návrh (`proposals/completed/design_<slug>.md`), jméno testu, který pravidlo
+  hlídá, nebo u nové položky slug jejího návrhu (`Důkaz: návrh <slug>`),
+  protože harvestový commit v okamžiku zápisu ještě neexistuje. Nejvýš čtyři
+  řádky po 80 znacích. Příklad:
 
   ```markdown
   - **Než spoléháš na prázdný `git diff` po obnově souboru, ověř, že je soubor
@@ -117,7 +145,9 @@ okamžiku spuštění:
   ```
 
 - `Proč:` cituje incident jednou větou, ne příběhem; příběh zůstává v gitu
-  a v archivovaném návrhu, na které `Důkaz:` míří.
+  a v archivovaném návrhu, na které `Důkaz:` míří. Skript tvaru kontroluje
+  „jednu větu" jen heuristicky (délka a počet tečkou ukončených úseků mimo
+  běžné zkratky) a hlásí ji jako varování, nikdy jako tvrdý nález.
 
 ### 2. Řetězec playbooků ve stromu MB
 
@@ -125,19 +155,37 @@ okamžiku spuštění:
   `A/memory-bank/` obsahuje, je předkem adresáře, který obsahuje
   `B/memory-bank/`. Kořen je `<MB_ROOT>/memory-bank/`. Strom se odvozuje z cest,
   nikdy se neudržuje ručně a nemá žádnou syntaxi v souborech.
+- **Které adresáře jsou MB:** jen ty, jejichž `playbook.md` (případně legacy
+  `tasks.md`) git trackuje (`git ls-files`), takže git-ignorované kopie typu
+  `DistOut/Iso/Work/**` se nezapočítají; adresář `memory-bank/` vnořený uvnitř
+  jiného `memory-bank/` se ignoruje (v monorepu existuje prázdný vnořený
+  `PCInfo/memory-bank/MobilChange/SMSInfo3/PCInfo/memory-bank/`). Pro předky
+  platí totéž: MB bez trackovaného playbooku se v řetězci přeskočí.
 - **Řetězec MB `X`** je to, co sezení pracující v `X` čte: od každého předka
   s playbookem, kořen první, jen část „Pro celý podstrom"; z `X` obě části.
   Předek bez playbooku se přeskočí.
 - **Sdílený skript** `shared/scripts/Get-UmsPlaybookChain.ps1 -Mb <cesta>`
-  vrací seřazený seznam úseků (soubor, část, rozsah řádků) a na přání
-  sestavený text s hlavičkou úseku, ze které je vidět, odkud pravidlo pochází.
-- **Čtenáři řetězce** — všichni, kdo dnes čtou jediný playbook:
+  vrací seřazený seznam úseků (soubor, část, rozsah řádků); s `-Out` zapíše
+  sestavený text s hlavičkou každého úseku (odkud pravidlo pochází) do
+  `.superpowers/playbook-chain/<mb>.md` a vrátí tu cestu. Git-ignorovaný
+  scratch, generovaný znovu při každém použití, takže nic neobnovitelného.
+- **Čtenáři řetězce** — všichni, kdo dnes čtou playbook cílové MB (soupis
+  grepem, oponentura 2026-09-23):
   - pravidlo čtení kontextu MB (brainstorming, writing-plans) — mění se jádro
     kontraktu;
-  - overlay SDD — k dispatchi implementátora se přiloží sestavený řetězec místo
-    jednoho souboru;
+  - overlay SDD — dispatch implementátora dnes dostává cestu k playbooku;
+    nově dostane cestu k sestavenému řetězci z `-Out`, obsah se do promptu
+    nevkládá; baseline krok SDD čte build a test postupy z řetězce;
+  - `mb-architect-review` (oponent a architekt dostávají playbook cílové MB)
+    a reference `contract/architect-review.md`;
+  - `mb-epic-elaboration` (protokol čte playbook dotčených MB);
   - harvestová brána a sběr kandidátů — dedup proti tomu, co už předkové říkají;
   - konsolidační skill.
+- **Zapisovatelé mimo harvest a konsolidaci** se přizpůsobí novému tvaru:
+  `mb-init` zakládá playbook v novém tvaru (postupy build a test, bod 1);
+  `mb-sync` navrhuje opravy jen v playbooku své MB, ale jmenuje část a sekci;
+  `mb-migrate-docs` při přejmenování `tasks.md` na `playbook.md` tvar nemění
+  (to je práce konsolidace).
 - **Zpětná kompatibilita.** Playbook bez částí (dnes všech 23 v monorepu i ten
   v tomto repu) se čte jako „Jen pro tento projekt"; kořen bez částí se čte celý
   jako „Pro celý podstrom". Nic, co se dnes dědí, se neztratí — dnes se nedědí
@@ -151,7 +199,20 @@ okamžiku spuštění:
   jedna věta.
 - **Rozpočet řetězce:** 900 řádků — to, co sezení v dané MB skutečně čte.
   Kontrola řetězce běží pro každou MB v repu, takže nafouknutý kořen nebo
-  podstromová část mezilehlé MB zčervená u všech jejích potomků najednou.
+  podstromová část mezilehlé MB se ukáže u všech jejích potomků najednou.
+  - Řetězec složený **jen ze souborů v novém tvaru a v rozpočtu**, který přesto
+    přesáhne 900 řádků, je tvrdý nález. Náprava je konsolidace: přesun
+    k potomkovi, přeřazení do části projektu nebo sloučení.
+  - Řetězec, jehož některý úsek pochází ze souboru pod ráčnou nebo ve starém
+    tvaru, se hlásí jen jako varování s velikostí. Nemůže být v rozpočtu dřív
+    než jeho soubory a tvrdý nález by nešel odstranit žádnou akcí nad řetězcem.
+- **Legacy režim (přechod).** Soubor ve starém tvaru (bod 1) dostává od skriptu
+  tvaru jen varování — tvar, velikost i rozpočet — a harvest nezastaví.
+  Harvestová brána hlasitě ohlásí, že legacy soubor roste, o kolik řádků,
+  a doporučí konsolidaci. Nasazení vrstvy tak v monorepu nic nemění
+  a nezablokuje žádný harvest. Přísná pravidla začnou pro soubor platit
+  v okamžiku, kdy ho kolo 1 konsolidace převede do nového tvaru; je-li pak
+  nad rozpočtem, kolo 1 mu zapíše ráčnový komentář (`-Baseline`).
 - Hlídá sdílený skript `Test-UmsPlaybookShape.ps1 -Playbook <cesta>` (tvar
   a rozpočet souboru) a `-Tree <cesta>` (navíc řetězce všech MB podstromu);
   nálezy vrací česky. Volá ho sada vrstvy nad fixturami, harvestová brána nad
@@ -161,8 +222,7 @@ okamžiku spuštění:
   Skript tvaru čte limit jako menší z rozpočtu a baseline; soubor smí jen
   klesat. Po konsolidaci pod rozpočet se komentář odstraní a platí holý
   rozpočet. Komentář cestuje se souborem, takže ráčna platí v každém klonu.
-  Řetězec nemá vlastní komentář: jeho ráčna je součet ráčen jeho úseků, takže
-  řetězec smí růst jen tam, kde roste úsek, který je v rozpočtu.
+  Řetězec vlastní komentář nemá; jeho pravidla jsou výše u rozpočtu řetězce.
 
 ### 4. Sběr kandidátů (overlay SDD)
 
@@ -189,10 +249,18 @@ okamžiku spuštění:
 
   `Dispozice` má právě jednu z pěti hodnot: `nový (<MB>, podstrom | projekt,
   <sekce>)` / `sloučit do <MB>:<položka>` / `nahrazuje <MB>:<položka>` /
-  `do kódu <kde>` / `zahodit <důvod>`. `M/Ú` říká, zda rozhodlo mechanické
-  kritérium (1, 2, 4) nebo úsudek (3, 5 až 8). `Selhání` je `hlasité`, když by
+  `do kódu <kde>` / `zahodit <důvod>`. `M/Ú` je `M` jen tam, kde rozhodla
+  shoda identifikátorů z `Find-UmsPlaybookMatch.ps1` nebo mechanicky
+  ověřitelné kritérium 4; všude jinde `Ú` — párování anglických kandidátů proti
+  českému playbooku je sémantická práce (Doklad, „Triage UMS-3505": skutečně
+  mechanicky rozhodnutelných bylo asi 8 z 50). `Selhání` je `hlasité`, když by
   sezení řídící se špatnou verzí pravidla narazilo na viditelné selhání, jinak
   `tiché`.
+- **Dopad u cíle v předkovi.** Řádek, jehož dispozice míří do playbooku
+  předka, nese navíc počet a seznam MB, které pravidlo zdědí (z
+  `Get-UmsPlaybookChain.ps1`); u kořene je to celé repo. Člověk tak schvaluje
+  zápis s viditelným dosahem. Konflikty paralelních tiketů v témž playbooku
+  předka řeší běžný merge báze na hranici fáze.
 - **Kritéria v pořadí aplikace** (levná a mechanická napřed; převzatá z triage
   UMS-3505, Doklad „Triage UMS-3505"):
   1. Duplicita uvnitř hromady — shlukovat podle tématu, ne podle tasku původu.
@@ -226,9 +294,13 @@ okamžiku spuštění:
   `playbook.md` a `playbook-retired.md`. Dnes se `AFFECTED_MBS` odvozuje
   výhradně z diffu větve, takže by zápis k předkovi porušil Scope Lock; ostatní
   dokumenty předka zůstávají mimo harvest.
-- Po zápisu brána spustí skript tvaru nad každým dotčeným souborem a nad
-  řetězcem každé MB, jejíž řetězec se změnou dotkl; nález zastaví harvest před
-  commitem.
+- **Pořadí vůči archivaci.** Skript tvaru běží na konci kroku 3 `mb-harvest`
+  (aktualizace dokumentů), před krokem 4 (archivace návrhu a smazání plánu)
+  a před resetem `context.md` na IDLE — nad každým dotčeným souborem a nad
+  řetězcem každé MB, které se změna dotkla. Tvrdý nález se počítá jako
+  neúspěšná aktualizace MB podle pravidla částečného selhání Harvest Contractu:
+  žádná archivace, žádný reset na IDLE, oprava a nový běh brány. Varování
+  (legacy režim, heuristika `Proč:`) harvest nezastaví, jen se vypíšou.
 
 ### 6. Seznam vyřazených a převod do kódu
 
@@ -245,6 +317,11 @@ okamžiku spuštění:
   dot-sourcuje svůj předmět, nastavuje `$ErrorActionPreference = 'Stop'`.
   Obojí je grep nad `ums/**/tests/*.tests.ps1` jako vlastní sada
   `tests-hygiene.tests.ps1` ve `shared/tests/`.
+- Pravidlo (b) dnes porušuje nejméně 9 stávajících sad (všechny v
+  `mb-doc-index/tests` a `mb-epic-graph/tests`, pravděpodobně i
+  `guard-git-push.tests.ps1` a `ledger-status.tests.ps1`). Opraví se v tomto
+  tiketu — jeden řádek na sadu a ověření, že sada dál prochází —, takže sada
+  hygieny je od prvního běhu ostrá, bez allowlistu.
 
 ### 7. Vlastnictví pastí prostředí
 
@@ -274,11 +351,25 @@ okamžiku spuštění:
   jako v bráně. Nikdy nepushuje sdílenou větev. Přesun mezi soubory se řídí
   vlastnictvím dokumentů: nejdřív zapsat do cíle, pak smazat ze zdroje, oba
   soubory v jednom commitu.
+- **Scope Lock (změna jádra kontraktu).** Konsolidace zapisuje mimo
+  `CTX_DIR`/`PLAN_MB` a mimo harvest, takže potřebuje jmenovanou výjimku:
+  smí zapsat `playbook.md` a `playbook-retired.md` každé MB v rozsahu běhu
+  a `tech.md` jen u řádků s verdiktem `přesunout do tech.md` — autoritou je
+  člověkem schválená tabulka dávky, nic mimo ni. `mb-git-commit` dostane
+  odpovídající pravidlo stagingu: stagne právě soubory, které schválená dávka
+  jmenuje, takže přesun nemůže odejít bez zdrojové nebo cílové poloviny.
 - Spouští se ručně, nebo když skript tvaru zčervená; nikdy automaticky.
 - **Dvě kola.** Kolo 1 převede tvar: rozdělí soubor na části, přeřadí položky
   do sekcí „Když …", zkrátí `Proč:` na větu a doplní `Důkaz:` ze SHA
   harvestového commitu podle `git log -S`. Kolo 2 slučuje, vyřazuje, přesouvá
   a převádí do kódu. Obě kola schvaluje člověk nad tabulkou.
+- **Citace sekcí.** Přejmenování a přesun sekcí rozbije citace podle jména
+  sekce, které míří do playbooku odjinud — dnes například `contract-inject.ps1`
+  a jeho aserce v `contract-inject.tests.ps1`, `mb-state/SKILL.md` (sekce
+  „Obnova nasazené kopie v tomto repu"), `mb-epic-run/README.md` („Testy
+  vrstvy") a `architecture.md`. Kolo 1 proto grepem najde každou citaci
+  starého názvu mimo playbook a přepíše ji v téže dávce; konec běhu spustí
+  `mb-link-audit` nad dotčenými MB.
 - Mechanickou část nese skript `consolidate-playbook.ps1`:
   - `-Parse` — JSON položek (id, MB, část, sekce, první slova, řádek pravidla,
     `Proč:`, `Důkaz:`, počet řádků); čte všechny tři tvary, které v monorepu
@@ -311,13 +402,17 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
 4. **Kolo 2b (uvnitř MB)** — slučování, vyřazování a převody do kódu podle
    bodu 8, po jednotlivých MB.
 
-- **Obnovitelnost.** Průchod přes desítky MB přesáhne jedno sezení: schválená
-  rozhodnutí leží v `.superpowers/playbook-consolidation/<běh>/decisions-<dávka>.json`
-  (git-ignored scratch, Scope Lock ho výslovně povoluje) a `-Resume <běh>`
-  pokračuje od první nezapsané dávky.
 - **Commity.** Každá dávka je samostatný commit přes `mb-git-commit` na
-  tiketové větvi sezení, které průchod spouští; konsolidace monorepa je tedy
+  tiketové větvi sezení, které průchod spouští, s trailerem
+  `Playbook-Consolidation: <běh>/<dávka>`; konsolidace monorepa je tedy
   normální práce na vlastním tiketu a skill nepushuje nic sdíleného.
+- **Obnovitelnost bez nového druhu zbytků.** Průchod přes desítky MB přesáhne
+  jedno sezení. Dávka se schválí, hned zapíše a commitne, takže jediným nositelem
+  stavu jsou commity: `-Resume <běh>` odvodí hotové dávky z trailerů
+  v `git log` a pokračuje první nehotovou. Tabulka rozpracované dávky
+  v `.superpowers/playbook-consolidation/<běh>/` je git-ignorovaný pracovní
+  soubor, který jde kdykoli vygenerovat znovu; neschválená práce tedy není
+  neobnovitelný zbytek a Workspace Discipline se nemění.
 - **Konec běhu** — `Test-UmsPlaybookShape.ps1 -Tree` nad celým podstromem:
   všechny soubory a řetězce v rozpočtu, nebo pod svou ráčnou.
 
@@ -328,11 +423,22 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
   Ověřuje se sestavení řetězce (předek dává jen podstromovou část), výpočet
   nejnižšího společného předka, přesun nahoru i dolů přes `-Apply` s kontrolou,
   že neschválené položky zůstaly doslova, rozpočet souboru i řetězce včetně
-  ráčny a čtení legacy tvaru bez částí.
+  ráčny a čtení legacy tvaru bez částí. Navíc: kořen jako jediná MB s částí
+  „Jen pro tento projekt"; řetězec ze souborů v rozpočtu, který přesto přesáhne
+  900 řádků (tvrdý nález); legacy soubor nad rozpočtem, který harvest
+  nezastaví; git-ignorovaná a vnořená `memory-bank/`, které se do stromu
+  nezapočítají; položka druhu postup s blokem příkazů.
 - **Toto repo.** Plná konsolidace `memory-bank/playbook.md` (2 414 řádků) do
   rozpočtu ve dvou kolech nad schválenou tabulkou: sekce podle okamžiku
   spuštění, vyřazené v seznamu, skript tvaru zelený bez ráčny. Playbook je tu
-  jen kořenový, takže jde o test velikosti, ne stromu.
+  jen kořenový a zároveň `PLAN_MB`, takže jeho pravidla o artefaktech vrstvy
+  patří do části „Jen pro tento projekt" — jde o test velikosti, ne stromu.
+  Cíl 600 řádků znamená při dnešních 195 tučných odrážkách v průměru asi tři
+  řádky na položku, nebo vyřazení či převod do kódu zhruba třetiny položek;
+  kolo 2 to rozhodne nad tabulkou. Kdyby rozpočet nešel splnit bez ztráty
+  pravidel, která stojí za svou cenu, soubor zůstane pod ráčnou na dosažené
+  velikosti a akceptace se vyhodnotí jako nesplněná s měřením, ne jako
+  splněná.
 - **Monorepo nanečisto.** `-Tree` nad `d:\_datasys\ums` v krocích 1 a 3 bez
   zápisu. Výstupem je inventura a tabulka přesunů napříč MB, přiložená do
   sekce Doklad — důkaz, že parser unese všechny tři tvary položek a že strom
@@ -342,7 +448,9 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
 
 - **Jádro kontraktu:** MB Context Reading Rule (řetězec místo jednoho
   playbooku), Harvest Contract a Scope Lock (zápis playbooku předka
-  v `AFFECTED_MBS`); verze kontraktu a `CHANGELOG.md`.
+  v `AFFECTED_MBS`, výjimka pro konsolidaci); verze kontraktu a `CHANGELOG.md`.
+- **Reference:** `contract/harvest.md` (pořadí kontroly tvaru a částečné
+  selhání), `contract/architect-review.md` (co dostává oponent).
 - **Reference `contract/playbook-contract.md`** se přepisuje: tvar souboru
   a položky, strom a řetězec, `Relates`, rozpočet a ráčna, kritéria triage
   a brief analytika, seznam vyřazených, převod do kódu, vlastnictví pastí.
@@ -351,10 +459,16 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
   `mb-playbook-consolidate/scripts/consolidate-playbook.ps1`; sady
   `playbook-chain.tests.ps1`, `playbook-shape.tests.ps1`,
   `playbook-match.tests.ps1`, `consolidate.tests.ps1`,
-  `tests-hygiene.tests.ps1`.
+  `tests-hygiene.tests.ps1`; oprava stávajících sad podle pravidla hygieny (b);
+  `contract-inject.ps1` a jeho aserce v `contract-inject.tests.ps1`, pokud
+  citují přejmenovanou sekci.
 - **Skilly a overlaye:** `mb-harvest` (brána v2), overlay SDD (dedup proti
-  řetězci, `Relates`, přiložení řetězce), overlay brainstorming a writing-plans
-  jen tam, kde jmenují čtení playbooku; nový skill `mb-playbook-consolidate`;
+  řetězci, `Relates`, cesta k řetězci v dispatchi, baseline z postupů), overlay
+  brainstorming a writing-plans jen tam, kde jmenují čtení playbooku;
+  `mb-architect-review`, `mb-epic-elaboration` (čtení řetězce); `mb-init`
+  (playbook v novém tvaru); `mb-sync` (část a sekce v návrhu opravy);
+  `mb-git-commit` (staging schválené dávky); `mb-state` a `mb-epic-run/README.md`
+  (citace sekcí playbooku); nový skill `mb-playbook-consolidate`;
   `SKILLS_MANIFEST.md`.
 - **Memory Bank tohoto repa:** `playbook.md` a `playbook-retired.md`, `tech.md`
   (pasti), `architecture.md` (dokumentová vrstva, strom playbooků).
@@ -396,7 +510,7 @@ celého monorepa", `-Tree MobilChange/SMSInfo3`). Průchod má čtyři kroky:
 | Vazba na jeden incident | 165 z 182 `Proč:` cituje právě jeden incident; asi 53 položek vázaných na artefakty vrstvy, asi 79 obecně znějících, ale jednoincidentních, asi 50 přenositelných | tamtéž |
 | Duplicity tech.md × playbook | 4 témata pastí na obou místech; exit kód 4 instalátoru v `tech.md`, ale ne v playbooku, kam `tech.md` odkazuje | tamtéž |
 | Mechanismus harvestu | jediný vztah mezi položkami je `Corrects` s verdikty nahradit / ponechat obojí / zahodit; žádný krok neslučuje, nemaže, nezařazuje, neměří | `mb-harvest/SKILL.md`, kontrakt 2.19 |
-| Dispatch | celý playbook cílové MB se přikládá ke každému dispatchi implementátora; předkové se nečtou | overlay SDD; kontrakt 3.0, MB Context Reading Rule |
+| Dispatch | dispatch implementátora dostává cestu k playbooku cílové MB (ne jeho obsah); předkové se nečtou | overlay SDD, řádky 112–117; kontrakt 3.0, MB Context Reading Rule |
 | Monorepo | 23 playbooků, 8 033 řádků; KicWorkflow 3 325 řádků, SMSInfo3 1 773, kořen 449 | `d:\_datasys\ums`, pracovní strom, 2026-09-23 |
 | Zkušenost správce UMS-3517 | sezení UMS-3518 při mergi nahlásilo plochý playbook přes 150 položek a samo ho rozdělilo do sekcí | zpráva správce, 2026-09-17 |
 
@@ -437,6 +551,28 @@ Dvě read-only analýzy monorepa `d:\_datasys\ums`, 2026-09-23:
   mezilehlých playbooků. Dvě úrovně by ztratily pravidla, která potomci
   potřebují a na která dnes ručně odkazují. Strom s částmi „Pro celý podstrom"
   / „Jen pro tento projekt" zachová obojí.
+
+### Oponentura 2026-09-23
+
+Nezávislý oponent (čistý kontext, přístup ke kódu vrstvy i k monorepu, jen
+čtení) vznesl 15 nálezů s důkazem — 1 blokující, 6 závažných, 8 drobných;
+žádný nebyl odmítnut. Nesporné zapracované: definice nového tvaru a kořen jako
+`PLAN_MB` (bod 1), objev stromu přes `git ls-files` a úplný soupis čtenářů
+a zapisovatelů, řetězec jako soubor (bod 2), pravidla rozpočtu řetězce (bod 3),
+`M/Ú` podle skutečné mechaničnosti a pořadí kontroly tvaru vůči archivaci
+(bod 5), výjimka Scope Lock a staging dávky, citace sekcí, obnovitelnost
+z commitů (body 8 a 9), rozdělení přerostlých sekcí a `Důkaz: návrh` (bod 1).
+Rozhodnuté s uživatelem: legacy režim místo povinné baseline při nasazení
+(bod 3); dva druhy položek, pravidlo a postup (bod 1); oprava stávajících sad
+v tiketu místo allowlistu (bod 6); přímý zápis k předkovi s viditelným dosahem
+místo fronty předka (bod 5).
+
+Ověřeno oponentem v monorepu: 23 playbooků, 8 033 řádků; součty řetězců
+2 519 (SMSInfo3Database) a 5 815 (BpmnData); žádný `tasks.md` v roli
+playbooku; asi 55 MB bez playbooku včetně mezilehlých `MobilChange/` a
+`Common/`; git-ignorovaná kopie `DistOut/Iso/Work/MobilChange/WwwSms/memory-bank`
+a prázdná vnořená MB v `PCInfo`. V tomto repu 2 414 řádků a 195 tučných
+odrážek.
 
 ### Triage UMS-3505
 
