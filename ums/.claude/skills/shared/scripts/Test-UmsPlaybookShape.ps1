@@ -4,6 +4,7 @@
 # Findings are Czech; only three classes are hard, and only for the new shape.
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Read-UmsPlaybook.ps1')
+. (Join-Path $PSScriptRoot 'Get-UmsPlaybookChain.ps1')
 
 $script:UmsPlaybookLimits = @{ File = 600; Chain = 900; Section = 40; RuleLines = 4; RuleWidth = 80; PostupLines = 16 }
 
@@ -65,4 +66,26 @@ function Test-UmsPlaybookShape([string] $Playbook) {
         $warn.Add('[ráčna-zbytečná] soubor je pod prahem — ráčnový komentář lze odstranit')
     }
     [pscustomobject]@{ Playbook = $Playbook; Shape = $pb.Shape; Lines = $pb.LineCount; Hard = $hard.ToArray(); Warn = $warn.ToArray() }
+}
+
+function Test-UmsPlaybookTree([string] $RepoRoot, [string] $Under = '') {
+    $L = $script:UmsPlaybookLimits
+    $tree = Get-UmsMbTree $RepoRoot
+    $scope = @($tree | Where-Object { $_.Playbook -and (($Under -eq '') -or ($_.Owner -eq $Under) -or $_.Owner.StartsWith("$Under/")) })
+    foreach ($mb in $scope) {
+        $file = Test-UmsPlaybookShape (Join-Path $RepoRoot $mb.Playbook)
+        $hard = [Collections.Generic.List[string]]::new(); foreach ($h in $file.Hard) { $hard.Add($h) }
+        $warn = [Collections.Generic.List[string]]::new(); foreach ($w in $file.Warn) { $warn.Add($w) }
+        $chain = Get-UmsPlaybookChain $RepoRoot $mb.Dir
+        if ($chain.TotalLines -gt $L.Chain) {
+            $conforming = $true
+            foreach ($s in $chain.Segments) {
+                $pb = Read-UmsPlaybook (Join-Path $RepoRoot $s.Playbook)
+                if ($pb.Shape -ne 'new' -or $pb.Ratchet -or $pb.LineCount -gt $L.File) { $conforming = $false }
+            }
+            $hint = if ($conforming) { ' — úseky jsou v novém tvaru a v prahu: konsoliduj (přesun k potomkovi, přeřazení do projektu, sloučení), jinak eskalační report' } else { '' }
+            $warn.Add("[práh-řetězec] řetězec $($mb.Dir) má $($chain.TotalLines) řádků > $($L.Chain)$hint")
+        }
+        [pscustomobject]@{ Mb = $mb.Dir; Playbook = $mb.Playbook; Hard = $hard.ToArray(); Warn = $warn.ToArray(); ChainLines = $chain.TotalLines }
+    }
 }
