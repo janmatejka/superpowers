@@ -111,6 +111,8 @@ try {
                 $pre = @($pre | Where-Object { -not ($_ -match '^<!-- playbook-budget:') })
                 $ref = @{}
                 if ($pb.Shape -eq 'new') {
+                    $bad = @($pb.Items | Where-Object { $_.Kind -eq 'prose' -or -not $_.Part -or -not $_.Section } | ForEach-Object { "$rel#$($_.Id)" })
+                    if ($bad.Count) { throw "Soubor $rel není v platném tvaru: položky mimo část nebo sekci ($($bad -join ', ')). Nejdřív oprav tvar (Test-UmsPlaybookShape)." }
                     foreach ($it in $pb.Items) {
                         if (-not $parts[$it.Part].Contains($it.Section)) { $parts[$it.Part][$it.Section] = [Collections.Generic.List[object]]::new() }
                         $entry = [pscustomobject]@{ Id = $it.Id; Lines = (Get-ItemLines $pb $it) }

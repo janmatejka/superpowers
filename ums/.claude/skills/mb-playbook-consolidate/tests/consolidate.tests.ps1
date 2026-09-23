@@ -99,6 +99,19 @@ $r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo)
 Assert-Eq $r.Exit 0 'complete legacy conversion applies'
 Assert-Eq (Test-UmsPlaybookShape (Join-Path $repo 'L/memory-bank/playbook.md')).Shape 'new' 'converted file is new shape'
 
+Write-Host "== item outside section is refused before any write"
+Write-PlaybookFixtureFile $repo 'BadShape/memory-bank/playbook.md' "# Playbook — BadShape`n`n## Jen pro tento projekt`n`n- **BS pravidlo.** Proč: b. Důkaz: bs1.`n"
+git -C $repo add -A; git -C $repo commit -q -m badshape
+$badBefore = [IO.File]::ReadAllText((Join-Path $repo 'BadShape/memory-bank/playbook.md'))
+$d = Write-Decisions $repo @{ run = 'r1'; batch = '05'; decisions = @(
+    @{ id = 'BadShape/memory-bank/playbook.md#1'; verdict = 'ponechat' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo)
+Assert-True ($r.Exit -ne 0) 'item outside part/section is refused'
+Assert-Match $r.Text 'není v platném tvaru' 'refusal explains invalid shape'
+Assert-Match $r.Text 'BadShape/memory-bank/playbook.md#1' 'refusal names the offending item id'
+Assert-Eq ([IO.File]::ReadAllText((Join-Path $repo 'BadShape/memory-bank/playbook.md'))) $badBefore 'refused apply leaves malformed file unchanged'
+
 Write-Host "== ratchet after apply and -Baseline"
 $bigRules = (1..4 | ForEach-Object { "### Když krok $_`n`n" + (New-PlaybookRules 50 "B$_") + "`n" }) -join "`n"
 Write-PlaybookFixtureFile $repo 'S2/memory-bank/playbook.md' ("# P`n`n## Jen pro tento projekt`n`n" + $bigRules)
@@ -118,6 +131,18 @@ $r = Invoke-Cons @('-Baseline', '-Path', 'S2/memory-bank/playbook.md', '-Reason'
 Assert-Eq $r.Exit 0 'baseline exits 0'
 Assert-Eq (Read-UmsPlaybook $s2).Ratchet.Reason 'nové pravidlo' 'reason recorded'
 Assert-Eq (Test-UmsPlaybookShape $s2).Hard.Count 0 'recorded raise passes'
+
+Write-Host "== -Baseline removes a stale ratchet comment once under threshold"
+Write-PlaybookFixtureFile $repo 'Small/memory-bank/playbook.md' "# P`n<!-- playbook-budget: 600; baseline: 999 (2020-01-01) -->`n`n## Jen pro tento projekt`n`n### Když malý`n`n- **Small pravidlo.** Proč: s. Důkaz: s1.`n"
+git -C $repo add -A; git -C $repo commit -q -m small
+$small = Join-Path $repo 'Small/memory-bank/playbook.md'
+Assert-True ($null -ne (Read-UmsPlaybook $small).Ratchet) 'fixture starts with a ratchet comment'
+$r = Invoke-Cons @('-Baseline', '-Path', 'Small/memory-bank/playbook.md', '-RepoRoot', $repo, '-Today', '2026-09-23')
+Assert-Eq $r.Exit 0 '-Baseline on a small file exits 0'
+Assert-Eq (Read-UmsPlaybook $small).Ratchet $null '-Baseline drops the ratchet comment once the file is at/below threshold'
+# -Apply writes through the same Set-Ratchet call as -Baseline (see consolidate-playbook.ps1,
+# function Set-Ratchet used by both the 'Apply' and 'Baseline' parameter sets) — one covered
+# path is enough to prove "pod prahem komentář odstraní" for both entry points.
 
 Write-Host "== resume from trailers"
 git -C $repo add -A
