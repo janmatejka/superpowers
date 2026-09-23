@@ -6,6 +6,7 @@
 # a caller reading stdout saw a healthy run. For a fail-closed collision check
 # that is the difference between "no collision" and "the check never completed".
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_assert.ps1')
 . (Join-Path $PSScriptRoot 'new-fixture-repo.ps1')
 

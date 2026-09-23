@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_assert.ps1')
 . (Join-Path $PSScriptRoot 'new-fixture-repo.ps1')
 

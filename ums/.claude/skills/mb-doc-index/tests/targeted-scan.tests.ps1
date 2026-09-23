@@ -37,6 +37,7 @@
 # byte-identical to a run without it (the `--format=%x01%H...` argument survives
 # batch's own `%` handling). So the instrument observes the real thing.
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_assert.ps1')
 . (Join-Path $PSScriptRoot 'new-fixture-repo.ps1')
 
