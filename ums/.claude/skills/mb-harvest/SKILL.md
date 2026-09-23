@@ -157,12 +157,14 @@ work-item slug, one file per slug (contract/playbook-contract.md, "Playbook Cont
   item no longer exists in the chain (e.g. an earlier row of this same gate
   already replaced it), the row is `nový` instead — tell the user the item it
   meant to correct is gone. Every row whose target is an ancestor's playbook
-  lists the count and the list of the Memory Banks that inherit it (the
-  `Get-UmsMbTree <MB_ROOT>` entries below that ancestor). The user approves the
+  lists the count and the list of the Memory Banks that inherit it (every
+  `Get-UmsMbTree <MB_ROOT>` entry below that ancestor, with or without a
+  playbook of its own). The user approves the
   table and may override any row; rows the analyst left undecided are decided
   by the user. Nothing is written before approval.
 - **Write through `-Apply`.** Translate the approved rows into a decisions file
-  `<MB_ROOT>/.superpowers/playbook-gate/<slug>.json` (`{ "decisions": [ … ] }`),
+  `<MB_ROOT>/.superpowers/playbook-gate/<slug>-<n>.json` (`{ "decisions": [ … ] }`;
+  `<n>` counts the decisions files of this gate, 1 for the first),
   per the paragraph "Writing" of (contract/playbook-contract.md, "Harvest gate"):
   - `nový` → `novy` with `target` (the Memory Bank's playbook path as
     `Get-UmsMbTree` reports it, else `<MB dir>/playbook.md`, which the script
@@ -170,7 +172,8 @@ work-item slug, one file per slug (contract/playbook-contract.md, "Playbook Cont
   - `sloučit do <MB>:<položka>` → `prepsat` of that item's `id` with the merged
     `text`;
   - `nahrazuje <MB>:<položka>` → `vyradit` of that item's `id` with `reason`
-    `nahrazeno «<položka>»`, plus a `novy`;
+    `nahrazeno «<položka>»`, plus a `novy` whose `target`, `part` and
+    `section` default to those of the replaced item;
   - `do kódu <kde>` → no playbook decision: write the test or check itself.
     When it makes an existing chain item redundant, add `prevest-na-test` of
     that item's `id` with `test`; `prevest-na-test` never applies to a
@@ -192,18 +195,26 @@ work-item slug, one file per slug (contract/playbook-contract.md, "Playbook Cont
 - **Shape check** (contract/playbook-contract.md, "Harvest gate"), paragraph
   "Shape check before archiving". Dot-source
   `<mb-shared>/scripts/Test-UmsPlaybookShape.ps1`, run
-  `Test-UmsPlaybookShape -Playbook <file>` on every written playbook and
+  `Test-UmsPlaybookShape -Playbook (Join-Path <MB_ROOT> <file>)` on every
+  written playbook (the entries of `written` are repository-relative) and
   `Test-UmsPlaybookTree <MB_ROOT> <owner>` for the owner directory of every
   Memory Bank whose playbook was written (`''` for the root) — that covers
   every Memory Bank whose chain includes a written file.
   - Print every warning. For a legacy file, announce LOUDLY that it grew and by
     how many lines (the delta against the count noted before `-Apply`), and
     recommend `mb-playbook-consolidate`.
-  - `[ráčna-růst]` → ask the user: balance it (merge, replace, retire — a new
-    round of this gate over the same file) or raise the baseline with the
-    user's reason, `consolidate-playbook.ps1 -Baseline -Path <file> -Reason <text>`.
-    `-Apply` never raises it (contract/playbook-contract.md, "Budget, threshold and ratchet").
-  - Any other hard finding → fix it and rerun the gate.
+  - `[ráčna-růst]` or `[ráčna-chybí]` — the batch grew the file over its
+    baseline or over the threshold, a human decision → ask the user: balance
+    it (merge, replace or retire rows, applied as a new decisions file, below)
+    or approve a raise with the user's reason,
+    `consolidate-playbook.ps1 -Baseline -Path <file> -Reason <text>` (`<file>`
+    repository-relative, as in `written`) — the one way a ratchet is written or
+    raised; `-Apply` never raises it (contract/playbook-contract.md, "Budget, threshold and ratchet").
+  - Any other hard finding → the correction goes back to the user as a changed
+    table row; once approved it is written by a NEW decisions file through
+    `-Apply` — never by a hand edit of the playbook, and never by re-applying a
+    decisions file already applied (its `novy` rows would be appended twice) —
+    and then the shape check is rerun.
   - Until no hard finding remains, do NOT proceed to step 4 (archive) or step
     5 (IDLE reset) — this is the partial-failure rule of (contract/harvest.md, "Harvest Contract").
 - Report the number of candidates the user did not approve. They vanish with

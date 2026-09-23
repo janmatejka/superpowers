@@ -230,7 +230,7 @@ Rules:
 
 - Never stage unrelated monorepo changes that do not belong to the current work item.
 - Avoid blind `git add .` in monorepo workflows; enumerate paths explicitly.
-- Playbook batch (harvest gate or consolidation): stage exactly the files listed in the `written` array of `consolidate-playbook.ps1 -Apply` (and `-Baseline`) output — it already includes the decisions' `do-tech` targets — nothing more, nothing less; the other paths of a harvest commit are scoped as above (contract/playbook-contract.md, "Writes outside PLAN_MB").
+- Playbook batch (harvest gate or consolidation): stage exactly the files the approved batch names — the `written` array of `consolidate-playbook.ps1 -Apply` (and `-Baseline`) output, which already includes the decisions' `do-tech` targets, plus, in consolidation, the citation rewrites made in the same approved batch — nothing more, nothing less; the other paths of a harvest commit are scoped as above (contract/playbook-contract.md, "Writes outside PLAN_MB").
 
 Example:
 

@@ -7,7 +7,7 @@ metadata:
   version: "2.0"
 ---
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [harvest.md](../shared/contract/harvest.md). Read the named references before acting.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [harvest.md](../shared/contract/harvest.md), [playbook-contract.md](../shared/contract/playbook-contract.md). Read the named references before acting.
 
 # Command: mb-sync
 

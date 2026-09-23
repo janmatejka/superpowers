@@ -7,7 +7,7 @@ metadata:
   version: "2.1"
 ---
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [repository-configuration.md](../shared/contract/repository-configuration.md). Read the named references before acting — MB_ROOT resolution, the work item (design + plan pair) model, and fail-closed rules.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [repository-configuration.md](../shared/contract/repository-configuration.md), [playbook-contract.md](../shared/contract/playbook-contract.md). Read the named references before acting — MB_ROOT resolution, the work item (design + plan pair) model, and fail-closed rules.
 
 # Command: mb-init
 
