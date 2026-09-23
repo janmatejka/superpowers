@@ -71,7 +71,7 @@
   the upstream instruction "if the plan names a Spec, read that too" is
   satisfied and rulings are not provisional; tolerate the legacy
   `**Návrh:**` alias in plans written under contract ≤ v2.8.
-- **Batched dispatches:** the resolved procedure document (Playbook below)
+- **Batched dispatches:** the playbook chain path (Playbook below)
   is attached to a batch dispatch exactly as to a single-task dispatch, and
   one batch report ends with ONE `## Playbook candidates` section covering
   the whole batch.
@@ -109,24 +109,33 @@
   than a restatement here.
   Where the upstream text above says "outside this worktree", read "outside
   this clone/workspace" — worktrees are banned here.
-- **Playbook:** resolve the target Memory Bank's procedure document FIRST —
-  `<PLAN_MB>/playbook.md` when it exists, otherwise `<PLAN_MB>/tasks.md` when
-  THAT exists (legacy shape, contract, Memory Bank Document Set), otherwise
-  neither. Attach the resolved path to EVERY implementer dispatch alongside the
-  task brief, introduced as "procedures that bind this project — follow them".
-  When neither file exists, say so in the dispatch instead of omitting the line.
+- **Playbook:** resolve the playbook chain of `PLAN_MB` FIRST
+  (contract/playbook-contract.md, "Playbook chain"): dot-source
+  `shared/scripts/Get-UmsPlaybookChain.ps1` and run
+  `Get-UmsPlaybookChain <MB_ROOT> <Target MB Pin> -Out` (the second argument is
+  the repository-relative `memory-bank/` directory). Attach the returned `OutPath`
+  (`<MB_ROOT>/.superpowers/playbook-chain/<mb>.md`) to EVERY implementer
+  dispatch alongside the task brief, introduced as "procedures that bind this
+  project — follow them"; attach the path, never the inlined content. When the
+  chain has no segment, say so in the dispatch instead of omitting the line.
   Take the build and test procedures for the baseline check before the first
-  task from the same resolved file.
+  task from the chain's `Když stavíš nebo spouštíš testy` sections (a legacy
+  segment has no such section — take them from where it carries them).
 - **Playbook candidates:** every implementer dispatch requires the report to
   end with a `## Playbook candidates` section — procedural knowledge learned
-  while doing the task that was not already in the brief or the playbook, each
+  while doing the task that was not already in the brief or the playbook chain, each
   entry carrying the three mandatory fields `Tried` / `Happened` / `Procedure`,
   plus two optional fields, added only when they apply: `Target MB` (state its
   path when the harvest spans several Memory Banks and this procedure belongs
-  to one other than `PLAN_MB`) and `Corrects` (name the existing `playbook.md`
-  entry when this procedure contradicts one already there). An empty section
-  is legitimate and common; an entry without `Happened` is not written. As
-  controller, COPY confirmed entries verbatim into
+  to one other than `PLAN_MB`) and `Corrects` (name the existing item of the
+  chain when this procedure contradicts one already there). An empty section
+  is legitimate and common; an entry without `Happened` is not written. Before
+  copying an entry, run `Find-UmsPlaybookMatch <entry text> <MB_ROOT> <Target MB Pin>`
+  (dot-source `shared/scripts/Find-UmsPlaybookMatch.ps1`) and add a `Relates:`
+  line for an item it touches — the only addition to the verbatim copy
+  (contract/playbook-contract.md, "Playbook Contract"); an entry that duplicates another
+  candidate or an item of the chain is not copied — name it in your report
+  instead. As controller, COPY confirmed entries verbatim into
   `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — **one file per
   work-item slug**, first line `# Playbook candidates — work item: <slug>`. Only
   the CURRENT slug's file may be replaced, and only while it is **untracked**

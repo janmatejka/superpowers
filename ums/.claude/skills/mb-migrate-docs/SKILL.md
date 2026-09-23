@@ -114,7 +114,9 @@ violation. Then offer `mb-git-commit`.
 - **`playbook.md` produced by the rename is bound by the Playbook Contract
   from the moment it exists** (consult-before-write regime, contract) — the
   rename does not exempt it, and no writer may treat a freshly renamed
-  `playbook.md` as free-form scratch.
+  `playbook.md` as free-form scratch. The rename does not change the item
+  shape; converting to the new shape is consolidation's job
+  (contract/playbook-contract.md, "Consolidation").
 - **The rename assumes `tasks.md` holds procedures.** In the target monorepo
   that holds for all ten occurrences, but an MB whose `tasks.md` really is a
   list of open items must be excluded with `-Path` — no script can tell the

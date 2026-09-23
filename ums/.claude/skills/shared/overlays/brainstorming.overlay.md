@@ -148,10 +148,11 @@ Adjustments to the checklist above:
      base nobody chose for it. When the remedy of the **Choose the base**
      step changed `ums-repo.json`, that change is still uncommitted and rode here
      with `switch -c`; commit it together with the pin. Then read
-     `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and `playbook.md` (those
-     that exist; legacy shape per Memory Bank Document Set) as design context —
-     `playbook.md` is prescriptive and BINDS the work, the rest is current-state
-     reference.
+     `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` (those that exist;
+     legacy shape per Memory Bank Document Set) and the playbook chain of
+     `PLAN_MB` (contract/playbook-contract.md, "Playbook chain") as design context —
+     the playbook chain is prescriptive and BINDS the work, the rest is
+     current-state reference.
 - **The "Write design doc" phase (architectural path; on bounded, writing
   the chat-approved design)**: save to
   `<PLAN_MB>/proposals/active/design_<slug>.md` (Czech content, header per

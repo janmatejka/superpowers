@@ -207,8 +207,8 @@ This is a prohibition, not a preference (contract, Architect Review Gate).
    architect's side of the asymmetry, so `git merge <effective base>` is forbidden in
    this mode**, however stale the base looks. Assess the design on the tree the
    resolver handed over. Then read the design document and the target project's
-   MB context (`brief.md`, `architecture.md`, `tech.md`, `playbook.md`) from the
-   ticket branch.
+   MB context (`brief.md`, `architecture.md`, `tech.md` and the playbook chain
+   (contract/playbook-contract.md, "Playbook chain")) from the ticket branch.
 4. **Summary to the console first.** Print the architect a Czech summary
    of the design (goal, scope, technical approach, impacts, risks) — no
    Jira write, no assignee change, no flag: every side effect outside the
@@ -286,8 +286,9 @@ comment — a linked ticket is context, not a state machine.
    no edits) or STOP and let the user pick a branch. A design is never
    edited on a shared branch.
 3. Read the target MB's documents (`brief.md`, `architecture.md`,
-   `tech.md`, `playbook.md` — those that exist; legacy shape per the
-   contract's Memory Bank Document Set).
+   `tech.md` — those that exist; legacy shape per the contract's Memory Bank
+   Document Set) and the playbook chain
+   (contract/playbook-contract.md, "Playbook chain").
 4. Dispatch the opponent and run the triage per
    (contract/architect-review.md, "Agentic Design Opposition (oponentura)") — most capable model, highest
    exposed reasoning effort, both explicit; findings with evidence only;

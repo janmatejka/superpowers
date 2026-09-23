@@ -200,10 +200,13 @@ present tense, as reference documentation. They are NOT a changelog.
 - Only if core purpose, value or features changed
 
 #### `<affected_mb>/playbook.md`
-- **Never change it without the user's approval** (contract, Playbook
-  Contract). When the sync finds a procedure that no longer matches reality,
-  PROPOSE the correction — with the evidence — and write only what the user
-  approves.
+- **Never change it without the user's approval** (contract/playbook-contract.md, "Playbook Contract").
+  When the sync finds a procedure that no longer matches reality, PROPOSE the
+  correction — with the evidence, naming the part and the section of the item
+  it corrects (contract/playbook-contract.md, "Playbook shape") — and write only
+  what the user approves. A file in the legacy shape is corrected in place and
+  never converted here; converting it is consolidation's job
+  (contract/playbook-contract.md, "Consolidation").
 
 ### 4. Constraints
 

@@ -165,6 +165,31 @@ Create the target `memory-bank/` (`<CTX_DIR>/` in orchestration-root mode, `<PLA
   commands.** Put the commands here and the versions and stack into `tech.md`
   (contract, Document Ownership). Never create it empty: an empty stub is
   exactly how the former `tasks.md` ended up used in one MB out of eight.
+  Create it in the new shape (contract/playbook-contract.md, "Playbook shape"),
+  one procedure per detected command (bold title, command block), exactly:
+
+  ~~~markdown
+  # Playbook — <name>
+
+  ## Jen pro tento projekt
+
+  ### Když stavíš nebo spouštíš testy
+
+  **Sestavení**
+  ```bash
+  <detected build command>
+  ```
+
+  **Testy**
+  ```bash
+  <detected test command>
+  ```
+  ~~~
+
+  `<name>` is the project's name. `## Jen pro tento projekt` is the part for a
+  project MB and for the root MB of a single-MB repository; an orchestration
+  root with project MBs below it uses `## Pro celý podstrom` instead. Omit a
+  procedure whose command was not detected.
 - `proposals/next/`
 - `proposals/active/`
 - `proposals/completed/`

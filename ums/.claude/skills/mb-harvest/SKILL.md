@@ -126,28 +126,90 @@ One pass therefore catches both staleness (a walkthrough still describing
 pre-refactor names) and duplication (the same fact drifting into two
 documents).
 
-**Playbook gate (a non-autonomous step):** read
+**Playbook gate (a non-autonomous step):** the gate of
+(contract/playbook-contract.md, "Harvest gate") — its table, dispositions and
+criteria live there and are not repeated here. Input:
 `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — the file of the CURRENT
-work-item slug, one file per slug (contract, Playbook Contract).
+work-item slug, one file per slug (contract/playbook-contract.md, "Playbook Contract").
 
 - Missing or empty → skip silently, no question. Files of OTHER slugs are
   foreign: they have their own paths and are neither read nor deleted here.
-- Otherwise present ALL candidates to the user in ONE Czech list: for each, the
-  proposed procedure and its evidence (`Tried` / `Happened`). A candidate with
-  `Corrects` is shown NEXT TO the existing `playbook.md` entry it contradicts,
-  with three choices: replace / keep both / drop. When the named entry no
-  longer exists in `playbook.md` (e.g. an earlier candidate in this same gate
-  already replaced it), present the candidate as a NEW entry instead — tell
-  the user the entry it meant to correct is gone.
-- Write only what the user approved, translated into Czech, into
-  `playbook.md` of the target MB — or of the MB named by the candidate's
-  `Target MB` field. Create `playbook.md` when it does not exist; write into
-  `tasks.md` instead when that is the MB's legacy shape (contract, Memory Bank
-  Document Set).
-- Keep a persisted candidate's evidence as a one-line `Proč:`.
+- **Resolve the chain** (contract/playbook-contract.md, "Playbook chain"):
+
+  ```powershell
+  . <mb-shared>/scripts/Find-UmsPlaybookMatch.ps1    # loads Get-UmsPlaybookChain.ps1 too
+  $chain = Get-UmsPlaybookChain <MB_ROOT> <Target MB Pin> -Out
+  ```
+
+  `<mb-shared>` is this layer's `skills/shared/` directory, the sibling of
+  `mb-harvest/`; the second argument is the repository-relative `memory-bank/`
+  directory of `PLAN_MB`. `$chain.OutPath` is
+  `<MB_ROOT>/.superpowers/playbook-chain/<mb>.md`. Read the
+  `playbook-retired.md` beside every playbook in `$chain.Segments` that has one.
+- **Dispatch the analyst** — read-only, cheapest capable tier, the model named
+  explicitly — with the brief of (contract/playbook-contract.md, "Analyst brief"):
+  the candidates file, `$chain.OutPath`, the retired lists,
+  `Find-UmsPlaybookMatch <candidate text> <MB_ROOT> <Target MB Pin>` output per
+  candidate, and `consolidate-playbook.ps1 -Stats -Path <playbook>` for every
+  segment's playbook. Pass paths and outputs; never inline the chain.
+- **Present the disposition table** to the user in Czech. A candidate with
+  `Corrects` is a `nahrazuje` row shown NEXT TO the item it corrects; when that
+  item no longer exists in the chain (e.g. an earlier row of this same gate
+  already replaced it), the row is `nový` instead — tell the user the item it
+  meant to correct is gone. Every row whose target is an ancestor's playbook
+  lists the count and the list of the Memory Banks that inherit it (the
+  `Get-UmsMbTree <MB_ROOT>` entries below that ancestor). The user approves the
+  table and may override any row; rows the analyst left undecided are decided
+  by the user. Nothing is written before approval.
+- **Write through `-Apply`.** Translate the approved rows into a decisions file
+  `<MB_ROOT>/.superpowers/playbook-gate/<slug>.json` (`{ "decisions": [ … ] }`),
+  per the paragraph "Writing" of (contract/playbook-contract.md, "Harvest gate"):
+  - `nový` → `novy` with `target` (the Memory Bank's playbook path as
+    `Get-UmsMbTree` reports it, else `<MB dir>/playbook.md`, which the script
+    creates), `part` (`podstrom` | `projekt`), `section` and `text`;
+  - `sloučit do <MB>:<položka>` → `prepsat` of that item's `id` with the merged
+    `text`;
+  - `nahrazuje <MB>:<položka>` → `vyradit` of that item's `id` with `reason`
+    `nahrazeno «<položka>»`, plus a `novy`;
+  - `do kódu <kde>` → no playbook decision: write the test or check itself.
+    When it makes an existing chain item redundant, add `prevest-na-test` of
+    that item's `id` with `test`; `prevest-na-test` never applies to a
+    candidate;
+  - `zahodit` → nothing is written.
+
+  Paths in the file are repository-relative. An `id` is `<playbook path>#<n>` — the `id` of
+  `consolidate-playbook.ps1 -Parse -Path <playbook>`, or `Playbook` and
+  `ItemId` of a `Find-UmsPlaybookMatch` hit. Every `text` is Czech, in the item
+  shape of (contract/playbook-contract.md, "Playbook shape"), with the
+  candidate's evidence as its one-sentence `Proč:` and `Důkaz: návrh <slug>`
+  for a new item. Note each target file's line count, then run
+  `pwsh -NoProfile -File <skills>/mb-playbook-consolidate/scripts/consolidate-playbook.ps1 -Apply <decisions file>`
+  (`<skills>` is the parent of `<mb-shared>`). Its `written` array names every
+  file it wrote — the playbooks and their `playbook-retired.md` lists; hand it
+  to the commit (`mb-git-commit`, playbook batch). A legacy target is patched in
+  place, never converted here (contract/playbook-contract.md, "Legacy mode"). A
+  write into an ancestor's playbook falls under (contract/playbook-contract.md, "Writes outside PLAN_MB").
+- **Shape check** (contract/playbook-contract.md, "Harvest gate"), paragraph
+  "Shape check before archiving". Dot-source
+  `<mb-shared>/scripts/Test-UmsPlaybookShape.ps1`, run
+  `Test-UmsPlaybookShape -Playbook <file>` on every written playbook and
+  `Test-UmsPlaybookTree <MB_ROOT> <owner>` for the owner directory of every
+  Memory Bank whose playbook was written (`''` for the root) — that covers
+  every Memory Bank whose chain includes a written file.
+  - Print every warning. For a legacy file, announce LOUDLY that it grew and by
+    how many lines (the delta against the count noted before `-Apply`), and
+    recommend `mb-playbook-consolidate`.
+  - `[ráčna-růst]` → ask the user: balance it (merge, replace, retire — a new
+    round of this gate over the same file) or raise the baseline with the
+    user's reason, `consolidate-playbook.ps1 -Baseline -Path <file> -Reason <text>`.
+    `-Apply` never raises it (contract/playbook-contract.md, "Budget, threshold and ratchet").
+  - Any other hard finding → fix it and rerun the gate.
+  - Until no hard finding remains, do NOT proceed to step 4 (archive) or step
+    5 (IDLE reset) — this is the partial-failure rule of (contract/harvest.md, "Harvest Contract").
 - Report the number of candidates the user did not approve. They vanish with
   the scratch file — do not re-ask.
-- **Then delete the current slug's file**, so no spent candidates travel on into
+- **Then delete the current slug's file** — only once the approved entries are
+  written and the shape check is clean — so no spent candidates travel on into
   the base. The file may be **committed on this branch** — `mb-park` adds it with
   `git add -f`, the named exception from "the scratch tree is git-ignored" — so
   decide by a git query, never by reading the file:
@@ -173,6 +235,8 @@ work-item slug, one file per slug (contract, Playbook Contract).
   reached `playbook.md`, it means the removal has to be recorded in git.
 
 ### 4. Archive the design, delete the plan
+
+Only once the playbook gate's shape check (step 3) left no hard finding.
 
 Move the design half (`design_<slug>.md`, legacy `proposal_<slug>-design.md`)
 from `<PLAN_MB>/proposals/active/` to `<PLAN_MB>/proposals/completed/`,
@@ -211,7 +275,7 @@ work item had none). See that section for why. On partial failure, leave
 > - Archivováno (jen design): `proposals/completed/design_<slug>.md`; implementační plán `plan_<slug>.md` smazán (u legacy práce původní proposal_ názvy)
 > - Případné neúspěchy: …
 > - Přesuny faktů mezi dokumenty: … (nebo „žádné")
-> - Playbook: zapsáno <N> zkušeností do `<MB>/<playbook.md nebo tasks.md dle podoby MB>`, neschváleno <M>
+> - Playbook: zapsáno <N> zkušeností do <soubory z `written`>, neschváleno <M>; varování kontroly tvaru: … (nebo „žádná")
 >
 > 💡 Pokud je navázán Jira tiket, nabídni `mb-jira-update`.
 > 💡 Při samostatném vyvolání (mimo finishing) nabídni `mb-git-commit`.
