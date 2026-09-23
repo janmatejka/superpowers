@@ -106,7 +106,7 @@ automatic run (the dispatch is not free — see Model and effort below).
 
 **Dispatch (by the driving session).** The opponent receives: the design
 document; the target MB's documents (`brief.md`, `architecture.md`,
-`tech.md`, `playbook.md` — those that exist, legacy shape per Memory Bank
+`tech.md` and the playbook chain (contract/playbook-contract.md, "Playbook chain") — those that exist, legacy shape per Memory Bank
 Document Set); and read access to the repository code, so integration
 claims are checked against reality rather than against the design's own
 prose. The dispatch prompt and the findings are AI-facing and therefore

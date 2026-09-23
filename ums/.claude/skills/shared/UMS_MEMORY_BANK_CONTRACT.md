@@ -1,6 +1,6 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 3.0
+- **Contract-Version:** 3.1
 
 ## Purpose & Roles
 
@@ -28,9 +28,9 @@ session), and any other agent working with Memory Bank documents.
   Document Set). If `Target MB Pin` is not set, `PLAN_MB` is undefined and
   operations requiring it MUST fail with an error (or trigger Target-MB Discovery
   where this contract says so).
-- **`AFFECTED_MBS`** — the project Memory Banks touched by a harvest, derived at
-  harvest time from the branch diff (see Harvest Contract), never hand-maintained
-  in `context.md`.
+- **`AFFECTED_MBS`** — the project MBs a harvest touches, derived from the branch
+  diff (Harvest Contract) plus ancestors an approved playbook disposition targets
+  (contract/playbook-contract.md, "Writes outside PLAN_MB"), never kept in `context.md`.
 
 ## `MB_ROOT` Discovery
 
@@ -62,12 +62,12 @@ does not, stop with: `` `memory-bank/` does not exist. Run `mb-init`. ``
 
 **Mandatory core of a project MB:** `brief.md`, `architecture.md`, `tech.md`.
 **First-class optional:** `playbook.md` — prescriptive procedures (Document
-Ownership below; Playbook Contract in `contract/playbook-contract.md`).
-**Free extension:** any further document the MB needs (`data-flows.md`,
-`use-cases.md`, `open-questions.md`, `tasks.md`, …) — no normative status; skills
-update them when they exist and never create them speculatively. The
-orchestration root (`CTX_DIR`) is NOT bound by the core: it holds `context.md`
-plus whatever navigation the orchestrated tree needs.
+Ownership below; Playbook Contract in `contract/playbook-contract.md`), read as
+a chain along the Memory Bank tree. **Free extension:** any further document the
+MB needs (`data-flows.md`, `use-cases.md`, `open-questions.md`, `tasks.md`, …) —
+no normative status; skills update them when they exist and never create them
+speculatively. The orchestration root (`CTX_DIR`) is NOT bound by the core: it
+holds `context.md` plus whatever navigation the orchestrated tree needs.
 
 `brief.md` covers the whole of what the product is and what state it is in; a
 separate `product.md` is legacy shape only. Canonical section order (sections
@@ -98,7 +98,8 @@ current shape is `mb-migrate-docs`' job, never a side effect of unrelated work.
 The scope lock governs **Memory Bank document writes only**: MB documents are
 written only under `CTX_DIR`, `PLAN_MB`, and — during harvest — `AFFECTED_MBS`;
 superpowers spec/plan documents only under `<PLAN_MB>/proposals/` (see
-Superpowers Document Placement).
+Superpowers Document Placement). The playbook writes of harvest and consolidation
+are the named exceptions of (contract/playbook-contract.md, "Writes outside PLAN_MB").
 
 Explicitly **legal and outside this lock**:
 
@@ -403,15 +404,15 @@ Either failure is a STOP for any work ending in a push.
 ## MB Context Reading Rule
 
 Before proposing approaches (brainstorming) and before writing the implementation
-plan, read `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and `playbook.md`
-(those that exist; legacy shape per Memory Bank Document Set), plus the root
-`memory-bank/architecture.md` and `tech.md` when the work is cross-cutting.
-`playbook.md` is prescriptive — its procedures BIND the work, they are not
-background reading. The rest is current-state reference: treat it as authoritative
-context, and note in the design when it is stale (the fix for staleness is
-`mb-sync` or the harvest at finish, not ad-hoc edits). Every link WRITTEN into a
-Memory Bank document — by any skill, harvest or ad-hoc edit — follows Link
-Conventions.
+plan, read `<PLAN_MB>/brief.md`, `architecture.md`, `tech.md` and the playbook
+chain of PLAN_MB (contract/playbook-contract.md, "Playbook chain") (those that
+exist; legacy shape per Memory Bank Document Set), plus the root MB's
+`architecture.md` and `tech.md` when the work is cross-cutting. The playbook
+chain is prescriptive — its procedures BIND the work, not background reading.
+The rest is current-state reference: treat it as authoritative context, and
+note in the design when it is stale (the fix for staleness is `mb-sync` or the
+harvest at finish, not ad-hoc edits). Every link WRITTEN into a Memory Bank
+document — by any skill, harvest or ad-hoc edit — follows Link Conventions.
 
 ## Document Ownership
 

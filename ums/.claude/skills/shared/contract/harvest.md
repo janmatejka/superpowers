@@ -44,12 +44,11 @@ code.
 
    **Playbook gate (a non-autonomous step of the harvest):** when
    `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` of the current work
-   item is non-empty, present the candidates with their evidence to the user
-   ONCE and let them choose. Approved ones are translated into Czech and written
-   to `playbook.md` of the target MB — or of the MB named by the candidate's
-   `Target MB` field. A candidate carrying `Corrects` is presented NEXT TO the
-   entry it contradicts, and the user decides between replacing it, keeping both,
-   or dropping the candidate. Unapproved candidates vanish with the file; report
+   item is non-empty, the candidates go through the gate ONCE. The playbook
+   gate is (contract/playbook-contract.md, "Harvest gate"); its shape check
+   runs at the end of this rule, before rule 4, and a hard finding counts as a
+   failed Memory Bank update under rule 5. Approved entries are written in
+   Czech. Unapproved candidates vanish with the file; report
    their count. A missing or empty file for the current slug skips the gate
    without a question; files of other slugs are not read and not touched.
    After the gate, DELETE the current slug's file — `git rm` when `mb-park`
@@ -65,7 +64,8 @@ code.
    instead, deleting nothing.
 5. **Reset:** only if every affected MB update succeeds, reset
    `context.md` `## Active Work` to IDLE per the schema above. On partial
-   failure, leave `context.md` unchanged and report.
+   failure, leave `context.md` unchanged and report. A hard finding of the
+   playbook shape check is such a failure.
 6. **Announce (Czech)** and offer `mb-jira-update` when a Jira ticket is
    linked.
 

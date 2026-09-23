@@ -1,6 +1,10 @@
 # Contract changelog
 
-- **Contract-Version:** 3.0
+- **Contract-Version:** 3.1
+- 3.1 — playbook tree and ancestor chain, file and item shape, escalation
+  threshold with a ratchet, legacy mode, harvest gate v2, consolidation of one
+  Memory Bank and of the whole tree, Scope Lock exceptions for playbook writes
+  (UMS-3552).
 - 3.0 — core / references / doklad split; Session Eligibility; Work Item
   Granularity; Phase Map; Message Protocol ordering; escalation floor row for
   playbook.md; jira.md; permalinkTemplate; contract-inject hook (UMS-3551).
