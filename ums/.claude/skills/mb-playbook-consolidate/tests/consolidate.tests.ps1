@@ -112,6 +112,34 @@ Assert-Match $r.Text 'není v platném tvaru' 'refusal explains invalid shape'
 Assert-Match $r.Text 'BadShape/memory-bank/playbook.md#1' 'refusal names the offending item id'
 Assert-Eq ([IO.File]::ReadAllText((Join-Path $repo 'BadShape/memory-bank/playbook.md'))) $badBefore 'refused apply leaves malformed file unchanged'
 
+Write-Host "== legacy file without presunout/ponechat is patched in place (harvest gate)"
+$gBody = "# Úkoly — G`n`nÚvod G.`n`n## Build`n`n- **G1 pravidlo.**`n  Proč: g1.`n- **G2 pravidlo.**`n  Proč: g2.`n`n## Deploy`n`nDeploy text G.`n"
+Write-PlaybookFixtureFile $repo 'G/memory-bank/playbook.md' $gBody
+git -C $repo add -A; git -C $repo commit -q -m legacyG
+$gPath = Join-Path $repo 'G/memory-bank/playbook.md'
+$d = Write-Decisions $repo @{ run = 'h1'; batch = '01'; decisions = @(
+    @{ verdict = 'novy'; target = 'G/memory-bank/playbook.md'; part = 'projekt'; section = 'Když stavíš G'; text = '- **G3 nové.** Proč: g3. Důkaz: návrh ums_1_x.' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-23')
+Assert-Eq $r.Exit 0 'gate novy into a legacy file applies'
+Assert-Eq ([IO.File]::ReadAllText($gPath)) ($gBody + "`n- **G3 nové.** Proč: g3. Důkaz: návrh ums_1_x.`n") 'novy appends after one empty line, old content byte-identical above'
+Assert-Eq (Read-UmsPlaybook $gPath).Shape 'legacy' 'patched file stays legacy'
+$gBody = [IO.File]::ReadAllText($gPath)
+$d = Write-Decisions $repo @{ run = 'h1'; batch = '02'; decisions = @(
+    @{ id = 'G/memory-bank/playbook.md#1'; verdict = 'prepsat'; text = "- **G1 přepsané.**`n  Proč: g1 nově." }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-23')
+Assert-Eq $r.Exit 0 'prepsat of a legacy item applies'
+Assert-Eq ([IO.File]::ReadAllText($gPath)) ($gBody.Replace("- **G1 pravidlo.**`n  Proč: g1.", "- **G1 přepsané.**`n  Proč: g1 nově.")) 'prepsat patches only that item'
+$gBody = [IO.File]::ReadAllText($gPath)
+$d = Write-Decisions $repo @{ run = 'h1'; batch = '03'; decisions = @(
+    @{ id = 'G/memory-bank/playbook.md#2'; verdict = 'vyradit'; reason = 'neplatí od abc1234' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-23')
+Assert-Eq $r.Exit 0 'vyradit of a legacy item applies'
+Assert-Eq ([IO.File]::ReadAllText($gPath)) ($gBody.Replace("- **G2 pravidlo.**`n  Proč: g2.`n", '')) 'vyradit removes only that item'
+Assert-Match ([IO.File]::ReadAllText((Join-Path $repo 'G/memory-bank/playbook-retired.md'))) '(?m)^- G2 pravidlo\. — neplatí od abc1234 \(2026-09-23\)$' 'patch-mode retirement writes the retired line'
+
 Write-Host "== ratchet after apply and -Baseline"
 $bigRules = (1..4 | ForEach-Object { "### Když krok $_`n`n" + (New-PlaybookRules 50 "B$_") + "`n" }) -join "`n"
 Write-PlaybookFixtureFile $repo 'S2/memory-bank/playbook.md' ("# P`n`n## Jen pro tento projekt`n`n" + $bigRules)
@@ -131,6 +159,52 @@ $r = Invoke-Cons @('-Baseline', '-Path', 'S2/memory-bank/playbook.md', '-Reason'
 Assert-Eq $r.Exit 0 'baseline exits 0'
 Assert-Eq (Read-UmsPlaybook $s2).Ratchet.Reason 'nové pravidlo' 'reason recorded'
 Assert-Eq (Test-UmsPlaybookShape $s2).Hard.Count 0 'recorded raise passes'
+
+Write-Host "== -Apply never raises a ratchet"
+# Fixture in the writer's own layout, so a size-neutral rewrite really is size-neutral.
+$rRules = (1..2 | ForEach-Object { "### Když krok $_`n`n" + (New-PlaybookRules 105 "R$_") + "`n" }) -join "`n"
+Write-PlaybookFixtureFile $repo 'R/memory-bank/playbook.md' ("# P`n`n## Jen pro tento projekt`n`n" + $rRules)
+git -C $repo add -A; git -C $repo commit -q -m ratchetR
+$rPath = Join-Path $repo 'R/memory-bank/playbook.md'
+$r = Invoke-Cons @('-Baseline', '-Path', 'R/memory-bank/playbook.md', '-Reason', 'zvýšeno člověkem', '-RepoRoot', $repo, '-Today', '2026-09-20')
+$base = (Read-UmsPlaybook $rPath).Ratchet
+Assert-Eq $base.Reason 'zvýšeno člověkem' 'fixture ratchet carries a human reason'
+$d = Write-Decisions $repo @{ run = 'r2'; batch = '01'; decisions = @(
+    @{ id = 'R/memory-bank/playbook.md#1'; verdict = 'prepsat'; text = "- **R1 přepsané 1.**`n  Proč: jinak.`n  Důkaz: abc1." }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-23')
+Assert-Eq $r.Exit 0 'size-neutral apply exits 0'
+$rat = (Read-UmsPlaybook $rPath).Ratchet
+Assert-Eq $rat.Baseline $base.Baseline 'size-neutral apply keeps the baseline'
+Assert-Eq $rat.Reason 'zvýšeno člověkem' 'size-neutral apply keeps the human reason'
+$d = Write-Decisions $repo @{ run = 'r2'; batch = '02'; decisions = @(
+    @{ verdict = 'novy'; target = 'R/memory-bank/playbook.md'; part = 'projekt'; section = 'Když krok 1'; text = '- **R navíc.** Proč: r. Důkaz: návrh ums_1_x.' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-24')
+Assert-Eq $r.Exit 0 'growing apply exits 0'
+$rat = (Read-UmsPlaybook $rPath).Ratchet
+Assert-Eq $rat.Baseline $base.Baseline 'growing apply does not raise the baseline'
+Assert-Eq $rat.Date '2026-09-20' 'growing apply leaves the comment unchanged'
+Assert-True ([bool](@((Test-UmsPlaybookShape $rPath).Hard | Where-Object { $_.StartsWith('[ráčna-růst]') }).Count)) 'growth through -Apply is reported as [ráčna-růst]'
+$d = Write-Decisions $repo @{ run = 'r2'; batch = '03'; decisions = @(
+    @{ id = 'R/memory-bank/playbook.md#2'; verdict = 'vyradit'; reason = 'duplicita' }
+    @{ id = 'R/memory-bank/playbook.md#3'; verdict = 'vyradit'; reason = 'duplicita' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-25')
+$pbR = Read-UmsPlaybook $rPath
+Assert-Eq $pbR.Ratchet.Baseline $pbR.LineCount 'shrinking apply lowers the baseline to the achieved size'
+Assert-True ($pbR.LineCount -lt $base.Baseline) 'achieved size is below the old baseline'
+Assert-Eq $pbR.Ratchet.Reason $null 'lowered baseline drops the reason'
+Assert-Eq $pbR.Ratchet.Date '2026-09-25' 'lowered baseline carries today'
+Write-PlaybookFixtureFile $repo 'R2/memory-bank/playbook.md' ("# P`n`n## Jen pro tento projekt`n`n" + $rRules)
+git -C $repo add -A; git -C $repo commit -q -m ratchetR2
+$d = Write-Decisions $repo @{ run = 'r2'; batch = '04'; decisions = @(
+    @{ verdict = 'novy'; target = 'R2/memory-bank/playbook.md'; part = 'projekt'; section = 'Když krok 1'; text = '- **R2 navíc.** Proč: r. Důkaz: návrh ums_1_x.' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-24')
+$r2Path = Join-Path $repo 'R2/memory-bank/playbook.md'
+Assert-Eq (Read-UmsPlaybook $r2Path).Ratchet $null 'a growing apply never adds a ratchet'
+Assert-True ([bool](@((Test-UmsPlaybookShape $r2Path).Hard | Where-Object { $_.StartsWith('[ráčna-chybí]') }).Count)) 'so the shape check reports [ráčna-chybí]'
 
 Write-Host "== -Baseline removes a stale ratchet comment once under threshold"
 Write-PlaybookFixtureFile $repo 'Small/memory-bank/playbook.md' "# P`n<!-- playbook-budget: 600; baseline: 999 (2020-01-01) -->`n`n## Jen pro tento projekt`n`n### Když malý`n`n- **Small pravidlo.** Proč: s. Důkaz: s1.`n"

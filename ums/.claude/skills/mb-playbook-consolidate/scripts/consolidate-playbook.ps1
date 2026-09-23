@@ -53,6 +53,22 @@ try {
         $withComment = $body.Count + 1
         @($body[0], (Get-RatchetLine $withComment $reason)) + @($body.GetRange(1, $body.Count - 1))
     }
+    # -Apply never raises a ratchet (contract/playbook-contract.md, "Budget, threshold and ratchet").
+    # $body carries no comment; $oldPb is the file as it was before the batch ($null for a new file).
+    function Set-ApplyRatchet([string[]] $body, $oldPb) {
+        if ($body.Count -le $script:UmsPlaybookLimits.File) { return $body }
+        $newSize = $body.Count + 1
+        $old = if ($oldPb) { $oldPb.Ratchet } else { $null }
+        if ($old) {
+            # Lower to the achieved size; equal or grown keeps the comment as it was.
+            $line = if ($newSize -lt $old.Baseline) { Get-RatchetLine $newSize $null } else { $oldPb.Lines[1] }
+        } else {
+            $oldSize = if ($oldPb) { $oldPb.LineCount } else { 0 }
+            if ($body.Count -gt $oldSize) { return $body }
+            $line = Get-RatchetLine $newSize $null
+        }
+        @($body[0], $line) + @($body[1..($body.Count - 1)])
+    }
 
     switch ($PSCmdlet.ParameterSetName) {
         'Parse' {
@@ -103,7 +119,7 @@ try {
                 if (-not (Test-Path $full)) {
                     $owner = (Get-MbOf $rel) -replace '/?memory-bank$', ''
                     $name = if ($owner) { $owner } else { 'kořen' }
-                    $model[$rel] = @{ Pb = $null; Preamble = @("# Playbook — $name"); Parts = $parts; Legacy = $false; ItemRef = @{} }
+                    $model[$rel] = @{ Pb = $null; Preamble = @("# Playbook — $name"); Parts = $parts; Legacy = $false; ItemRef = @{}; Patch = $false; Appended = $null }
                     return
                 }
                 $pb = Read-UmsPlaybook $full
@@ -120,7 +136,7 @@ try {
                         $ref[$it.Id] = $entry
                     }
                 }
-                $model[$rel] = @{ Pb = $pb; Preamble = $pre; Parts = $parts; Legacy = ($pb.Shape -eq 'legacy'); ItemRef = $ref }
+                $model[$rel] = @{ Pb = $pb; Preamble = $pre; Parts = $parts; Legacy = ($pb.Shape -eq 'legacy'); ItemRef = $ref; Patch = $false; Appended = $null }
             }
             $parseId = { param([string] $id) $k = $id.LastIndexOf('#'); @($id.Substring(0, $k), [int]$id.Substring($k + 1)) }
             foreach ($d in $decisions) {
@@ -128,11 +144,19 @@ try {
                 if ($d.PSObject.Properties['target'] -and $d.verdict -ne 'do-tech') { & $load $d.target }
                 if ($d.PSObject.Properties['into']) { & $load (& $parseId $d.into)[0] }
             }
-            # Legacy completeness.
+            # Legacy: a CONVERSION when the batch has presunout or ponechat for one of the
+            # file's items (then every item needs a decision); otherwise a PATCH in place
+            # that leaves every untouched line byte-for-byte (contract/playbook-contract.md, "Legacy mode").
             foreach ($rel in @($model.Keys)) {
                 $m = $model[$rel]
                 if (-not $m.Legacy) { continue }
                 $decided = @($decisions | Where-Object { $_.PSObject.Properties['id'] -and ((& $parseId $_.id)[0] -eq $rel) })
+                if (-not @($decided | Where-Object { $_.verdict -in @('presunout', 'ponechat') }).Count) {
+                    $m.Patch = $true
+                    $m.Appended = [Collections.Generic.List[object]]::new()
+                    if ($m.Pb) { foreach ($it in $m.Pb.Items) { $m.ItemRef[$it.Id] = [pscustomobject]@{ Id = $it.Id; Lines = (Get-ItemLines $m.Pb $it); Removed = $false } } }
+                    continue
+                }
                 if (@($decided | Where-Object verdict -eq 'ponechat').Count) { throw "Legacy soubor ${rel}: verdikt ponechat nelze použít, položka potřebuje část a sekci (presunout)." }
                 $ids = @($decided | ForEach-Object { (& $parseId $_.id)[1] })
                 $missing = @($m.Pb.Items | Where-Object { $ids -notcontains $_.Id } | ForEach-Object { "$rel#$($_.Id)" })
@@ -148,6 +172,7 @@ try {
             }
             $insert = {
                 param([string] $rel, [string] $part, [string] $section, [string[]] $lines)
+                if ($model[$rel].Patch) { $model[$rel].Appended.Add($lines); return }
                 $p = $model[$rel].Parts[$part]
                 if (-not $p.Contains($section)) { $p[$section] = [Collections.Generic.List[object]]::new() }
                 $p[$section].Add([pscustomobject]@{ Id = -1; Lines = $lines })
@@ -179,12 +204,34 @@ try {
             }
             foreach ($r in $remove) {
                 $m = $model[$r[0]]
+                if ($m.Patch) { $m.ItemRef[$r[1]].Removed = $true; continue }
                 if ($m.Legacy) { continue }
                 foreach ($part in $m.Parts.Values) { foreach ($sec in $part.Values) { $x = @($sec | Where-Object Id -eq $r[1]); foreach ($e in $x) { [void]$sec.Remove($e) } } }
             }
             $written = [Collections.Generic.List[string]]::new()
             foreach ($rel in $model.Keys) {
                 $m = $model[$rel]
+                if ($m.Patch) {
+                    $out = [Collections.Generic.List[string]]::new()
+                    $byStart = @{}
+                    foreach ($it in $m.Pb.Items) { $byStart[$it.StartLine] = $it }
+                    for ($i = 1; $i -le $m.Pb.LineCount; $i++) {
+                        if ($byStart.ContainsKey($i)) {
+                            $e = $m.ItemRef[$byStart[$i].Id]
+                            if (-not $e.Removed) { foreach ($l in $e.Lines) { $out.Add($l) } }
+                            $i = $byStart[$i].EndLine
+                            continue
+                        }
+                        $out.Add($m.Pb.Lines[$i - 1])
+                    }
+                    if ($m.Appended.Count) {
+                        while ($out.Count -and $out[$out.Count - 1] -eq '') { $out.RemoveAt($out.Count - 1) }
+                        foreach ($block in $m.Appended) { $out.Add(''); foreach ($l in $block) { $out.Add($l) } }
+                    }
+                    Write-Lf $rel $out.ToArray()
+                    $written.Add($rel)
+                    continue
+                }
                 $out = [Collections.Generic.List[string]]::new()
                 foreach ($l in $m.Preamble) { $out.Add($l) }
                 while ($out.Count -and $out[$out.Count - 1] -eq '') { $out.RemoveAt($out.Count - 1) }
@@ -194,16 +241,14 @@ try {
                     $out.Add(''); $out.Add("## $($script:UmsPlaybookPartTitles[$key])")
                     foreach ($s in $secs) {
                         $out.Add(''); $out.Add("### $s"); $out.Add('')
-                        $first = $true
-                        foreach ($e in $m.Parts[$key][$s]) {
-                            if (-not $first) { $out.Add('') }
-                            foreach ($l in $e.Lines) { $out.Add($l) }
-                            $first = $false
-                        }
+                        # Items of a section follow each other without an empty line (the item
+                        # shape of contract/playbook-contract.md, "Playbook shape"); an empty line
+                        # per item would grow every rewritten file by one line per item.
+                        foreach ($e in $m.Parts[$key][$s]) { foreach ($l in $e.Lines) { $out.Add($l) } }
                     }
                 }
                 while ($out.Count -and $out[$out.Count - 1] -eq '') { $out.RemoveAt($out.Count - 1) }
-                Write-Lf $rel (Set-Ratchet $out.ToArray() $null)
+                Write-Lf $rel (Set-ApplyRatchet $out.ToArray() $m.Pb)
                 $written.Add($rel)
             }
             foreach ($r in $retired.Keys) {

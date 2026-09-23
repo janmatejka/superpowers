@@ -100,5 +100,22 @@ $p = Write-Fx 'postup.md' ("# P`n`n## Jen pro tento projekt`n`n### Když staví�
 $r = Test-UmsPlaybookShape $p
 Assert-True (Has $r.Hard '[tvar] postup má') 'procedure over 16 lines is hard'
 
+Write-Host "== retired list line shape (warning only, both shapes)"
+foreach ($case in @(
+        @{ Dir = 'ret-new'; Body = ("# P`n`n## Pro celý podstrom`n`n### Když píšeš test`n`n" + (New-Rules 2 'R') + "`n") }
+        @{ Dir = 'ret-legacy'; Body = "# P`n`n## Testy`n`n- **Staré pravidlo.**`n" }
+    )) {
+    $d = Join-Path $tmp $case.Dir
+    New-Item -ItemType Directory $d | Out-Null
+    $pb = Join-Path $d 'playbook.md'
+    [IO.File]::WriteAllText($pb, $case.Body, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $d 'playbook-retired.md'), "# Vyřazená pravidla`n`n- Než spoléháš na diff — nahrazeno «Obnova souboru» (2026-09-23)`nvolný řádek bez tvaru`n", [Text.UTF8Encoding]::new($false))
+    $r = Test-UmsPlaybookShape $pb
+    $ret = @($r.Warn | Where-Object { $_.StartsWith('[vyřazené]') })
+    Assert-Eq $ret.Count 1 "$($case.Dir): exactly the malformed retired line warns"
+    Assert-Match ($ret -join ' ') 'volný řádek bez tvaru' "$($case.Dir): warning quotes the malformed line"
+    Assert-Eq $r.Hard.Count 0 "$($case.Dir): retired-list finding is never hard"
+}
+
 Remove-Item -Recurse -Force $tmp
 Complete-Tests

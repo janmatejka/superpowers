@@ -126,6 +126,13 @@ The Memory Bank tree is derived from tracked paths (`git ls-files`): Memory Bank
 
 Thresholds: 600 lines per file, 900 lines per chain, 40 items per section. Exceeding a threshold is a warning with the size, never a hard finding: it says the playbook probably carries content that belongs elsewhere ("Escalation report"). `shared/scripts/Test-UmsPlaybookShape.ps1` reports exactly three hard findings, all for a new-shape file: a shape violation, growth over the ratchet baseline, and a file over the threshold without its ratchet comment. The ratchet is the literal second line `<!-- playbook-budget: 600; baseline: <N> (<YYYY-MM-DD>[, <reason>]) -->`; the file may not outgrow the baseline unless a human, in the harvest gate, explicitly raises it with a reason, which is written into the comment. Consolidation lowers the baseline to the achieved size after every batch and removes the comment below the threshold.
 
+`consolidate-playbook.ps1 -Apply` never raises a ratchet. With a comment, a
+result below the baseline lowers it to the achieved size (reason dropped, date
+of the run); an equal or larger result leaves the comment unchanged, so growth
+shows as a hard finding. Without a comment, it adds one only when the batch did
+not grow the file and the result is over the threshold. At or under the
+threshold the comment is removed. Only `-Baseline -Reason` raises a baseline.
+
 `Test-UmsPlaybookTree` checks the chain of every Memory Bank of a subtree, so
 an inflated root or subtree part shows at all its descendants at once. A chain
 has no ratchet of its own: it is the sum of its segments, each guarded by its
@@ -134,6 +141,13 @@ own file's ratchet.
 ### Legacy mode
 
 A legacy-shape file gets warnings only — shape, size, thresholds — and never stops a harvest; the harvest gate announces loudly that a legacy file grows and by how much, and recommends consolidation. Strict rules apply from the moment round 1 of consolidation converts the file; if it is then over the threshold, round 1 writes its ratchet.
+
+`consolidate-playbook.ps1 -Apply` converts a legacy file only when the batch
+has `presunout` or `ponechat` for one of its items; then every item of the file
+needs a decision and `ponechat` is refused. Otherwise it patches the file in
+place: `novy` appends its text at the end of the file after one empty line,
+`prepsat` replaces that item's lines, `vyradit` and `prevest-na-test` remove
+them and write the retired line; every other line stays byte-for-byte.
 
 ### Harvest gate
 
@@ -196,12 +210,14 @@ kódu` writes the test or check and adds no playbook item. A candidate matching
 a retired rule of any chain segment gets `zahodit (vyřazeno)` unless it
 carries a new `Happened`.
 
-**Writing.** The approved table becomes a decisions file with the verdicts
-`novy`, `sloucit`, `prepsat`, `vyradit` and `prevest-na-test`, applied by
-`mb-playbook-consolidate/scripts/consolidate-playbook.ps1 -Apply`; a candidate
-merged into an existing item is `prepsat` of that item, and `nahrazuje` is
-`vyradit` of the replaced item plus `novy`. A write into an ancestor's playbook
-is "Writes outside PLAN_MB".
+**Writing.** The approved table becomes a decisions file applied by
+`mb-playbook-consolidate/scripts/consolidate-playbook.ps1 -Apply`, using only
+`novy`, `prepsat` (a candidate merged into an existing item), `vyradit`, and
+`prevest-na-test` only for an existing item; `sloucit` is consolidation's.
+`nahrazuje` is `vyradit` of the replaced item with the reason
+`nahrazeno «<položka>»` plus `novy`. A legacy target file is patched in place
+("Legacy mode"). A write into an ancestor's playbook is "Writes outside
+PLAN_MB".
 
 **Shape check before archiving.** At the end of harvest rule 3, before rule 4
 (archive) and before the IDLE reset, `Test-UmsPlaybookShape` runs on every
@@ -245,7 +261,10 @@ line per retired rule:
 `consolidate-playbook.ps1 -Apply` appends these lines for the verdicts
 `vyradit` and `prevest-na-test`. The harvest gate and consolidation read the
 retired lists of the whole chain, so a rule retired in an ancestor is not
-learnt again in a descendant.
+learnt again in a descendant. `Test-UmsPlaybookShape` checks only the line
+shape of the sibling `playbook-retired.md`, for both shapes: every line that is
+neither the `# …` title, an empty line nor the shape above is a `[vyřazené]`
+warning, never a hard finding.
 
 A rule a machine can check is converted into a test and leaves the playbook.
 The first two conversions are the suite `shared/tests/tests-hygiene.tests.ps1`
@@ -303,9 +322,10 @@ still over 40 items after round 2 splits into narrower `Když …` sections.
 
 **Tree mode `-Tree [<path>]`** (default `MB_ROOT`) runs in four steps:
 
-1. **Inventory** — `consolidate-playbook.ps1 -Stats -Tree` and `-Parse -Tree`
-   build the tree and list the sizes of files and chains, marking what is over
-   a threshold. Writes nothing.
+1. **Inventory** — `consolidate-playbook.ps1 -Stats -Tree <path>` lists the
+   size of every file (`lines`, `overThreshold`) and of its chain
+   (`chainLines`, read against the 900-line chain threshold), and
+   `-Parse -Tree <path>` the items. Writes nothing.
 2. **Round 1 (shape)** per Memory Bank, top down — a descendant needs to know
    what its ancestor already carries in the subtree part. Every Memory Bank
    has its own table, approval and commit.
@@ -338,7 +358,7 @@ report").
 
 ### Writes outside PLAN_MB
 
-Two named exceptions to the Scope Lock, both limited to what a human approved in a table. The harvest gate: an approved disposition targeting an ancestor's playbook adds that ancestor to `AFFECTED_MBS` for `playbook.md` and `playbook-retired.md` only. Consolidation: it may write `playbook.md` and `playbook-retired.md` of every Memory Bank in the run's scope, `tech.md` only for rows with the verdict `do-tech`, and `proposals/next/` only for an approved escalation report. `mb-git-commit` stages exactly the files an approved batch names.
+Two named exceptions to the Scope Lock, both limited to what a human approved in a table. The harvest gate: an approved disposition targeting an ancestor's playbook adds that ancestor to `AFFECTED_MBS` for `playbook.md` and `playbook-retired.md` only. Consolidation: it may write `playbook.md` and `playbook-retired.md` of every Memory Bank in the run's scope, `tech.md` only for rows with the verdict `do-tech`, and `proposals/next/` only for an approved escalation report; in the same approved batch it may also rewrite, in any Memory Bank document of the run's scope, a citation of a playbook section the batch renames or moves — the citation text only. `mb-git-commit` stages exactly the files an approved batch names.
 
 ### Escalation report
 

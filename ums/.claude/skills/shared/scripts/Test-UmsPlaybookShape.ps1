@@ -13,12 +13,27 @@ function Get-UmsSentenceCount([string] $Text) {
     ([regex]::Matches($t, '[.!?](?=\s|$)')).Count
 }
 
+# Line shape of the sibling playbook-retired.md, for both shapes; warnings only
+# (contract/playbook-contract.md, "Retired rules and conversion to code").
+function Get-UmsRetiredListWarnings([string] $Playbook) {
+    $p = Join-Path (Split-Path -Parent $Playbook) 'playbook-retired.md'
+    if (-not (Test-Path -LiteralPath $p)) { return @() }
+    $n = 0
+    foreach ($raw in ([IO.File]::ReadAllText($p) -split "`n")) {
+        $n++
+        $l = $raw.TrimEnd("`r")
+        if ($l -eq '' -or $l -match '^# ' -or $l -match '^- .+ — .+ \(\d{4}-\d{2}-\d{2}\)$') { continue }
+        "[vyřazené] playbook-retired.md, řádek ${n}: není ve tvaru - <text> — <důvod> (<RRRR-MM-DD>): $l"
+    }
+}
+
 function Test-UmsPlaybookShape([string] $Playbook) {
     $pb = Read-UmsPlaybook $Playbook
     $L = $script:UmsPlaybookLimits
     $hard = [Collections.Generic.List[string]]::new()
     $warn = [Collections.Generic.List[string]]::new()
     $over = $pb.LineCount -gt $L.File
+    foreach ($w in @(Get-UmsRetiredListWarnings $Playbook)) { $warn.Add($w) }
 
     if ($pb.Shape -eq 'legacy') {
         $warn.Add('[legacy] soubor je ve starém tvaru (bez částí „Pro celý podstrom" / „Jen pro tento projekt") — převede ho kolo 1 konsolidace')
