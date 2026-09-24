@@ -1,5 +1,5 @@
 # Playbook
-<!-- playbook-budget: 600; baseline: 842 (2026-09-24) -->
+<!-- playbook-budget: 600; baseline: 774 (2026-09-24) -->
 
 Postupy, kterými se tato vrstva staví, testuje a nasazuje. Popisný stav — verze
 a piny, inventář souborů, konfigurace, pasti prostředí — je v
@@ -41,18 +41,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   zálohou (`Copy-Item`/`Move-Item -Force`), ne `git checkout --`**, a ověř
   `sha256sum`+`cmp` proti záloze. Proč: checkout by zahodil i nekomitnutou
   práci ze stejné vlny. Důkaz: 44ccb57
-- **Tvrzení „stav/počet X je takový“ ověřuj strojově v TOMTO běhu**, na
-  případu, kde má detektor NĚCO najít, ne kde má vrátit prázdno; zelené
-  asercie s očekávaným `$null`/`''` v RED běhu nic nedokazují. Proč: negativní
-  běh je bezcenný tam, kde je „nic“ legitimní stav. Důkaz: 7da3545
-- **Tvrzení briefu „tahle asercie je právě teď červená“ ověř spuštěním
-  v TOMTO běhu, nikdy převzetím z briefu/review.** Proč: loose substring
-  aserce může být zelená ještě před úpravou, protože stejný literál leží
-  jinde v souboru. Důkaz: 3f811a6
-- **Počty asercí v dokumentaci vždy získej spuštěním CELÉ sady ve stejném
-  sezení**, nikdy aritmetikou nad staršími čísly; součet i počet sad počítej
-  strojově, ne ručně nebo z vlastního seznamu dávek. Proč: ruční součet
-  i staré review číslo se v praxi rozešly s naměřeným. Důkaz: 7da3545
+- **Tvrzení o aktuálním stavu — počet, „je to teď červené", součet asercií —
+  ověřuj strojově SPUŠTĚNÍM V TOMTO běhu, nikdy převzetím z briefu/review
+  ani ruční aritmetikou nad starými čísly.** Proč: loose substring aserce
+  i staré review číslo se v praxi rozešly s naměřeným. Důkaz: 7da3545, 3f811a6.
 - **Smyčku přes všechny sady spouštěj jedním FOREGROUND voláním s timeoutem
   600000 ms, nikdy na pozadí; přesune-li se i tak, nejvýš jeden opakovaný
   pokus, pak STOP a report.** Proč: notifikace o dokončení jde koordinátorovi,
@@ -222,9 +214,6 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   enumerací ani obalením — přiřaď do proměnné zvlášť.** Proč: Zřetězený
   `Where-Object` svázal `$_` s CELOU tabulkou místo s jejími řádky. Důkaz:
   41641a2.
-- **`Set-Content -Encoding UTF8` v PowerShellu 7 BOM nepřidává (na rozdíl od
-  PowerShellu 5.1).** Proč: Ověřeno bajtově — pro UTF-8 bez BOM není potřeba
-  obezlička. Důkaz: c38e039.
 - **Český výstup ověřuj přes PowerShell tool nebo bajtově (`xxd`), nikdy očima v
   bashové konzoli, i pro CRLF a stderr přes pipelinu.** Proč: Bashová konzole
   zobrazí zkomolený text i u správného UTF-8 — jen bajtový test je spolehlivý.
@@ -266,10 +255,6 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   (`-ceq`/`-cne`/`-cmatch`), nikdy defaultním case-insensitive tvarem.** Proč:
   Case-insensitive formulace přijme token ražený pro jinou větev a defekt
   přežije sadu. Důkaz: e0eb939.
-- **Než se spolehneš na doslovný `Select-String -Recurse` z briefu, ověř
-  parametry v INSTALOVANÉM PowerShellu.** Proč: `-Recurse` u `Select-String` v
-  této instalaci vůbec neexistuje — chyba byla chybějící parametr. Důkaz:
-  3f811a6.
 
 ### Když píšeš POSIX hook nebo shell
 
@@ -297,18 +282,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   nikdy úsudkem ani jedním testem — odstraň CR přímo v pipeline (`tr -d`).**
   Proč: msys `sed`/`grep` CR zahazují, ale neuvozený POSIX shell
   (Linux/macOS/WSL) ne. Důkaz: 7da3545.
-- **Bezpříponové bashové skripty (`sdd-workspace`, `task-brief`,
-  `review-package`, `ums/.claude/hooks/pre-push`) musí být v pracovním
-  stromu s LF.** Proč: git podle přípony nepozná skript a `autocrlf`
-  by shebang rozbil. Důkaz: 1a03314.
-- **Nevendoruj bezpříponové skripty prostým `git archive` při
-  `core.autocrlf=true`.** Proč: konverze na CRLF rozbije shebang a
-  skript nejde spustit — `revendor-superpowers.ps1` proto po
-  rozbalení normalizuje na LF. Důkaz: 1a03314.
-- **Nový bezpříponový shellový soubor commitni až s pravidlem
-  `text eol=lf` v `.gitattributes`.** Proč: git podle přípony nepozná
-  skript, takže bez pravidla ho `core.autocrlf` na Windows převede.
-  Důkaz: 1a03314.
+- **Bezpříponový shellový skript drž v LF a commitni ho jen s pravidlem
+  `text eol=lf` v `.gitattributes`; nikdy ho nevendoruj prostým `git archive`
+  při `core.autocrlf=true`.** Proč: git podle přípony nepozná skript,
+  `autocrlf` i archive bez normalizace by shebang rozbily. Důkaz: 1a03314.
 
 ### Když píšeš plán, návrh nebo commit
 
@@ -316,278 +293,15 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   pokud to není skutečný ohraničovač bloku** — apostrofy v próze
   popiš slovy; po psaní plánu spusť `task-brief` pro každé číslo úlohy.
   Proč: osamocený takový řádek nechá tracking bloků „uvnitř". Důkaz: c38e039.
-- **Českou diakritiku v commit message piš přímo, i přes bash
-  heredoc** — UTF-8 tudy projde správně, nenahrazuj ji ASCII
-  transliterací. Ověř: `git log -1 --format=%B | od -c`.
-  Proč: bez ověření tiše vznikne zpráva mimo konvenci repa. Důkaz: c38e039.
+- **Diakritiku v commit message piš přímo, i přes bash heredoc; ověř ji
+  `git log -1 --format=%B | od -c`.** Proč: netestovaný přechod shellem do
+  gitu tiše korumpuje diakritiku. Důkaz: tech.md, sekce „Pasti prostředí".
 - **Diakritika přes PowerShellový here-string (`git commit -m @'...'@`)
   tiše NEPŘEŽIJE** — napiš zprávu nástrojem `Write` do souboru a
   commituj `git commit -F <soubor>`; po commitu ověř bajtově.
   Proč: `@'...'@` commit tiše nahradil diakritiku ASCII. Důkaz: 0a13ef1.
 
 ## Jen pro tento projekt
-
-### Když měníš kontrakt, skill nebo overlay
-
-- **Pravidlo má jeden domov — v kontraktu; skill smí jen odkazovat.** Proč: dva
-  konzumenti (mb-abort a jiný skill) zavedli vlastní pořadí pro tutéž operaci,
-  jen jeden byl prověřen. Důkaz: 7da3545.
-- **Když přebíráš pravidla jiné sekce odkazem, kvalifikuj podstatné jméno a
-  napiš NEGATIVNÍ seznam, co necestuje.** Proč: obecný odkaz by naimportoval i
-  consume-on-read, které by zničilo právě čtený soubor. Důkaz: 41641a2.
-- **`allowed-tools` restringuje nástroje — před návrhem seznamu vypiš všechny
-  nástroje, které skill používá.** Proč: briefovaný seznam pro mb-epic-run
-  vynechal Edit a git-zápisy, takže centrální operace skillu by neběžela. Důkaz:
-  4d72c46.
-- **Grep lock nad adresářem s AKTIVNÍM návrhem/plánem počítej i s residuem:
-  dokumentem, který cituje starou formulaci.** Proč: grep matchnul vlastní
-  design/plan dokumenty tasku citující starou formulaci jako problem statement.
-  Důkaz: 0a13ef1.
-- **Po opravě hardcoded literálu spusť grep lock PŘED commitem; přeživší zásah
-  ve jmenovaném souboru oprav i bez briefu.** Proč: grep lock odhalil druhý,
-  briefem nejmenovaný výskyt téhož literálu o sedm řádků dřív. Důkaz: 0a13ef1.
-- **Git-fakt (tracked/foreign/published) testuj git příkazem nebo cestou, nikdy
-  čtením obsahu souboru.** Proč: netrackovaný neprázdný playbook-candidates
-  soubor je pro standardní git příkazy neviditelný. Důkaz: 7da3545.
-- **Tvrzení „cesta je netrackovaný deployment" ověřuj `git status
-  --ignored=matching` a kódem `!!`.** Proč: `!!` odliší ignorované od „shodou
-  okolností beze změny"; ověřeno na `.claude` a `.agents/skills`. Důkaz:
-  44ccb57.
-- **Po vložení/odstranění kroku grepni CELÝ soubor na `step [0-9]` i plurál a
-  odkazuj na kroky jménem, ne číslem.** Proč: vložení kroku posunulo křížové
-  reference na číslo kroku beze zmínky, grep na termín je nenašel. Důkaz:
-  7da3545.
-- **Větu o pořadí kroků NEOPRAVUJ místo přesunu operace do správného kroku.**
-  Proč: „aktivace na tiketové větvi" nezměnila, že vytvoření větve zůstalo za
-  komitujícím krokem. Důkaz: 7da3545.
-- **Po rozšíření STOP/gate testu na širší množinu stavů přečti VŠECHNY pozdější
-  kroky téhož skillu na mrtvé větve.** Proč: rozšíření STOPu nechalo v mb-parku
-  bod pro starou užší podmínku nedosažitelný. Důkaz: 44ccb57.
-- **Když overlay přesune akci dřív, existující bod checklistu musí explicitně
-  pozastavit vlastní kontrolu.** Proč: agent u nezměněného bodu znovu vykonal
-  STOP instrukci a nahlásil integraci bez harvestu jako hotovou. Důkaz: 7da3545.
-- **Overlay úpravu verifikuj proti KONTRAKTU, ne proti briefu; po každé změně
-  pravidla grepni celou vrstvu na jeho token.** Proč: fragment psaný jen z
-  briefu by povolil přepis TRACKED souboru, který kontrakt zakazuje. Důkaz:
-  7da3545.
-- **Obecná definiční věta nezneplatní specifickou větu tvrdící VÝHRADNÍ hodnotu
-  — grepuj i exkluzivní slovník.** Proč: placeholder token byl krytý obecnou
-  větou, ale věta tvrdící „jediná" zůstala v rozporu. Důkaz: 44ccb57.
-- **Po zavedení druhé instance něčeho, co věta počítá jako „jedinou", grepuj
-  celý dokument na tu počítací frázi.** Proč: slovo „jediná" se stalo
-  nepravdivým ve dvou nezávislých větách při vzniku druhé instance výjimky.
-  Důkaz: 44ccb57.
-- **Nabídka kandidátů s pravidlem spouštěným MIMO seznam musí explicitně napsat,
-  že volná odpověď je přípustná.** Proč: nabídka jen z chráněných větví
-  nenapsala, že odpověď mimo ni je přijata, STOP byl nedosažitelný. Důkaz:
-  44ccb57.
-- **Report tvrdící konkrétní stav ho musí PŘEČÍST v tomto běhu, ne dovodit z
-  jiného pravidla nebo paměti.** Proč: degradovaná cesta tvrdila chráněné větve
-  odvozené z „hook má fallback", ale `main` byl nechráněný. Důkaz: 7da3545.
-- **Dvě hlášení o témže stavu musí čerpat z JEDNOHO zdroje pravdy; po změně na
-  jednom místě sesynchronizuj obě.** Proč: souhrn a varování o chráněných
-  větvích si odporovaly, čtenář varování odešel s mylným dojmem. Důkaz: 7da3545.
-- **Přejmenování toho, co fail-closed brána OVĚŘUJE, vyžaduje přepočítat i její
-  příkaz, ne ho jen přejmenovat.** Proč: `git branch -r --contains` po
-  přejmenování cíle dál procházel starou, už netestovanou věc. Důkaz: 7da3545.
-- **Když kontrakt zdůvodňuje manuální krok slabinou automatu, popiš slabinu jako
-  MECHANISMUS, ne jako verdikt.** Proč: věta „self-test nic neprokazuje" byla
-  měřitelně nepravdivá — instalátor má třetí ověřovací běh. Důkaz: 44ccb57.
-- **Než chybějící hodnotu degraduješ na neutrální default, dohledej, kam teče, a
-  polaritu testu.** Proč: prázdný default na levé straně `!==` udělal podmínku
-  trvale pravdivou, hlídka byla slabší. Důkaz: 41641a2.
-- **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej volajícího a zvol
-  cestu s VÍC ochrany.** Proč: `throw` na chybějícím loaderu by v degradované
-  cestě volajícího nechal repozitář bez hooku. Důkaz: 7da3545.
-- **Než opravíš cestu v instrukci, rozliš markdown odkaz (proti adresáři
-  souboru) od shell argumentu (proti kořeni repa).** Proč: nahrazení PowerShell
-  placeholderu spellingem z markdown odkazu by ukázalo mimo repozitář. Důkaz:
-  44ccb57.
-- **Hodnotu z konfigurace, která už nese prefix, nikdy neprefixuj podruhé;
-  sweepuj obě chybná hláskování zvlášť.** Proč: `HEAD..origin/origin/...`
-  skončilo `fatal: ambiguous argument` kvůli zdvojenému prefixu. Důkaz: 7da3545.
-- **Rozšíření skillu o novou schopnost vyžaduje ve STEJNÉM commitu upravit i
-  `description`.** Proč: `mb-state` dostal novou způsobilost, ale `description`
-  dál slibovala jen starý, užší rozsah. Důkaz: 7da3545.
-- **Když detektor vybírá jednu hodnotu z rovnocenných kandidátů, přečti DVA
-  nezávislé signály, ne jeden.** Proč: `symbolic-ref origin/HEAD` samotný by ve
-  forku napsal `origin/main` místo skutečné větve. Důkaz: 7da3545.
-- **Bump verze v dokumentu s running „Supersedes" historií musí přeformulovat i
-  řádek, který byl current předtím.** Proč: bez přeformulování by vznikly dvě
-  neverzované věty bez rozlišení přechodu verzí. Důkaz: 44ccb57.
-- **Pro každý volitelný řádek `context.md`, který reset zachovává, ověř zvlášť,
-  co ho PŘEPISUJE.** Proč: nový `Báze:` řádek nic nepřepisovalo, jedna
-  maintenance větev by tiše určila výchozí bázi všem. Důkaz: 44ccb57.
-- **Novou tiketovou větev publikuj explicitním `git push -u origin <branch>`,
-  nikdy bare push.** Proč: `switch -c` nastaví upstream na bázi, ne na novou
-  větev, takže bare push by cílil na bázi. Důkaz: 44ccb57.
-- **V komentáři u rozhodovacího kódu nepiš počet, jedinečnost ani uzavřený výčet
-  cest.** Proč: náhrada tvrzení o jedinečnosti jednou výčtovou větou se rozbila
-  hned dvěma novými nepravdami. Důkaz: 0d40535.
-- **Slovník sweepu po opravě nepravdivé věty skládej ze slov, kterými se POČÍTÁ,
-  ne z měněných konceptů.** Proč: slovník omezený na pojmy kola minul dvě věty
-  přežívající tři kola. Důkaz: 0d40535.
-- **Když review najde věty odporující kódu, udělej greppovaný inventář slovníku
-  přes VŠECHNY dotčené soubory.** Proč: oprava jen jmenovaných vět nechala tři
-  další nepravdivé věty mimo diff té opravy. Důkaz: 0d40535.
-- **Ke greppu na jména pojmů přidej druhý průchod po sekcích věcně dotčených
-  změnou a přečti je celé.** Proč: grep na jména pojmů nenašel dvě nepravdivé
-  věty formulované jinými slovy než pravidlo samo. Důkaz: 0d40535.
-- **Tvrdí-li dokumentace, že vlastnost platí pro KAŽDOU položku seznamu, projdi
-  seznam sondou.** Proč: šestý nosič v seznamu byl omylem jiné třídy, věta o
-  všech šesti by odešla nepravdivá. Důkaz: 0d40535.
-- **Upřesnění komentářového bloku nepřidávej jako nový odstavec — přepiš přímo
-  VĚTU, kterou mění.** Proč: nová věta skončila pod tou, kterou vyvracela, a obě
-  zůstaly vedle sebe. Důkaz: 0d40535.
-- **Po úpravě komentářového bloku přečti ho CELÝ odshora dolů a sluč dvojice
-  věta–výjimka do jedné.** Proč: absolutní věta stála nad přesnou výjimkou o 17
-  řádků níž, cizí čtenář narazí na nepravdivou první. Důkaz: 0d40535.
-- **Nadpis komentáře musí být týž tvar pravidla jako věta pod ním, ne jeho
-  silnější zkratka.** Proč: nadpis byl silnější než skutečné pravidlo a
-  porušoval ho vlastní správný kód pod ním. Důkaz: 0d40535.
-- **Popisuje-li soubor mechanismus na víc místech, po úpravě jednoho srovnej ho
-  se všemi ostatními.** Proč: druhá formulace výjimky měla opravu už z
-  předchozího kola, stromový komentář ne. Důkaz: 0d40535.
-- **U absolutní věty o hooku přečti kód NAD branou, na kterou se odvolává, a
-  výjimku napiš do stejného odstavce.** Proč: „hook nevynucuje nic mimo agent
-  session" nebrala v úvahu větev nad branou (buffer stdinu). Důkaz: 0d40535.
-- **Při rozšíření působnosti pravidla vypiš mechanismy, které o něm NĚCO
-  SLIBUJÍ, a ověř slib i pro nové případy.** Proč: rozšíření výjimky ze dvou na
-  tři zdi nechalo větu o rejection message nepravdivou pro dvě z nich. Důkaz:
-  0d40535.
-- **U rozhodovacího ramene popisovaného prózou si opiš konkrétní řádek a
-  spočítej podmínky, teprve pak piš větu.** Proč: popis „posture + jedna
-  výjimka" svedl k under-claimu — rameno má dvě podmínky. Důkaz: 0d40535.
-- **Popis chování rozhodovací funkce piš až po přečtení CELÉ funkce, nikdy jen z
-  hlavičky nebo rulingů.** Proč: věty sepsané z hlavičky a rulingů byly obě
-  nepravdivé proti kódu ve dvou případech. Důkaz: 0d40535.
-- **Před vložením snippetu nahrazujícího strukturovaný útvar přepiš v něm odkazy
-  na strukturu na jméno pravidla.** Proč: snippet vložený doslova odkazoval na
-  tabulku, kterou týž krok o kus dál mazal. Důkaz: 0d40535.
-- **Ohrazený příklad, proti kterému někdo napíše parser, přečti znovu proti
-  pravidlům na třídy znaků téže sekce.** Proč: kanonický příklad nesl
-  placeholder v ostrých závorkách, který stejná sekce jinde zakazuje. Důkaz:
-  41641a2.
-- **Sdílí-li pravidlo a ohrazený artefakt „stejný odstavec", dej pravidlo těsně
-  NAD ohrazení bez prázdného řádku.** Proč: v Markdownu ohrazení odstavec
-  ukončí, obojí nemůže doslova sdílet jeden odstavec. Důkaz: 41641a2.
-- **Po definici uzavřeného výčtu s povinnými poli projdi KAŽDÝ člen a vypiš mu
-  celý záznam doslova.** Proč: člen, kvůli kterému artefakt vznikl, byl zároveň
-  jediný nezapsatelný — dělal ho neviditelným. Důkaz: 41641a2.
-- **Duplicitu ohraničeného regionu čti jako signál malformed → nepřítomný, ne
-  jako přednost páru.** Proč: „poslední pár vyhrává" by tiše povýšilo
-  nedůvěryhodného kandidáta a schovalo vadu pisatele. Důkaz: 41641a2.
-- **Ruší-li úloha pojmenovaný koncept, grepuj i frázi, kterou byl pojmenovaný v
-  próze, ne jen token proměnné.** Proč: širší slovníkový sweep našel dva další
-  výskyty mimo brief scope, které by grep na proměnnou minul. Důkaz: 0d40535.
-- **Popisuje-li komentář bezpečnostní vlastnost jako „X je pravda", ověř,
-  dokazuje-li to kód PŘÍMO, nebo přes proxy.** Proč: komentář sliboval kontakt s
-  remote, ale kód kontroloval jen lokální, zapisovatelný ref. Důkaz: 0d40535.
-- **Konfigurační klíč/soubor pro cizí nástroj ověř proti primární dokumentaci
-  PŘED implementací.** Proč: brief cílil na `[env]`/`"env"` klíč, který ani
-  Codex, ani Gemini CLI takto nečtou. Důkaz: 0d40535.
-- **Než přijmeš navrženou podmínku jako kompletní, projdi VŠECHNY případy proti
-  ní jako červené testy.** Proč: „fail-closed jen na command position" jednou
-  podmínkou nestačilo — chybělo rameno o expanzi. Důkaz: 0d40535.
-- **Ke KAŽDÉMU rozšíření vzoru z povolovacího na zamítací dopiš negativní
-  asercie na hodnotu, konec i prefix.** Proč: pozitivní asercie na sedm zápisů
-  by prošly i výrazu matchujícímu skoro cokoli. Důkaz: 0d40535.
-- **Před KAŽDÝM splicem vytáhni čísla řádků znovu (`grep -n`), nikdy z
-  dřívějšího výpisu, a přečti výsledek.** Proč: splice s čísly z dřívějšího
-  výpisu byl posunutý — syntax check nad komentářem to neodhalí. Důkaz: 0d40535.
-- **Bump verze kontraktu je vlastní sweep na starou verzi, mimo sweep na slovník
-  měněného pravidla.** Proč: oba slovníkové sweepy minuly samotnou verzi — sedm
-  restatementů `2.11` a chybějící `brief.md`. Důkaz: e0eb939.
-- **Sweep na restatementy pouštěj přes `ums/` i `memory-bank/` jedním příkazem,
-  grepuj nejkratší fragment.** Proč: druhý restatement ležel v
-  `architecture.md`, dvouslovný token ho ve flektivním jazyce minul. Důkaz:
-  41641a2.
-- **Inventáře sweepuj podle DRUHU artefaktu (kdo počítá věci tohoto druhu), ne
-  podle jména nového konceptu.** Proč: čtyři inventární věty zůstaly nepravdivé
-  — žádná neobsahovala jméno nového konceptu. Důkaz: e0eb939.
-- **Grep tool bez `output_mode: "content"` zahodí `-n` — předej ho explicitně,
-  chceš-li čísla řádků.** Proč: vynechání tiše spadne na výpis souborů se shodou
-  bez čísel řádků. Důkaz: e0eb939.
-- **Vložení odstavce/nadpisu do prózy cíli na konec ÚTVARU ověřený čtením
-  dopředu, ne na řádek, co jen vypadá jako konec.** Proč: řádek vypadající jako
-  konec odstavce byl uprostřed zalomené věty — vložení by ji rozdělilo. Důkaz:
-  41641a2.
-- **H1 nadpis reference v `contract/`, duplikující vlastní `###`/`##` nadpis,
-  NEMAZAT — shape-suita indexuje jen `^#{2,4}`.** Proč: smazání H1 duplikátu by
-  proměnilo zelenou citaci v červenou; opraveno povýšením `###`→`##`. Důkaz:
-  3f811a6.
-- **Dokumentuj syntax citace ŽIVOU instancí, nikdy metasyntaktickým
-  placeholderem typu `"<section>"`.** Proč: placeholder prochází stejným
-  scannerem jako reálná citace a vyrobil 24. rozbitou citaci. Důkaz: 3f811a6.
-- **Hlavička nové `contract/<jméno>.md` reference v „cite as" příkladu musí
-  jmenovat REÁLNÝ nadpis, ne placeholder.** Proč: doslovný placeholder „Section"
-  spadl na „každá citace má cíl", sekce toho jména neexistuje. Důkaz: 3f811a6.
-- **Citaci `(contract[/soubor.md], "Sekce")` piš celou na JEDNÉ fyzické řádce,
-  nikdy ji nenech rozlomit zalomením.** Proč: čtyři různé tvary zalomení
-  proměnily existující, správně cílenou citaci na „citace nemá cíl". Důkaz:
-  3f811a6.
-- **Briefova tabulka „skill → přiřazená reference" řídí jen hlavičkovou řádku,
-  inline citace smí mířit jinam.** Proč: `mb-jira-update` cituje referenci mimo
-  svou přiřazenou sadu, přesto je citace platná. Důkaz: 3f811a6.
-- **Mechanický split Markdown dokumentu podle nadpisového regexu musí nejdřív
-  vyloučit nadpisy uvnitř ohraničení.** Proč: 5 ze 44 matchujících řádků v
-  kontraktu bylo uvnitř ohraničení — naivní split by je rozřezal. Důkaz:
-  3f811a6.
-- **`[IO.File]::ReadAllText -split "n"` na LF-terminated souboru vrátí o jeden
-  element víc, než je řádků.** Proč: kontrakt má 3066 řádků, split dal pole o
-  3067 prvcích — odhalil to partition self-check. Důkaz: 3f811a6.
-- **Ověřování „přežilo pravidlo kompresi?" dělej `[regex]::IsMatch` s mezerou
-  jako `\s+`, nikdy `String.Contains`.** Proč: substring test nahlásil 4 fráze
-  jako chybějící, ačkoli byly jen rozdělené řádkovým zalomením. Důkaz: 3f811a6.
-- **Kompresi normativního textu ověřuj proti PRE-WAVE COMMITU (token diff), ne
-  proti zůstávající zelené sadě.** Proč: komprese 20 sekcí nechala sadu zelenou
-  po celou dobu, přestože reálně ztratila dvě ilustrace. Důkaz: 3f811a6.
-- **Je-li task gatovaný nástrojem na „zachovej každý řádek", zkontroluj move
-  mapu proti jeho allow-pattern PŘED editem.** Proč: default allow-pattern
-  nezachytí `## ` povýšení nadpisu, které briefova move mapa žádala. Důkaz:
-  3f811a6.
-- **Novou `###` podsekci do kontraktové reference vkládej na PŘIROZENOU hranici,
-  nikdy doprostřed jedné myšlenky.** Proč: vložení mezi dvě navazující věty
-  rozdělilo jednu myšlenkovou linku a matlo návaznost. Důkaz: 3f811a6.
-- **Acceptance check jmenující GLOBÁLNÍ invariant grepuj přes CELOU vrstvu, ne
-  jen briefův seznam Files.** Proč: `mb-epic-elaboration/SKILL.md` mimo seznam
-  dál popisoval zrušené chování jako živé. Důkaz: 3f811a6.
-- **Vzdálené větve vypisuj `--format='%(refname:lstrip=3)'`, ne
-  `%(refname:short)`, a filtruj `grep -v '^HEAD$'`.** Proč: `%(refname:short)`
-  nechal remote prefix a bare `origin` pro symref jako fantomovou položku.
-  Důkaz: 7da3545.
-- **`git ls-tree` nepodporuje pathspec magic `:(glob)` — na cesty v libovolné
-  hloubce použij sondu `cat-file -e`.** Proč: `:(glob)` skončí `fatal: pathspec
-  magic not supported`, zatímco `git log` se stejným pathspecem funguje. Důkaz:
-  9a7e158.
-- **Skill snippet, který dot-sourcuje jeden skript a volá funkce z jiného,
-  projdi řádek po řádku — každá volaná funkce dot-sourcovaná explicitně.** Proč:
-  `mb-state` funguje jen transitivním tahem, který se rozbije na první
-  reorganizaci pořadí. Důkaz: 44ccb57.
-- **Rozšíříš-li guard o další nástroj, pro KAŽDOU textovou kontrolu napiš vstup
-  v novém nástroji a přidej asercii dřív, než první novou.** Proč: Matcher
-  `Bash|PowerShell` nechal review přehlédnout, že vzor pro `NAME=` nematchne
-  `$env:` přiřazení. Důkaz: 0d40535.
-- **U rozšíření vzoru `JMÉNO<oddělovač>HODNOTA` piš negativa na třech osách
-  zvlášť — HODNOTA, TERMINÁTOR, PREFIX/SUFFIX.** Proč: Bez lookaheadu za
-  hodnotou by regex nechal `10` matchnout jako `1`. Důkaz: 0d40535.
-- **Před psaním negativní tabulky zjisti, jde-li o novou TŘÍDU konstruktu, nebo
-  člena existující — člen dědí pravidlo třídy.** Proč: Sourozenecké konstrukty s
-  hodnotou nula už zamítaly stejným způsobem. Důkaz: 0d40535.
-- **Než usoudíš, které tokeny se dostanou ke spouštěnému programu, spusť skript
-  tisknoucí svoje `argv` — ne úsudkem.** Proč: Dvě podobná přesměrování se
-  lišila jedním znakem a jen jedno skutečně provedlo push. Důkaz: 0d40535.
-- **Rozpoznává-li tokenizer nově shellový konstrukt, zjisti, co s ním dělá
-  SKUTEČNÝ shell — odstranění je skip-a-pokračuj, NIKDY break.** Proč: Break je
-  vždy permisivnější; doslovné ukončení by pustilo únik přes chráněnou větev.
-  Důkaz: 0d40535.
-- **Signaturu sdíleného helperu přečti, nehádej — fail-closed verdikt proti
-  defaultu ber jako signál špatného volání.** Proč: Volání se špatným jménem
-  parametru propustilo přepínač do `$args` a vyrobilo falešný STOP. Důkaz:
-  e0eb939.
-- **Uzavřený re-render musí sanitizovat HODNOTY, ne jen jména polí — odmítej
-  třídu znaků, ne výčet hláskování.** Proč: Whitelistovaný klíč s nebezpečnou
-  hodnotou prošel a byl re-renderován doslovně. Důkaz: e0eb939.
 
 ### Když stavíš nebo spouštíš testy
 
@@ -672,10 +386,6 @@ Důkaz: 1a03314
   souboru a spouštěj jako skript, ne jako literál v parametru Bash/PowerShell
   toolu; totéž nad ~100 řádky payloadu.** Proč: hlídka nástroje čte jen
   literální text parametru, ne obsah spouštěného souboru. Důkaz: 44ccb57
-- **Krok ověřující řetězení proti reálnému LFS hooku prováděj v
-  throwaway klonu s nakonfigurovaným (byť fiktivním) remote `origin`.**
-  Proč: self-test proof bez `origin` spadl na „Invalid remote name" —
-  `run_chained` volá skutečný git-lfs. Důkaz: 0d40535.
 - **Před nabídkou kandidátů báze ověř `git log <kandidát>..<větev>`**
   **a dokaž přijetí hookem poctivou čtveřicí refů před předáním příkazu.**
   Proč: báze 34 commitů pozadu byla jednou zvolena mlčky, protože nic
@@ -710,10 +420,6 @@ Důkaz: 1a03314.
   Proč: Git Bash zdědí msys `tar` z PATH, který windowsovou cestu čte
   jako vzdálený host a spadne na „Cannot connect to C: resolve failed".
   Důkaz: ae2230c.
-- **Spouštění `sync-with-monorepo.ps1` bez parametrů je bezpečné
-  interaktivně i neinteraktivně** — v konzoli doptá defaulty, jinak
-  je použije potichu. Proč: běh musí fungovat i bez terminálu (CI,
-  agent). Důkaz: 1a03314.
 **Parametry `sync-with-monorepo.ps1`**
 | Parametr | Hodnoty | Default |
 |---|---|---|
@@ -840,3 +546,229 @@ nebo profil, ne na kořen tohoto forku.
 Proč: pokus ověřit anchoring přes redeploy neuspěl (tar/PATH pasti),
 selhání nástroje není nález o samotné editaci.
 Důkaz: ae2230c.
+
+### Když měníš skill nebo overlay
+
+- **Pravidlo má jeden domov — v kontraktu; skill smí jen odkazovat.** Proč: dva
+  konzumenti (mb-abort a jiný skill) zavedli vlastní pořadí pro tutéž operaci,
+  jen jeden byl prověřen. Důkaz: 7da3545.
+- **Když přebíráš pravidla jiné sekce odkazem, kvalifikuj podstatné jméno a
+  napiš NEGATIVNÍ seznam, co necestuje.** Proč: obecný odkaz by naimportoval i
+  consume-on-read, které by zničilo právě čtený soubor. Důkaz: 41641a2.
+- **`allowed-tools` restringuje nástroje — před návrhem seznamu vypiš všechny
+  nástroje, které skill používá.** Proč: briefovaný seznam pro mb-epic-run
+  vynechal Edit a git-zápisy, takže centrální operace skillu by neběžela. Důkaz:
+  4d72c46.
+- **Grep lock nad adresářem s AKTIVNÍM návrhem/plánem počítej i s residuem:
+  dokumentem, který cituje starou formulaci.** Proč: grep matchnul vlastní
+  design/plan dokumenty tasku citující starou formulaci jako problem statement.
+  Důkaz: 0a13ef1.
+- **Po opravě hardcoded literálu spusť grep lock PŘED commitem; přeživší zásah
+  ve jmenovaném souboru oprav i bez briefu.** Proč: grep lock odhalil druhý,
+  briefem nejmenovaný výskyt téhož literálu o sedm řádků dřív. Důkaz: 0a13ef1.
+- **Git-fakt (tracked/foreign/published) testuj git příkazem nebo cestou, nikdy
+  čtením obsahu souboru.** Proč: netrackovaný neprázdný playbook-candidates
+  soubor je pro standardní git příkazy neviditelný. Důkaz: 7da3545.
+- **Tvrzení „cesta je netrackovaný deployment" ověřuj `git status
+  --ignored=matching` a kódem `!!`.** Proč: `!!` odliší ignorované od „shodou
+  okolností beze změny"; ověřeno na `.claude` a `.agents/skills`. Důkaz:
+  44ccb57.
+- **Rozšíření skillu o novou schopnost vyžaduje ve STEJNÉM commitu upravit i
+  `description`.** Proč: `mb-state` dostal novou způsobilost, ale `description`
+  dál slibovala jen starý, užší rozsah. Důkaz: 7da3545.
+- **Pro každý volitelný řádek `context.md`, který reset zachovává, ověř zvlášť,
+  co ho PŘEPISUJE.** Proč: nový `Báze:` řádek nic nepřepisovalo, jedna
+  maintenance větev by tiše určila výchozí bázi všem. Důkaz: 44ccb57.
+- **Novou tiketovou větev publikuj explicitním `git push -u origin <branch>`,
+  nikdy bare push.** Proč: `switch -c` nastaví upstream na bázi, ne na novou
+  větev, takže bare push by cílil na bázi. Důkaz: 44ccb57.
+- **Skill snippet, který dot-sourcuje jeden skript a volá funkce z jiného,
+  projdi řádek po řádku — každá volaná funkce dot-sourcovaná explicitně.** Proč:
+  `mb-state` funguje jen transitivním tahem, který se rozbije na první
+  reorganizaci pořadí. Důkaz: 44ccb57.
+- **Rozšíříš-li guard o další nástroj, pro KAŽDOU textovou kontrolu napiš vstup
+  v novém nástroji a přidej asercii dřív, než první novou.** Proč: Matcher
+  `Bash|PowerShell` nechal review přehlédnout, že vzor pro `NAME=` nematchne
+  `$env:` přiřazení. Důkaz: 0d40535.
+- **Po rozšíření nebo přesunu STOP/gate testu přečti VŠECHNY pozdější
+  kroky skillu na mrtvé větve a nedosažitelné STOPy — nespoléhej na
+  opravu jediné věty.** Proč: rozšíření i přesun opakovaně nechaly starší
+  podmínku nedosažitelnou. Důkaz: 7da3545, 44ccb57.
+
+### Když měníš kontrakt nebo referenci
+
+- **Obecná definiční věta nezneplatní specifickou větu tvrdící VÝHRADNÍ hodnotu
+  — grepuj i exkluzivní slovník.** Proč: placeholder token byl krytý obecnou
+  větou, ale věta tvrdící „jediná" zůstala v rozporu. Důkaz: 44ccb57.
+- **Ohrazený příklad, proti kterému někdo napíše parser, přečti znovu proti
+  pravidlům na třídy znaků téže sekce.** Proč: kanonický příklad nesl
+  placeholder v ostrých závorkách, který stejná sekce jinde zakazuje. Důkaz:
+  41641a2.
+- **Sdílí-li pravidlo a ohrazený artefakt „stejný odstavec", dej pravidlo těsně
+  NAD ohrazení bez prázdného řádku.** Proč: v Markdownu ohrazení odstavec
+  ukončí, obojí nemůže doslova sdílet jeden odstavec. Důkaz: 41641a2.
+- **Po definici uzavřeného výčtu s povinnými poli projdi KAŽDÝ člen a vypiš mu
+  celý záznam doslova.** Proč: člen, kvůli kterému artefakt vznikl, byl zároveň
+  jediný nezapsatelný — dělal ho neviditelným. Důkaz: 41641a2.
+- **Duplicitu ohraničeného regionu čti jako signál malformed → nepřítomný, ne
+  jako přednost páru.** Proč: „poslední pár vyhrává" by tiše povýšilo
+  nedůvěryhodného kandidáta a schovalo vadu pisatele. Důkaz: 41641a2.
+- **Než přijmeš navrženou podmínku jako kompletní, projdi VŠECHNY případy proti
+  ní jako červené testy.** Proč: „fail-closed jen na command position" jednou
+  podmínkou nestačilo — chybělo rameno o expanzi. Důkaz: 0d40535.
+- **Ke KAŽDÉMU rozšíření vzoru z povolovacího na zamítací dopiš negativní
+  asercie na hodnotu, konec i prefix.** Proč: pozitivní asercie na sedm zápisů
+  by prošly i výrazu matchujícímu skoro cokoli. Důkaz: 0d40535.
+- **Před KAŽDÝM splicem vytáhni čísla řádků znovu (`grep -n`), nikdy z
+  dřívějšího výpisu, a přečti výsledek.** Proč: splice s čísly z dřívějšího
+  výpisu byl posunutý — syntax check nad komentářem to neodhalí. Důkaz: 0d40535.
+- **Grep tool bez `output_mode: "content"` zahodí `-n` — předej ho explicitně,
+  chceš-li čísla řádků.** Proč: vynechání tiše spadne na výpis souborů se shodou
+  bez čísel řádků. Důkaz: e0eb939.
+- **Vložení odstavce/nadpisu do prózy cíli na konec ÚTVARU ověřený čtením
+  dopředu, ne na řádek, co jen vypadá jako konec.** Proč: řádek vypadající jako
+  konec odstavce byl uprostřed zalomené věty — vložení by ji rozdělilo. Důkaz:
+  41641a2.
+- **H1 nadpis reference v `contract/`, duplikující vlastní `###`/`##` nadpis,
+  NEMAZAT — shape-suita indexuje jen `^#{2,4}`.** Proč: smazání H1 duplikátu by
+  proměnilo zelenou citaci v červenou; opraveno povýšením `###`→`##`. Důkaz:
+  3f811a6.
+- **Dokumentuj syntax citace ŽIVOU instancí, nikdy metasyntaktickým
+  placeholderem typu `"<section>"`.** Proč: placeholder prochází stejným
+  scannerem jako reálná citace a vyrobil 24. rozbitou citaci. Důkaz: 3f811a6.
+- **Hlavička nové `contract/<jméno>.md` reference v „cite as" příkladu musí
+  jmenovat REÁLNÝ nadpis, ne placeholder.** Proč: doslovný placeholder „Section"
+  spadl na „každá citace má cíl", sekce toho jména neexistuje. Důkaz: 3f811a6.
+- **Citaci `(contract[/soubor.md], "Sekce")` piš celou na JEDNÉ fyzické řádce,
+  nikdy ji nenech rozlomit zalomením.** Proč: čtyři různé tvary zalomení
+  proměnily existující, správně cílenou citaci na „citace nemá cíl". Důkaz:
+  3f811a6.
+- **Briefova tabulka „skill → přiřazená reference" řídí jen hlavičkovou řádku,
+  inline citace smí mířit jinam.** Proč: `mb-jira-update` cituje referenci mimo
+  svou přiřazenou sadu, přesto je citace platná. Důkaz: 3f811a6.
+- **Mechanický split Markdown dokumentu podle nadpisového regexu musí nejdřív
+  vyloučit nadpisy uvnitř ohraničení.** Proč: 5 ze 44 matchujících řádků v
+  kontraktu bylo uvnitř ohraničení — naivní split by je rozřezal. Důkaz:
+  3f811a6.
+- **`[IO.File]::ReadAllText -split "n"` na LF-terminated souboru vrátí o jeden
+  element víc, než je řádků.** Proč: kontrakt má 3066 řádků, split dal pole o
+  3067 prvcích — odhalil to partition self-check. Důkaz: 3f811a6.
+- **Ověřování „přežilo pravidlo kompresi?" dělej `[regex]::IsMatch` s mezerou
+  jako `\s+`, nikdy `String.Contains`.** Proč: substring test nahlásil 4 fráze
+  jako chybějící, ačkoli byly jen rozdělené řádkovým zalomením. Důkaz: 3f811a6.
+- **Kompresi normativního textu ověřuj proti PRE-WAVE COMMITU (token diff), ne
+  proti zůstávající zelené sadě.** Proč: komprese 20 sekcí nechala sadu zelenou
+  po celou dobu, přestože reálně ztratila dvě ilustrace. Důkaz: 3f811a6.
+- **Je-li task gatovaný nástrojem na „zachovej každý řádek", zkontroluj move
+  mapu proti jeho allow-pattern PŘED editem.** Proč: default allow-pattern
+  nezachytí `## ` povýšení nadpisu, které briefova move mapa žádala. Důkaz:
+  3f811a6.
+- **Novou `###` podsekci do kontraktové reference vkládej na PŘIROZENOU hranici,
+  nikdy doprostřed jedné myšlenky.** Proč: vložení mezi dvě navazující věty
+  rozdělilo jednu myšlenkovou linku a matlo návaznost. Důkaz: 3f811a6.
+- **Vzdálené větve vypisuj `--format='%(refname:lstrip=3)'`, ne
+  `%(refname:short)`, a filtruj `grep -v '^HEAD$'`.** Proč: `%(refname:short)`
+  nechal remote prefix a bare `origin` pro symref jako fantomovou položku.
+  Důkaz: 7da3545.
+- **`git ls-tree` nepodporuje pathspec magic `:(glob)` — na cesty v libovolné
+  hloubce použij sondu `cat-file -e`.** Proč: `:(glob)` skončí `fatal: pathspec
+  magic not supported`, zatímco `git log` se stejným pathspecem funguje. Důkaz:
+  9a7e158.
+- **U rozšíření vzoru `JMÉNO<oddělovač>HODNOTA` piš negativa na třech osách
+  zvlášť — HODNOTA, TERMINÁTOR, PREFIX/SUFFIX.** Proč: Bez lookaheadu za
+  hodnotou by regex nechal `10` matchnout jako `1`. Důkaz: 0d40535.
+- **Před psaním negativní tabulky zjisti, jde-li o novou TŘÍDU konstruktu, nebo
+  člena existující — člen dědí pravidlo třídy.** Proč: Sourozenecké konstrukty s
+  hodnotou nula už zamítaly stejným způsobem. Důkaz: 0d40535.
+- **Po změně faktu nebo pojmenovaného konceptu grepni CELOU vrstvu na
+  slovník, kterým se o něm mluví — ne jen měněný token — a přečti
+  zasažené sekce celé.** Proč: zúžený sweep opakovaně nechal restatementy
+  jinde neopravené. Důkaz: 7da3545, 0d40535, 3f811a6, e0eb939.
+
+### Když píšeš report nebo komentář
+
+- **Report tvrdící konkrétní stav ho musí PŘEČÍST v tomto běhu, ne dovodit z
+  jiného pravidla nebo paměti.** Proč: degradovaná cesta tvrdila chráněné větve
+  odvozené z „hook má fallback", ale `main` byl nechráněný. Důkaz: 7da3545.
+- **Dvě hlášení o témže stavu musí čerpat z JEDNOHO zdroje pravdy; po změně na
+  jednom místě sesynchronizuj obě.** Proč: souhrn a varování o chráněných
+  větvích si odporovaly, čtenář varování odešel s mylným dojmem. Důkaz: 7da3545.
+- **Přejmenování toho, co fail-closed brána OVĚŘUJE, vyžaduje přepočítat i její
+  příkaz, ne ho jen přejmenovat.** Proč: `git branch -r --contains` po
+  přejmenování cíle dál procházel starou, už netestovanou věc. Důkaz: 7da3545.
+- **Když kontrakt zdůvodňuje manuální krok slabinou automatu, popiš slabinu jako
+  MECHANISMUS, ne jako verdikt.** Proč: věta „self-test nic neprokazuje" byla
+  měřitelně nepravdivá — instalátor má třetí ověřovací běh. Důkaz: 44ccb57.
+- **Než chybějící hodnotu degraduješ na neutrální default, dohledej, kam teče, a
+  polaritu testu.** Proč: prázdný default na levé straně `!==` udělal podmínku
+  trvale pravdivou, hlídka byla slabší. Důkaz: 41641a2.
+- **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej volajícího a zvol
+  cestu s VÍC ochrany.** Proč: `throw` na chybějícím loaderu by v degradované
+  cestě volajícího nechal repozitář bez hooku. Důkaz: 7da3545.
+- **Než opravíš cestu v instrukci, rozliš markdown odkaz (proti adresáři
+  souboru) od shell argumentu (proti kořeni repa).** Proč: nahrazení PowerShell
+  placeholderu spellingem z markdown odkazu by ukázalo mimo repozitář. Důkaz:
+  44ccb57.
+- **Hodnotu z konfigurace, která už nese prefix, nikdy neprefixuj podruhé;
+  sweepuj obě chybná hláskování zvlášť.** Proč: `HEAD..origin/origin/...`
+  skončilo `fatal: ambiguous argument` kvůli zdvojenému prefixu. Důkaz: 7da3545.
+- **Když detektor vybírá jednu hodnotu z rovnocenných kandidátů, přečti DVA
+  nezávislé signály, ne jeden.** Proč: `symbolic-ref origin/HEAD` samotný by ve
+  forku napsal `origin/main` místo skutečné větve. Důkaz: 7da3545.
+- **Bump verze v dokumentu s running „Supersedes" historií musí přeformulovat i
+  řádek, který byl current předtím.** Proč: bez přeformulování by vznikly dvě
+  neverzované věty bez rozlišení přechodu verzí. Důkaz: 44ccb57.
+- **V komentáři u rozhodovacího kódu nepiš počet, jedinečnost ani uzavřený výčet
+  cest.** Proč: náhrada tvrzení o jedinečnosti jednou výčtovou větou se rozbila
+  hned dvěma novými nepravdami. Důkaz: 0d40535.
+- **Tvrdí-li dokumentace, že vlastnost platí pro KAŽDOU položku seznamu, projdi
+  seznam sondou.** Proč: šestý nosič v seznamu byl omylem jiné třídy, věta o
+  všech šesti by odešla nepravdivá. Důkaz: 0d40535.
+- **Upřesnění komentářového bloku nepřidávej jako nový odstavec — přepiš přímo
+  VĚTU, kterou mění.** Proč: nová věta skončila pod tou, kterou vyvracela, a obě
+  zůstaly vedle sebe. Důkaz: 0d40535.
+- **Po úpravě komentářového bloku přečti ho CELÝ odshora dolů a sluč dvojice
+  věta–výjimka do jedné.** Proč: absolutní věta stála nad přesnou výjimkou o 17
+  řádků níž, cizí čtenář narazí na nepravdivou první. Důkaz: 0d40535.
+- **Nadpis komentáře musí být týž tvar pravidla jako věta pod ním, ne jeho
+  silnější zkratka.** Proč: nadpis byl silnější než skutečné pravidlo a
+  porušoval ho vlastní správný kód pod ním. Důkaz: 0d40535.
+- **Popisuje-li soubor mechanismus na víc místech, po úpravě jednoho srovnej ho
+  se všemi ostatními.** Proč: druhá formulace výjimky měla opravu už z
+  předchozího kola, stromový komentář ne. Důkaz: 0d40535.
+- **U absolutní věty o hooku přečti kód NAD branou, na kterou se odvolává, a
+  výjimku napiš do stejného odstavce.** Proč: „hook nevynucuje nic mimo agent
+  session" nebrala v úvahu větev nad branou (buffer stdinu). Důkaz: 0d40535.
+- **Při rozšíření působnosti pravidla vypiš mechanismy, které o něm NĚCO
+  SLIBUJÍ, a ověř slib i pro nové případy.** Proč: rozšíření výjimky ze dvou na
+  tři zdi nechalo větu o rejection message nepravdivou pro dvě z nich. Důkaz:
+  0d40535.
+- **U rozhodovacího ramene popisovaného prózou si opiš konkrétní řádek a
+  spočítej podmínky, teprve pak piš větu.** Proč: popis „posture + jedna
+  výjimka" svedl k under-claimu — rameno má dvě podmínky. Důkaz: 0d40535.
+- **Popis chování rozhodovací funkce piš až po přečtení CELÉ funkce, nikdy jen z
+  hlavičky nebo rulingů.** Proč: věty sepsané z hlavičky a rulingů byly obě
+  nepravdivé proti kódu ve dvou případech. Důkaz: 0d40535.
+- **Před vložením snippetu nahrazujícího strukturovaný útvar přepiš v něm odkazy
+  na strukturu na jméno pravidla.** Proč: snippet vložený doslova odkazoval na
+  tabulku, kterou týž krok o kus dál mazal. Důkaz: 0d40535.
+- **Popisuje-li komentář bezpečnostní vlastnost jako „X je pravda", ověř,
+  dokazuje-li to kód PŘÍMO, nebo přes proxy.** Proč: komentář sliboval kontakt s
+  remote, ale kód kontroloval jen lokální, zapisovatelný ref. Důkaz: 0d40535.
+- **Konfigurační klíč/soubor pro cizí nástroj ověř proti primární dokumentaci
+  PŘED implementací.** Proč: brief cílil na `[env]`/`"env"` klíč, který ani
+  Codex, ani Gemini CLI takto nečtou. Důkaz: 0d40535.
+- **Než usoudíš, které tokeny se dostanou ke spouštěnému programu, spusť skript
+  tisknoucí svoje `argv` — ne úsudkem.** Proč: Dvě podobná přesměrování se
+  lišila jedním znakem a jen jedno skutečně provedlo push. Důkaz: 0d40535.
+- **Rozpoznává-li tokenizer nově shellový konstrukt, zjisti, co s ním dělá
+  SKUTEČNÝ shell — odstranění je skip-a-pokračuj, NIKDY break.** Proč: Break je
+  vždy permisivnější; doslovné ukončení by pustilo únik přes chráněnou větev.
+  Důkaz: 0d40535.
+- **Signaturu sdíleného helperu přečti, nehádej — fail-closed verdikt proti
+  defaultu ber jako signál špatného volání.** Proč: Volání se špatným jménem
+  parametru propustilo přepínač do `$args` a vyrobilo falešný STOP. Důkaz:
+  e0eb939.
+- **Uzavřený re-render musí sanitizovat HODNOTY, ne jen jména polí — odmítej
+  třídu znaků, ne výčet hláskování.** Proč: Whitelistovaný klíč s nebezpečnou
+  hodnotou prošel a byl re-renderován doslovně. Důkaz: e0eb939.
