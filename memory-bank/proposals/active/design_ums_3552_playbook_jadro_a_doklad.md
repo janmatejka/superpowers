@@ -634,6 +634,39 @@ tento stroj), rozhodnutí 2026-09-08:
   (dvojice 360 a 440 řádků od sebe).
 - Do kódu 2 z 50 plus 3 hraniční.
 
+### Monorepo nanečisto
+
+Běh `consolidate-playbook.ps1 -Stats/-Parse -Tree . -RepoRoot d:/_datasys/ums`
+a `Test-UmsPlaybookTree` z tohoto forku, 2026-09-24, bez zápisu. HEAD
+monorepa `ec159fd` a prázdný `git status --porcelain` před i po běhu.
+
+- **Inventura:** 23 playbooků, 8 033 řádků, 973 položek ve všech třech
+  tvarech (314 položek pod nadpisem, 316 tučných pravidel, 343 prozaických
+  odstavců); parser nespadl na žádném souboru. Strom neobsahuje git-ignorovanou
+  kopii `DistOut/…` ani vnořenou MB v `PCInfo`.
+- **Kontrola stromu:** 0 tvrdých nálezů (všech 23 souborů je legacy), varování
+  23× `[legacy]`, 2× `[práh-soubor]`, 2× `[práh-řetězec]`.
+- **Nad prahem:** soubory `KicWorkflow` 3 325 řádků (řetězec 3 774)
+  a `SMSInfo3` 1 773 (řetězec 2 222). Ostatní řetězce 453–750 řádků: legacy
+  předek mimo kořen zatím nic nepředává, kořen (449) se čte celý.
+
+| Shluk | MB | Řádky | Nejnižší společný předek | Verdikt | Odhad úspory |
+|---|---|---|---|---|---|
+| Editace CP1250/UTF-16 zdrojáků po bajtech | 4 | 91 | kořen | přesunout k předkovi | 65 |
+| Editační nástroj zplošťuje CRLF | 4 | 65 | kořen | přesunout k předkovi | 45 |
+| SQL: idempotence dvojím během proti scratch DB | 2 | 51 | kořen | ponechat | 0 |
+| Pravidla o `BpmnData`/`.bpmn`/Lua v `KicWorkflow` | 2 | 206 | `KicWorkflow` | přesunout k potomkovi `BpmnData` | 40 |
+| Šablonová položka „Rules“ | 3 | 6 | `SMSInfo3` | přesunout k předkovi | 4 |
+
+Porovnání s analýzou 2026-09-23: nejnižší společní předci vycházejí podle
+ní — SQL shluky nesdílejí předka pod kořenem, pravidla o `BpmnData` leží
+o úroveň výš, než platí (31 položek, 206 řádků, víc než odhadovaných 15
+pravidel). Duplicita napříč MB je menší, než odhad 300–400 řádků: tabulka
+nese 162 řádků duplicit a 154 řádků úspory; zbytek odhadu leží uvnitř
+jednotlivých MB (kolo 2b). PowerShell a git pasti se napříč MB neopakují.
+Mezi MB nejvíc ušetří přesun obsahu `KicWorkflow` k potomkovi, nikoli
+slučování duplicit.
+
 Mechanismy převzaté z rešerše 2026-09-17: triage při zápisu (mem0
 ADD / UPDATE / DELETE / NONE, Claude Code „neukládej odvoditelné"), index a
 detail (Claude Code MEMORY.md, Zettelkasten, Anthropic progressive disclosure),
