@@ -39,7 +39,7 @@ Historie: vrstva v5 je archivovaná v tagu `archive/mb-integrace-v5-era`, větev
 |---|---|
 | [`skills/`](../skills/) | Vendorovatelný upstream skill pack (14 skillů). Na této větvi se needituje. |
 | [`ums/`](../ums/) | UMS vrstva — zrcadlo živé kopie z monorepa, jediné místo pro změny na této větvi. |
-| [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v3.0, manifest, vendor pin, overlay fragmenty. |
+| [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v3.1, manifest, vendor pin, overlay fragmenty. |
 | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | Utility skilly Memory Bank (18 aktivních + 2 deprecated stuby). |
 | [`memory-bank/`](.) | Memory Bank tohoto repozitáře — orchestrační kořen (`CTX_DIR`) i cílová MB (`PLAN_MB`). |
 | `.claude/`, `.agents/` | Netrackovaná **nasazení** vrstvy pro práci v tomto repu (viz [architecture.md](architecture.md), obnova v [playbook.md](playbook.md)). |
@@ -51,9 +51,10 @@ Uživatelem UMS vrstvy je **vývojář (řešitel) a architekt pracující v mon
 UMS** s kódovacím agentem. Vrstva jim dává:
 
 - **Trvalou znalost projektu** — Memory Bank dokumenty (`brief.md`,
-  `architecture.md`, `tech.md`, u projektů s vlastními postupy i `playbook.md`)
-  popisují aktuální stav a agent je čte před každým návrhem. Znalost tedy
-  nezaniká s koncem sezení.
+  `architecture.md`, `tech.md`, u projektů s vlastními postupy i `playbook.md`,
+  který dědí pravidla po stromu Memory Bank, takže sezení v projektu čte
+  i podstromová pravidla svých předků) popisují aktuální stav a agent je čte
+  před každým návrhem. Znalost tedy nezaniká s koncem sezení.
 - **Auditovatelné pracovní položky** — každá práce má pár návrh + plán
   (`design_<slug>.md` + `plan_<slug>.md`) na známém místě, ne v chatu.
 - **Napojení na Jira** — tiket je nosičem stavu: komentáře s implementačním
@@ -168,6 +169,9 @@ druhá **produkt, na kterém se vrstva používá**.
 
 ## Stav
 
-Vrstva je v provozu (kontrakt v3.0, vendor pin upstream v6.3.0). Práce na této
-větvi má přes 100 commitů nad `main`; poslední dokončené položky jsou v
+Vrstva je v provozu (kontrakt v3.1, vendor pin upstream v6.3.0), s playbookem
+jako stromem podle hierarchie Memory Bank (dvě části podle dosahu, rozpočet
+a ráčna jako eskalační práh místo tvrdého limitu, harvestová brána v2
+a konsolidační skill `mb-playbook-consolidate`). Práce na této větvi má přes
+100 commitů nad `main`; poslední dokončené položky jsou v
 [proposals/completed/](proposals/completed/).

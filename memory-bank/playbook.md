@@ -1,5 +1,5 @@
 # Playbook
-<!-- playbook-budget: 600; baseline: 774 (2026-09-24) -->
+<!-- playbook-budget: 600; baseline: 786 (2026-09-24, harvest UMS-3552) -->
 
 Postupy, kterými se tato vrstva staví, testuje a nasazuje. Popisný stav — verze
 a piny, inventář souborů, konfigurace, pasti prostředí — je v
@@ -202,10 +202,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   zdvojený, nebo fixturu postav v JEDNODUCHÝCH.** Proč: Osamocený backtick se v
   double-quoted stringu tiše smaže, takže fixtura nenesla tvar, který tvrdila.
   Důkaz: 3f811a6.
-- **Musí-li hodnota být kolekce, obal do `@()` CELÝ výraz, ne jen větev uvnitř;
-  u volitelného pole testuj `$null -eq $Param` PŘED obalením.** Proč: Obal jen
-  kolem větve nezachytí prázdnou pipeline; `@($null).Count` je 1, ne 0. Důkaz:
-  4d72c46.
+- **Kolekci obaluj `@()` kolem CELÉHO výrazu (přiřazení, `if/else`), nikdy
+  jen kolem větve; u volitelného pole testuj `$null -eq $Param` PŘED
+  obalením.** Proč: obal jen větve nezachytí prázdnou pipeline ani skalár.
+  Důkaz: 4d72c46, návrh ums_3552_playbook_jadro_a_doklad.
 - **`Mandatory` na `[string[]]` parametru odmítne pole s prázdným řetězcovým
   prvkem — ověř, že to smí být člen kolekce.** Proč: Reálná fixtura přestala
   parsovat, ačkoli stejná funkce bez `Mandatory` totéž pole přijala. Důkaz:
@@ -594,6 +594,14 @@ Důkaz: ae2230c.
   kroky skillu na mrtvé větve a nedosažitelné STOPy — nespoléhej na
   opravu jediné věty.** Proč: rozšíření i přesun opakovaně nechaly starší
   podmínku nedosažitelnou. Důkaz: 7da3545, 44ccb57.
+- **`consolidate-playbook.ps1 -Path` piš repozitářově-relativní, přesně jak
+  ho hlásí `written`; absolutní cestu dávej jen `Test-UmsPlaybookShape`.**
+  Proč: `Join-Path` s absolutní `-Path` na Windows cestu zdvojí.
+  Důkaz: návrh ums_3552_playbook_jadro_a_doklad.
+- **Funkce řetězce (`Get-UmsPlaybookChain`, `Find-UmsPlaybookMatch`, LCA)
+  volej s repozitářově-relativním `Target MB Pin`, nikdy s `PLAN_MB`.**
+  Proč: `Dir` pochází z `git ls-files`, absolutní cíl by z řetězce vypadl.
+  Důkaz: návrh ums_3552_playbook_jadro_a_doklad.
 
 ### Když měníš kontrakt nebo referenci
 
@@ -639,10 +647,10 @@ Důkaz: ae2230c.
 - **Hlavička nové `contract/<jméno>.md` reference v „cite as" příkladu musí
   jmenovat REÁLNÝ nadpis, ne placeholder.** Proč: doslovný placeholder „Section"
   spadl na „každá citace má cíl", sekce toho jména neexistuje. Důkaz: 3f811a6.
-- **Citaci `(contract[/soubor.md], "Sekce")` piš celou na JEDNÉ fyzické řádce,
-  nikdy ji nenech rozlomit zalomením.** Proč: čtyři různé tvary zalomení
-  proměnily existující, správně cílenou citaci na „citace nemá cíl". Důkaz:
-  3f811a6.
+- **Citaci `(contract[/soubor.md], "Sekce")` piš celou na JEDNÉ fyzické
+  řádce; po reflow prózy grepni `\(contract[/,][^)]*$` a ověř nulový
+  zásah.** Proč: zalomení uvnitř i za čárkou citaci vyřadí z kontroly
+  beze zprávy. Důkaz: 3f811a6, návrh ums_3552_playbook_jadro_a_doklad.
 - **Briefova tabulka „skill → přiřazená reference" řídí jen hlavičkovou řádku,
   inline citace smí mířit jinam.** Proč: `mb-jira-update` cituje referenci mimo
   svou přiřazenou sadu, přesto je citace platná. Důkaz: 3f811a6.
@@ -684,6 +692,10 @@ Důkaz: ae2230c.
   slovník, kterým se o něm mluví — ne jen měněný token — a přečti
   zasažené sekce celé.** Proč: zúžený sweep opakovaně nechal restatementy
   jinde neopravené. Důkaz: 7da3545, 0d40535, 3f811a6, e0eb939.
+- **Citaci piš přesně podle CELÉHO nadpisu cíle, parenthetical included —
+  grepni cílové `^#{2,4} ` nadpisy a opiš doslova.** Proč: zkrácená
+  citace bez závorkové části neodpovídá skutečnému nadpisu a sada ji
+  zamítne. Důkaz: návrh ums_3552_playbook_jadro_a_doklad.
 
 ### Když píšeš report nebo komentář
 

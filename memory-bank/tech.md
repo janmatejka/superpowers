@@ -10,13 +10,13 @@ kompilovaný build, žádný package manager pro vrstvu samotnou.
 |---|---|---|
 | Superpowers (upstream) | 6.3.0 | [`package.json`](../package.json), [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) |
 | Vendor pin vrstvy | tag `v6.3.0`, commit `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`, vendorováno 2026-08-13 | [`VENDORED_FROM.md`](../ums/.claude/skills/shared/VENDORED_FROM.md) |
-| Kontrakt Memory Bank | 3.0, jádro 798 řádků (rozpočet 800, `contract-shape.tests.ps1`) | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
+| Kontrakt Memory Bank | 3.1, jádro 799 řádků (rozpočet 800, `contract-shape.tests.ps1`) | [`UMS_MEMORY_BANK_CONTRACT.md`](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md) |
 | Vendorované skilly | 14 (`brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`) | `VENDORED_FROM.md` |
 | Overlay bloky | přesně 4 (`brainstorming`, `subagent-driven-development`, `finishing-a-development-branch`, `writing-plans`) | [`shared/overlays/`](../ums/.claude/skills/shared/overlays/) |
 
 ## Tvar kontraktu: jádro, reference, doklad, changelog
 
-Kontrakt 3.0 je čtyři soubory/adresáře v `ums/.claude/skills/shared/`, každý
+Kontrakt 3.1 je čtyři soubory/adresáře v `ums/.claude/skills/shared/`, každý
 s jiným čtenářem a jiným rozpočtem (mechanika a citační tvar jsou v
 [architecture.md](architecture.md), sekce „Jádro kontraktu"):
 
@@ -92,7 +92,26 @@ stejnou konfiguraci vždy stejnou odpověď.
   komentáře),
   [`Test-UmsContractMove.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsContractMove.ps1)
   (multiset porovnání řádků mezi zdrojem a cílem přesunu, vzor
-  `verify-deletion-only.ps1` z `mb-migrate-docs`), hook `bpmn-validate.ps1`.
+  `verify-deletion-only.ps1` z `mb-migrate-docs`), hook `bpmn-validate.ps1`,
+  [`Get-UmsPlaybookChain.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsPlaybookChain.ps1)
+  (`Get-UmsMbTree` — strom MB odvozený z trackovaných playbooků/`tasks.md`;
+  `Get-UmsPlaybookChain -Out` — řetězec MB do
+  `.superpowers/playbook-chain/<mb>.md`; `Get-UmsMbLowestCommonAncestor`),
+  [`Read-UmsPlaybook.ps1`](../ums/.claude/skills/shared/scripts/Read-UmsPlaybook.ps1)
+  (`Read-UmsPlaybook`, `Get-UmsPlaybookRatchet` — parser tří tvarů položek
+  a čtení ráčnového komentáře),
+  [`Test-UmsPlaybookShape.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsPlaybookShape.ps1)
+  (`Test-UmsPlaybookShape` — tvar a rozpočet jednoho souboru;
+  `Test-UmsPlaybookTree` — navíc rozpočet řetězců celého podstromu;
+  `Get-UmsRetiredListWarnings`, `Get-UmsSentenceCount` pro heuristiku
+  `Proč:`),
+  [`Find-UmsPlaybookMatch.ps1`](../ums/.claude/skills/shared/scripts/Find-UmsPlaybookMatch.ps1)
+  (`Find-UmsPlaybookMatch` — až tři kandidátní položky řetězce podle shody
+  identifikátorů v backticks; `Get-UmsBacktickTokens`),
+  [`mb-playbook-consolidate/scripts/consolidate-playbook.ps1`](../ums/.claude/skills/mb-playbook-consolidate/scripts/consolidate-playbook.ps1)
+  (`-Parse`, `-Apply <decisions.json>`, `-Baseline`, `-Resume <běh>`, `-Stats`,
+  `-Tree`; mechanická půlka harvestové brány i konsolidace — zápis vždy LF,
+  viz „Pasti prostředí" níže).
 - **Node.js** (ESM, `"type": "module"`) — hooks
   [`deny-superpowers-docs.mjs`](../ums/.claude/hooks/deny-superpowers-docs.mjs)
   (čte JSON ze stdin, vrací `permissionDecision: deny`) a
@@ -235,8 +254,8 @@ vynucovací branu ale otevírá marker, a ten se ke Kilo Code nedostane.
 Jak se sady spouštějí a jaké konvence platí pro novou sadu, je
 v [playbook.md](playbook.md).
 
-**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 33 sad, dohromady
-1609 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou; dvě asercie
+**UMS vrstva** — bezzávislostní PowerShell testy vedle skillů, 39 sad, dohromady
+1815 asercí (naměřeno smyčkou přes celou vrstvu, ne aritmetikou; dvě asercie
 `pool-launch.tests.ps1` — Gate 3, „cíl Start-Process, který reálně nespustí
 proces" — v tomto prostředí selhávají, protože sandbox neumožňuje ověřit
 skutečné spuštění procesu; skript samotný na této větvi nese jen změnu
@@ -338,7 +357,30 @@ citačního tvaru, ne funkční změnu):
   `github.com`/`bitbucket.org`, neznámý host i krátké SHA i cesta s `..`
   jsou odmítnuté), `jira-description.tests.ps1` (8; `Test-UmsJiraDescription`
   — rozpočet 2 500 znaků, tvar odkazů, tučné × code span, `-RequireSections`
-  jen pro popis tiketu, ne pro komentář).
+  jen pro popis tiketu, ne pro komentář), `playbook-parse.tests.ps1` (47;
+  `Read-UmsPlaybook` — všechny tři tvary položek monorepa (tučně uvozené
+  odrážky, položka pod nadpisem, prozaický odstavec se seznamem pravidel),
+  části a sekce, ráčnový komentář), `playbook-shape.tests.ps1` (26;
+  `Test-UmsPlaybookShape`/`Test-UmsPlaybookTree` — tvar nového formátu,
+  rozpočet souboru/sekce/položky jako varování, tři tvrdé nálezy — porušení
+  tvaru, růst nad ráčnu bez zaznamenaného rozhodnutí, soubor nad prahem bez
+  ráčnového komentáře — a legacy soubor jen s varováním), `playbook-chain.tests.ps1`
+  (28; `Get-UmsMbTree`/`Get-UmsPlaybookChain -Out`/`Get-UmsMbLowestCommonAncestor`
+  — strom jen z trackovaných playbooků, git-ignorovaná a vnořená `memory-bank/`
+  vyloučené, řetězec nese jen podstromovou část předků), `playbook-match.tests.ps1`
+  (7; `Find-UmsPlaybookMatch` — shoda jen podle identifikátorů v backticks,
+  nejvýš tři kandidáti) proti fixturám `new-playbook-fixture.ps1` (kořen,
+  mezilehlá MB s oběma částmi, dva listy, sourozenecký shluk bez společného
+  předka pod kořenem), a `tests-hygiene.tests.ps1` (20; grep nad
+  `ums/**/tests/*.tests.ps1` — každý volaný `Assert-*` existuje v sesterském
+  `_assert.ps1` nebo v `.ps1` vlastního adresáře, a každá sada, která
+  dot-sourcuje svůj předmět, nastavuje `$ErrorActionPreference = 'Stop'`).
+- [`mb-playbook-consolidate/tests/`](../ums/.claude/skills/mb-playbook-consolidate/tests/)
+  — `consolidate.tests.ps1` (78; `consolidate-playbook.ps1` — `-Parse` všech
+  tří tvarů, `-Apply` podle schválených rozhodnutí (`novy`/`prepsat`/`vyradit`/
+  `prevest-na-test`) s kontrolou, že neschválené položky zůstávají doslova,
+  `-Baseline`, `-Resume` odvozený z trailerů `Playbook-Consolidation:
+  <běh>/<dávka>` v `git log`, `-Stats`, `-Tree`) s vlastním `_assert.ps1`.
 - [`hooks/tests/`](../ums/.claude/hooks/tests/) — `contract-inject.tests.ps1`
   (36; platný JSON, jádro přítomné celé, blok `NOW` jen s ledgerem slugu
   z pinu a jen v uzavřeném tvaru, chybějící jádro i mez 48 kB dávají fallback
@@ -471,3 +513,11 @@ jeho Python (ruff, ty).
   s diakritikou jako `fatal: bad revision` a celý index spadne na exit 1.
   Monorepo takové větve reálně má (`origin/UMS-1646-mobilní-klient-pro-alarminfo`),
   fixture repo testů je proto taky má.
+- **`consolidate-playbook.ps1 -Apply` v režimu patch (legacy soubor v místě)
+  přepíše CRLF pracovní strom na LF**, i beze změny obsahu mimo dotčené
+  položky: parser (`Read-UmsPlaybook.ps1`) při čtení odstraňuje `\r`
+  (`-replace "` r`n", "` n"`) a zapisovatel skládá řádky zpátky jen s `` `n ``,
+  takže výsledný soubor je čistě LF bez ohledu na to, jaké konce řádků měl
+  předtím. S `core.autocrlf=true` to git při `git add` normalizuje zpátky —
+  relevantní zvlášť pro běh nad monorepem, kde `core.autocrlf` bývá zapnuté
+  a playbooky dosud nemají `text eol=lf` v `.gitattributes`.

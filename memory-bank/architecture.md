@@ -10,7 +10,7 @@ k uživateli**.
 |---|---|---|
 | Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v3.0, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v3.1, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -91,7 +91,7 @@ flowchart TD
 
 ### Jádro kontraktu: tři vrstvy, injektáž a bannery
 
-Kontrakt (`ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`, v3.0) není
+Kontrakt (`ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`, v3.1) není
 jeden soubor — je to **tři vrstvy podle čtenáře**, doplněné historií:
 
 - **Jádro** (soubor výše, 798 řádků, rozpočet 800) nese jen pravidla platná
@@ -107,7 +107,7 @@ jeden soubor — je to **tři vrstvy podle čtenáře**, doplněné historií:
   měření a historii — čte ho autor změny pravidla, na vyžádání, nikdy
   vykonavatel pravidla.
 - **`shared/CHANGELOG.md`** nese verzní historii; jádro si nechává jen aktuální
-  číslo (`Contract-Version: 3.0`) a odkaz na changelog.
+  číslo (`Contract-Version: 3.1`) a odkaz na changelog.
 
 Tabulkový a souborový rozpad je v [tech.md](tech.md), sekce „Tvar kontraktu:
 jádro, reference, doklad, changelog".
@@ -210,14 +210,24 @@ na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
   messages implementátorů a výstupy pro uživatele česky,
 - **izolace** — worktrees zakázané, krok `using-git-worktrees` se řeší jako
   větev na místě,
-- **playbook** — před baseline kontrolou a u KAŽDÉHO dispatche implementátora
-  se dořeší procedurální dokument cílové MB (`playbook.md`, jinak legacy
-  `tasks.md`, jinak žádný) a předá se jako závazné postupy vedle task briefu;
-  z něj se čerpají i příkazy pro baseline build/test kontrolu,
+- **řetězec playbooků** — před baseline kontrolou a u KAŽDÉHO dispatche
+  implementátora se sestaví řetězec playbooků cílové MB
+  (`Get-UmsPlaybookChain.ps1 -Out`, sekce 4, „Playbook je strom, ne jeden
+  soubor na MB"): od kořene po `PLAN_MB`, jen podstromová část předků, obě
+  části vlastní MB. Dispatchi implementátora se předává CESTA k sestavenému
+  souboru (`.superpowers/playbook-chain/<mb>.md`), nikdy obsah vložený přímo
+  do promptu; z řetězce se čerpají i příkazy pro baseline build/test kontrolu
+  (postupy v sekci „Když stavíš nebo spouštíš testy"),
 - **kandidáti playbooku** — report každého implementátora končí sekcí
   `## Playbook candidates` (povinná trojice polí `Tried`/`Happened`/`Procedure`,
-  volitelně `Target MB`/`Corrects`); řídicí sezení potvrzené položky beze
-  změny kopíruje do `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md`
+  volitelně `Target MB`/`Corrects`/`Relates`); řídicí sezení kandidáta nejdřív
+  porovná se sestaveným řetězcem a s existujícími kandidáty
+  (`Find-UmsPlaybookMatch.ps1` — mechanická opora omezená na identifikátory
+  v backticks, protože kandidáti jsou anglicky a playbook česky), zapíše
+  `Relates: <MB>:<položka> (rozšiřuje | duplikuje | nahrazuje)`, když shoda
+  existuje, a kandidáta duplikujícího jiného kandidáta nebo pravidlo předka
+  nezapíše vůbec — jen to ohlásí. Potvrzené položky beze změny kopíruje do
+  `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md`
   (jeden soubor na slug aktuální práce), odkud je na konci větve čte
   harvestová brána (Overlay 3); `mb-park` soubor při odkládání práce
   commitne (`git add -f`) — od té chvíle je to živý zaparkovaný důkaz, který
@@ -405,7 +415,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v3.0, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v3.1, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -658,7 +668,7 @@ odhodlanému obejití zůstává ochrana větví na serveru.
 
 ### Epiková linie
 
-Normativní zdroj: kontrakt v3.0, sekce **The epic line** (Repository
+Normativní zdroj: kontrakt v3.1, sekce **The epic line** (Repository
 Configuration). Epik dostává **dvě větve** s odlišnými rolemi: **epikovou
 linii** (`epic/<KLÍČ-EPIKU>`, kódová integrační větev — efektivní báze
 každého tiketu odštěpeného pro tento epik, nese kód i sklizené MB dokumenty
@@ -719,7 +729,7 @@ tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v3.0](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v3.1](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -750,25 +760,103 @@ kódu beze změny závislostí → `architecture.md`; mění se v obou případe
 patří tam, kde ho čtenář hledá první, druhý dokument na něj jen odkazuje a
 neopakuje ho.
 
-**Playbook má chráněný konzultační režim.** `playbook.md` se NIKDY nemění bez
-schválení uživatele — na rozdíl od `brief.md`/`architecture.md`/`tech.md` ho
-harvest neprochází automatickým current-state průchodem, protože jeho obsah
-nejde ověřit proti kódu. `mb-sync` navrhuje opravu hned v okamžiku nálezu
-driftu; `mb-harvest` sbírá kandidáty do jedné brány na konci větve — obě cesty
-jsou legitimní, žádná není drift k narovnání vůči druhé. Obě čerpají z
-`<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — jeden soubor na
-slug aktuální práce (git-ignored scratch,
-anglicky), do kterého implementátorské subagenty SDD hlásí zkušenosti v sekci
-reportu `## Playbook candidates` (povinná pole `Tried`/`Happened`/`Procedure`,
-volitelně `Target MB`/`Corrects`) a řídicí sezení je beze změny kopíruje.
-Soubor cizího slugu se nikdy nepřepisuje ani nemaže. Odložení práce
-(`mb-park`) soubor aktuálního slugu commitne (`git add -f`, jmenovaná
-výjimka z git-ignore) — od té chvíle je to živý zaparkovaný důkaz: další
-práce na tomtéž slugu do něj jen přidává, přepsat ho může jen harvest po
-zápisu do `playbook.md`. Netrackovaný soubor cizí nebo dokončené práce naopak
-smí být přepsán, protože v něm nic živého nezůstává. Výjimku má jen první
-`playbook.md`, který `mb-init` napíše z detekovaných build/test příkazů — ten
-schválení nepotřebuje, další zápisy ano.
+**Playbook je strom, ne jeden soubor na MB.** Strom kopíruje adresářovou
+hierarchii Memory Bank (MB `A` je předkem `B`, když adresář nesoucí
+`A/memory-bank/` je předkem adresáře nesoucího `B/memory-bank/`; do stromu se
+počítají jen adresáře, jejichž `playbook.md`, případně legacy `tasks.md`, git
+trackuje — git-ignorované i vnořené kopie `memory-bank/` se ignorují). Každý
+soubor má nejvýš dvě části druhé úrovně, **„Pro celý podstrom"** (dědí každý
+potomek) a **„Jen pro tento projekt"** (platí jen vlastní MB), a v nich sekce
+podle okamžiku spuštění ve tvaru „Když …" (test, sada, PowerShell, POSIX hook,
+kontrakt/skill/overlay, nasazení, plán/návrh/commit — základní seznam je
+v kontrakt/playbook-contract.md, „Playbook shape"). Nový tvar pozná skript
+tvaru mechanicky (aspoň jeden z doslovných nadpisů částí a žádný jiný nadpis
+druhé úrovně); soubor bez nich je **stará podoba** a čte se jako „Jen pro
+tento projekt" celý (kořen bez částí jako „Pro celý podstrom" celý) — nic, co
+se dnes dědí, se tím neztratí, protože se dnes nedědí nic. Kořenový playbook
+tohoto repa nese obě části, protože kořen je zároveň `PLAN_MB` (sekce 9).
+
+**Řetězec** je to, co jedno sezení skutečně čte: od kořene dolů k `PLAN_MB`,
+jen podstromová část každého předka, obě části vlastní MB. Sdílený skript
+[`Get-UmsPlaybookChain.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsPlaybookChain.ps1)
+(`Get-UmsMbTree`, `Get-UmsPlaybookChain -Out`, `Get-UmsMbLowestCommonAncestor`)
+ho sestaví a s `-Out` zapíše do git-ignorovaného
+`.superpowers/playbook-chain/<mb>.md`, regenerovaného při každém použití.
+Čtenáři řetězce — dispatch implementátora v overlay SDD, `mb-architect-review`,
+`mb-epic-elaboration`, harvestová brána, konsolidace — dostávají CESTU
+k sestavenému souboru, nikdy obsah vložený přímo do promptu.
+[`Read-UmsPlaybook.ps1`](../ums/.claude/skills/shared/scripts/Read-UmsPlaybook.ps1)
+a
+[`Find-UmsPlaybookMatch.ps1`](../ums/.claude/skills/shared/scripts/Find-UmsPlaybookMatch.ps1)
+(mechanická opora omezená na identifikátory v backticks, protože kandidáti
+jsou anglicky a playbook česky, takže shoda slov nefunguje) podporují triage
+kandidátů proti řetězci.
+
+**Rozpočet je eskalační práh, ne kritérium úspěchu.** Soubor 600 řádků, sekce
+40 položek, položka 4 řádky, řetězec 900 řádků — překročení je varování
+s velikostí, ne tvrdý nález. Sdílený skript
+[`Test-UmsPlaybookShape.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsPlaybookShape.ps1)
+(`Test-UmsPlaybookShape` pro soubor, `Test-UmsPlaybookTree` navíc pro řetězce
+celého podstromu) hlásí tvar i velikost. Soubor v novém tvaru nad prahem nese
+na druhém řádku HTML komentář `<!-- playbook-budget: 600; baseline: N
+(datum[, důvod]) -->` — **ráčnu**: přírůstek nad baseline bez zaznamenaného
+lidského rozhodnutí je tvrdý nález (`[ráčna-růst]`), ztracený komentář nad
+prahem taky (`[ráčna-chybí]`); baseline zvedá jen člověk
+(`consolidate-playbook.ps1 -Baseline`), nikdy `-Apply`. **Soubor ve staré
+podobě** dostává jen varování (tvar, velikost, rozpočet) a harvest
+nezastavuje — nasazení vrstvy tak nic nerozbíjí v repozitářích se starými
+playbooky, dokud je konsolidace nepřevede.
+
+**Playbook má chráněný konzultační režim** i ve stromu: nikdy se nemění bez
+schválení uživatele, protože jeho obsah nejde ověřit proti kódu. Dva
+zapisovatelé:
+
+- **Harvestová brána v2** (`mb-harvest`, krok 3, playbook gate) — analytik na
+  nejlevnějším tieru připraví tabulku dispozic (`nový`/`sloučit
+  do`/`nahrazuje`/`do kódu`/`zahodit`) z kandidátů `playbook-candidates/<slug>.md`
+  proti řetězci a seznamům vyřazených; člověk schvaluje a smí přebít; zápis
+  jde přes `consolidate-playbook.ps1 -Apply <decisions.json>`, čemuž
+  předchází kontrola tvaru na konci kroku 3 — tvrdý nález se počítá jako
+  neúspěšná aktualizace MB (Harvest Contract, částečné selhání), archivace
+  a reset na IDLE počkají na opravu. Poté se soubor kandidátů aktuálního
+  slugu maže (`git rm -f`, byl-li commitnutý `mb-park`em, jinak prostý
+  delete), aby žádní spotřebovaní kandidáti necestovali dál do báze.
+- **`mb-playbook-consolidate`** — read-only návrh nad tabulkou
+  (`ponechat`/`sloučit do`/`vyřadit`/`přesunout do tech.md`/`převést na
+  test`/`přesunout k předkovi`/`přesunout k potomkovi`/`přeřadit do části`),
+  spouštěný ručně nebo když skript tvaru nahlásí tvrdý nález či soubor nad
+  prahem, nikdy automaticky. Režim `-Tree [<cesta>]` prochází inventuru → kolo
+  1 (tvar, po jednotlivých MB) → kolo 2a (napříč MB, mechanický nejnižší
+  společný předek shluku) → kolo 2b (uvnitř MB) a je obnovitelný z trailerů
+  `Playbook-Consolidation: <běh>/<dávka>` v `git log` (`-Resume`). Nese
+  jmenovanou výjimku Scope Locku: smí zapsat `playbook.md`/`playbook-retired.md`
+  každé MB v rozsahu běhu a `tech.md` jen u přesunů schválených jako
+  „přesunout do tech.md".
+
+**Seznam vyřazených** (`playbook-retired.md`, vedle každého playbooku, který
+už něco vyřadil) nese jeden řádek na vyřazené pravidlo s důvodem a datem; oba
+zapisovatelé ho čtou přes celý řetězec, aby jednou vyřazené pravidlo
+nevzniklo znovu v potomkovi. Pravidlo ověřitelné strojově končí jako test
+(`tests-hygiene.tests.ps1` ve `shared/tests/`) místo položky playbooku.
+
+**Eskalační report** je poslední krok konsolidace, když soubor nebo řetězec
+zůstane po kole 2 nad prahem beze ztráty pravidel stojících za svou cenu:
+baseline na dosaženou velikost plus předběžný návrh
+`proposals/next/design_<mb-slug>_playbook_eskalace.md` se shluky, jejich
+navrhovaným jiným domovem (skill, skript/test, samostatný referenční
+dokument, `tech.md`) a odhadem úspory — nic neřeší sám, jen čeká ve frontě
+jako běžná následná práce. Tento repozitář takový report dnes má, viz
+[proposals/next/design_root_playbook_eskalace.md](proposals/next/design_root_playbook_eskalace.md).
+
+Podrobný tvar souboru a položky, kritéria triage, brief analytika a
+vlastnictví pastí prostředí jsou v kontrakt/playbook-contract.md.
+
+**Ostatní zapisovatelé se přizpůsobují tvaru, beze změny role.** `mb-init`
+zakládá první playbook rovnou v novém tvaru (detekované build/test příkazy
+jako postupy v sekci „Když stavíš nebo spouštíš testy"); tahle první verze
+schválení nepotřebuje, další zápisy ano. `mb-sync` navrhuje opravu jen ve
+vlastní MB, ale jmenuje část a sekci. `mb-migrate-docs` při přejmenování
+`tasks.md` na `playbook.md` tvar neřeší — to je práce konsolidace.
 
 **Legacy tvar zůstává trvale platný.** Starší `product.md` vedle `brief.md`,
 nebo `tasks.md` místo `playbook.md`, nikdo nemusí migrovat. Skill
@@ -886,7 +974,7 @@ instrukční Markdown.
 
 ## 6. Pool: mechanika slotů a spuštění sezení na tiket
 
-Normativní zdroj: kontrakt v3.0, sekce **Worktree Policy** (výjimka pro
+Normativní zdroj: kontrakt v3.1, sekce **Worktree Policy** (výjimka pro
 slot poolu a její přepsané měření disku), **Workspace Discipline** (podsekce
 „A pool slot's freedom is derived from per-worktree signals only") a
 **Session Intent Baton** (proč záměr do slotu baton nenese). Mechanika
