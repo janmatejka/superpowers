@@ -113,6 +113,13 @@ Base list of sections (what belongs in each):
 - `Když píšeš plán, návrh nebo commit` — delimiters in plans, diacritics in
   commits, briefs.
 
+Recorded extensions (a Memory Bank's own `Když …` sections):
+
+- `memory-bank/` of the superpowers fork, split of `Když měníš kontrakt, skill
+  nebo overlay` when it passed 40 items (UMS-3552): `Když měníš skill nebo
+  overlay`, `Když měníš kontrakt nebo referenci`, `Když píšeš report nebo
+  komentář`.
+
 `Proč:` cites the incident in one sentence, not as a story; the story stays
 in git and in the archived design `Důkaz:` points to. The shape check tests
 "one sentence" only heuristically and reports it as a warning, never as a hard
