@@ -109,6 +109,50 @@ try {
         'Apply' {
             $doc = Get-Content -Raw $Apply | ConvertFrom-Json
             $decisions = @($doc.decisions)
+            $parseId = { param([string] $id) $k = $id.LastIndexOf('#'); @($id.Substring(0, $k), [int]$id.Substring($k + 1)) }
+            # Validate every decision before loading (and so before writing) anything.
+            # Czech message, names the decision (id, or index + verdict for novy).
+            $knownVerdicts = @('ponechat', 'prepsat', 'presunout', 'novy', 'sloucit', 'vyradit', 'prevest-na-test', 'do-tech')
+            $decisionLabel = { param($d, [int] $i) if ($d.PSObject.Properties['id']) { $d.id } else { "#$($i + 1) ($($d.verdict))" } }
+            $legacyPeek = @{}
+            $isFileLegacy = {
+                param([string] $rel)
+                if (-not $legacyPeek.ContainsKey($rel)) {
+                    $full = Join-Path $RepoRoot $rel
+                    $legacyPeek[$rel] = (Test-Path $full) -and ((Read-UmsPlaybook $full).Shape -eq 'legacy')
+                }
+                $legacyPeek[$rel]
+            }
+            $convertedRels = @{}
+            foreach ($d in $decisions) {
+                if ($d.PSObject.Properties['id'] -and $d.verdict -in @('presunout', 'ponechat')) {
+                    $convertedRels[(& $parseId $d.id)[0]] = $true
+                }
+            }
+            for ($vi = 0; $vi -lt $decisions.Count; $vi++) {
+                $d = $decisions[$vi]
+                $label = & $decisionLabel $d $vi
+                if ($d.verdict -notin $knownVerdicts) { throw "Rozhodnutí ${label}: neznámý verdikt '$($d.verdict)'." }
+                if ($d.verdict -ne 'novy' -and -not $d.PSObject.Properties['id']) { throw "Rozhodnutí ${label}: verdikt $($d.verdict) potřebuje id." }
+                if ($d.verdict -in @('presunout', 'novy')) {
+                    if (-not $d.PSObject.Properties['target'] -or -not $d.target) { throw "Rozhodnutí ${label}: verdikt $($d.verdict) potřebuje target." }
+                    if ($d.part -notin @('podstrom', 'projekt')) { throw "Rozhodnutí ${label}: part musí být `„podstrom`" nebo `„projekt`", ne '$($d.part)'." }
+                    if (-not $d.section -or $d.section -notmatch '^Když ') { throw "Rozhodnutí ${label}: section musí začínat `„Když `" (je '$($d.section)')." }
+                }
+                if ($d.verdict -in @('novy', 'prepsat', 'sloucit')) {
+                    if (-not $d.PSObject.Properties['text'] -or -not "$($d.text)".Trim()) { throw "Rozhodnutí ${label}: verdikt $($d.verdict) potřebuje neprázdný text." }
+                }
+                if ($d.verdict -eq 'sloucit' -and (-not $d.PSObject.Properties['into'] -or -not $d.into)) { throw "Rozhodnutí ${label}: verdikt sloucit potřebuje into." }
+                if ($d.verdict -eq 'vyradit' -and (-not $d.PSObject.Properties['reason'] -or -not "$($d.reason)".Trim())) { throw "Rozhodnutí ${label}: verdikt vyradit potřebuje neprázdný reason." }
+                if ($d.verdict -eq 'prevest-na-test' -and (-not $d.PSObject.Properties['test'] -or -not $d.test)) { throw "Rozhodnutí ${label}: verdikt prevest-na-test potřebuje test." }
+                if ($d.verdict -eq 'do-tech' -and (-not $d.PSObject.Properties['target'] -or -not $d.target)) { throw "Rozhodnutí ${label}: verdikt do-tech potřebuje target." }
+                if ($d.verdict -in @('prepsat', 'sloucit') -and $d.PSObject.Properties['id']) {
+                    $rel = (& $parseId $d.id)[0]
+                    if ($convertedRels.ContainsKey($rel) -and (& $isFileLegacy $rel)) {
+                        throw "Rozhodnutí ${label}: soubor $rel se v této dávce převádí (obsahuje presunout/ponechat) — přepis musí cestovat jako presunout s text, ne $($d.verdict)."
+                    }
+                }
+            }
             # Load every involved file once.
             $model = @{}   # rel -> @{ Pb; Preamble; Parts = ordered part -> ordered section -> List[string[]] ; Legacy }
             $load = {
@@ -138,7 +182,6 @@ try {
                 }
                 $model[$rel] = @{ Pb = $pb; Preamble = $pre; Parts = $parts; Legacy = ($pb.Shape -eq 'legacy'); ItemRef = $ref; Patch = $false; Appended = $null }
             }
-            $parseId = { param([string] $id) $k = $id.LastIndexOf('#'); @($id.Substring(0, $k), [int]$id.Substring($k + 1)) }
             foreach ($d in $decisions) {
                 if ($d.PSObject.Properties['id']) { & $load (& $parseId $d.id)[0] }
                 if ($d.PSObject.Properties['target'] -and $d.verdict -ne 'do-tech') { & $load $d.target }
@@ -164,10 +207,18 @@ try {
             }
             $retired = @{}
             $addRetired = {
-                param([string] $rel, [string] $title, [string] $why)
+                param([string] $rel, [string] $title, [string[]] $lines, [string] $why)
                 $r = (Get-MbOf $rel) + '/playbook-retired.md'
                 if (-not $retired.ContainsKey($r)) { $retired[$r] = [Collections.Generic.List[string]]::new() }
-                $words = (@($title -split '\s+') | Select-Object -First 8) -join ' '
+                $t = $title
+                if ($t.Trim() -eq '' -or $t -match $script:UmsFenceRx) {
+                    # Title is a fence delimiter (or blank) — a prose item whose first line is
+                    # not real text. Walk the item's own lines to the first real text line
+                    # instead, skipping fence lines and empty lines.
+                    $real = @($lines | Where-Object { $_.Trim() -ne '' -and $_ -notmatch $script:UmsFenceRx } | Select-Object -First 1)
+                    if ($real.Count) { $t = ($real[0] -replace '^\s*-\s*', '') -replace '\*\*', '' }
+                }
+                $words = (@($t.Trim() -split '\s+') | Select-Object -First 8) -join ' '
                 $retired[$r].Add("- $words — $why ($Today)")
             }
             $insert = {
@@ -196,8 +247,8 @@ try {
                     'presunout' { $remove.Add(@($src, $it.Id)); & $insert $d.target $d.part $d.section $text }
                     'novy' { & $insert $d.target $d.part $d.section $text }
                     'sloucit' { $ip = & $parseId $d.into; $model[$ip[0]].ItemRef[$ip[1]].Lines = $text; $remove.Add(@($src, $it.Id)) }
-                    'vyradit' { $remove.Add(@($src, $it.Id)); & $addRetired $src $it.Title $d.reason }
-                    'prevest-na-test' { $remove.Add(@($src, $it.Id)); & $addRetired $src $it.Title "hlídá test $($d.test)" }
+                    'vyradit' { $remove.Add(@($src, $it.Id)); & $addRetired $src $it.Title $srcLines $d.reason }
+                    'prevest-na-test' { $remove.Add(@($src, $it.Id)); & $addRetired $src $it.Title $srcLines "hlídá test $($d.test)" }
                     'do-tech' { $remove.Add(@($src, $it.Id)); if (-not $techAppend.ContainsKey($d.target)) { $techAppend[$d.target] = [Collections.Generic.List[string]]::new() }; foreach ($l in $text) { $techAppend[$d.target].Add($l) } }
                     default { throw "Neznámý verdikt $($d.verdict)" }
                 }
@@ -265,7 +316,14 @@ try {
                 else {
                     $end = $idx + 1
                     while ($end -lt $lines.Count -and $lines[$end] -notmatch '^## ') { $end++ }
-                    $lines = @($lines[0..($end - 1)]) + @($techAppend[$t]) + $(if ($end -lt $lines.Count) { @('') + @($lines[$end..($lines.Count - 1)]) } else { @() })
+                    # Append directly after the section's last non-empty line — no empty line
+                    # splitting the list — but keep one empty line after a bare heading and one
+                    # empty line before the next "## ".
+                    $body = [Collections.Generic.List[string]]::new(); $body.AddRange([string[]]$lines[0..($end - 1)])
+                    while ($body.Count -and $body[$body.Count - 1] -eq '') { $body.RemoveAt($body.Count - 1) }
+                    if ($body.Count -and $body[$body.Count - 1] -match '^## ') { $body.Add('') }
+                    foreach ($l in $techAppend[$t]) { $body.Add($l) }
+                    $lines = @($body.ToArray()) + $(if ($end -lt $lines.Count) { @('') + @($lines[$end..($lines.Count - 1)]) } else { @() })
                 }
                 Write-Lf $t $lines
                 $written.Add($t)

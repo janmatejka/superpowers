@@ -231,5 +231,139 @@ $st = ($r.Text | ConvertFrom-Json).mbs | Where-Object mb -eq 'S2/memory-bank'
 Assert-True $st.overThreshold 'stats flags over-threshold MB'
 Assert-True ($st.sections.Count -ge 4) 'stats lists sections'
 
+Write-Host "== retiring an item whose first line is a fence uses the first real text line"
+Write-PlaybookFixtureFile $repo 'F/memory-bank/playbook.md' @'
+# Úkoly — F
+
+Úvod F.
+
+## Build
+
+```
+```
+Text položky F za fence.
+
+- **F2 pravidlo.**
+  Proč: f2.
+
+## Deploy
+
+Deploy text F.
+'@
+git -C $repo add -A; git -C $repo commit -q -m legacyF
+$d = Write-Decisions $repo @{ run = 'r3'; batch = '01'; decisions = @(
+    @{ id = 'F/memory-bank/playbook.md#1'; verdict = 'vyradit'; reason = 'nahrazeno testem' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-24')
+Assert-Eq $r.Exit 0 'retiring a fence-prefixed item applies'
+$fret = [IO.File]::ReadAllText((Join-Path $repo 'F/memory-bank/playbook-retired.md'))
+Assert-Match $fret '(?m)^- Text položky F za fence\. — nahrazeno testem \(2026-09-24\)$' 'retired line starts with the first real text line, not the fence'
+Assert-True (-not ($fret -match '```')) 'retired line does not contain the fence marker'
+
+Write-Host "== decision validation refuses before any write"
+$vRepo = New-PlaybookFixtureRepo
+Write-PlaybookFixtureFile $vRepo 'V/memory-bank/playbook.md' @'
+# Playbook — V
+
+## Jen pro tento projekt
+
+### Když stavíš V
+
+- **V1 pravidlo.** Proč: v. Důkaz: v1.
+- **V2 pravidlo.** Proč: v. Důkaz: v2.
+'@
+git -C $vRepo add -A; git -C $vRepo commit -q -m v
+
+function Assert-Refused([string] $desc, [object] $decisionsObj, [string] $path, [string] $mustMatch) {
+    $before = [IO.File]::ReadAllText((Join-Path $vRepo $path))
+    $d = Write-Decisions $vRepo $decisionsObj
+    $r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $vRepo)
+    Assert-True ($r.Exit -ne 0) "$desc`: exit nenulový"
+    Assert-Match $r.Text $mustMatch "$desc`: zpráva jmenuje rozhodnutí"
+    Assert-Eq ([IO.File]::ReadAllText((Join-Path $vRepo $path))) $before "$desc`: soubor beze změny"
+}
+
+Assert-Refused 'prepsat bez textu' @{ run = 'v1'; batch = '01'; decisions = @(
+    @{ id = 'V/memory-bank/playbook.md#1'; verdict = 'prepsat' }
+) } 'V/memory-bank/playbook.md' 'V/memory-bank/playbook\.md#1'
+
+Assert-Refused 'vyradit bez reason' @{ run = 'v1'; batch = '02'; decisions = @(
+    @{ id = 'V/memory-bank/playbook.md#1'; verdict = 'vyradit' }
+) } 'V/memory-bank/playbook.md' 'V/memory-bank/playbook\.md#1'
+
+Assert-Refused 'presunout se špatným part' @{ run = 'v1'; batch = '03'; decisions = @(
+    @{ id = 'V/memory-bank/playbook.md#1'; verdict = 'presunout'; target = 'V/memory-bank/playbook.md'; part = 'spatne'; section = 'Když stavíš V' }
+) } 'V/memory-bank/playbook.md' 'V/memory-bank/playbook\.md#1'
+
+Assert-Refused 'sekce nezačíná Když' @{ run = 'v1'; batch = '04'; decisions = @(
+    @{ id = 'V/memory-bank/playbook.md#1'; verdict = 'presunout'; target = 'V/memory-bank/playbook.md'; part = 'projekt'; section = 'Stavíš V' }
+) } 'V/memory-bank/playbook.md' 'V/memory-bank/playbook\.md#1'
+
+Write-PlaybookFixtureFile $vRepo 'W/memory-bank/playbook.md' "# Úkoly — W`n`n## Build`n`n- **W1 pravidlo.**`n  Proč: w1.`n- **W2 pravidlo.**`n  Proč: w2.`n"
+git -C $vRepo add -A; git -C $vRepo commit -q -m w
+Assert-Refused 'prepsat na souboru, který se v dávce převádí' @{ run = 'v1'; batch = '05'; decisions = @(
+    @{ id = 'W/memory-bank/playbook.md#1'; verdict = 'presunout'; target = 'W/memory-bank/playbook.md'; part = 'projekt'; section = 'Když stavíš W' }
+    @{ id = 'W/memory-bank/playbook.md#2'; verdict = 'prepsat'; text = "- **W2 přepsané.**`n  Proč: jinak." }
+) } 'W/memory-bank/playbook.md' 'W/memory-bank/playbook\.md#2'
+
+Write-Host "== do-tech appends into tech.md Pasti prostředí without splitting the list"
+Write-PlaybookFixtureFile $repo 'T/memory-bank/playbook.md' @'
+# Playbook — T
+
+## Jen pro tento projekt
+
+### Když stavíš T
+
+- **T1 pravidlo.** Proč: t. Důkaz: t1.
+'@
+Write-PlaybookFixtureFile $repo 'T/memory-bank/tech.md' @'
+# Tech — T
+
+## Pasti prostředí
+
+- Existující past.
+
+## Testy
+
+Text.
+'@
+git -C $repo add -A; git -C $repo commit -q -m techfixture
+$d = Write-Decisions $repo @{ run = 't1'; batch = '01'; decisions = @(
+    @{ id = 'T/memory-bank/playbook.md#1'; verdict = 'do-tech'; target = 'T/memory-bank/tech.md'; text = '- Nová past.' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-24')
+Assert-Eq $r.Exit 0 'do-tech applies'
+$tech = [IO.File]::ReadAllText((Join-Path $repo 'T/memory-bank/tech.md'))
+Assert-Match $tech '(?m)^- Existující past\.\n- Nová past\.$' 'new bullet follows the last one directly, no blank line splitting the list'
+Assert-Match $tech '(?m)^- Nová past\.\n\n## Testy$' 'exactly one empty line before the next heading'
+
+Write-PlaybookFixtureFile $repo 'T2/memory-bank/playbook.md' @'
+# Playbook — T2
+
+## Jen pro tento projekt
+
+### Když stavíš T2
+
+- **T2a pravidlo.** Proč: t. Důkaz: t1.
+'@
+Write-PlaybookFixtureFile $repo 'T2/memory-bank/tech.md' @'
+# Tech — T2
+
+## Pasti prostředí
+
+## Testy
+
+Text.
+'@
+git -C $repo add -A; git -C $repo commit -q -m techfixture2
+$d = Write-Decisions $repo @{ run = 't2'; batch = '01'; decisions = @(
+    @{ id = 'T2/memory-bank/playbook.md#1'; verdict = 'do-tech'; target = 'T2/memory-bank/tech.md'; text = '- První past.' }
+) }
+$r = Invoke-Cons @('-Apply', $d, '-RepoRoot', $repo, '-Today', '2026-09-24')
+Assert-Eq $r.Exit 0 'do-tech into an empty section applies'
+$tech2 = [IO.File]::ReadAllText((Join-Path $repo 'T2/memory-bank/tech.md'))
+Assert-Match $tech2 '(?m)^## Pasti prostředí\n\n- První past\.\n\n## Testy$' 'empty section keeps one blank line before the first bullet and one before the next heading'
+
 Remove-Item -Recurse -Force $repo
+Remove-Item -Recurse -Force $vRepo
 Complete-Tests

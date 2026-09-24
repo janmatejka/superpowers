@@ -755,7 +755,7 @@ it owns there:
 | Brainstorming Paths | overlay brainstorming, overlay finishing | `brainstorming-paths.md` |
 | Repository Configuration (minus the epic line) | `mb-init`, `mb-state`, overlays, hook docs | `repository-configuration.md` |
 | The epic line, decision registry | `mb-epic-run`, `mb-epic-elaboration`, `guard-git-push.mjs` (comment) | `epic-line.md` |
-| Playbook Contract | overlay SDD, `mb-harvest`, `mb-park`, `mb-playbook-consolidate` | `playbook-contract.md` |
+| Playbook Contract | overlay SDD, `mb-harvest`, `mb-park`, `mb-playbook-consolidate`, overlay brainstorming, `mb-architect-review`, `mb-epic-elaboration`, `mb-init`, `mb-sync`, `mb-migrate-docs` | `playbook-contract.md` |
 | Session Intent Baton | `session-intent.ps1`, `mb-park`, `mb-abort`, `mb-harvest`, overlay writing-plans, overlay SDD | `session-intent-baton.md` |
 | The `NOW` Block | overlay SDD, `mb-epic-run` | `now-block.md` |
 | Harvest Contract, Document Ownership procedure | `mb-harvest`, `mb-sync`, `mb-migrate-docs` | `harvest.md` |

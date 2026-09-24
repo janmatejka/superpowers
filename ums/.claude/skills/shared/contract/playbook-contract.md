@@ -276,8 +276,9 @@ warning, never a hard finding.
 A rule a machine can check is converted into a test and leaves the playbook.
 The first two conversions are the suite `shared/tests/tests-hygiene.tests.ps1`
 over every `ums/**/tests/*.tests.ps1`: (a) every `Assert-*` a suite calls
-exists in the sibling `_assert.ps1` — a missing helper would pass for an
-expected RED in a RED run; (b) every suite that dot-sources its subject sets
+is defined in the suite itself or in some `.ps1` of its directory (typically
+the sibling `_assert.ps1`) — a missing helper would pass for an expected RED
+in a RED run; (b) every suite that dot-sources its subject sets
 `$ErrorActionPreference = 'Stop'`. The suite runs without an allowlist.
 
 ### Environment traps
