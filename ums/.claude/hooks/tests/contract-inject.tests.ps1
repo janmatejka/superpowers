@@ -164,7 +164,7 @@ New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
 $differentCore = $core + "`n- extra source-only line`n"
 [IO.File]::WriteAllText((Join-Path $sourceDir 'UMS_MEMORY_BANK_CONTRACT.md'), $differentCore, (New-Object Text.UTF8Encoding($false)))
 $json = (Invoke-Hook $d4 $rDrift 'SessionStart').Out | ConvertFrom-Json
-Assert-Match $json.hookSpecificOutput.additionalContext '^WARNING: deployed contract core differs from source ums/\.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT\.md — refresh the deployment \(playbook, "Obnova nasazené kopie v tomto repu"\)\.' 'drift → warning is the first line of the payload'
+Assert-Match $json.hookSpecificOutput.additionalContext '^WARNING: deployed contract core differs from source ums/\.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT\.md — refresh the deployment \(playbook, "Když nasazuješ nebo revendoruješ"\)\.' 'drift → warning is the first line of the payload'
 
 [IO.File]::WriteAllText((Join-Path $sourceDir 'UMS_MEMORY_BANK_CONTRACT.md'), $core, (New-Object Text.UTF8Encoding($false)))
 $json = (Invoke-Hook $d4 $rDrift 'SessionStart').Out | ConvertFrom-Json

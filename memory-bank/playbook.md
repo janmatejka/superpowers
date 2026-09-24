@@ -1,2414 +1,842 @@
 # Playbook
+<!-- playbook-budget: 600; baseline: 842 (2026-09-24) -->
 
 Postupy, kterými se tato vrstva staví, testuje a nasazuje. Popisný stav — verze
 a piny, inventář souborů, konfigurace, pasti prostředí — je v
 [tech.md](tech.md); jak vrstva funguje, popisuje [architecture.md](architecture.md).
 
-## Testy vrstvy
+## Pro celý podstrom
 
-Jednu sadu spustíš přímo, celou vrstvu smyčkou:
+### Když spouštíš sadu nebo důkazní běh
 
+- **Handoff bránu ověřuj DOSLOVNÝM příkazem z `## Ověřovací sada`; PowerShellová
+  smyčka je legitimní náhrada jen pro průběžné ověřování za vývoje, ne pro
+  citaci vůči bráně.** Proč: brána porovnává citovaný text jako řetězec, ne
+  funkční ekvivalenci nástroje. Důkaz: 0a13ef1
+- **Deklarovaný ověřovací příkaz s `\"` a zároveň `$(...)`/`$var` spouštěj na
+  Windows přes `cmd.exe /c`, text příkazu neuprav.** Proč: PowerShell i Bash
+  `\"` čtou jinak než MSVCRT argv escaping a příkaz selže; `cmd.exe /c` ho
+  předá beze změny. Důkaz: 3f811a6
+- **Zamítnutí nástroje „Security Weaken“ nad hook/guard souborem ber jako
+  KONEČNÉ pro ten soubor** — neopakuj pokus, padni na cílený běh bez
+  destruktivní mutace a mezeru v důkazu ohlas. Proč: i scoped, hned
+  revertovaná probe byla zamítnuta rovnou. Důkaz: 0a13ef1
+- **Byla-li oprava aplikována dřív než RED běh proti původní logice,
+  `git stash push --keep-index -- <cesta>` vrátí jen ten soubor; spusť RED,
+  pak `git stash pop`.** Proč: jednosouborový stash izoluje obnovu beze
+  zásahu do zbytku stromu. Důkaz: 0a13ef1
+- **Edituje-li se hook se svým colokovaným testem v jednom commitu,
+  `git stash push -- <cesta-k-hooku>` (bez `--keep-index`) vrátí jen hook s
+  novým test case na místě; spusť RED, pak `git stash pop`.** Proč: umožní
+  čistý RED bez ruční rekonstrukce staré verze hooku. Důkaz: 3f811a6
+- **Před negativním během proti merge-base baseline pro VLASTNÍ nové asercie
+  ověř, jestli sadu dřív neukončí starší asercie JINÉHO tasku ve stejném
+  souboru.** Proč: pád na cizí, dřívější asercii znamená NEPROVEDENO pro
+  vlastní asercie, ne důkaz pro ně. Důkaz: 0a13ef1
+- **Prázdný `git diff` po obnově souboru z negativity-checku nic nedokazuje
+  pro netrackovaný (`??`) soubor** — ověř `git status --short`, pak porovnej
+  s pre-mutační zálohou. Proč: prázdný diff mlčí před i po chybné obnově.
+  Důkaz: 44ccb57
+- **Nese-li mutovaný soubor nekomitované úpravy ze stejné vlny, obnovuj
+  zálohou (`Copy-Item`/`Move-Item -Force`), ne `git checkout --`**, a ověř
+  `sha256sum`+`cmp` proti záloze. Proč: checkout by zahodil i nekomitnutou
+  práci ze stejné vlny. Důkaz: 44ccb57
+- **Tvrzení „stav/počet X je takový“ ověřuj strojově v TOMTO běhu**, na
+  případu, kde má detektor NĚCO najít, ne kde má vrátit prázdno; zelené
+  asercie s očekávaným `$null`/`''` v RED běhu nic nedokazují. Proč: negativní
+  běh je bezcenný tam, kde je „nic“ legitimní stav. Důkaz: 7da3545
+- **Tvrzení briefu „tahle asercie je právě teď červená“ ověř spuštěním
+  v TOMTO běhu, nikdy převzetím z briefu/review.** Proč: loose substring
+  aserce může být zelená ještě před úpravou, protože stejný literál leží
+  jinde v souboru. Důkaz: 3f811a6
+- **Počty asercí v dokumentaci vždy získej spuštěním CELÉ sady ve stejném
+  sezení**, nikdy aritmetikou nad staršími čísly; součet i počet sad počítej
+  strojově, ne ručně nebo z vlastního seznamu dávek. Proč: ruční součet
+  i staré review číslo se v praxi rozešly s naměřeným. Důkaz: 7da3545
+- **Smyčku přes všechny sady spouštěj jedním FOREGROUND voláním s timeoutem
+  600000 ms, nikdy na pozadí; přesune-li se i tak, nejvýš jeden opakovaný
+  pokus, pak STOP a report.** Proč: notifikace o dokončení jde koordinátorovi,
+  ne subagentovi, který ji nemá jak spotřebovat. Důkaz: 0d40535
+- **Úklid throwaway fixtury přes `rm -rf` volej samostatně, ne zřetězeně
+  `&&`/`;` s dalšími příkazy; odmítne-li nástroj i izolované volání, fixturu
+  v OS temp nech ležet.** Proč: bezpečnostní hlídka reaguje na `rm -rf`
+  v řetězci bez ohledu na cíl. Důkaz: 0d40535
+- **Hlídka nad `rm -rf` reaguje i na cíl schovaný za `$(...)` substitucí** —
+  indirekce ji neobejde. Proč: `rm -rf "$(cat ...)"` bylo zamítnuto stejně
+  jako přímá cesta. Důkaz: 4d72c46
+- **Při vlně rozšiřující sadu i kód spusť vedle nové sady i HEAD verzi TÉŽE
+  sady proti novému kódu** (dočasný soubor v `tests/`, po běhu smaž). Proč:
+  součet per-suite čísel sám neřekne, jestli rozdíl je jen z nových asercí.
+  Důkaz: 0d40535
+- **Při bisekci velké sady dělej `sed -n` probe kopie VE STEJNÉM adresáři
+  jako originál**, po skončení smaž. Proč: `$PSScriptRoot`-relativní cesty
+  jinde vyžadují ruční přepis. Důkaz: 0d40535
+- **Pass/fail českých PowerShellových sad posuzuj z markerů (`FAIL`,
+  `<N> passed`, exit kód), ne z prózy.** Proč: české hlášky se v tomhle
+  prostředí vykreslují jako mojibake kvůli code page. Důkaz: e0eb939
+- **Obnovu netrackovaného cíle mutace ověřuj hashem, ne gitem**; zálohu a
+  její SHA-256 zapiš do trvalého artefaktu, ne jen do transkriptu. Proč: git
+  je vůči mutacím netrackovaného souboru slepý oběma směry. Důkaz: e0eb939
+- **Testovací regex, který potřebuješ vidět bez truncation, nikdy nerekonstruuj
+  v throwaway skriptu — spusť reálný test a čti výstup.** Proč: Přepis tiše
+  ztratil literální backtick a podhodnotil legacy nálezy o tři. Důkaz: 3f811a6.
+- **Test/důkazní běh nad hookem, který si config dohledá podle `cwd`,
+  spouštěj z pracovního adresáře cílového repozitáře (`cd "$root" && …`).**
+  Proč: běh spuštěný odjinud četl config repa, odkud byl instalátor
+  spuštěn, ne fixture repa. Důkaz: 7da3545.
+
+### Když píšeš nebo měníš test
+
+- **Sada leží vedle kódu, který testuje**, v `tests/`, jako `<téma>.tests.ps1`.
+  Proč: kolokace drží testovaný kód a jeho sadu dohledatelné pohromadě.
+  Důkaz: 1a03314
+- **Testy běží offline** — vzdálený repozitář nahraď lokálním bare klonem jako
+  „origin".** Proč: sada nesmí záviset na síti, jinak červená neznamená
+  regresi, ale výpadek okolí. Důkaz: 1a03314
+- **Test na rozpoznání přejmenování gitem přidej `--find-renames` explicitně.**
+  Proč: bez flagu závisí na configu `diff.renames`, který se liší mezi
+  verzemi gitu. Důkaz: c38e039
+- **Read-only nálezy ověřuj i spuštěním proti skutečnému repozitáři, ne jen
+  proti fixtuře** (náhledový režim bez `-Apply` nic nemění). Proč: fixtura
+  dokazuje jen shodu s vlastním zápisem, skutečné repo dokazuje, že bug byl
+  reálný. Důkaz: c38e039
+- **Nový regresní strážce ověř jeho vlastní negativitou** — spusť i proti
+  neopravenému kódu / dočasně smaž hlídanou podmínku, čti KTERÉ asercie
+  zčervenají, pak soubor obnov. Proč: asercie zelené v obou bězích jsou
+  zámek, ne důkaz opravy. Důkaz: 7da3545
+- **Mutaci udělej sebedokazující: smaž podle ČÍSLA ŘÁDKU (ne `sed` s
+  regexem), ověř `grep -c` = 0, teprve pak spusť sadu; kotva musí být
+  víceřádková a jedinečná (grep count 1).** Proč: přerušený řetěz příkazů
+  nechá sadu běžet nemutovanou beze zprávy. Důkaz: 41641a2
+- **Negativní běh čti ve TŘECH kategoriích: zčervenalo, zůstalo zeleně
+  (zámek), NEPROVEDENO (za bodem přerušení)** — pole možná nepřítomného
+  objektu čti přes guardovaný accessor (`-join`), ne přímým `.Pole`. Proč:
+  sada, která uprostřed umře, za bodem smrti neměří nic. Důkaz: 44ccb57
+- **Po negativitě ověř OBOUSMĚRNĚ, že zčervenaly právě briefem jmenované
+  asercie** — víc červených je úplnější důkaz, míň signalizuje alibi fixturu.
+  Proč: alibi případ projde už dřívější, starší podmínkou. Důkaz: 44ccb57
+- **Před psaním indexových guardů spusť mutaci a přečti, KTERÝ index selže
+  první; guarduj CELOU zasaženou kolekci, ne jen review-vzorkované indexy**
+  — redundantní guard nech s komentářem proč. Proč: guard jen jmenovaných
+  řádků nedovolí sadě ohlásit vlastní selhání. Důkaz: 44ccb57
+- **Zúžení řádkového filtru nad artefaktem s instancemi v terénu potřebuje
+  detektor migrace a hlášku pro každou zahozenou řádku** — filtruj na počet
+  skutečně čtených buněk. Proč: špatný filtr tiše zahodí staré řádky beze
+  zprávy. Důkaz: 41641a2
+- **Negativní asercii piš na KLÍČ PLUS token jedinečný pro testovanou sekci**,
+  nikdy na identifikátor legitimně stojící i jinde v reportu. Proč: token,
+  který je zároveň členem jiného seznamu, negaci nerozliší. Důkaz: 41641a2
+- **Podmíněný důkazní krok drž na TŘECH stavech** (`$null` = neproběhlo),
+  přeskočení vždy ohlas vlastní poznámkou a do agregace přidávej jen pod
+  `if ($null -ne $result)`, nikdy prostým AND. Proč: naivní AND se srovnáním
+  proti `$null` zezelená/zčervená náhodou. Důkaz: 7da3545
+- **Jméno vymyšlené testem pro pozitivní kontrolu (větev, soubor) prověř
+  proti reálné konfiguraci uživatele**, měj víc kandidátů a vezmi první
+  nekonfliktní; bez něj krok přeskoč a ohlas. Proč: pevné jméno může narazit
+  na existující ochranné pravidlo uživatele. Důkaz: 7da3545
+- **Aserce o tabulkovém řádku musí číst datové řádky té tabulky, nikdy celý
+  soubor jako řetězec**; spáruj kontrolu „klíč právě v jednom řádku“
+  s kontrolou počtu řádků. Proč: substring match zůstane zelený i po smazání
+  řádku, jehož klíč leží jinde v souboru. Důkaz: 3f811a6
+- **V kontrole „X je referencováno odněkud“ vylučuj z prohledávané množiny
+  VLASTNÍ soubor X.** Proč: referenční soubor cituje sám sebe v hlavičce,
+  bez vyloučení je aserce splněná bezpodmínečně. Důkaz: 3f811a6
+- **Fixture repo pro testy nad stářím commitu nastavuj datem jako věk ve
+  dnech vůči vytvoření fixtury** (`GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`),
+  ne absolutním datem. Proč: absolutní datum jen na jedné větvi by časem
+  změnilo verdikt sady. Důkaz: 7da3545
+- **Vložení testu „na konec, před `Complete-Tests`“ ověř trojmo: pomocné
+  funkce definované, fixtura v tom bodě žije s historií, a nic mezi stavbou
+  fixtury a vloženým místem stav nemutuje.** Proč: doslovné čtení narazilo
+  na fixturu už smazanou dřívějším blokem. Důkaz: 41641a2
+- **Před test case pozdě v sekvenci sdílející `$work` s desítkami
+  předchozích případů zjisti STROJOVĚ stav klíčové větve** (local vs.
+  remote). Proč: case, který dřív nechal větev divergentní, otráví každý
+  pozdější prostý push. Důkaz: 0d40535
+- **Před stavbou fixtury na faktu z ledgerového `Ruling:` ověř fakt strojově
+  v aktuálním sezení** (`ls`/`Get-ChildItem`); mýlí-li se fakt, dodrž
+  rozhodnutí a oprav jen nejužší dotčenou část fixtury. Proč: ruling měl
+  správné číslo, ale špatné členství. Důkaz: 4d72c46
+- **U nového kontrolního případu si odpověz, KTERÝ mechanismus na něj
+  dopadá; vyřazuje-li ho jiný, starší mechanismus, je to zámek, ne důkaz** —
+  ověř spuštěním proti kódu před opravou. Proč: zelený případ i bez opravy
+  s opravou nesouvisí. Důkaz: 0d40535
+- **Asertuj proti syrovému textu, který spotřebitel čte, ne proti hodnotě
+  parsované zpátky** — drž si RAW vedle parsovaného objektu. Proč:
+  `ConvertFrom-Json` tiše přepíše ISO-8601 řetězec na `[datetime]` v locale
+  formátu. Důkaz: 41641a2
+- **Po aplikaci briefova doslovného snippetu na guard zkontroluj ZBYTEK
+  stejné funkce na další příkazy, jejichž předpoklady nová podmínka
+  změnila** (typicky zápis souboru hned za kontrolou existence). Proč:
+  zúžený guard může selhat o řádek dál se stejnou asercí. Důkaz: 0a13ef1
+- **Mutaci odebraného pole může zastínit ranější kontrola nebo volající** —
+  ověř, jestli stejný symptom nepokrývá starší validace nebo call site;
+  takový případ hlas jako „nefalzifikovatelný zde“, ne jako nález. Proč:
+  case zůstal zelený, protože ho zamítla jiná podmínka dřív. Důkaz: e0eb939
+- **Každá podmínka ANDovaného predikátu potřebuje fixturu, kde rozhoduje
+  JEN ona; ke každému `-cne` přidej case lišící se jen velikostí písmen.**
+  Proč: dvě podmínky odmítající tentýž vstup si dělají alibi a ani jedna
+  není dokázaná. Důkaz: 41641a2
+- **Asercie `(?m)^slovo$` proti textu z `2>&1 | Out-String` potřebuje na Windows
+  `\r?` před `$` — oprav v regexu SADY.** Proč: `Out-String` spojuje řádky přes
+  CRLF a .NET `$` kotví jen před holým `\n`. Důkaz: 4d72c46.
+- **Izolaci fixture repa od zděděného `core.hooksPath` neřeš prázdnou
+  hodnotou (`-c core.hooksPath=`) — vynech override, nebo pinuj reálný
+  default (`.git/hooks`).** Proč: prázdná hodnota není „bez override" —
+  git lfs zapsal hooky přímo do `$tmp`. Důkaz: 7da3545.
+- **Když dvě kontroly v hooku zamítají tentýž vstup, testuj i TEXT
+  hlášky, ne jen kód — nedosažitelná hláška je špatné pořadí.**
+  Proč: mazání trefilo dřív chráněnou-větev kontrolu, uživatel dostal
+  špatnou hlášku, ačkoli verdikt byl správný. Důkaz: 0d40535.
+
+### Když píšeš PowerShell
+
+- **Nikdy nedávej kudrnaté uvozovky dovnitř řetězce v odpovídajících ASCII
+  uvozovkách — patří jen do jednoduše uvozeného literálu.** Proč: Řetězec s „ se
+  tiše uzavře uprostřed věty beze chyby a bez varování. Důkaz: c38e039.
+- **Typografickou uvozovku v dvojitě uvozeném řetězci piš jako escape `u{201E}`
+  a ověř zápisem do souboru, nikdy přes `-Command` na řádce.** Proč: PowerShell
+  bere U+201E jako ukončovací uvozovku a `-Command` navíc zmangluje znak přes
+  code page. Důkaz: 3f811a6.
+- **Parametr nesoucí `$null` jako „žádná hodnota" nikdy netypuj `[string]` —
+  PowerShell `$null` tiše převede na prázdný řetězec.** Proč: Typová koerce
+  zapsala reálný prázdný soubor a vedla bisekci k falešné stopě mimo parametr.
+  Důkaz: 3f811a6.
+- **Nikdy nepojmenuj proměnnou `$host` ani jinou automatickou proměnnou
+  (`$error`, `$input`, `$args`, `$matches`, `$pwd`).** Proč: `$host = ...`
+  shodilo sadu na první volání hláškou o proměnné jen pro čtení pod
+  `Set-StrictMode`. Důkaz: 3f811a6.
+- **Backtick jako markdown code-span v řetězci v DVOJITÝCH uvozovkách piš
+  zdvojený, nebo fixturu postav v JEDNODUCHÝCH.** Proč: Osamocený backtick se v
+  double-quoted stringu tiše smaže, takže fixtura nenesla tvar, který tvrdila.
+  Důkaz: 3f811a6.
+- **Musí-li hodnota být kolekce, obal do `@()` CELÝ výraz, ne jen větev uvnitř;
+  u volitelného pole testuj `$null -eq $Param` PŘED obalením.** Proč: Obal jen
+  kolem větve nezachytí prázdnou pipeline; `@($null).Count` je 1, ne 0. Důkaz:
+  4d72c46.
+- **`Mandatory` na `[string[]]` parametru odmítne pole s prázdným řetězcovým
+  prvkem — ověř, že to smí být člen kolekce.** Proč: Reálná fixtura přestala
+  parsovat, ačkoli stejná funkce bez `Mandatory` totéž pole přijala. Důkaz:
+  41641a2.
+- **Volání funkce vracející `return , $x` nikdy nekombinuj v jednom příkazu s
+  enumerací ani obalením — přiřaď do proměnné zvlášť.** Proč: Zřetězený
+  `Where-Object` svázal `$_` s CELOU tabulkou místo s jejími řádky. Důkaz:
+  41641a2.
+- **`Set-Content -Encoding UTF8` v PowerShellu 7 BOM nepřidává (na rozdíl od
+  PowerShellu 5.1).** Proč: Ověřeno bajtově — pro UTF-8 bez BOM není potřeba
+  obezlička. Důkaz: c38e039.
+- **Český výstup ověřuj přes PowerShell tool nebo bajtově (`xxd`), nikdy očima v
+  bashové konzoli, i pro CRLF a stderr přes pipelinu.** Proč: Bashová konzole
+  zobrazí zkomolený text i u správného UTF-8 — jen bajtový test je spolehlivý.
+  Důkaz: c38e039.
+- **Šířku řádku UTF-8 prózy měř ve ZNACÍCH (`.Length` nebo Python `io.open`),
+  nikdy `awk 'length'` ani `wc -L`, které počítají bajty.** Proč: Em dash
+  nafoukne bajtový počet o dva — řádek ohlášený jako 83 znaků měl ve skutečnosti
+  79. Důkaz: 41641a2.
+- **Python skript editující soubory téhle vrstvy konce řádků musí DETEKOVAT
+  (`newline=''`), ne předpokládat.** Proč: `.ps1` jsou ve stromu CRLF a `.md`
+  LF, jednosouborový skript nesmí předpokládat ani jedno. Důkaz: 41641a2.
+- **Do `[pscustomobject]@{...}` zahrň VŠECHNA pole hned při konstrukci —
+  pozdější `$o.c = 2` potřebuje `Add-Member`.** Proč: Výjimka je NEterminující —
+  skript doběhl, JSON se zapsal, pole jen tiše chybělo. Důkaz: 4d72c46.
+- **Obsah `.cmd`/`.bat` souborů, včetně komentářů `REM`, drž ve strojové
+  ASCII.** Proč: Pomlčka en/em dash v komentáři rozbila parsování řádků níže v
+  souboru. Důkaz: 4d72c46.
+- **Pod `Set-StrictMode` nevěř, že úspěšný `ConvertFrom-Json` znamená objekt s
+  vlastnostmi — ověř typ před `.PSObject.Properties`.** Proč: JSON dovoluje
+  kořenové `null`, skalár i pole; `try/catch` se nikdy nespustí a selže až při
+  použití. Důkaz: 7da3545.
+- **`-like` na neobvyklém vzoru může hodit výjimku nebo v `catch` vracejícím
+  bool tiše vrátit špatnou odpověď.** Proč: Neošetřená výjimka shodila funkční
+  instalátor; tichá špatná odpověď smazala jedinou pojistku. Důkaz: 7da3545.
+- **Volá-li wrapper (`[scriptblock] $Param`) jiný takto parametrizovaný wrapper,
+  dej VŠEM funkcím v řetězci RŮZNÁ jména parametru.** Proč: Stejné jméno `$Body`
+  napříč dvěma wrappery spadlo na Stack overflow. Důkaz: 0d40535.
+- **Má-li POSIX shell v uvozovkách expandovat `$*`/`$@`, piš do PowerShellového
+  here-stringu holé `$*` bez zpětného lomítka.** Proč: Zpětné lomítko zapsalo
+  escape doslova, který `sh` pak přečetl jako vypnutí expanze. Důkaz: 9a7e158.
+- **`$obj.PSObject.Properties.Name` na prázdném `[pscustomobject]@{}` vrací
+  `$null` — materializuj přes vnořené `@()`.** Proč: Past se neprojevila u TOML
+  větve, jen u JSON s prázdným pscustomobjectem jako fallbackem. Důkaz: 0d40535.
+- **`Start-Process -ArgumentList` s polem NEuvozuje prvky s mezerou (na rozdíl
+  od `& $exe @array`) — obal je do samostatné dvojice uvozovek.** Proč: Pole se
+  spojí do příkazové řádky beze uvozování a prvek s mezerou se rozpadne. Důkaz:
+  4d72c46.
+- **Porovnání operandů z gitu v PowerShellu piš case-sensitive
+  (`-ceq`/`-cne`/`-cmatch`), nikdy defaultním case-insensitive tvarem.** Proč:
+  Case-insensitive formulace přijme token ražený pro jinou větev a defekt
+  přežije sadu. Důkaz: e0eb939.
+- **Než se spolehneš na doslovný `Select-String -Recurse` z briefu, ověř
+  parametry v INSTALOVANÉM PowerShellu.** Proč: `-Recurse` u `Select-String` v
+  této instalaci vůbec neexistuje — chyba byla chybějící parametr. Důkaz:
+  3f811a6.
+
+### Když píšeš POSIX hook nebo shell
+
+- **Windows cesty v `PATH` v msys/Cygwin vždy převeď `cygpath -u` a ověř, že
+  náhrada v harnessu skutečně platí.** Proč: `C:/.../shim` se na `:` rozpadne na
+  dvě neexistující cesty a shim se nikdy nezavolá. Důkaz: 7da3545.
+- **`$(command)` není průhledný kanál pro CR/CRLF testy — hodnotu pod testem
+  umísti mimo poslední řádek souboru.** Proč: Jednořádkový CRLF seznam prošel
+  testem i bez opravy, protože msys bash strhl trailing CRLF. Důkaz: 7da3545.
+- **Manuální spouštění hooků z Git Bash na Windows potřebuje Windows-styl cestu
+  (`pwd -W`), ne Unix-styl.** Proč: `node` interpretuje unixovou cestu jako
+  drive-relative a chráněná větev prošla jako nechráněná. Důkaz: 7da3545.
+- **Per-referenci volání externího procesu nad monorepem drž na konstantní počet
+  procesů (jeden `git ls-files` + `xargs`).** Proč: Smyčka nad ~500 projekty
+  neběžela do 300 s; streamové zpracování to srazilo na 0,5-2,6 s. Důkaz:
+  7da3545.
+- **V POSIX shellu chraň neuvozené vzory v `for`-cyklu příkazem `set -f`.**
+  Proč: bez něj vzor `branches/*` nahradilo jméno existujícího souboru
+  a ochrana chráněné větve tiše zmizela. Důkaz: 7da3545.
+- **Před hlavní `while read` smyčkou hooku načti konfiguraci i pomocné
+  hodnoty; do smyčky nedávej nic, co čte stdin bez přesměrování.**
+  Proč: nepřesměrovaný podpříkaz ve smyčce ukradl stdin, hook přestal
+  kontrolovat zbylé refy. Důkaz: 7da3545.
+- **CR/CRLF chování POSIX shellu ověřuj empiricky a per platformu,
+  nikdy úsudkem ani jedním testem — odstraň CR přímo v pipeline (`tr -d`).**
+  Proč: msys `sed`/`grep` CR zahazují, ale neuvozený POSIX shell
+  (Linux/macOS/WSL) ne. Důkaz: 7da3545.
+- **Bezpříponové bashové skripty (`sdd-workspace`, `task-brief`,
+  `review-package`, `ums/.claude/hooks/pre-push`) musí být v pracovním
+  stromu s LF.** Proč: git podle přípony nepozná skript a `autocrlf`
+  by shebang rozbil. Důkaz: 1a03314.
+- **Nevendoruj bezpříponové skripty prostým `git archive` při
+  `core.autocrlf=true`.** Proč: konverze na CRLF rozbije shebang a
+  skript nejde spustit — `revendor-superpowers.ps1` proto po
+  rozbalení normalizuje na LF. Důkaz: 1a03314.
+- **Nový bezpříponový shellový soubor commitni až s pravidlem
+  `text eol=lf` v `.gitattributes`.** Proč: git podle přípony nepozná
+  skript, takže bez pravidla ho `core.autocrlf` na Windows převede.
+  Důkaz: 1a03314.
+
+### Když píšeš plán, návrh nebo commit
+
+- **V plánu ani návrhu nikdy nezačínej řádek zpětnými apostrofy,
+  pokud to není skutečný ohraničovač bloku** — apostrofy v próze
+  popiš slovy; po psaní plánu spusť `task-brief` pro každé číslo úlohy.
+  Proč: osamocený takový řádek nechá tracking bloků „uvnitř". Důkaz: c38e039.
+- **Českou diakritiku v commit message piš přímo, i přes bash
+  heredoc** — UTF-8 tudy projde správně, nenahrazuj ji ASCII
+  transliterací. Ověř: `git log -1 --format=%B | od -c`.
+  Proč: bez ověření tiše vznikne zpráva mimo konvenci repa. Důkaz: c38e039.
+- **Diakritika přes PowerShellový here-string (`git commit -m @'...'@`)
+  tiše NEPŘEŽIJE** — napiš zprávu nástrojem `Write` do souboru a
+  commituj `git commit -F <soubor>`; po commitu ověř bajtově.
+  Proč: `@'...'@` commit tiše nahradil diakritiku ASCII. Důkaz: 0a13ef1.
+
+## Jen pro tento projekt
+
+### Když měníš kontrakt, skill nebo overlay
+
+- **Pravidlo má jeden domov — v kontraktu; skill smí jen odkazovat.** Proč: dva
+  konzumenti (mb-abort a jiný skill) zavedli vlastní pořadí pro tutéž operaci,
+  jen jeden byl prověřen. Důkaz: 7da3545.
+- **Když přebíráš pravidla jiné sekce odkazem, kvalifikuj podstatné jméno a
+  napiš NEGATIVNÍ seznam, co necestuje.** Proč: obecný odkaz by naimportoval i
+  consume-on-read, které by zničilo právě čtený soubor. Důkaz: 41641a2.
+- **`allowed-tools` restringuje nástroje — před návrhem seznamu vypiš všechny
+  nástroje, které skill používá.** Proč: briefovaný seznam pro mb-epic-run
+  vynechal Edit a git-zápisy, takže centrální operace skillu by neběžela. Důkaz:
+  4d72c46.
+- **Grep lock nad adresářem s AKTIVNÍM návrhem/plánem počítej i s residuem:
+  dokumentem, který cituje starou formulaci.** Proč: grep matchnul vlastní
+  design/plan dokumenty tasku citující starou formulaci jako problem statement.
+  Důkaz: 0a13ef1.
+- **Po opravě hardcoded literálu spusť grep lock PŘED commitem; přeživší zásah
+  ve jmenovaném souboru oprav i bez briefu.** Proč: grep lock odhalil druhý,
+  briefem nejmenovaný výskyt téhož literálu o sedm řádků dřív. Důkaz: 0a13ef1.
+- **Git-fakt (tracked/foreign/published) testuj git příkazem nebo cestou, nikdy
+  čtením obsahu souboru.** Proč: netrackovaný neprázdný playbook-candidates
+  soubor je pro standardní git příkazy neviditelný. Důkaz: 7da3545.
+- **Tvrzení „cesta je netrackovaný deployment" ověřuj `git status
+  --ignored=matching` a kódem `!!`.** Proč: `!!` odliší ignorované od „shodou
+  okolností beze změny"; ověřeno na `.claude` a `.agents/skills`. Důkaz:
+  44ccb57.
+- **Po vložení/odstranění kroku grepni CELÝ soubor na `step [0-9]` i plurál a
+  odkazuj na kroky jménem, ne číslem.** Proč: vložení kroku posunulo křížové
+  reference na číslo kroku beze zmínky, grep na termín je nenašel. Důkaz:
+  7da3545.
+- **Větu o pořadí kroků NEOPRAVUJ místo přesunu operace do správného kroku.**
+  Proč: „aktivace na tiketové větvi" nezměnila, že vytvoření větve zůstalo za
+  komitujícím krokem. Důkaz: 7da3545.
+- **Po rozšíření STOP/gate testu na širší množinu stavů přečti VŠECHNY pozdější
+  kroky téhož skillu na mrtvé větve.** Proč: rozšíření STOPu nechalo v mb-parku
+  bod pro starou užší podmínku nedosažitelný. Důkaz: 44ccb57.
+- **Když overlay přesune akci dřív, existující bod checklistu musí explicitně
+  pozastavit vlastní kontrolu.** Proč: agent u nezměněného bodu znovu vykonal
+  STOP instrukci a nahlásil integraci bez harvestu jako hotovou. Důkaz: 7da3545.
+- **Overlay úpravu verifikuj proti KONTRAKTU, ne proti briefu; po každé změně
+  pravidla grepni celou vrstvu na jeho token.** Proč: fragment psaný jen z
+  briefu by povolil přepis TRACKED souboru, který kontrakt zakazuje. Důkaz:
+  7da3545.
+- **Obecná definiční věta nezneplatní specifickou větu tvrdící VÝHRADNÍ hodnotu
+  — grepuj i exkluzivní slovník.** Proč: placeholder token byl krytý obecnou
+  větou, ale věta tvrdící „jediná" zůstala v rozporu. Důkaz: 44ccb57.
+- **Po zavedení druhé instance něčeho, co věta počítá jako „jedinou", grepuj
+  celý dokument na tu počítací frázi.** Proč: slovo „jediná" se stalo
+  nepravdivým ve dvou nezávislých větách při vzniku druhé instance výjimky.
+  Důkaz: 44ccb57.
+- **Nabídka kandidátů s pravidlem spouštěným MIMO seznam musí explicitně napsat,
+  že volná odpověď je přípustná.** Proč: nabídka jen z chráněných větví
+  nenapsala, že odpověď mimo ni je přijata, STOP byl nedosažitelný. Důkaz:
+  44ccb57.
+- **Report tvrdící konkrétní stav ho musí PŘEČÍST v tomto běhu, ne dovodit z
+  jiného pravidla nebo paměti.** Proč: degradovaná cesta tvrdila chráněné větve
+  odvozené z „hook má fallback", ale `main` byl nechráněný. Důkaz: 7da3545.
+- **Dvě hlášení o témže stavu musí čerpat z JEDNOHO zdroje pravdy; po změně na
+  jednom místě sesynchronizuj obě.** Proč: souhrn a varování o chráněných
+  větvích si odporovaly, čtenář varování odešel s mylným dojmem. Důkaz: 7da3545.
+- **Přejmenování toho, co fail-closed brána OVĚŘUJE, vyžaduje přepočítat i její
+  příkaz, ne ho jen přejmenovat.** Proč: `git branch -r --contains` po
+  přejmenování cíle dál procházel starou, už netestovanou věc. Důkaz: 7da3545.
+- **Když kontrakt zdůvodňuje manuální krok slabinou automatu, popiš slabinu jako
+  MECHANISMUS, ne jako verdikt.** Proč: věta „self-test nic neprokazuje" byla
+  měřitelně nepravdivá — instalátor má třetí ověřovací běh. Důkaz: 44ccb57.
+- **Než chybějící hodnotu degraduješ na neutrální default, dohledej, kam teče, a
+  polaritu testu.** Proč: prázdný default na levé straně `!==` udělal podmínku
+  trvale pravdivou, hlídka byla slabší. Důkaz: 41641a2.
+- **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej volajícího a zvol
+  cestu s VÍC ochrany.** Proč: `throw` na chybějícím loaderu by v degradované
+  cestě volajícího nechal repozitář bez hooku. Důkaz: 7da3545.
+- **Než opravíš cestu v instrukci, rozliš markdown odkaz (proti adresáři
+  souboru) od shell argumentu (proti kořeni repa).** Proč: nahrazení PowerShell
+  placeholderu spellingem z markdown odkazu by ukázalo mimo repozitář. Důkaz:
+  44ccb57.
+- **Hodnotu z konfigurace, která už nese prefix, nikdy neprefixuj podruhé;
+  sweepuj obě chybná hláskování zvlášť.** Proč: `HEAD..origin/origin/...`
+  skončilo `fatal: ambiguous argument` kvůli zdvojenému prefixu. Důkaz: 7da3545.
+- **Rozšíření skillu o novou schopnost vyžaduje ve STEJNÉM commitu upravit i
+  `description`.** Proč: `mb-state` dostal novou způsobilost, ale `description`
+  dál slibovala jen starý, užší rozsah. Důkaz: 7da3545.
+- **Když detektor vybírá jednu hodnotu z rovnocenných kandidátů, přečti DVA
+  nezávislé signály, ne jeden.** Proč: `symbolic-ref origin/HEAD` samotný by ve
+  forku napsal `origin/main` místo skutečné větve. Důkaz: 7da3545.
+- **Bump verze v dokumentu s running „Supersedes" historií musí přeformulovat i
+  řádek, který byl current předtím.** Proč: bez přeformulování by vznikly dvě
+  neverzované věty bez rozlišení přechodu verzí. Důkaz: 44ccb57.
+- **Pro každý volitelný řádek `context.md`, který reset zachovává, ověř zvlášť,
+  co ho PŘEPISUJE.** Proč: nový `Báze:` řádek nic nepřepisovalo, jedna
+  maintenance větev by tiše určila výchozí bázi všem. Důkaz: 44ccb57.
+- **Novou tiketovou větev publikuj explicitním `git push -u origin <branch>`,
+  nikdy bare push.** Proč: `switch -c` nastaví upstream na bázi, ne na novou
+  větev, takže bare push by cílil na bázi. Důkaz: 44ccb57.
+- **V komentáři u rozhodovacího kódu nepiš počet, jedinečnost ani uzavřený výčet
+  cest.** Proč: náhrada tvrzení o jedinečnosti jednou výčtovou větou se rozbila
+  hned dvěma novými nepravdami. Důkaz: 0d40535.
+- **Slovník sweepu po opravě nepravdivé věty skládej ze slov, kterými se POČÍTÁ,
+  ne z měněných konceptů.** Proč: slovník omezený na pojmy kola minul dvě věty
+  přežívající tři kola. Důkaz: 0d40535.
+- **Když review najde věty odporující kódu, udělej greppovaný inventář slovníku
+  přes VŠECHNY dotčené soubory.** Proč: oprava jen jmenovaných vět nechala tři
+  další nepravdivé věty mimo diff té opravy. Důkaz: 0d40535.
+- **Ke greppu na jména pojmů přidej druhý průchod po sekcích věcně dotčených
+  změnou a přečti je celé.** Proč: grep na jména pojmů nenašel dvě nepravdivé
+  věty formulované jinými slovy než pravidlo samo. Důkaz: 0d40535.
+- **Tvrdí-li dokumentace, že vlastnost platí pro KAŽDOU položku seznamu, projdi
+  seznam sondou.** Proč: šestý nosič v seznamu byl omylem jiné třídy, věta o
+  všech šesti by odešla nepravdivá. Důkaz: 0d40535.
+- **Upřesnění komentářového bloku nepřidávej jako nový odstavec — přepiš přímo
+  VĚTU, kterou mění.** Proč: nová věta skončila pod tou, kterou vyvracela, a obě
+  zůstaly vedle sebe. Důkaz: 0d40535.
+- **Po úpravě komentářového bloku přečti ho CELÝ odshora dolů a sluč dvojice
+  věta–výjimka do jedné.** Proč: absolutní věta stála nad přesnou výjimkou o 17
+  řádků níž, cizí čtenář narazí na nepravdivou první. Důkaz: 0d40535.
+- **Nadpis komentáře musí být týž tvar pravidla jako věta pod ním, ne jeho
+  silnější zkratka.** Proč: nadpis byl silnější než skutečné pravidlo a
+  porušoval ho vlastní správný kód pod ním. Důkaz: 0d40535.
+- **Popisuje-li soubor mechanismus na víc místech, po úpravě jednoho srovnej ho
+  se všemi ostatními.** Proč: druhá formulace výjimky měla opravu už z
+  předchozího kola, stromový komentář ne. Důkaz: 0d40535.
+- **U absolutní věty o hooku přečti kód NAD branou, na kterou se odvolává, a
+  výjimku napiš do stejného odstavce.** Proč: „hook nevynucuje nic mimo agent
+  session" nebrala v úvahu větev nad branou (buffer stdinu). Důkaz: 0d40535.
+- **Při rozšíření působnosti pravidla vypiš mechanismy, které o něm NĚCO
+  SLIBUJÍ, a ověř slib i pro nové případy.** Proč: rozšíření výjimky ze dvou na
+  tři zdi nechalo větu o rejection message nepravdivou pro dvě z nich. Důkaz:
+  0d40535.
+- **U rozhodovacího ramene popisovaného prózou si opiš konkrétní řádek a
+  spočítej podmínky, teprve pak piš větu.** Proč: popis „posture + jedna
+  výjimka" svedl k under-claimu — rameno má dvě podmínky. Důkaz: 0d40535.
+- **Popis chování rozhodovací funkce piš až po přečtení CELÉ funkce, nikdy jen z
+  hlavičky nebo rulingů.** Proč: věty sepsané z hlavičky a rulingů byly obě
+  nepravdivé proti kódu ve dvou případech. Důkaz: 0d40535.
+- **Před vložením snippetu nahrazujícího strukturovaný útvar přepiš v něm odkazy
+  na strukturu na jméno pravidla.** Proč: snippet vložený doslova odkazoval na
+  tabulku, kterou týž krok o kus dál mazal. Důkaz: 0d40535.
+- **Ohrazený příklad, proti kterému někdo napíše parser, přečti znovu proti
+  pravidlům na třídy znaků téže sekce.** Proč: kanonický příklad nesl
+  placeholder v ostrých závorkách, který stejná sekce jinde zakazuje. Důkaz:
+  41641a2.
+- **Sdílí-li pravidlo a ohrazený artefakt „stejný odstavec", dej pravidlo těsně
+  NAD ohrazení bez prázdného řádku.** Proč: v Markdownu ohrazení odstavec
+  ukončí, obojí nemůže doslova sdílet jeden odstavec. Důkaz: 41641a2.
+- **Po definici uzavřeného výčtu s povinnými poli projdi KAŽDÝ člen a vypiš mu
+  celý záznam doslova.** Proč: člen, kvůli kterému artefakt vznikl, byl zároveň
+  jediný nezapsatelný — dělal ho neviditelným. Důkaz: 41641a2.
+- **Duplicitu ohraničeného regionu čti jako signál malformed → nepřítomný, ne
+  jako přednost páru.** Proč: „poslední pár vyhrává" by tiše povýšilo
+  nedůvěryhodného kandidáta a schovalo vadu pisatele. Důkaz: 41641a2.
+- **Ruší-li úloha pojmenovaný koncept, grepuj i frázi, kterou byl pojmenovaný v
+  próze, ne jen token proměnné.** Proč: širší slovníkový sweep našel dva další
+  výskyty mimo brief scope, které by grep na proměnnou minul. Důkaz: 0d40535.
+- **Popisuje-li komentář bezpečnostní vlastnost jako „X je pravda", ověř,
+  dokazuje-li to kód PŘÍMO, nebo přes proxy.** Proč: komentář sliboval kontakt s
+  remote, ale kód kontroloval jen lokální, zapisovatelný ref. Důkaz: 0d40535.
+- **Konfigurační klíč/soubor pro cizí nástroj ověř proti primární dokumentaci
+  PŘED implementací.** Proč: brief cílil na `[env]`/`"env"` klíč, který ani
+  Codex, ani Gemini CLI takto nečtou. Důkaz: 0d40535.
+- **Než přijmeš navrženou podmínku jako kompletní, projdi VŠECHNY případy proti
+  ní jako červené testy.** Proč: „fail-closed jen na command position" jednou
+  podmínkou nestačilo — chybělo rameno o expanzi. Důkaz: 0d40535.
+- **Ke KAŽDÉMU rozšíření vzoru z povolovacího na zamítací dopiš negativní
+  asercie na hodnotu, konec i prefix.** Proč: pozitivní asercie na sedm zápisů
+  by prošly i výrazu matchujícímu skoro cokoli. Důkaz: 0d40535.
+- **Před KAŽDÝM splicem vytáhni čísla řádků znovu (`grep -n`), nikdy z
+  dřívějšího výpisu, a přečti výsledek.** Proč: splice s čísly z dřívějšího
+  výpisu byl posunutý — syntax check nad komentářem to neodhalí. Důkaz: 0d40535.
+- **Bump verze kontraktu je vlastní sweep na starou verzi, mimo sweep na slovník
+  měněného pravidla.** Proč: oba slovníkové sweepy minuly samotnou verzi — sedm
+  restatementů `2.11` a chybějící `brief.md`. Důkaz: e0eb939.
+- **Sweep na restatementy pouštěj přes `ums/` i `memory-bank/` jedním příkazem,
+  grepuj nejkratší fragment.** Proč: druhý restatement ležel v
+  `architecture.md`, dvouslovný token ho ve flektivním jazyce minul. Důkaz:
+  41641a2.
+- **Inventáře sweepuj podle DRUHU artefaktu (kdo počítá věci tohoto druhu), ne
+  podle jména nového konceptu.** Proč: čtyři inventární věty zůstaly nepravdivé
+  — žádná neobsahovala jméno nového konceptu. Důkaz: e0eb939.
+- **Grep tool bez `output_mode: "content"` zahodí `-n` — předej ho explicitně,
+  chceš-li čísla řádků.** Proč: vynechání tiše spadne na výpis souborů se shodou
+  bez čísel řádků. Důkaz: e0eb939.
+- **Vložení odstavce/nadpisu do prózy cíli na konec ÚTVARU ověřený čtením
+  dopředu, ne na řádek, co jen vypadá jako konec.** Proč: řádek vypadající jako
+  konec odstavce byl uprostřed zalomené věty — vložení by ji rozdělilo. Důkaz:
+  41641a2.
+- **H1 nadpis reference v `contract/`, duplikující vlastní `###`/`##` nadpis,
+  NEMAZAT — shape-suita indexuje jen `^#{2,4}`.** Proč: smazání H1 duplikátu by
+  proměnilo zelenou citaci v červenou; opraveno povýšením `###`→`##`. Důkaz:
+  3f811a6.
+- **Dokumentuj syntax citace ŽIVOU instancí, nikdy metasyntaktickým
+  placeholderem typu `"<section>"`.** Proč: placeholder prochází stejným
+  scannerem jako reálná citace a vyrobil 24. rozbitou citaci. Důkaz: 3f811a6.
+- **Hlavička nové `contract/<jméno>.md` reference v „cite as" příkladu musí
+  jmenovat REÁLNÝ nadpis, ne placeholder.** Proč: doslovný placeholder „Section"
+  spadl na „každá citace má cíl", sekce toho jména neexistuje. Důkaz: 3f811a6.
+- **Citaci `(contract[/soubor.md], "Sekce")` piš celou na JEDNÉ fyzické řádce,
+  nikdy ji nenech rozlomit zalomením.** Proč: čtyři různé tvary zalomení
+  proměnily existující, správně cílenou citaci na „citace nemá cíl". Důkaz:
+  3f811a6.
+- **Briefova tabulka „skill → přiřazená reference" řídí jen hlavičkovou řádku,
+  inline citace smí mířit jinam.** Proč: `mb-jira-update` cituje referenci mimo
+  svou přiřazenou sadu, přesto je citace platná. Důkaz: 3f811a6.
+- **Mechanický split Markdown dokumentu podle nadpisového regexu musí nejdřív
+  vyloučit nadpisy uvnitř ohraničení.** Proč: 5 ze 44 matchujících řádků v
+  kontraktu bylo uvnitř ohraničení — naivní split by je rozřezal. Důkaz:
+  3f811a6.
+- **`[IO.File]::ReadAllText -split "n"` na LF-terminated souboru vrátí o jeden
+  element víc, než je řádků.** Proč: kontrakt má 3066 řádků, split dal pole o
+  3067 prvcích — odhalil to partition self-check. Důkaz: 3f811a6.
+- **Ověřování „přežilo pravidlo kompresi?" dělej `[regex]::IsMatch` s mezerou
+  jako `\s+`, nikdy `String.Contains`.** Proč: substring test nahlásil 4 fráze
+  jako chybějící, ačkoli byly jen rozdělené řádkovým zalomením. Důkaz: 3f811a6.
+- **Kompresi normativního textu ověřuj proti PRE-WAVE COMMITU (token diff), ne
+  proti zůstávající zelené sadě.** Proč: komprese 20 sekcí nechala sadu zelenou
+  po celou dobu, přestože reálně ztratila dvě ilustrace. Důkaz: 3f811a6.
+- **Je-li task gatovaný nástrojem na „zachovej každý řádek", zkontroluj move
+  mapu proti jeho allow-pattern PŘED editem.** Proč: default allow-pattern
+  nezachytí `## ` povýšení nadpisu, které briefova move mapa žádala. Důkaz:
+  3f811a6.
+- **Novou `###` podsekci do kontraktové reference vkládej na PŘIROZENOU hranici,
+  nikdy doprostřed jedné myšlenky.** Proč: vložení mezi dvě navazující věty
+  rozdělilo jednu myšlenkovou linku a matlo návaznost. Důkaz: 3f811a6.
+- **Acceptance check jmenující GLOBÁLNÍ invariant grepuj přes CELOU vrstvu, ne
+  jen briefův seznam Files.** Proč: `mb-epic-elaboration/SKILL.md` mimo seznam
+  dál popisoval zrušené chování jako živé. Důkaz: 3f811a6.
+- **Vzdálené větve vypisuj `--format='%(refname:lstrip=3)'`, ne
+  `%(refname:short)`, a filtruj `grep -v '^HEAD$'`.** Proč: `%(refname:short)`
+  nechal remote prefix a bare `origin` pro symref jako fantomovou položku.
+  Důkaz: 7da3545.
+- **`git ls-tree` nepodporuje pathspec magic `:(glob)` — na cesty v libovolné
+  hloubce použij sondu `cat-file -e`.** Proč: `:(glob)` skončí `fatal: pathspec
+  magic not supported`, zatímco `git log` se stejným pathspecem funguje. Důkaz:
+  9a7e158.
+- **Skill snippet, který dot-sourcuje jeden skript a volá funkce z jiného,
+  projdi řádek po řádku — každá volaná funkce dot-sourcovaná explicitně.** Proč:
+  `mb-state` funguje jen transitivním tahem, který se rozbije na první
+  reorganizaci pořadí. Důkaz: 44ccb57.
+- **Rozšíříš-li guard o další nástroj, pro KAŽDOU textovou kontrolu napiš vstup
+  v novém nástroji a přidej asercii dřív, než první novou.** Proč: Matcher
+  `Bash|PowerShell` nechal review přehlédnout, že vzor pro `NAME=` nematchne
+  `$env:` přiřazení. Důkaz: 0d40535.
+- **U rozšíření vzoru `JMÉNO<oddělovač>HODNOTA` piš negativa na třech osách
+  zvlášť — HODNOTA, TERMINÁTOR, PREFIX/SUFFIX.** Proč: Bez lookaheadu za
+  hodnotou by regex nechal `10` matchnout jako `1`. Důkaz: 0d40535.
+- **Před psaním negativní tabulky zjisti, jde-li o novou TŘÍDU konstruktu, nebo
+  člena existující — člen dědí pravidlo třídy.** Proč: Sourozenecké konstrukty s
+  hodnotou nula už zamítaly stejným způsobem. Důkaz: 0d40535.
+- **Než usoudíš, které tokeny se dostanou ke spouštěnému programu, spusť skript
+  tisknoucí svoje `argv` — ne úsudkem.** Proč: Dvě podobná přesměrování se
+  lišila jedním znakem a jen jedno skutečně provedlo push. Důkaz: 0d40535.
+- **Rozpoznává-li tokenizer nově shellový konstrukt, zjisti, co s ním dělá
+  SKUTEČNÝ shell — odstranění je skip-a-pokračuj, NIKDY break.** Proč: Break je
+  vždy permisivnější; doslovné ukončení by pustilo únik přes chráněnou větev.
+  Důkaz: 0d40535.
+- **Signaturu sdíleného helperu přečti, nehádej — fail-closed verdikt proti
+  defaultu ber jako signál špatného volání.** Proč: Volání se špatným jménem
+  parametru propustilo přepínač do `$args` a vyrobilo falešný STOP. Důkaz:
+  e0eb939.
+- **Uzavřený re-render musí sanitizovat HODNOTY, ne jen jména polí — odmítej
+  třídu znaků, ne výčet hláskování.** Proč: Whitelistovaný klíč s nebezpečnou
+  hodnotou prošel a byl re-renderován doslovně. Důkaz: e0eb939.
+
+### Když stavíš nebo spouštíš testy
+
+**Spuštění testovací sady**
+- Jedna sada přímo: `pwsh -NoProfile -File <cesta>.tests.ps1`.
+- Celá vrstva smyčkou:
 ```bash
-pwsh -NoProfile -File ums/.claude/skills/mb-doc-index/tests/enumeration.tests.ps1
 for t in $(find ums -name "*.tests.ps1"); do echo "== $t"; pwsh -NoProfile -File "$t" || echo "FAILED: $t"; done
 ```
+- Zelená sada končí `<N> passed` a exit kódem 0.
+- Červená vypíše `<N>/<M> FAILED` a vrátí exit kód 1.
+Důkaz: 1a03314
 
-Zelená sada končí řádkem `<N> passed` a nulovým exit kódem; při selhání vypíše
-`<N>/<M> FAILED` a vrátí `1`.
+### Když píšeš nebo měníš test
 
-- **Pod PowerShell-first preferencí je smyčku výše legitimní nahradit
-  ekvivalentním `Get-ChildItem -Recurse -Filter *.tests.ps1 | ForEach-Object
-  { & pwsh -NoProfile -File $_.FullName; check $LASTEXITCODE }` — ale jen pro
-  INTERIMNÍ ověřování během vývoje. U Handoff brány na konci práce spusť
-  ověřovací sadu deklarovanou v `## Ověřovací sada` design/plán dokumentu
-  DOSLOVNĚ, přesně jak je tam napsaná, i kdyby to byla tahle bashová smyčka.
-  Brána porovnává citované příkazy s deklarovanou sadou jako TEXT — parafráze
-  (jiný nástroj, jiný tvar smyčky) na ní neprojde, i kdyby dělala totéž.
-  Proč: PowerShellová verze fungovala identicky — našla a spustila všech 28
-  sad, správně rozpoznala exit kódy i koncový řádek `<N> passed` pro součet,
-  doběhla v rámci timeoutu 600000 ms. To ale dokazuje jen bezpečnost náhrady
-  pro průběžné ověřování; u citace vůči Handoff bráně je rozhodující shoda
-  s deklarovaným textem, ne funkční ekvivalence.
-- **Deklarovaný ověřovací příkaz obsahující `\"` spolu s `$(...)`/`$var` spusť
-  přes `cmd.exe /c` (Windows) — příkazový TEXT zůstává doslovný (to je to, co
-  Handoff brána porovnává), mění se jen spouštěč.** Neopravuj escaping
-  v plánu uprostřed exekuce: citovaný text je předmět porovnání a editace ho
-  rozbije proti každému dřívějšímu měření.
-  Proč: `\"` je MSVCRT argv escaping. Bash na stejném příkazu udělal command
-  substituci uvnitř uvozovek (`/usr/bin/bash: line 1: unsetenv.FullName:
-  command not found`); PowerShell ukončil řetězcový literál na prvním `\"`
-  (backslash není v PowerShellových řetězcích escape) a spadl na
-  `ParserError: Za unárním operátorem ++ chybí výraz`. `cmd.exe /c` předal
-  příkaz beze změny a ten proběhl správně přes všech 33 sad.
+- **Sadu piš jako obyčejný `.ps1` s vlastními aserčními funkcemi, nikdy jako
+  Pester.** Proč: vrstva je bezzávislostní, test nesmí předpokládat
+  nainstalovaný PowerShell modul. Důkaz: 1a03314
+- **Každý adresář testů má vlastní kopii `_assert.ps1`** (dot-sourced,
+  poskytuje `Assert-True/Match/NotMatch/Eq` a `Complete-Tests`); kopie se
+  smí lišit. Proč: nasazení kopíruje adresáře skillů jednotlivě, helper mimo
+  adresář skillu by s ním nedoputoval. Důkaz: 1a03314
+- **Guardovaný index u `[bool]`-typovaného parametru aserčního helperu ukonči
+  SROVNÁNÍM** (`(...) -eq $true`), ne jen `Select-Object -First 1`. Proč:
+  prázdná pipeline se pod mutací sváže jako `""` a hodí typovou chybu.
+  Důkaz: 3f811a6
+- **Totéž platí na volací straně: je-li argument `[bool]` parametru
+  `(pipeline).vlastnost`, koncové srovnání musí být UVNITŘ téže vnější
+  závorky.** Proč: bez závorky PowerShell čte srovnání jako další poziční
+  argumenty volání. Důkaz: 44ccb57
+- **Před přidáním souboru do zrcadleného adresáře (`Copy-Mirrored`) ověř,
+  jestli sync cíl maže a nahrazuje; fixtura ať má reálný soubor, ne stub.**
+  Proč: stub nahrazený syncem shodil nesouvisející test o dvě asercie dál.
+  Důkaz: 7da3545
+- **Fixtura razící kopii verzované značky ať čte hodnotu ze zdroje pravdy
+  sdíleným helperem** (`Get-UmsHookVersion`), ne literálem. Proč: literál
+  zestárne stejně jako opravovaný gate při dalším bumpu verze. Důkaz:
+  0a13ef1
+- **Fixtura s linked worktrees pro GENUINE čistý strom potřebuje v základním
+  commitu `.gitignore` pro `.superpowers/`, `.gitattributes` s `eol=lf`
+  a zápis obsahu přes `Set-Content -NoNewline`.** Proč: bez toho vypadá
+  strom špinavý nebo se přepis liší bajtově kvůli CRLF. Důkaz: 4d72c46
+- **Kanárek exec bitu odsunutého cizího hooku ověřuj jen tím, že PO instalaci
+  existuje/byl zavolán**, ne tím, že se neaktivoval dřív než tvůj test krok.
+  Proč: instalátorův self-test proof legitimně spustí hook dřív. Důkaz:
+  0d40535
+- **Fallback na přímou kontrolu `test -x` drž jen pro případ, kdy nová
+  push-schopná fixtura není proveditelná** — canary bez chmod je silnější
+  důkaz a patří první. Proč: canary testuje end-to-end chování, ne jen bit
+  na disku. Důkaz: 0d40535
+- **U přejmenování s přechodnou kompatibilitou nestačí RED proti nezměněnému
+  kódu — přidej pro každou dvojici jmen asercii na plnou hlášku a ověř
+  cílenou mutací.** Proč: obě jména mohla projít starou zamítací větví beze
+  změny chování. Důkaz: 0d40535
+- **Negativity-check guardu proti selhání přesměrování na msys `sh` piš na
+  rozlišitelný pozorovatelný projev, ne na zčervenání „operace prošla“.**
+  Proč: neinteraktivní shell na chybějícím souboru skončí fatálně dřív, než
+  se dostane k testovanému kódu. Důkaz: 0d40535
+- **Sráží-li se tolerantní věta kontraktu s jeho pravidlem o uzavřeném
+  formátu, napiš fixturu pro OBĚ čtení** (tolerantní i uzavřené) na stejném
+  hraničním místě. Proč: kterékoli čtení samo dá sadu souhlasící jen s
+  polovinou sekce. Důkaz: 41641a2
+- **Skutečná volání gitu počítej `git.bat` shimem dřív v `PATH`, ne mockem**
+  — funguje i pro volání z potomka; ověř, že se shim použil a že výstup
+  sedí bajtově s během bez něj. Proč: mock nezachytí volání z potomka a
+  neověřený shim může zkreslovat. Důkaz: 9a7e158
+- **Fixturu „guard tenhle tvar nerozpozná" postav na UVOZENÉM `git`
+  tokenu, ne na neuvozeném za jiným příkazem, a výstup ověř ručně.**
+  Proč: `echo git push --mirror` guard zamítl (neuvozený token), ale
+  `bash -c 'git push --mirror'` prošel. Důkaz: 0d40535.
+- **Sada, jejíž reálné asercie závisí na značce, kterou sama zavádí,
+  musí tu značku nastavit explicitně na úrovni CELÉ sady.**
+  Proč: `$env:MB_AGENT_SESSION` na úrovni souboru neposunulo počet
+  passed — sada tajně závisela na harnessu. Důkaz: 0d40535.
+- **Testovací Memory Bank dokumenty ukládej pod `tests/fixtures/`.** Proč:
+  indexace MB dokumentů tuto cestu vylučuje, fixtury nespadnou do indexu.
+  Důkaz: 44ccb57.
 
-Konvence, které nová sada musí dodržet:
+### Když spouštíš sadu nebo důkazní běh
 
-- **Žádný Pester, jen obyčejný `.ps1` skript s vlastními aserčními funkcemi.**
-  Proč: vrstva je bezzávislostní, takže test nesmí předpokládat nainstalovaný
-  PowerShell modul — jinak by ho nešlo spustit v čerstvém klonu ani u
-  uživatele, který si vrstvu jen nasadil.
-- **`_assert.ps1` má vlastní kopii každý adresář testů**
-  (`ums/.claude/skills/<skill>/tests/`, `ums/.claude/hooks/tests/`); sada ho
-  natáhne přes `. (Join-Path $PSScriptRoot '_assert.ps1')` a poskytuje
-  `Assert-True`, `Assert-Match`, `Assert-NotMatch`, `Assert-Eq`
-  a `Complete-Tests`.
-  Proč: nasazení kopíruje celé adresáře skillů (`sync-with-monorepo.ps1` bere
-  `shared` a každý `mb-*` zvlášť), takže helper ležící mimo adresář skillu by
-  s ním k uživateli neputoval. Kopie se smí lišit — každá nese jen to, co její
-  sada používá.
-- **Sada leží vedle kódu, který testuje**, v podadresáři `tests/`, a jmenuje se
-  `<téma>.tests.ps1`. Do nového adresáře testů zkopíruj i `_assert.ps1`.
-- **Testy běží offline.** Kde je potřeba vzdálený repozitář, sestaví se lokální
-  bare klon jako „origin" (`new-fixture-repo.ps1` u `mb-doc-index`, vlastní
-  bare remote u `pre-push`).
-  Proč: sada nesmí sáhnout na síť, na `origin` ani do Jiry — jinak by červená
-  sada neznamenala regresi, ale výpadek okolí.
-- **Ad-hoc fixture pro throwaway lokální „origin", která potřebuje
-  `--no-verify` u pushe, piš do skriptu a spusť ho jako soubor
-  (`bash script.sh` / `pwsh -File script.ps1`), ne jako literální text
-  v příkazu Bash/PowerShell toolu. Totéž pravidlo platí obecněji: jakýkoli
-  text citující `--no-verify`, únikovou proměnnou (`MB_HUMAN_PUSH=1`) nebo
-  tvar `git push` — report, sonda nad guardem, ledger, dokument o guardu —
-  zapiš nástrojem na zápis souboru (Write), ne jako literál v parametru
-  Bash/PowerShell toolu.** Druhý, nezávislý spouštěč téhož pravidla je
-  VELIKOST: přes zhruba sto řádků payloadu napiš skript do souboru a spusť
-  ten soubor, ať obsahuje cokoli.
-  Proč: bezpečnostní hlídka nástroje blokuje `--no-verify` jen v LITERÁLNÍM
-  textu vlastního parametru příkazu, ne v obsahu skriptu, který nástroj
-  pouze spouští — týž flag uvnitř dot-sourcovaného/spuštěného `.tests.ps1`
-  prošel beze zmínky ve stejném sezení, kde přímý pokus v příkazové řádce
-  byl zamítnut. Na jednom work itemu tahle past padla šestkrát: psaní
-  reportu citujícího přepínač guardu, sonda nad guardem posílaná jako
-  literál, i markdownová tabulka s příkazy `git push …`, kde escapovaný
-  `\|` hned za `git push` guard přečetl jako jméno remote a zamítl push se
-  zapsaným reportem samotným. Na velikosti totéž padlo zvlášť:
-  `python - <<'PYEOF' … PYEOF` s ~200řádkovým payloadem zemřel ještě před
-  Pythonem na `/usr/bin/bash: -c: line 134: unexpected EOF while looking for
-  matching '` (exit 2), přestože týž tvar v tomtéž sezení opakovaně fungoval
-  na 20–40řádkových payloadech; identický skript zapsaný do
-  `.superpowers/scratch/edit_overlay.py` a spuštěný jako soubor prošel
-  napoprvé a zůstal znovuspustitelný, když v něm aserce selže.
-- Testovací Memory Bank dokumenty ukládej pod `tests/fixtures/`.
-  Proč: indexace MB dokumentů tuto cestu vylučuje, takže fixtury nespadnou do
-  indexu ani do kolizních nálezů.
-- **Když test tvrdí, že git rozpozná přejmenování, přidej `--find-renames`
-  explicitně.** `git diff --cached --name-status` bez toho flagu závisí na
-  configu `diff.renames`, který se napříč verzemi gitu liší; s flagem vrací
-  `R100` se starou i novou cestou deterministicky.
-- **Read-only nálezy ověřuj spuštěním proti skutečnému repozitáři, ne jen
-  proti fixtuře.** Náhledový režim (bez `-Apply`) nic nemění, takže je to
-  bezpečné.
-  Proč: fixtura dokazuje, že kód dělá, co jste do fixtury napsali; skutečné
-  repo dokazuje, že bug byl reálný a ne artefakt konstrukce fixtury. Tímhle se
-  potvrdilo, že migrační skript kořenovou `memory-bank/` vůbec nenašel.
-- **Nový regresní strážce/test ověř jeho vlastní negativitou:** spusť ho i
-  proti neopravenému kódu, nebo dočasně smaž řádek/podmínku, kterou hlídá,
-  a zkontroluj, které asercie zčervenají. Asercie, které zůstanou zelené
-  v obou případech, jsou regresní zámek, ne důkaz opravy — v reportu je
-  odděl. Strážce, kde zčervenají VŠECHNY asercie, obvykle chybí pozitivní
-  kontrola; kde nezčervená ŽÁDNÁ, nic nehlídá. Po ověření smazáním obnov
-  soubor z kopie před úpravou a potvrď prázdný `git diff`.
-  Proč: čtyři nové asercie nad `$activityByBranch` vypadaly adekvátně podle
-  tvaru fixtury; se smazaným řádkem sada nahlásila `3/43 FAILED` a jmenovala
-  dormantní větev. Naopak dva jiné případy (symref `origin/HEAD`,
-  `-BranchGlob`) prošly i proti neopravenému skriptu, protože je řešil jiný,
-  existující mechanismus — takové asercie oddělit jako zámek, ne jako důkaz.
-- **„Security Weaken" zamítnutí nástroje nad hook/guard souborem — i pro
-  scoped, hned revertovanou probe přesně podle předchozího bodu (dočasně smaž
-  podmínku, ověř zčervenání, obnov) — ber jako KONEČNÉ pro ten soubor.**
-  Neopakuj pokus dalšími koly ani jinou formulací; padni zpátky na cílený
-  primární běh bez destruktivní mutace toho souboru a mezeru v důkazu ohlas
-  v „Issues or concerns", místo abys zablokovaný pokus prezentoval jako
-  hotové ověření.
-  Proč: úprava, která by dočasně zakomentovala jednu guard podmínku
-  v `install-git-hooks.ps1` (bezpečnostně relevantní hook instalátor) a hned
-  nato ji vrátila zpět, byla bezpečnostním klasifikátorem nástroje zamítnuta
-  rovnou (důvod „Security Weaken") — i přesto, že šlo o scoped, okamžitě
-  revertovanou sondu na souboru bez jiných rozpracovaných změn.
-- **Když je zdrojová oprava omylem aplikovaná dřív, než se stihla zachytit
-  true RED proti PŮVODNÍ logice, `git stash push --keep-index -- <cesta>`
-  (jednosouborový, ne plný stash) vrátí přesně TEN soubor do committnutého
-  stavu, aniž by se dotkl zbytku pracovního stromu** (typicky už upravený
-  testovací soubor s novým case) — spusť RED sadu, pak `git stash pop`
-  obnoví opravu zpátky.
-  Proč: Step 3 zdrojový edit byl aplikovaný dřív, než proběhl skutečný RED
-  běh proti původní (`-cmatch 'v2'`) logice; `git stash push --keep-index --
-  <soubor>` izolovaně vrátilo jen ten jeden soubor, RED běh selhal přesně
-  podle předpovědi briefu a `git stash pop` vše obnovil beze zbytku
-  (`git status` čistý mimo zamýšlené změny po popnutí).
-- **Pro RED běh proti hooku, který se v jednom commitu edituje SPOLU se svým
-  colokovaným testem, `git stash push -- <cesta-k-hooku>` (jen ten jeden
-  soubor, bez `--keep-index`) vrátí přesně hook do committnutého stavu
-  s novým test case už na místě** — spusť RED, pak `git stash pop`.
-  Proč: přesně tenhle tvar (hook + colokovaný test upravované ve stejném
-  commitu) potvrdil čistý RED běh proti nezměněnému hooku s novým case
-  přítomným, bez nutnosti rekonstruovat syntetickou „pre-change" verzi hooku
-  ručně nebo sahat po samostatném worktree jen pro poctivou červenou.
-- **Že mutace opravdu proběhla, nikdy neodvozuj z výsledku sady — udělej ji
-  sebedokazující.** Vypiš cílový řádek před smazáním, smaž ho podle ČÍSLA
-  ŘÁDKU (krátkým Python snippetem, ne `sed`em se shellově escapovaným
-  regexem) a teprve po `grep -c` s výsledkem 0 spusť sadu. Kotva mutace musí
-  být VÍCEŘÁDKOVÝ kontext jedinečný v souboru — před psaním kotev každou
-  grepni a vyžaduj počet 1 —, a harness musí `throw` jak na minutí kotvy, tak
-  když se mutovaný text rovná původnímu.
-  Proč: řetěz `grep -n <vzor> $F && sed -i <výraz> $F && pwsh …` se přerušil
-  na `grep`u, který pod escapingem Bash toolu nematchl; sada běžela nad
-  NEMUTOVANÝM souborem a nahlásila `353 passed` — což se čte přesně jako
-  nález „tenhle řádek nic nehlídá". Druhá půlka měřena zvlášť: jednořádková
-  kotva `if ($t.Length -gt $LedgerMaxRender) { ... }` se v `pool-status.ps1`
-  vyskytuje dvakrát (grep count 2) a `String.Replace` mutuje KAŽDÝ výskyt,
-  takže jedno kolo by odebralo obě hlídky naráz a každá by vypadala, že ji
-  kryje ta druhá. Hlídkové řádky jsou krátké a napříč sesterskými funkcemi se
-  opakují konstrukcí.
-- **Negativní běh rozděl do TŘÍ kategorií, ne dvou: zčervenalo, zůstalo
-  zeleně v obou bězích (regresní zámek), a NEPROVEDENO** (vše za bodem
-  přerušení v transkriptu). Bod přerušení vyčti z transkriptu, než
-  kategorizaci napíšeš, a asercii, která zezelenala jen proto, že mutace
-  vyprázdnila kolekci a testovaná vlastnost je „nic v ní není", neoznačuj
-  za zámek. Kategorii NEPROVEDENO ale hlavně nevyráběj: v sadě, kterou máš
-  v plánu mutovat, sahej na KAŽDÉ pole možná nepřítomného objektu přes
-  guardovaný accessor sady, nikdy přímým `.Pole` na výsledek hledání — právě
-  ten objekt mutace odstraňuje. Sbírej přes
-  `"$(@(… | ForEach-Object { $_.Pole }) -join ' ')"` (pole + `-join`
-  + interpolace dá `''`, když nic nematchlo), ať aserce zčervená místo aby
-  hodila výjimku.
-  Proč: šest asercí za bodem `IndexOutOfRangeException`/přístupu na
-  nulovou vlastnost se v obou sadách nikdy nevykonalo, přesto byly zprvu
-  popsány jako „zůstaly zelené" regresní zámky. Týž tvar pak sadu ukončil
-  dvakrát: `Assert-Match (($r.Checks | Where-Object { $_.Name -eq
-  'context-missing' }).Detail) …` spadl pod `Set-StrictMode` na
-  `handoff-gate.tests.ps1:48` bez souhrnného řádku a poslední aserce souboru
-  se NEPROVEDLA; jinde přímé `$slot.reasons` pod mutací shodilo tři asercie
-  případu a celý pozdější případ, takže první čtení podhodnotilo dopad mutace
-  (2 červené, ve skutečnosti 4). Sada, která uprostřed umře, za bodem smrti
-  neměří nic.
-- **Negativní běh proti merge-base baseline, který má potvrdit VLASTNÍ nové
-  asercie právě uzavíraného tasku, nejdřív zkontroluj, jestli v tom samém
-  souboru — se stejnou „musí existovat reálné X" předpodmínkou — neleží
-  v pořadí spuštění dřív existující asercie z JINÉHO, dřívějšího tasku.**
-  Pokud ano, sada na neopraveném základu umře tam, dřív, než se vůbec
-  dostane k novým asercím. V reportu napiš explicitně, že nové asercie
-  skončily v NEPROVEDENO a proč (typicky: uzavírací task nepřidal žádný
-  produkční kód, jen testové pokrytí chování, které implementovaly dřívější
-  tasky) — nikdy pád neprezentuj jako důkaz platný i pro ně.
-  Proč: nasměrování sady na skutečně neopravený instalátor přes briefem
-  předepsanou merge-base baseline mělo zčervenat vlastní nové asercie tasku;
-  sada místo toho spadla na `[IO.File]::ReadAllText` výjimce nad souborem,
-  který nikdy nevznikl, na úplně PRVNÍ git-lfs-restore asercii v pořadí
-  souboru — patřící dřívějšímu tasku, ne uzavíranému.
-- **Po negativitě, kde brief jmenuje konkrétní počet/název asercí, které
-  mají zčervenat, ověř PO běhu, jestli zčervenaly právě ony — a to v OBOU
-  směrech.** Zčervenalo-li jich VÍC (typicky jiné asercie testující STEJNOU
-  vlastnost na jiné fixtuře), není to chyba, ale úplnější důkaz; report ho
-  vysvětli, ne zamlč. Zčervenalo-li jich MÍŇ, je mezi nimi alibi fixtura:
-  případ, který prochází už PŘED opravou, protože ho odmítne jiná, starší
-  podmínka. Nová kontrolní fixtura proto NIKDY nedědí konfiguraci sousedního
-  bloku — odvoď ji znovu z toho, kterou podmínku má nová aserce nechat
-  rozhodnout.
-  Proč: mutace „odstranění `if (Test-Path …)` větve" zčervenala 5 asercí
-  místo briefem jmenovaných 2 — kaskáda přes změněné `$e.Ref` a shodný
-  scénář IDLE, který testuje tutéž přednost `Báze` řádku na jiné fixtuře.
-  Opačným směrem: kontrolní fixtura zděděná s `epicBranchPattern: "epic/*"`
-  po sousedních epikových fixturách dala RED `2/353` místo očekávaných
-  `3/353` — vzor sám odmítne `develop`, takže se fixtura k testované bázové
-  podmínce vůbec nedostala a deny půlka procházela už před opravou; odhalilo
-  to jen čtení, KTERÉ asercie zčervenaly.
-- **Prázdný `git diff` po obnově souboru z negativity-checku nic
-  nedokazuje, pokud je soubor `??` (netrackovaný).** Před spoléháním na
-  tuto kontrolu ověř `git status --short` na dané cestě; je-li netrackovaný,
-  porovnej obnovený soubor přímo s pre-mutační zálohou (diff/checksum).
-  Proč: `git diff` mlčel před i po chybné obnově souboru, který byl v tomto
-  tasku teprve vytvořen a ještě ne `git add`ovaný — prázdný výstup by
-  nerozeznal správnou obnovu od žádné.
-- **Když mutovaný soubor už nese nekomitované úpravy ze stejné vlny,
-  obnovu dělej zálohou (`Copy-Item` před mutací, `Move-Item -Force` zpět),
-  ne `git checkout -- <path>`,** a ověř `git diff --numstat` proti
-  pre-mutačním počtům plus grepem mutovaného konstruktu zpět na původní
-  text. Kontrola „prázdný `git diff`" platí jen tam, kde byl soubor před
-  mutací čistý. Explicitní tvar důkazu: před mutací zkopíruj soubor do
-  scratche a spočítej `sha256sum`; po obnově porovnej `sha256sum` obou
-  souborů a `cmp`.
-  Proč: `git checkout` by spolu s mutací zahodil i uncommitnutý docstring
-  rewrite ze stejné vlny; prázdný `git diff` po takové obnově by dokazoval
-  ŠPATNÝ stav. Platí i pro netrackovaný soubor s nekomitovanými úpravami ze
-  stejné vlny — `sha256sum`+`cmp` obou kopií dokáže obnovu i tam, kde
-  `git diff --numstat` na netrackovanou cestu mlčí.
-- **Když je parametr aserčního helperu typovaný `[bool]`, guardovaný index
-  ukonči SROVNÁNÍM** (`(… | Select-Object -First 1 -ExpandProperty X)
-  -eq $true`), **ne jen `Select-Object -First 1 -ExpandProperty X`.**
-  Netypované parametry (`Assert-Eq`) srovnání nepotřebují.
-  Proč: prázdná pipeline se pod mutací svázala s `[bool] $cond` jako `""` a
-  hodila `Cannot process argument transformation`, tutéž chybu, kterou
-  guard měl odstranit, jen jinde — ověř tvar spuštěním sady pod mutací, obě
-  varianty vypadají v diffu identicky.
-- **Totéž pravidlo platí na VOLACÍ STRANĚ, ne jen u indexeru: je-li argument
-  `[bool]`-typovaného parametru sestavený jako `(<pipeline-nebo-array-match>).
-  <vlastnost-nebo-srovnání>`, koncové `-eq`/`-gt`/apod. srovnání musí být
-  UVNITŘ TÉŽE vnější závorky jako pipeline, ne jen uvnitř vnitřní.** Bez toho
-  PowerShell zpracuje operátor srovnání a jeho pravou stranu jako DALŠÍ
-  poziční argumenty volání — u striktně typovaného `[bool]` parametru to
-  skončí stejnou `Cannot process argument transformation` chybou, jakou má
-  guard hlídat, jen na jiném místě.
-  Proč: brief navržená aserce `Assert-True (@($slot.reasons) -match '...').
-  Count -eq 1 '...'` by se takhle neparsovala — nezávorkovaný `.Count -eq 1`
-  za paren-wrapped pipeline se váže jako přebytečné poziční argumenty, přesně
-  ta past, kterou existující pravidlo výše řeší, jen tentokrát na straně
-  volání funkce, ne indexu do pole. Chybu zachytil a opravil ruling tasku
-  ještě před spuštěním, ale je to druhý, samostatný výskyt téhož footgunu.
-- **Před psaním indexových guardů spusť mutaci a přečti, KTERÝ index selže
-  první — guarduj celou kolekci, kterou mutace zasahuje, ne jen indexy,
-  které review vzorkovalo.** Redundantní `Count -ge N` u indexu NECH i tam,
-  kde ho řádkový filtr garantuje, a napiš do komentáře, že je redundantní
-  a proč: teprve pak dá mutace toho filtru čitelný report s červenými právě
-  jeho vlastními asercemi. Mutaci ověř oběma směry.
-  Proč: mutace `%(refname:lstrip=3)` → `%(refname:short)` vyprázdnila
-  seznam kandidátů od první skupiny asercí (řádek 46), sedm řádků před
-  dvěma indexy, které review jmenovalo (53, 57); guard jen jmenovaných
-  řádků by sadě nedovolil ohlásit vlastní selhání. A mutace řádkového filtru
-  zpět z `Count -ge 6` na `-ge 4` nezčervenala ani jednu ze dvou asercí
-  o filtru: čtyřbuňková řádka došla k novému `$s[5]`, `Set-StrictMode` hodil
-  `IndexOutOfRange`, skript skončil exitem 1 BEZ reportu a zčervenalo pět
-  asercí, tři z nich o úplně jiných řádcích — kolo o filtru nedokázalo nic.
-- **Zúžení řádkového filtru nad artefaktem, který už má instance v terénu,
-  potřebuje detektor migrace A pojmenovanou hlášku pro každou zahozenou
-  řádku.** Vkládáš-li sloupec do pozičně parsované tabulky, filtruj na
-  `Count -ge <počet buněk, které report opravdu čte>` a spáruj to
-  s kontrolou uzavřeného slovníku nad NOVOU buňkou; napiš fixturu, která
-  nese řádku z doby před sloupcem. Zároveň si nech předfiltrovanou kolekci
-  a pro každou odfiltrovanou řádku vypiš vlastní hlášku, na kterou pak
-  asertuješ. Otázka na nový filtr není „nechá správné řádky", ale „co uvidí
-  čtenář u těch, které zahodí" — a ve strojově čteném reportu, ze kterého
-  jiné sezení rekonstruuje stav, je „nic" jediná odpověď, která nesmí být
-  možná.
-  Proč: tři kandidátní filtry porovnány proti reálným fixturám — `-ge 7`
-  (vyžadovat plný nový tvar) tiše ZAHODÍ každou starou řádku, `-ge 4`
-  (nechat beze změny) přečte její volnou prózu jako hodnotu uzavřeného
-  slovníku; teprve `-ge <čtené buňky>` plus slovníková kontrola udělá
-  z legacy řádky pojmenovanou, tiketem identifikovanou nesrovnalost. A i se
-  správným filtrem (`-ge 4` → `-ge 6`) šlo o regresi: čtyřbuňková řádka se
-  přestala vykreslovat, počet sekcí tiše klesl ze 3 na 2 a v sadě si toho
-  nevšimlo NIC, protože každá aserce se ptá, co report UKAZUJE.
-- **Negativní asercii piš na KLÍČ PLUS token jedinečný pro testovanou
-  sekci** (`'UMS-5003.*rozjeto'`), nikdy na identifikátor, který legitimně
-  stojí i v jiných sekcích téhož reportu; před napsáním aserce si na ten
-  identifikátor projdi celý text reportu.
-  Proč: `Assert-NotMatch $out 'UMS-5003'` mělo dokázat, že spawn řádka
-  z reportu zmizela — kód byl zelený, aserce červená: tiket je zároveň
-  ČLENEM ledgeru a objevuje se v seznamu členů, což aserce od spawn řádky
-  nerozliší.
-- **Podmíněný důkazní/kontrolní krok (proběhne jen když to vstup/konfigurace
-  umožní) drž na TŘECH stavech, ne dvou** (`$null` = neproběhlo), a jeho
-  přeskočení VŽDY ohlas vlastní poznámkou odlišenou od potvrzení. Do
-  agregovaného výsledku přidávej podmínku jen pod `if ($null -ne $result)`,
-  nikdy prostým booleovským AND. Ke kroku navíc přidej vlastní kontrolu se
-  STEJNÝM tvarem vstupu, kterou testovaná podmínka nepokrývá, a sdílej mezi
-  oběma proměnnou, jejíž záměna důkaz kazí — jinak mutace zpět na
-  dekorativní podobu kroku projde celou sadou beze zmínky.
-  Proč: naivní `$ok = … -and ($extra.Code -ne 0)` by při přeskočení
-  srovnávalo `$null` a zezelenalo/zčervenalo náhodou; konfigurace jako
-  `ums-*`, která krok sama odebrala, nechala výstup zeleně beze signálu —
-  zmizela tak jediná pojistka proti návratu dekorativního důkazu.
-- **Jméno, které si testovací kód pro pozitivní kontrolu vymyslí (větev,
-  soubor), prověř proti reálné konfiguraci uživatele**, ne proti vlastní
-  představě „neutrálního" jména. Měj víc strukturálně různých kandidátů
-  a vezmi první nekonfliktní; když nezbyde žádný, krok přeskoč a ohlas to —
-  nikdy z toho nedělej chybu uživatelovy konfigurace.
-  Proč: pevné jméno `feature/ums-install-verify` v repozitáři, který chrání
-  `feature/*`, způsobilo, že hook správně zamítl push a instalátor to
-  přečetl jako rozbitý hook.
-- **Tvrzení „stav/počet X je takový" ověřuj strojově v TOMTO běhu**, ne
-  odvozením z briefu, review nebo z toho, že jiné pravidlo to naznačuje — a
-  testuj na případu, kde má detektor NĚCO najít, ne na tom, kde má vrátit
-  prázdno. Negativní běh je jako důkaz bezcenný právě tam, kde je „nic" i
-  legitimní stav (IDLE, čistý strom, žádné nálezy). Totéž platí o tests-first
-  RED běhu: zavádí-li vlna nový PARAMETR nebo cokoli, co může shodit samotnou
-  invokaci, vypíchni zelené asercie toho běhu zvlášť a důkaz jim seber
-  z mutace. Levná kontrola je aserce na exit kód plus jedna POZITIVNÍ hodnota
-  ve stejném běhu — selhala-li pozitivní s `got ''`, skript vůbec neprodukoval
-  výstup a žádná zeleň toho běhu není důkaz.
-  Proč: brief tvrdil dvě kotvy na jednom řádku; `--` uvnitř slugu se čte
-  jako dvě pomlčky, ale je to jedna kotva — a `grep -c ACTIVE` na bázové
-  `context.md` (IDLE) vrátil `0`, což je i správná odpověď na IDLE; teprve
-  běh proti scratch větvi se skutečným pinem ukázal také `0` — grep je
-  slepý v obou stavech. V RED běhu `24/91 FAILED` bylo z 39 nových asercí
-  15 ZELENÝCH — právě ty, jejichž očekávaná hodnota je `$null`, `''` nebo
-  „žádný blok": nové případy předávaly parametr, který ještě neexistoval,
-  `pwsh` invokaci odmítl, žádný JSON nevznikl a null-safe accessory vrátily
-  `$null`. Běh měřil „skript neběžel", ne „hlídka funguje".
-- **Tvrzení briefu „tahle konkrétní asercie je právě teď červená" ověř
-  spuštěním sady v TOMTO běhu, nikdy převzetím z briefu, review nebo z toho,
-  že jiné pravidlo to naznačuje.** Loose substring aserce (celý soubor jako
-  řetězec) může být zelená dřív, než ji task vůbec upraví, protože stejný
-  literál leží jinde v souboru už z dřívějška — předpověď „červená → zelená"
-  se nesplní a task na tom nic nezmění.
-  Proč: floor-line aserce pro `playbook.md` byla `ok` ještě PŘED editem
-  tasku 9 — je to substring match nad celým souborem, ne kontrola konkrétní
-  řádky escalation tabulky, a literál `playbook.md` už ležel jinde v core
-  z dřívějších tasků. Reálný nový řádek floor tabulky tedy nezměnil počet
-  výsledků sady vůbec, přesný opak toho, co brief předpověděl.
-- **Aserce o TABULKOVÉM ŘÁDKU musí číst datové řádky té tabulky, nikdy celý
-  soubor jako řetězec.** `(($lines -join "`n") -match [regex]::Escape($klíč))`
-  zůstane zelená i po smazání řádku s tím klíčem, pokud token klíče existuje
-  ještě jinde v souboru. Spáruj kontrolu KAŽDÉHO klíče („právě jeden řádek")
-  s kontrolou POČTU řádků tabulky — první chytí smazaný řádek, druhá přidaný
-  řádek bez asserčního klíče, ani jedna nechytí to, co chytá ta druhá. Před
-  psaním substring aserce grepni token přes celý soubor a vyžaduj počet 1.
-  Proč: smazání řádku `| Writing into playbook.md | … |` z escalation-floor
-  tabulky nechalo `Assert-True` zelenou — token `playbook.md` se v souboru
-  vyskytuje ještě na 8 dalších řádcích. Náhrada (přečti řádky tabulky, ověř
-  „každý klíč právě v jednom řádku" a „počet řádků == 6") pod stejnou mutací
-  zčervenala s `got '5', want '6'` a `got '0', want '1'`.
-- **V kontrole „X je referencováno odněkud" vylučuj z prohledávané množiny
-  VLASTNÍ soubor X.** Referenční soubor v hlavičce sám sebe cituje
-  (`cite as`), takže bez vyloučení je aserce „každá reference má konzumenta"
-  splněná bezpodmínečně a nemůže zčervenat ani pro throwaway referenci bez
-  jediného externího konzumenta. Ověř throwaway referencí, kterou nic
-  nepoužívá — je to levnější negativní test než mazání reálného konzumenta a
-  nezanechá strom v polorozbitém stavu.
-  Proč: throwaway `zzz-probe.md` bez konzumenta prošel kontrolou nezměněně,
-  dokud scan zahrnoval i vlastní hlavičku souboru; po vyloučení vlastního
-  souboru dala stejná sonda „každá reference má konzumenta: zzz-probe.md".
-- **Počty asercí v dokumentaci vždy získej spuštěním CELÉ sady ve stejném
-  sezení jako úpravu**, nikdy aritmetikou nad čísly z review nebo staršího
-  zápisu. Nové číslo rekonciliuj proti předchozímu přes delty, které jsi sám
-  zavedl. Součet per-sadových čísel nech spočítat strojově
-  (`… | grep -Eo '^[0-9]+ passed' | awk '{s+=$1} END {print s}'`), nikdy
-  ručně v hlavě — a počet sad, přes které sčítáš, ber z `find ums -name
-  "*.tests.ps1" | wc -l`, ne z vlastního seznamu dávek. Když se čerstvý běh
-  rozchází s baseline, kterou tvrdí brief, autoritou je vlastní report
-  BEZPROSTŘEDNĚ předcházejícího tasku, ne brief — brief tu baseline jen
-  restatuje a mezi napsáním plánu a během tasku zestárne.
-  Proč: všechna čísla byla před vlnou správná, ale vlna přidala 16 asercí;
-  spuštění všech 13 sad dalo 564 a delty (+4/+2/+3/+7) přesně sedly na
-  rozdíl. Ruční součet stejných šestnácti (naměřených, správných) čísel dal
-  693 místo správných 716 — chybu odhalily až delty proti předchozímu kolu;
-  jinde vlastní seznam dávek tvrdil 15 sad, výpis smyčky jich uvedl 16
-  a `find` jich napočítal 17. A jinde brief tvrdil baseline 1384, strojový
-  součet dal 1366 a delta z jediné vlastní změny (`handoff-gate.tests.ps1`
-  18→32, net +14) vedla na 1352 — přesně to číslo, které jako svůj vlastní
-  výsledek smyčky zaznamenal report předchozího tasku.
-- **Fixture repo pro testy nad stářím/aktivitou commitu nastavuj datem
-  vyjádřeným jako věk ve dnech vůči času vytvoření fixtury**
-  (`GIT_AUTHOR_DATE` i `GIT_COMMITTER_DATE`), ne absolutním datem —
-  proměnné po použití maž.
-  Proč: fixtura, která staré datum nastavovala jen jedné větvi a ostatní
-  nechávala na systémovém čase, by s oknem aktivity 30 dní jednoho dne
-  začala rozhodovat podle toho, kdy se sada spustí.
-- **Než přidáš do zrcadleného adresáře (`Copy-Mirrored` v syncu) nový povinný
-  soubor, dohledej ho v syncovacím skriptu a zjisti, jestli cíl maže
-  a nahrazuje.** Do minimal-but-complete fixtury syncu kopíruj skutečný
-  soubor, ne stub, když ho spotřebitel dot-sourcuje.
-  Proč: fake monorepo ve fixture mělo v `shared/` jen stub; `Copy-Mirrored`
-  ho nahradil za loader z fork copy, instalátor spadl na chybu
-  a nesouvisející test syncu zčervenal o dvě asercie dál.
-- **Fixtura, která sama razí kopii verzované značky** (např. `# ... v2`
-  v testovacím fixture hooku), **ať tu hodnotu čte ze zdroje pravdy stejným
-  sdíleným helperem jako produkční kód** (`Get-UmsHookVersion <cesta-k-
-  hooku>`, dot-sourcený), **ne literálem.** Jinak se fixtura při dalším bumpu
-  verze rozejde přesně stejným způsobem, jaký měla oprava odstranit.
-  Proč: `pool-provision.tests.ps1` case 4 razil fixture hook literálem
-  `# ... v2`; po bumpu hlavičky na v3 by tenhle literál zestárl stejně jako
-  opravovaný `-cmatch 'v2'` gate v produkčním kódu. Po přechodu na
-  `Get-UmsHookVersion` a `v$currentHookVersion` místo literálu sada prošla
-  a zůstane zelená i přes budoucí bumpy.
-- **Vkládání nového testu „na konec, před `Complete-Tests`" do velké
-  `.tests.ps1` sady se sdílenou fixturou ověř trojmo: (1) jsou pomocné
-  funkce, které chceš použít, v tom bodě souboru už definované** (funkce
-  se v PowerShell skriptu musí objevit textově před prvním voláním),
-  **(2) žije v tom bodě sdílená fixtura ještě A má historii, kterou scénář
-  předpokládá** (grep na poslední `Remove-Item -Recurse -Force $root`/
-  `$work` před cílovým místem), **a (3) nemutuje něco mezi stavbou fixtury
-  a tvým místem vložení stav, který chceš znovu použít** — fixtura se
-  v takové sadě nejen staví, ale i uprostřed souboru posouvá. Když sdílená
-  fixtura nevyhovuje, použij existující fixture-helper (`New-PushFixture`
-  a obdoba) místo ohýbání testu na zastaralý stav sdílené fixtury.
-  Proč: instrukce „přidej na konec souboru, před `Complete-Tests`" byla
-  jednou čtena doslovně a `$root` (a tedy `$work`/`$origin`/`$canaryOut`)
-  byl už smazaný předchozím řádkem `Remove-Item -Recurse -Force $root`
-  bezprostředně nad `Complete-Tests`. Podruhé stejná past navíc narazila
-  na `Invoke-WithMarker`/`Invoke-WithoutMarker` definované až níž v
-  souboru (`term not recognized`) a na primární fixturu dávno uklizenou
-  o ~230 řádků dřív, jejíž `develop` má navíc vlastní historii nezávislou
-  na `feature/x` od dřívějších case 1/15 — FF-na-publikované test by
-  selhal z fixturní matematiky, ne z testované logiky. Třetí kontrola
-  přibyla po vložení bloku ZA `Move-GateBase`: `$f.MergedSha`, dál používaná
-  jako „čistá baseline", přestala být potomkem posunuté báze a každá aserce
-  „X blokuje POUZE verification-set" dostala navíc `ancestor`
-  (`got 'ancestor,verification-set'`); přesun téhož bloku před to volání
-  opravil všechny beze změny jediného řádku asercí.
-- **Než napíšeš nový test case pozdě v sekvenci, který sdílí `$work`
-  s desítkami předchozích případů, zjisti STROJOVĚ stav klíčové větve před
-  svým testem** (`git log --oneline`/`Get-Sha` local vs. remote) — case,
-  který dřív záměrně nechal větev v divergentním/pozadu stavu, otráví
-  každý pozdější prostý push na stejnou větev.
-  Proč: fixture case 4 (zamítnutý force push) záměrně nechává lokální
-  `feature/x` divergentní od `origin/feature/x`; nový case 22 dělal prostý
-  checkout + commit + push bez resynchronizace a `git push origin
-  feature/x` skončil `! [rejected] ... (non-fast-forward)` — odmítnutí na
-  úrovni samotného gitu, ne kvůli testovanému hooku/chainingu.
-- **Smyčku přes všechny testovací sady vrstvy spouštěj jedním FOREGROUND
-  voláním s explicitně nastaveným parametrem `timeout` (600000 ms), nikdy
-  na pozadí.** Dávkování po 1–4 souborech je fallback pro kontext, kde
-  explicitní timeout k dispozici není. Jako subagent na background
-  nespoléhej vůbec: notifikace o dokončení jde koordinátorovi, ne tobě,
-  a vlastní smyčka tahů ji nemá jak spotřebovat — příkaz, který harness sám
-  přesune na pozadí, znamená, že sezení stojí, dokud koordinátor nezasáhne.
-  **Pokud i tak jeden 600000ms foreground běh skončí přesunem na pozadí,
-  není to signál k dalšímu manuálnímu dávkování ani k čekání přes tahy
-  navíc — nejvýš jeden opakovaný pokus, pak STOP:** nahlas přesně, co
-  doběhlo a co zůstává neověřené, a nech rozhodnutí (spustit sám, přijmout
-  částečné/jednosadové ověření, prodloužit rozpočet) na koordinátorovi;
-  neukončuj vlastní tah čekáním na prázdné/no-op volání.
-  Proč: `for t in $(find ums -name "*.tests.ps1"); do pwsh ...; done` jako
-  jeden Bash příkaz s VÝCHOZÍM timeoutem přesáhl 2–5minutový limit uprostřed
-  sad (jedna sada sama běžela přes minutu) a byl zabit bez signálu, které
-  sady doběhly. S `run_in_background` bylo pollování výstupního souboru
-  neodlišitelné od zamrznutí (běh vypadal zaseknutý v `pre-push.tests.ps1`),
-  zatímco tentýž běh na popředí doběhl hluboko pod desetiminutovým limitem
-  a dal shodný výsledek (23 sad, 1239 asercí, žádné `FAILED`). Monitor
-  s kontrolou živosti procesu (grep `pwsh` v `/proc/*/status`) nad
-  backgroundem navíc vyrobil falešnou událost „stream ended" místo skutečného
-  signálu dokončení. V jiném sezení se i celý 28sadový běh s `timeout:
-  600000` na popředí dvakrát přesunul na pozadí sám (harnessem), přestože
-  jednou dorazila kompletní a správná dokončovací notifikace přímo
-  subagentovi, ne jen koordinátorovi — spolehlivost notifikace tedy NENÍ
-  zaručená v tahu, který má pokračovat dál, a opakovaný manuální retry
-  s menší dávkou (4 sady, `timeout: 180000`) skončil stejně; skutečným
-  problémem bylo vlastní ukončování tahů čekáním na tuto notifikaci místo
-  reportu stavu a čistého předání.
-- **Úklid throwaway fixtury přes `rm -rf` dělej jako samostatné, izolované
-  volání, ne zřetězené `&&`/`;` s dalšími příkazy.**
-  Proč: bezpečnostní hlídka nástroje zablokovala i čistě throwaway
-  `mktemp -d` fixture zřetězenou s dalšími příkazy v jednom volání — reaguje
-  na přítomnost `rm -rf` v řetězci bez ohledu na cíl. Když nástroj odmítne
-  i izolované volání, fixture v OS temp adresáři je bezpečné nechat ležet
-  (neovlivňuje stav repa) a úklid vynechat.
-- **Ta samá hlídka reaguje i na cíl schovaný za `$(...)` příkazovou
-  substitucí, ne jen na literální cestu** — indirekce přes proměnnou nebo
-  soubor (`rm -rf "$(cat /tmp/marker.txt)"`) nástroj neobejde.
-  Proč: izolované volání `rm -rf "$(cat /tmp/...)"` mimo repozitář bylo
-  zamítnuto stejně jako přímé `rm -rf <tmp-dir>` — nemá smysl schovávat cíl
-  za substituci, prostě nech throwaway fixturu ležet, stejně jako u
-  literální cesty výše.
-- **Než na faktu z ledgerového `Ruling:` postavíš testovací fixturu (obsah
-  adresáře, počet, členství), ověř si ten fakt STROJOVĚ v aktuálním sezení
-  (`ls`/`Get-ChildItem`) — bez ohledu na to, že ruling jako ROZHODNUTÍ je
-  závazný.** Ověřování faktu není znovuotevírání rozhodnutí; ukáže-li se
-  fakt mylný, dodrž rozhodnutí rulingu a oprav jen tu nejužší část sdílené
-  fixtury, o kterou se opíral (jeden default string v jednom helperu) — ne
-  rozšiř mechanismus na případy, pro které rozhodnutí nikdy nebylo míněno.
-  Proč: ruling tvrdil, že sesterský adresář skillů vedle hooku má 19 skillů
-  „včetně subagent-driven-development" — počet byl správný, členství ne
-  (`ums/.claude/skills` má 19 vlastních `mb-*`/`shared` položek; vendorovaný
-  skill žije jen ve sloučeném NASAZENÉM stromu, `.claude/skills`, 36
-  položek). Beze změření by to rozbilo tucet existujících baseline fixtur
-  hned po nasazení validace a ticše proměnilo několik nesouvisejících testů
-  jiných hlídek (branch/slug mismatch, escape/injection, oversize, detached
-  HEAD) v zámky nové kontroly, ne v důkaz těch původních.
-- **Fixtura s linked worktrees sdílejícími jeden `.git`, která potřebuje
-  GENUINE čistý strom pro IDLE/baseline případ, musí do základního commitu
-  před založením worktrees dostat (a) `.gitignore` pro to, co kontrakt už
-  prohlašuje za ignorované (`.superpowers/`), (b) `.gitattributes` s
-  `eol=lf` (`* text=auto eol=lf`), aby čistota nezávisela na
-  `core.autocrlf` hostitele, a (c) obsah každého trackovaného souboru, který
-  má helper reprodukovat bajt po bajtu, zapisovat `Set-Content -NoNewline`
-  (s koncovým „`n" vloženým přímo do řetězce) — v INICIÁLNÍM commitu i při
-  každém pozdějším přepisu tím helperem.**
-  Proč: bez (a) byl `.superpowers/` bez `.gitignore` untracked a „čistý"
-  strom fixtury vypadal špinavý. Bez (b)/(c) `Set-Content -Value $s` (kde
-  `$s` už končí na „`n") připojil navrch ještě HOSTITELŮV vlastní konec
-  řádku (CRLF na Windows) — přepis stejného obsahu už commitnutého,
-  git-normalizovaného (`eol=lf`) souboru pak bajtově nesouhlasil a hlásil se
-  jako modifikovaný.
-- **Kanárek testující exec bit odsunutého cizího hooku ověřuj jen tím, že
-  PO instalaci vůbec existuje/byl zavolán — ne tím, že se neaktivoval dřív,
-  než to udělá tvůj vlastní test krok.**
-  Proč: `Invoke-Installer` sám spustí `run_chained` v rámci svého vlastního
-  self-test proof (accept-běh hook nezamítá, takže zavolá řetězený cizí
-  hook) — kanárkový soubor existoval hned po instalaci, ještě před reálným
-  pushem testu. Instalátorův self-test proof je legitimní dřívější
-  spouštěč stejné vlastnosti, ne šum k vyloučení.
-- **Fallback na přímou kontrolu `test -x` drž jako záložní plán jen pro
-  případ, kdy stavba nové push-schopné fixtury (origin + work + upstream
-  ticket větev) není proveditelná — jinak je canary bez chmod silnější
-  důkaz a patří první.**
-  Proč: canary testuje END-TO-END chování přes `run_chained`, ne jen bit na
-  disku; ověřeno na nové fixtuře analogické existující primární fixtuře —
-  postavila se bez potíží a reálný push spolehlivě ukázal spuštění
-  kanárku napoprvé.
-- **U přejmenování s přechodnou kompatibilitou (staré jméno dál funguje)
-  nestačí RED běh proti nezměněnému kódu — přidej pro každou dvojici
-  staré/nové jméno asercii na PLNÝ text hlášky zastaralosti (obsahující OBĚ
-  jména) a její nosnost ověř cílenou mutací té větve.**
-  Proč: dvě asercie o přechodném přijímání starého jména byly zelené i
-  v RED běhu, protože starý hook staré jméno propouštěl jinou větví; cílená
-  mutace (smazání `elif` větve v novém kódu) dala `3/203 FAILED` a
-  odhalila, že vzor jen na nové jméno matchne i sousední zamítací hlášku
-  a nic nehlídá.
-- **U každého nového kontrolního/negativního případu si nejdřív odpověz,
-  KTERÝ mechanismus na něj dopadá; pokud ho vyřazuje jiný, starší
-  mechanismus než ten, co právě opravuješ, je to regresní zámek, ne důkaz
-  opravy — do sady důkazů ho nepiš.** Rychlá kontrola: spusť ho proti kódu
-  PŘED opravou; zelený případ tam znamená zámek.
-  Proč: kontrolní případ `grep -rn "git push --mirror" docs/` byl zelený
-  i před opravou command position, protože token je `"git` (s uvozovkou)
-  a `isGitToken` ho neuzná — s opravou neměl nic společného. Nahradily ho
-  `echo git push --mirror` a heredoc, kde je token `git` neuvozený a rozdíl
-  před/po je skutečný.
-- **Negativity-check guardu proti selhání přesměrování z chybějícího
-  souboru nemůže na msys `sh` čekat zčervenání „operace prošla" —
-  neinteraktivní shell selhání přesměrování v tomto prostředí fatálně
-  ukončí sám, ještě před testovaným kódem. Aserci piš na ROZLIŠITELNÝ
-  pozorovatelný projev (vlastní hláška/formát/kód), a v reportu odděl „co
-  guard mění pozorovatelně" od „co by teoreticky mohlo selhat jinak na
-  jiném POSIX shellu".**
-  Proč: dočasné odstranění fail-closed guardu (`cat > "$stdin_buf" || {…;
-  exit 1; }`) mělo shodit všechny tři asercie fail-open scénáře; místo
-  toho `done < "$stdin_buf"` s neexistujícím souborem fatálně ukončil
-  skript na msys `sh` dřív, než se dostal k `run_chained`/`exit 0` —
-  zčervenala jen aserce na UMS hlášku, zbylé dvě zůstaly zeleně i bez
-  guardu.
-- **Při vlně, která rozšiřuje sadu i kód zároveň, spusť vedle nové sady
-  i HEAD verzi TÉŽE sady proti novému kódu** (`git show HEAD:<suite> |
-  Set-Content <tests-dir>/_baseline-count.tests.ps1`, ve stejném adresáři
-  `tests/`, jako dočasný soubor) — výsledek je zároveň baseline pro deltu
-  i regresní důkaz aditivnosti. Po běhu soubor smaž a ověř `find ums -name
-  "*.tests.ps1" | wc -l`, aby dočasná sada nezůstala ve smyčce vrstvy.
-  Proč: součet per-suite čísel dal 892 proti dřívějším 842, ale sám
-  neříkal, jestli je rozdíl jen z nových asercí, nebo jestli některá
-  stávající asercie otočila verdikt — spuštění HEAD verze sady proti
-  novému kódu vrátilo `220 passed`, exit 0, a rozhodlo obě otázky
-  najednou.
-- **Při bisekci velké `.tests.ps1` sady dělej `sed -n '1,Np'` probe kopie
-  VE STEJNÉM adresáři jako originál (ne do `/tmp`)**, ať
-  `$PSScriptRoot`-relativní cesty (`. (Join-Path $PSScriptRoot
-  '_assert.ps1')`, `..\install-git-hooks.ps1`) fungují beze změny; po
-  skončení bisekce probe soubory smaž.
-  Proč: kopie v `tests/` zdědila stejný `$PSScriptRoot` jako originál, takže
-  bisekce (probe1/probe2/probe3) mohla přímo spouštět částečné verze velké
-  sady bez úpravy relativních cest; kopie mimo `tests/` by totéž vyžadovala
-  ruční přepis cest.
-- **Pass/fail českých PowerShellových sad posuzuj z markerů, ne z prózy.**
-  Grepuj markery `FAIL`, řádek `<N> passed` a kontroluj exit kód, ne
-  vykreslený text hlášky.
-  Proč: české asserční hlášky se v tomhle prostředí vykreslují jako mojibake
-  kvůli neshodě konzolové code page, zatímco markery, počet a exit kód
-  zůstávají spolehlivé.
-- **Asertuj proti syrovému textu, který spotřebitel opravdu čte, ne proti
-  hodnotě přečtené zpátky přes parser.** V helperu sady, který spustí skript
-  a naparsuje jeho JSON, drž vedle objektu i RAW text (`@{ Data = …;
-  Raw = … }`) a každý timestamp asertuj proti němu
-  (`Assert-Match $r.Raw '"dueAt":\s*"2026-09-07T09:42:00Z"'`). Totéž
-  u vlastností, které nepřežijí serializaci: asertuj na to, co jí PROJDE
-  (celý očekávaný řetězec plus NEPŘÍTOMNOST U+FFFD v syrovém souboru), ne na
-  vlastnost porušené hodnoty samotné, a round trip si napřed ozkoušej
-  zahazovacím skriptem — co vidí spotřebitel, je round trip, ne hodnota
-  v paměti.
-  Proč: `ConvertFrom-Json` přeparsuje každý ISO-8601 vypadající řetězec na
-  `[datetime]`, takže čtyři asercie selhaly s `got '09/07/2026 09:12:00'`,
-  přestože JSON na disku byl správný — srovnání se tiše proměnilo
-  v porovnání s locale formátem data (`-DateKind String` existuje až na velmi
-  nových PowerShellech a spoléhat se na něj tu nejde). Opačným směrem byla
-  aserce `[char]::IsSurrogate` na poslední znak hodnoty zelená i POD mutací:
-  osamocený surrogát zapsaný přes `Set-Content -Encoding utf8` se čte zpátky
-  jako U+FFFD (`55357` → `65533`), takže vlastnost je za souborem
-  nepozorovatelná — zámek vydávaný za důkaz; případ nesla jen aserce na
-  délku.
-- **Když se tolerantní věta kontraktu sráží s jeho pravidlem o uzavřeném
-  formátu, napiš fixturu pro OBĚ čtení.** Rozděl případ: (a) tolerantní
-  čtení — text vypadající jako nadpis tam, kde ho uzavřený formát dovoluje
-  (kolem regionu a uvnitř HODNOTY položky), s asercí, že se blok pořád
-  parsuje celý; (b) čtení podle uzavřeného formátu — holý nadpisový ŘÁDEK
-  umístěný AŽ ZA všechny povinné položky, s asercí, že blok čte jako
-  nepřítomný. Pozici v (b) volíš schválně: je to jediné místo, kde by čtenář
-  s hranicí na nadpisu vrátil sebejistý platný blok, takže aserce mezi
-  oběma implementacemi rozlišuje, místo aby pravidlo jen převyprávěla.
-  Proč: věta „próza mezi markery, která vypadá jako nadpis, nic nemění"
-  a pravidlo téže sekce „řádek mimo tvar `Key: value` dělá blok malformed"
-  nemohou obě platit pro holý nadpisový řádek uvnitř regionu — kterékoli
-  čtení samo by dalo sadu souhlasící jen s polovinou sekce.
-- **Obnovu netrackovaného cíle mutace ověřuj hashem, ne gitem.** U každého
-  souboru, který je na aktuální větvi nový nebo netrackovaný, ověřuj obnovu
-  po mutačním testu hashem obsahu zachyceným před první mutací, plus `cmp`.
-  Přesáhne-li kontrola jedno volání nástroje, zapiš CESTU zálohy a její
-  SHA-256 do trvalého artefaktu, který otevře další čtenář (report tasku nebo
-  SDD ledger), ne jen do transkriptu — a když přebíráš přerušenou vlnu,
-  podívej se po záloze pod git-ignorovaný `.superpowers/` DŘÍV, než z `git
-  status` uzavřeš, že žádná není.
-  Proč: git je vůči mutacím netrackovaného souboru slepý oběma směry, takže
-  `git diff` nic nehlásí bez ohledu na to, jestli byla obnova správná nebo
-  zpackaná — je to prázdný, bezcenný pass. Táž slepota stála jednou za
-  falešnou inventurou: sezení zemřelo uprostřed mutace, `git status` ze
-  zálohy neukázal nic (`.superpowers/` je ignorovaný) a navazující sezení
-  uzavřelo „žádná záloha tu není", přestože záloha ležela na disku a byla
-  jedinou cestou k bajtově přesné obnově místo rekonstrukce z komentáře.
-- **Aplikace briefova doslovného code-block snippetu na guard/podmínku
-  nestačí sama o sobě — po aplikaci zkontroluj ZBYTEK STEJNÉ funkce na další
-  příkazy, jejichž předpoklady nová podmínka právě změnila** (typicky
-  `Move-Item`/zápis souboru hned za kontrolou tvaru „tahle cesta nesmí už
-  existovat"). Zúžený guard, který pustí běh k pozdějšímu nepodmíněnému
-  příkazu, může selhat o řádek dál se STEJNOU asercí a STEJNÝM exit kódem
-  jako RED před opravou — a snadno se to přečte jako „oprava se neuchytila",
-  ne jako „existuje druhá, nepopsaná mezera".
-  Proč: aplikace jen briefova Step 3 snippetu (výjimka pro existující
-  `.ums-chained`) nechala stejné tři asercie padat pořád se stejným
-  `Code '2'`, ale z jiného důvodu: `Move-Item -LiteralPath $Path -Destination
-  $dst` bez `-Force`, o pár řádků níž ve stejné funkci `Move-ForeignHook`,
-  spadlo, protože `$dst` už existoval — funkce skončila ve vlastním catch
-  bloku a vrátila `Refused` znovu. Izolovaná ruční repro fixtury dala
-  přesnou hlášku: „could not move the foreign hook to ... Nelze vytvořit
-  soubor, který již existuje."
-- **Mutaci odebraného pole může zastínit ranější kontrola — nebo samo místo
-  volání.** Když předvídáš, které případy má mutace odstraňující hlídku
-  zčervenat, zkontroluj, jestli stejný symptom už nepokrývá ranější,
-  obecnější validace (kontrola povinného pole nebo tvaru), a u podmínky
-  uvnitř víceslovného predikátu přečti VOLAJÍCÍHO, jestli tutéž podmínku
-  nevyžaduje už on; pokud ano, ten případ legitimně zůstává zelený
-  a patří do reportu jako očekávaná odchylka, ne jako rozbitý mutační test.
-  Podmínku nepozorovatelnou z místa volání hlas jako „nefalzifikovatelná zde
-  (obrana do hloubky)", ne jako „nic nehlídá", a předpověz to v plánu, ať se
-  kolo nečte jako nález.
-  Proč: odstranění celé hlídky větve zčervenalo tři ze čtyř předpovězených
-  případů — „chybějící Branch" zůstalo zelené, protože kontrola povinných
-  polí ho zamítá dřív, než se vůbec dostane k hlídce. A odebrání podmínky
-  `isProtected` z predikátu nezčervenalo NIC: call site
-  `targets.findIndex((t, i) => isProtected(t, patterns) &&
-  !isEpicFastForward(...))` tutéž podmínku už vyžaduje, takže kolo 3 dalo
-  `344 passed`, shodně s nemutovaným během.
-- **Každá podmínka ANDovaného predikátu potřebuje fixturu, ve které
-  rozhoduje JEN ona** — ostatní podmínky splněné, tahle porušená. Dvě
-  podmínky, které umí odmítnout tentýž vstup, si dělají navzájem alibi a ani
-  jedna tím není dokázaná. Zvláštní případ téhož: ke každému `-cne` (nebo
-  jinému case-sensitive komparátoru) přidanému do hlídky napiš vyhrazený
-  případ, jehož dvě hodnoty se liší JEN velikostí písmen; obecný případ
-  „tohle jsou různé hodnoty" není pokrytí negativity pro tenhle komparátor.
-  Audit fixtur dělej při psaní RED asercí, ne až po negativním kole —
-  chybějící fixtura s jediným rozhodovatelem vypadá přesně jako dekorativní
-  podmínka.
-  Proč: mutace `-cne` na `-ne` v hlídce slugu nezměnila nic měřitelného —
-  `jiny_slug` a `x` se liší i case-insensitive, takže sada prošla 57/57
-  s živou mutací a nedokázala nic o case-sensitivitě. Totéž o kolo dál
-  u dvojice podmínek: negativní aserce z briefu (`raw SHA -> refs/heads/
-  develop`, báze = `develop`) měla dokázat vzorovou podmínku, jenže cíl byl
-  zároveň bází, takže verdikt držela bázová podmínka a odebrání vzorové bylo
-  neviditelné — a v dalším kole zrcadlově naopak. Obě kola zelená, ani jedna
-  podmínka dokázaná.
-- **Skutečná volání gitu počítej `git.bat` shimem dřív v `PATH`, ne mockem** —
-  zaznamená si argv a přepošle je reálnému gitu, takže měří to, co se opravdu
-  stalo, a funguje i pro volání z **potomka** `pwsh`, kterého spouští
-  `Invoke-Index` a podobné helpery (potomek dědí `PATH`). Před napsáním jakékoli
-  asercie na počty ověř dvě věci: že se shim opravdu použil (neprázdný log a
-  v něm volání, které dělá jen potomek, například `for-each-ref`), a že
-  **nezkresluje** — porovnej výstup skriptu pod shimem s během bez něj a
-  vyžaduj bajtovou shodu.
-  Proč: batch soubor re-expanduje `%`, takže argument `--format=%x01%H%x09…`
-  je kandidát na rozbití; měřeno, prošel beze změny a výstupy byly identické,
-  ale bez té kontroly by čísla popisovala jiný běh než ten skutečný. A shim,
-  který se nepoužije, dělá z každé asercie na počet volání zelenou nulu.
+- **Text citující `--no-verify`, `MB_HUMAN_PUSH=1` nebo `git push` piš do
+  souboru a spouštěj jako skript, ne jako literál v parametru Bash/PowerShell
+  toolu; totéž nad ~100 řádky payloadu.** Proč: hlídka nástroje čte jen
+  literální text parametru, ne obsah spouštěného souboru. Důkaz: 44ccb57
+- **Krok ověřující řetězení proti reálnému LFS hooku prováděj v
+  throwaway klonu s nakonfigurovaným (byť fiktivním) remote `origin`.**
+  Proč: self-test proof bez `origin` spadl na „Invalid remote name" —
+  `run_chained` volá skutečný git-lfs. Důkaz: 0d40535.
+- **Před nabídkou kandidátů báze ověř `git log <kandidát>..<větev>`**
+  **a dokaž přijetí hookem poctivou čtveřicí refů před předáním příkazu.**
+  Proč: báze 34 commitů pozadu byla jednou zvolena mlčky, protože nic
+  ve vstupní bráně na integraci nekouká. Důkaz: e0eb939.
 
-## PowerShell v této vrstvě
+### Když nasazuješ nebo revendoruješ
 
-- **Nikdy nedávej kudrnaté uvozovky dovnitř řetězce uvozeného odpovídajícím
-  ASCII znakem.** U+201C/U+201D/U+201E/U+201F i U+2018/U+2019/U+201A/U+201B
-  bere parser jako zaměnitelné ukončovací znaky. České uvozovky patří výhradně
-  do jednoduše uvozeného literálu (`'…'`), kde na ně parser nereaguje.
-  Proč: řetězec `"…zůstal „Product", zbytek."` se ukončí už na `„` a zbytek se
-  tiše stane bezejmenným argumentem — hláška se usekne uprostřed věty, bez
-  chyby a bez varování. Všechny výstupy této vrstvy jsou česky, takže je to
-  past, na kterou se tu naráží opakovaně. Kontroluj ji greppem přes celý
-  skript, ne jen tam, kde chybu čekáš.
-- **Potřebuje-li `.ps1` v této vrstvě typografickou uvozovku uvnitř řetězce
-  v dvojitých uvozovkách, napiš ji jako `` `u{201E} `` (obecně `` `u{N} ``)
-  a důvod zapiš do komentáře; ověř snippet zápisem do SOUBORU a spuštěním
-  `pwsh -NoProfile -File`, nikdy přes `-Command` s tím znakem na příkazové
-  řádce.**
-  Proč: transkripce briefova shape-suite snippetu se znakem „ v `[`"„]`
-  doslova nešla parsovat (`ParserError … Ve volání metody chybí ).`,
-  exit 1); izolováno na dvou řádcích spadlo i na `Neočekávaný token ]`.
-  PowerShell 7.6.6 bere U+201E jako alternativní ukončovací uvozovku, takže
-  se řetězec uzavře na „. Náhrada `` `u{201E} `` na stejném místě naparsovala
-  a vytiskla `p[„]q` beze změny významu. Testování přes
-  `pwsh -NoProfile -Command '…'` bylo navíc zbytečné: konzolová code page
-  znak cestou do argv potomka zmangluje, takže sonda musí být soubor.
-- **Parametr, kterým se má předávat `$null` jako „žádná hodnota", nikdy
-  nedávej typ `[string]` (ani jiný hodnotový typ) — PowerShell `$null`
-  argument do `[string]`-typovaného parametru tiše převede na `''` PŘED
-  tělem funkce**, takže `if ($null -ne $Param)` uvnitř vidí prázdný řetězec
-  a vyhodnotí ho jako „hodnota byla předána". Nech parametr netypovaný, nebo
-  guardni `[string]::IsNullOrEmpty`.
-  Proč: `New-Repo`/`New-Deployment` deklarovaly `[string] $ContextText`/
-  `[string] $CoreText`; volání s úmyslem „žádný obsah" zapsalo reálný
-  prázdný `context.md` a bisekce k tomu vedla přes falešnou stopu — mylný
-  závěr, že soubor píše proces MIMO session (padlo za tím i hlášení
-  „mystery writer"), než se ukázalo, že je to typová koerce parametru. Past
-  se týká libovolného PowerShellového test helperu, který má tvar
-  `[string]`/`[int]` a znamená „`$null` pro nepřítomné".
-- **Nikdy nepojmenuj lokální proměnnou `$host` (ani `$error`, `$input`,
-  `$args`, `$matches`, `$pwd`, `$true`/`$false`/`$null` a další automatické
-  proměnné)** — kolize se čtenářsky nepozná (vypadá jako běžné lokální
-  přiřazení) a selže až při PRVNÍM volání, ne při parsování.
-  Proč: `$host = $m.Groups['host'].Value.ToLowerInvariant()`
-  v `Get-UmsPermalink.ps1` shodilo novou sadu hned na prvním volání hláškou
-  „Proměnnou Host nelze přepsat, protože je jen pro čtení nebo je konstanta"
-  pod `Set-StrictMode -Version Latest` — automatická proměnná `$Host` (host
-  aplikace) zápis odmítla. Přejmenování na `$originHost` (přiřazení,
-  `$out.Host`, subjekt `switch`, interpolace v `Reason`) obě sady zezelenilo
-  beze změny chování; brief-supplied snippet nebyl bezpečný transkribovat
-  beze spuštění.
-- **Backtick zamýšlený jako markdown code-span uvnitř PowerShellového
-  řetězce v DVOJITÝCH uvozovkách piš zdvojený (`` `` ``), nebo fixturu
-  postav z řetězce v JEDNODUCHÝCH uvozovkách — osamocený backtick
-  následovaný neescapovaným znakem se v double-quoted stringu tiše smaže.**
-  Před důvěřováním asercii nad takovou fixturou izoluj řádek a vytiskni
-  `$s.Length`/`$s.Contains(...)` v zahazovací sondě.
-  Proč: fixtura `"`n**tučné `kód` uvnitř**"` v transkribovaném testu ztratila
-  OBĚ backticky kolem `kód` (`` `k `` a osamocený zpětný apostrof před
-  mezerou nejsou rozpoznané escape sekvence, PowerShell je odstraní), takže
-  asercie „tučné kolem code spanu je nález" selhala i se správnou, doslovnou
-  implementací — fixtura sama nikdy nenesla tvar, který tvrdila.
-- **Test's regex, který potřebuješ vidět bez truncation, nikdy nerekonstruuj
-  přepsáním do throwaway PowerShellového skriptu — spusť REÁLNÝ testovací
-  soubor** (přesměrovaný do ASCII-bezpečného souboru, `pwsh -File ... >
-  out.txt`) a čti TEN výstup.
-  Proč: přepsání shape-testové legacy-citation regexe do throwaway skriptu
-  tiše ztratilo literální backtick (`` `? `` v řetězci v dvojitých
-  uvozovkách je nerozpoznaná escape sekvence, PowerShell backtick zahodí a
-  ponechá následující znak), takže rekonstrukce matchla užší množinu než
-  reálný test a podhodnotila legacy nálezy o 3 (27 místo 28) — rozdíl se
-  odhalil až křížovou kontrolou proti výstupu skutečného testu.
-- **Když hodnota musí být vždy kolekce, obal do `@()` CELÝ výraz, který ji
-  produkuje — nikdy jen jednotlivou větev uvnitř něj.** Platí pro
-  `Get-Content` (jednořádkový soubor vrací skalární `String`, `.Count` pod
-  `Set-StrictMode -Version Latest` spadne na `PropertyNotFoundException`)
-  i pro `if`/`else` (nebo libovolný scriptblock): piš `$x = @(if (…) { … }
-  else { @() })`, NIKDY `$x = if (…) { @(…) } else { @() }` — obal jen
-  kolem větve prázdnou pipeline nezachytí, a stejně tak nezachytí větev,
-  která je LITERÁLNÍ `@()` (čtenář si snadno řekne „to už polem je"
-  a vnější obal vynechá). U volitelného polového parametru navíc testuj
-  `$null -eq $Param` PŘED obalením, nikdy `@($Param).Count` samotné. Než
-  tomuto tvaru důvěřuješ ve skutečném skriptu, ověř ho pětiřádkovým
-  reprodukčním testem:
-  `Set-StrictMode -Version Latest; $arr=[object[]]@(); $x = if($true){@($arr|Where-Object{$false})}else{@()}; $null -eq $x`.
-  Proč: obvyklý `if ($null -eq $x) { $x = @() }` kryje jen prázdný vstup, ne
-  jednoprvkový; `@(Get-Content <prázdný soubor>)` dá pole s `Count = 0`, ne
-  pole s jedním `$null` — to řeší `Get-Content` případ. Ale
-  `$x = if (cond) { @(<možná prázdná pipeline>) } else { @() }` dá `$null`,
-  ne prázdné pole: vnitřní `@()` se rozbalí do nula pipeline objektů dřív,
-  než vnější přiřazení něco zachytí. `.Count` na výsledném `$null` pod
-  strict módem spadl přesně na tom „no pool" větvení, které měl task nejvíc
-  dokázat, a proměnil dokumentovaný exit 3 v nediagnostikovaný exit 1 bez
-  jediné diagnostické věty. Bez vnějšího obalu se stejně rozpadl i tvar
-  s literálním `@()` uvnitř — vynechaný parametr I explicitní `-Param @()`
-  daly `$null` místo prázdného pole a další `.Count` hodil
-  `PropertyNotFoundException`. A `@($Param).Count` jako detektor „byl
-  parametr vůbec předán" je rovnou špatně: `@($null).Count` je **1**, ne 0
-  (`function Test-P([string[]] $X) { @($X).Count }` bez `-X` tiskne `1`),
-  takže vynechaný parametr aktivoval novou kontrolu a rozbil pre-existující
-  asercii „brána vrací právě tři kontroly" (got `4`, want `3`).
-- **`Mandatory` na parametru typu kolekce (`[string[]]`) odmítne pole, jehož
-  KTERÝKOLI prvek je prázdný řetězec** — ne jen null nebo prázdné pole. Než
-  ho přidáš na parametr, který ponese řádky souboru, položky logu nebo
-  jakýkoli reálný text rozsekaný po řádcích, zjisti, jestli je prázdná
-  položka normálním členem té kolekce; když ano, nech parametr nepovinný
-  (nebo dej `[AllowEmptyCollection()]` a validuj v těle), místo abys tvar
-  vstupu vynucoval atributem.
-  Proč: každá reálná ledgerová fixtura přestala parsovat s `Cannot bind
-  argument to parameter 'Lines' because it is an empty string`; pětiřádkové
-  repro (`function f{param([Parameter(Mandatory=$true)][string[]]$Lines,…)};
-  f @("a","","b") "X"`) hází identickou hlášku, zatímco tatáž funkce bez
-  `Mandatory` na `$Lines` totéž pole přijme.
-- **Volání funkce, která vrací `return , $x` (nebo `return , @($x)`), nikdy
-  nekombinuj v JEDNOM příkazu s enumerací ani s obalením do `@()` — přiřaď
-  do proměnné a teprve pak operuj.** Ten idiom v téhle vrstvě existuje
-  právě proto, aby přiřazení zachytilo celou tabulku jako jednu hodnotu;
-  zřetězený `Get-Foo … | Where-Object {…}` i `@(Get-Foo …)` tu jednu hodnotu
-  spotřebují dřív, než se stihne rozbalit o úroveň. Piš to jako dva příkazy,
-  tak jak to dělá každé existující volací místo v `ledger-status.ps1`
-  i v `ledger-evidence.tests.ps1`.
-  Proč: `Get-UmsLedgerSectionTable $lines 'Heading' | Where-Object {…}`
-  svázalo `$_` s CELOU tabulkou — `rowsA.Count = 1` se čtyřmi zdrojovými
-  řádky slitými do jedné, proti správným `rowsB.Count = 3` po přiřazení do
-  proměnné. Obalení má zrcadlovou podobu: `@(Get-UmsLedgerDecisionRegistry
-  -LedgerPath $LedgerPath)` dalo pro ledger s nula řádky registru `Count = 1`
-  (jeden prvek, sám prázdné pole) místo `0`; přiřazení a obalení ve dvou
-  krocích dá `0` správně (repro: `function Test-Repro { $result = @();
-  return , @($result) }; @(Test-Repro)` → `Count 1`).
-- **`Set-Content -Encoding UTF8` v PowerShellu 7 BOM nepřidává.** Ověřeno
-  bajtově. Chování se liší od Windows PowerShellu 5.1, kde stejný parametr BOM
-  přidával, takže tam, kde je vyžadováno „UTF-8 bez BOM", není potřeba žádná
-  obezlička.
-- **Český výstup skriptů ověřuj přes PowerShell tool nebo bajtově, ne očima
-  v bashové konzoli.** Ta zde nemá kompatibilní code page a zobrazí `hl?s?`
-  i tam, kde soubor na disku obsahuje správné UTF-8 (`c4 8d` = `č`, bez BOM).
-  Stejně bajtově, ne greppem ani `od -c`, ověřuj i CRLF: `grep -c $'\r'`
-  a `od -c | grep -c '\r'` obě nahlásily CR na všech řádcích souboru s
-  nula CR bajty (`od -c` vypisuje zpětná lomítka i pro jiné escapy a soubor
-  sám obsahuje literální `\`) — použij `tr -dc '\r' < f | wc -c` a
-  `tr -dc '\n' < f | wc -c`, porovnej proti blobu (`git cat-file blob
-  HEAD:<cesta> | tr -dc '\r' | wc -c`) a `git check-attr -a <cesta>`, jestli
-  `eol=lf` na cestu vůbec dopadá; varování `LF will be replaced by CRLF`
-  u `.ps1` pod `core.autocrlf=true` je normální stav, ne nález. Věta
-  o vzhledu/kódování výstupu („je to jen code page, obsah je v pořádku")
-  se NIKDY nesmí kopírovat mezi koly beze změny — u KAŽDÉHO nového kola, kde
-  soubor prošel editací, spusť čerstvý bajtový/grep test na konkrétní
-  diakritická slova a teprve výsledek toho běhu napiš do reportu. Varování
-  o code page se týká hodnot čtených zpátky DO PowerShellu, ne přesměrování
-  do souboru: `git show <ref>:<cesta> > <soubor>` je bajtově přesný kanál pro
-  UTF-8 blob, takže cross-branch obsah předávej helperu, který bere CESTU,
-  právě takhle — jen si PŘED parsováním ověř `$LASTEXITCODE`, protože
-  přesměrování cíl nejdřív usekne a neúspěšný `git show` nechá PRÁZDNÝ
-  soubor, který se dál čte jako „nic nedeklarováno". A v `python -c` sondě
-  nad soubory téhle vrstvy tiskni jen ASCII-bezpečné odvozené hodnoty (čísla
-  řádků, délky, booleany, počty), nikdy matchnutý text; potřebuješ-li text,
-  zapiš ho přes `io.open(..., encoding='utf-8')` do souboru a přečti
-  nástrojem, který UTF-8 dekóduje.
-  Proč: zdánlivě poškozený výstup svede k „opravě" kódování, které je
-  v pořádku. Při podezření sáhni po `xxd`, ne po zobrazeném textu. Totéž
-  potká diakritiku, kterou skript posílá zpátky do gitu (jméno větve, cesta) —
-  viz [tech.md](tech.md), sekce „Pasti prostředí" — a nativní stderr čtený
-  přes PowerShellovou pipeline (`[Console]::OutputEncoding` dekóduje UTF-8
-  bajty přes cp852/cp1250); u druhého případu přesměruj stderr **na úrovni
-  shellu** do souboru (`& $gitBash -c 'cd "$1" && git push … 2>"$2"' _ $repo
-  $errFile`) a čti ho `Get-Content -Encoding utf8`, ne přes pipeline. Stejná
-  věta o code page, zkopírovaná z předchozího kola bez nového měření, byla
-  jednou pravdivá a podruhé ne — assertion texty byly reálně stripnuté na
-  ASCII (`znacky`, `puvodni`, `prezila`…), což odhalil až grep na UTF-8
-  diakritické bajty, který vrátil nulu. Bezpečná půlka je změřená stejně
-  tvrdě: na `ledger-template.md` (které nese `č ř ě á í` přímo v matchovaném
-  nadpisu) je `git show HEAD:<cesta> > <soubor>` bajtově shodný
-  s `git cat-file blob`, 6268 B, bez BOM a bez CRLF konverze; negativní půlka
-  (`HEAD:<neexistující>`) dá exit 128 a nulový soubor. Pythonová sonda naopak
-  umřela uprostřed na `UnicodeEncodeError: 'charmap' codec can't encode
-  character '→'` — stdout je tu cp1250, takže kontrola skončí po částečném
-  výstupu, což se čte přesně jako „soubor je do řádku N v pořádku".
-- **Šířku řádku UTF-8 prózy měř ve ZNACÍCH, nikdy `awk 'length > 80'` ani
-  `wc -L`.** V každém prozaickém souboru téhle vrstvy jsou em dashe, šipky
-  a česká diakritika, a `awk`ové `length` počítá BAJTY. Použij
-  character-aware kontrolu (`Get-Content -Encoding utf8 | %{ $_.Length }`
-  nebo `python` nad `io.open(..., encoding='utf-8')`); musí-li awk být, ber
-  každý jeho zásah jen jako kandidáta k přeměření znak po znaku, ne jako
-  nález.
-  Proč: měřeno na `UMS_MEMORY_BANK_CONTRACT.md` — dva řádky ohlášené jako
-  83 znaků mají ve skutečnosti 79 znaků (řádky 2620 a 2643); každý em dash
-  (`—`, 3 bajty v UTF-8) nafoukne počet o dva. Nad celým souborem, který se
-  schválně zalamuje na 80, ohlásil `awk` 226 řádků přes limit — přebalení
-  podle takového nálezu by soubor rozhodilo proti sousedům bez důvodu.
-- **Python skript, který edituje soubory téhle vrstvy, si konce řádků musí
-  DETEKOVAT, ne předpokládat.** Otevři s `newline=''`, urči
-  `nl = '\r\n' if '\r\n' in s else '\n'` a přes něj přelož každý víceřádkový
-  hledaný i náhradní literál; zapisuj zase s `newline=''`. Ověř
-  `tr -dc '\r' < f | wc -c` proti `tr -dc '\n' < f | wc -c` (shodné počty
-  u CRLF souboru, nula CR u LF) a potvrď, že `git diff --stat` ukazuje jen
-  zamýšlený počet řádků, ne celý soubor.
-  Proč: `assert s.count(old)==1` selhal s `0` — `.ps1` soubory téhle vrstvy
-  jsou v pracovním stromu CRLF (`core.autocrlf=true`, žádný `eol` atribut),
-  zatímco `.md` jsou LF (`.gitattributes: eol=lf`), takže jednosouborový
-  skript nesmí předpokládat ani jedno.
-- **Asercie tvaru `(?m)^slovo$` proti textu zachycenému přes `2>&1 |
-  Out-String` (nebo jakýkoli capture-and-rejoin helper) potřebuje na
-  Windows `(?m)^slovo\r?$` — oprav to v regexu SADY, ne ve sdíleném capture
-  helperu.**
-  Proč: měřeno (`[regex]::IsMatch("launched`r`nfoo", "(?m)^launched$")` →
-  `False`) — PowerShell zachytí stdout nativního procesu po řádcích
-  s terminátorem už odstraněným, ale `Out-String` řádky ZASE SPOJÍ přes
-  `[Environment]::NewLine` (CRLF na Windows), a .NET vícořádkový `$` kotví
-  jen před holým `\n`, nikdy před `\r\n`. Je to artefakt capture-and-rejoin
-  tohoto helperu, ne vlastnost reálného stdout streamu skriptu — sdílený
-  helper na něm stojí i v jiných zelených sadách, které přesnou shodu na
-  konci řádku nikdy nepotřebovaly.
-- **Do `[pscustomobject]@{...}` literálu zahrň VŠECHNA pole, která bude
-  objekt někdy potřebovat, hned při konstrukci.** Pozdější přidání pole,
-  které při konstrukci chybělo (`$payload.cwd = …`), NENÍ jako přiřazení do
-  existujícího pole — potřebuje `Add-Member -NotePropertyName X
-  -NotePropertyValue Y`. Mutace hodnoty typu hashtable přes indexer
-  (`$payload.env[$n] = …`) tímto postižena není, protože mutuje vnitřní
-  hashtable, ne členy vnějšího pscustomobjectu.
-  Proč: `$o = [pscustomobject]@{a=1}; $o.c = 2` vyhodí
-  `SetValueInvocationException` („The property 'c' cannot be found on this
-  object"), ale výjimka je v tomto kontextu NEterminující — skript doběhl,
-  JSON se zapsal, pole jen tiše chybělo. Žádný pád, žádný vizuální příznak
-  kromě `$null` přečteného později.
-- **Obsah `.cmd`/`.bat` souborů — včetně komentářů `REM` — drž ve strojové
-  ASCII.** Dekódování aktivní codepage `cmd.exe` nad non-ASCII bajty uvnitř
-  batch souboru není spolehlivé ani v komentářovém řádku.
-  Proč: `REM` komentář s pomlčkou en/em dash rozbil parsování nesouvisejících
-  řádků NÍŽ v souboru (`'m' is not recognized as an internal or external
-  command`), reprodukovatelně, a zmizelo to úplně až po odstranění
-  veškerých non-ASCII bajtů ze souboru.
-- **Pod `Set-StrictMode -Version Latest` nevěř tomu, že úspěšný
-  `ConvertFrom-Json` znamená objekt s vlastnostmi.** JSON dovoluje kořenové
-  `null`, skalár i pole a všechny prolezou parserem beze chyby — `try/catch`
-  kolem `ConvertFrom-Json` se tedy nikdy nespustí. Před `.PSObject.Properties`
-  ověř typ (`$json -is [System.Management.Automation.PSCustomObject]`)
-  a vlastnosti materializuj do plochého array
-  (`@(@($json.PSObject.Properties) | ForEach-Object { $_.Name })`), nikdy
-  přímo `.Properties.Name` na živé kolekci. Chování ověř empiricky na čtyřech
-  tvarech (`{}`, `null`, `42`, `[1,2,3]`) předem jedním `pwsh -Command`.
-  Proč: loader konfigurace shodila výjimku „The property 'Name'/'Properties'
-  cannot be found" až při reálném použití — `try/catch` reportoval falešný
-  pocit bezpečí.
-- **`-like` na neobvyklém vzoru (např. `Maint/[0-9`) může hodit výjimku,
-  nebo — v `catch`, který vrací bool — tiše vrátit špatnou odpověď.**
-  Rozšiřuješ-li existující `-like` volání do nové cesty, dohledej, co ho na
-  starém místě chránilo (metaznakový filtr, `if ($extra)`), a rozhodni
-  explicitně, jestli ta ochrana platí i na novém místě. Když funkce vrací
-  `$true` z obou větví (match i catch), rozliš „ano" od „nevím, nemohl jsem
-  to vyhodnotit" jako DRUHOU návratovou hodnotu.
-  Proč: neošetřená výjimka na wildcardu shodila celý souhrn instalátoru na
-  exit 1 u hooku, který byl ve skutečnosti funkční; a `Test-NameIsConfigured`
-  s `["Branches/*", "Maint/[0-9"]` naopak nahlásila „konfigurace pokrývá
-  kontrolní jméno" (nepravda — POSIX `case` čte `Maint/[0-9` jako literál)
-  a tichým `[installed + verified live]` smazala jedinou pojistku proti
-  dekorativnímu důkazu. Mechanizované řešení dnes existuje jako
-  `Test-UmsProtectedBranch` ve sdílených skriptech vrstvy
-  (`ums/.claude/skills/shared/scripts/`), které vrací právě tento tristate
-  místo tiché špatné odpovědi.
-- **Windows cesty vkládané do `PATH` (nebo kamkoli s `:` separátorem)
-  v msys/Cygwin vždy převeď `cygpath -u`.** `C:/…/shim` se na `:` rozpadne na
-  `C` a `/…/shim`, obě neexistující, a shim se nikdy nezavolá bez jediné
-  zmínky v testu. Do harnessu, který přes `PATH` nahrazuje nástroj, přidej
-  explicitní ověření, že náhrada platí
-  (`[ "$(command -v sed)" = "$shimdir/sed" ] || exit 98`).
-  Proč: shim se nikdy nezavolal, test přesto zezelenal, protože se použil
-  skutečný `sed` v textovém režimu a chráněná větev byla zamítnuta „správně"
-  ze špatného důvodu.
-- **`$(command)` v command substitution není průhledný kanál pro CR/CRLF
-  testy — strhne jen trailing byte, a msys bash jinak než skutečný POSIX
-  shell.** Hodnotu pod testem umísti na jiný než poslední řádek souboru;
-  jednoprvkový/poslední-řádkový vstup nic nedokazuje.
-  Proč: jednořádkový CRLF seznam prošel testem i bez opravy CR handlingu —
-  msys bash strhl celé trailing CRLF, takže jediný (a poslední) vzor vyšel
-  čistý bez ohledu na kód.
-- **Manuální spouštění Node/PowerShell hooků z Git Bash na Windows potřebuje
-  Windows-styl cestu (`pwd -W`), ne Unix-styl (`$(pwd)`)** — jinak `node`
-  interpretuje `/c/Users/...` jako drive-relative (`C:\c\Users\...`)
-  a konfigurační soubor se nenajde. Ručně skládané JSON payloady s cestou
-  obsahující zpětná lomítka nejsou platný JSON — použij `cygpath -m`/`pwd -W`,
-  ne raw backslash cestu skládanou stringovou konkatenací. Prázdný výstup
-  z manuální sondy hooku pro případ, který má zamítnout, nejdřív ověř, jestli
-  vstupní JSON vůbec naparsoval — neber to bez dalšího jako potvrzení
-  „povoleno".
-  Proč: guard tiše spadl na vestavěný seznam a chráněná větev prošla jako
-  nechráněná, přestože implementace byla správná; jinde `JSON.parse` selhal
-  na neuvozených zpětných lomítkách a chráněný i nechráněný případ vrátily
-  identický prázdný výstup.
-- **Per-referenci volání externího procesu (`realpath`, obecně cokoli ve
-  `while read` smyčce) nad monorepem drž na konstantní počet procesů.** Spawn
-  procesu je na Windows řádově dražší než na Linuxu — přepiš na jeden
-  `git ls-files` + jeden `xargs … grep` + jeden `sed`/`awk` nad celým
-  streamem, nebo hodnotu získej jinak (např. basename místo resolvování
-  `..`). `while read` s příkazem uvnitř je červený signál.
-  Proč: smyčka s `realpath -m --relative-to=.` nad ~500 projekty a tisíci
-  referencemi neběžela do 300 s; přepis na streamové zpracování to srazil na
-  0,5–2,6 s (100×).
-- **Vzdálené větve pro porovnání se jmény lokálních větví vypisuj
-  `--format='%(refname:lstrip=3)'`, ne `%(refname:short)`, a filtruj
-  `grep -v '^HEAD$'`.**
-  Proč: `%(refname:short)` nad `refs/remotes/origin/` vrátil bare `origin`
-  pro symref `origin/HEAD` a v každém jméně ponechal remote prefix, který
-  v `protectedBranches` nematchne nic — obojí by se dostalo do seznamu
-  chráněných větví jako fantomová položka.
-- **`git ls-tree` nepodporuje pathspec magic `:(glob)`** — bere jen literální
-  prefix. Chceš-li ověřit existenci cest, které neleží pod fixním prefixem
-  (Memory Bank je v monorepu v `**/memory-bank/`, tedy v libovolné hloubce),
-  nech per-dvojicovou sondu `cat-file -e`; výpis celého stromu každého refu je
-  dražší než sonda, kterou to mělo ušetřit. Chování si ověř jedním příkazem,
-  ne z dokumentace — pathspec magic je per-příkaz, ne globální vlastnost gitu.
-  Proč: `git ls-tree -r --name-only <ref> -- ':(glob)**/…/*.md'` skončí
-  `fatal: pathspec magic not supported by this command: 'glob'` a exit 128,
-  zatímco `git log` s týmž pathspecem funguje — záměna vypadá jako
-  ekvivalentní optimalizace a shodí celý index.
-- **Skill snippet, který dot-sourcuje jeden shared skript a pak volá i
-  funkce z JINÉHO shared skriptu, projdi řádek po řádku a potvrď, že
-  KAŽDÁ volaná funkce je dot-sourcovaná explicitně NAD voláním ve stejném
-  snippetu** — nikdy jen transitivně přes jiný helper, i když taková cesta
-  existuje. Kontrola je inventář per snippet, ne grep na token; listuj
-  fenced `powershell` bloky, které dot-sourcují (na rozdíl od těch, co
-  spouští `pwsh <script>` jako subprocess — ty jsou jiná, imunní třída).
-  Proč: `Test-UmsProtectedBranch.ps1` nedotsourcuje nic, takže volání
-  `Get-UmsRepoConfig` za ním by spadlo na `CommandNotFoundException` přímo
-  na fail-closed STOPu, kde by agent nejspíš improvizoval; `mb-state`
-  dnes funguje jen díky transitivnímu tahu přes `Get-UmsEffectiveBase.ps1`,
-  což se tiše rozbije na první reorganizaci pořadí.
-- **Když jeden pomocný wrapper funkce (`[scriptblock] $Param`) volá jiný
-  TAKÉ takto parametrizovaný wrapper a předává mu literální
-  `{ ... & $Param ... }`, dej VŠEM funkcím v celém řetězci wrapperů RŮZNÁ
-  jména parametru — pravidlo je kolize JMEN napříč celým řetězcem, ne
-  nutnost vyhýbat se delegaci.** Před psaním/rozšiřováním takového helperu
-  vypiš jména parametrů všech funkcí v řetězci (`grep -n 'function
-  Invoke-With' <sada>`) a ověř nové jméno desetiřádkovým repro skriptem
-  s počítadlem hloubky, ne úsudkem.
-  Proč: `Invoke-WithMarker([scriptblock] $Body)` volající
-  `Invoke-WithoutMarker([scriptblock] $Body)` se stejným jménem parametru
-  spadl na `Stack overflow.` (exit `0xC00000FD`) — `& $Body` uvnitř
-  vnořeného scriptblocku se dynamicky váže na `$Body` scope FUNKCE, ve
-  které `&` právě běží, ne na lexikální scope zápisu. Přejmenování jen
-  VNITŘNÍHO (volajícího) parametru samo o sobě stačilo (182 passed, žádné
-  zpomalení) — self-containment nebyl nutný. Past se vrací s každou další
-  vrstvou: přidání `Invoke-WithHumanPush([string] $VarName, [scriptblock]
-  $Body)` do řetězce s nezměněným jménem `$Body` dalo `RECURSION: depth 51`
-  ve standalone repro; přejmenování na `$PushBody` opravilo na `depth=1`.
-- **Chceš-li, aby POSIX shell uvnitř dvojitých uvozovek expandoval
-  `$*`/`$@`/proměnnou, piš do PowerShellového `@"…"@` here-stringu holé
-  `$*` bez zpětného lomítka** — zpětné lomítko před `$` v tomto kontextu
-  dvakrát neguje: PowerShell ho ponechá doslova (backslash není v PS
-  řetězcích escape) a `sh` ho pak přečte jako escape, který expanzi právě
-  VYPÍNÁ. Ověřuj bajtově (`pwsh -NoProfile -Command`), ne odhadem z toho,
-  jak by se literál choval v jednom jazyce samotném.
-  Proč: `@"…\$*…"@` zapsalo `\$*` doslova; POSIX `sh` uvnitř dvojitých
-  uvozovek to čte jako escapovaný literální `$`, takže `"args=\$*"`
-  vytiskne `args=$*` beze expanze — přesný opak zamýšleného efektu.
-- **`$obj.PSObject.Properties.Name` na nově vytvořeném prázdném
-  `[pscustomobject]@{}` vrací `$null`, ne prázdné pole — `.Contains(...)`
-  na něm spadne.** Materializuj napřed přes `@(@($obj.PSObject.Properties)
-  | ForEach-Object { $_.Name })` a použij `-contains`/`-notcontains`.
-  Proč: past se neprojevila u TOML větve (`codex`), jen u JSON větve
-  (`gemini`/`kilocode`) při použití prázdného pscustomobjectu jako fallbacku
-  pro chybějící konfigurační soubor — i částečně zelený běh (2 ze 3 agentů)
-  může past skrývat.
-- **Když rozšíříš registraci hooku/guardu o další nástroj (matcher na víc
-  než jeden `tool_name`), projdi VŠECHNY textové kontroly v něm a pro
-  KAŽDOU napiš, jak vypadá její vstup v novém nástroji — a přidej do sady
-  helper s novým `tool_name` dřív, než napíšeš první novou asercii.** Sada,
-  která mluví jen jedním `tool_name`, dokazuje jen polovinu registrace.
-  Kontrolní otázka: „co je v tomhle nástroji spelling téže věci?" — pro
-  proměnnou prostředí, cestu, přesměrování i řetězení příkazů zvlášť.
-  Proč: matcher PreToolUse guardu rozšířený na `Bash|PowerShell` nechal
-  deset úloh a osm kol review přehlédnout, že PowerShellové přiřazení
-  proměnné prostředí (`$env:` prefix) regex `(^|\s)NAME=` nikdy nematchne
-  (jméno předchází `env:`) — force-push do chráněné větve s PowerShellovým
-  zápisem výjimky prošel jako ALLOW, na Bash toolu tentýž útok DENY.
-- **U každého rozšíření vzoru tvaru `JMÉNO<oddělovač>HODNOTA` piš negativa
-  na třech osách zvlášť — jiná HODNOTA, jiný TERMINÁTOR za hodnotou, jiný
-  PREFIX i SUFFIX jména** — a ke každé nové alternativě ověř, jestli má
-  daný konstrukt i ČTECÍ spelling: má-li ho (`$env:X`), vzor musí nést
-  hodnotu; nemá-li ho (`Set-Item Env:X`), stačí konstrukt. Tuhle asymetrii
-  napiš do komentáře, jinak ji příští kolo „srovná".
-  Proč: bez lookaheadu za hodnotou by rozšířený `HUMAN_ESCAPE_RE` nechal
-  hodnotu `10` matchnout jako `1`; bez povinné hodnoty u `$env:` tvaru by
-  matchlo i ČTENÍ proměnné v podmínce — obojí odhalily až negativní
-  asercie, ne četba.
-- **Než napíšeš negativní tabulku pro nový konstrukt, zjisti, jestli je to
-  nová TŘÍDA konstruktu, nebo člen existující (sourozenec cmdletu, jiné
-  hláskování téhož typu) — člen dědí pravidlo třídy, i když brief
-  předepisuje jiný tvar testu.** U člena převezmi pravidlo třídy z
-  komentáře nad vzorem; osu, která by pravidlo obrátila, zapiš jako asercii
-  ve směru, který kód skutečně drží, s důvodem hned vedle ní. Odchylku od
-  briefu pojmenuj v reportu i s měřením báze, ne mlčky.
-  Proč: brief předepsal aplikovat na `[System.Environment]::` všechny tři
-  negativní osy včetně HODNOTY (`'0'`, `"0"`, `10` → ALLOW), ale brief sám
-  zavádí ho jako nepovinnou skupinu v existující alternativě — hodnotu
-  nesoucí varianta by musela být samostatná alternativa, jinak by jedno
-  hláskování téhož .NET typu bylo přísnější než druhé. Měřeno na bázi
-  `312737b`: sourozenecké konstrukty (`[Environment]::`, `Set-Item`)
-  s hodnotou nula už tehdy zamítaly.
-- **Než z tvaru příkazové řádky usoudíš, které tokeny se dostanou ke
-  spouštěnému programu (zvlášť u přesměrování stojícího jinde než na
-  konci, nebo u operátorů, které se liší mezi shelly jako `*>` vs. glob),
-  spusť místo něj skript, který tiskne svoje `argv`, a přečti si to —
-  ne úsudkem.**
-  Proč: `./fakegit 2>/dev/null push origin develop` dalo `argv: push origin
-  develop` (skutečný push, guard musí zamítat), zatímco `./fakegit > push2
-  origin develop` dalo `argv: origin develop` (žádný push) — rozdíl mezi
-  nimi je jeden znak a bez sondy vypadají jako tentýž tvar.
-- **`Start-Process -ArgumentList` s tabulkovým (array) argumentem NEuvozuje
-  prvky obsahující mezery — na rozdíl od nativního volání `& $exe @array`.**
-  Než mu předáš pole, jehož prvek může nést mezeru (třeba víceslovný
-  prompt), změř to skriptem, který si vypíše vlastní `argv`; nikdy
-  nepředpokládej, že se chová jako `&`. Potřebuje-li prvek mezery, postav
-  pro `Start-Process` SAMOSTATNÉ pole s tím prvkem obaleným v doslovné
-  dvojici uvozovek (`'"' + $value + '"'`) — nikdy ho nedávej do sdíleného
-  pole, které se používá i pro nativní volání `&`, jinak se stejná cesta
-  uvozuje dvakrát.
-  Proč: měřeno proti reálnému `pwsh.exe` cíli — pole předané
-  `Start-Process -ArgumentList` se spojí do příkazové řádky potomka BEZ
-  uvozování, takže prvek s mezerou se na straně potomka rozpadne na jedno
-  slovo na mezeru, přestože stejné pole předané `& $exe @array` dorazí jako
-  jeden argument správně. Reprodukuje se i přes `.cmd` shim s `%*`, jakmile
-  je shim sám spuštěný přes `Start-Process`.
-- **Když má tokenizer nově rozpoznat shellový konstrukt uvnitř invokace,
-  zjisti nejdřív, co s ním dělá SKUTEČNÝ shell: odstraní ho z argument listu
-  (přesměrování, přiřazení), nebo ukončí příkaz (`;`, roura, `&&`)?**
-  Odstranění implementuj jako skip-a-pokračuj, NIKDY jako break — break je
-  vždy permisivnější a u fail-closed guardu znamená novou únikovou cestu.
-  Asercii na tvar „konstrukt PŘED chráněným cílem" napiš vždy, i když ji
-  brief nežádá.
-  Proč: brief předepsal, že přesměrování ukončuje argument list přesně jako
-  `CONTROL` — doslovné ukončení by prošlo všemi měřenými tvary z briefu,
-  ale tvar „origin, `2>&1`, develop" by se stal ALLOW, jednotokenový únik
-  přes chráněnou větev; skip-a-pokračuj drží DENY (`develop`) na obou
-  toolech, ukončení by ho nedrželo — bash ten příkaz skutečně pushne na
-  `develop`.
-- **Signaturu sdíleného helperu přečti, nehádej.** Než zavoláš jakýkoli
-  `Get-Ums*`/`Test-Ums*` helper, přečti si jeho řádek `function` kvůli
-  přesným jménům parametrů; fail-closed verdikt proti vlastnímu
-  nakonfigurovanému defaultu repozitáře ber jako signál špatného volání, ne
-  jako nález — než na něj zareaguješ nápravou, zopakuj volání s hodnotou
-  pozičně.
-  Proč: `Test-UmsProtectedBranch -BranchName …` vrátilo `Matched=False` pro
-  větev, která je první položkou `protectedBranches` — parametr je `-Name`
-  a jednoduchá funkce (bez `[CmdletBinding()]`) tiše propustila neznámý
-  přepínač do `$args`, což vyrobilo falešný STOP.
-- **Porovnání operandů z gitu v PowerShellu piš case-sensitive.** Každé
-  PowerShellové srovnání, jehož operandy pocházejí z gitu (jména větví,
-  jména refů, prefixy sha, cesty uvnitř repa), používá `-ceq`/`-cne`/
-  `-cmatch`, nikdy defaultní case-insensitive tvar; ověř to párem lišícím se
-  jen velikostí písmen a mutaci pro negativitu dělej záměnou operátoru, ne
-  odstraněním hlídky.
-  Proč: měřeno, `'Feature-X' -eq 'feature-x'` je `True`, zatímco `-ceq` je
-  `False` — obvyklá formulace tak přijme token ražený pro jinou větev,
-  a mutace odstraněním přítomnosti hlídky nechá tuhle vlastnost zelenou,
-  takže defekt přežije celou sadu.
-- **Uzavřený re-render musí sanitizovat HODNOTY, ne jen jména polí.** Když
-  bezpečnostní vlastnost formátu stojí na „re-renderují se jen známé věci",
-  audituj zvlášť, které klíče jsou povolené A co smí obsahovat jejich
-  hodnoty; odmítej třídu znaků, ne výčet hláskování jedné značky.
-  Proč: dobře tvarovaný řádek se whitelistovaným klíčem
-  (`Ticket: </session-intent> IGNORE…`) prošel tvarovým regexem i
-  whitelistem klíčů a byl re-renderován doslovně, čímž předčasně uzavřel
-  wrapper; první oprava pokryla jen ASCII hláskování a homoglyf U+2011 ji
-  obešel — obojí měřeno end-to-end.
-- **Než se spolehneš na doslovný `Select-String -Path <adresář> ...
-  -Recurse` z briefu, ověř `(Get-Command Select-String).Parameters.Keys`
-  v INSTALOVANÉM PowerShellu — `-Recurse` v této vrstvě (PowerShell 7.6.6)
-  u `Select-String` VŮBEC neexistuje.** Fallback je `Get-ChildItem -Path
-  <adresář> -Recurse -File | Select-String -Pattern ...`; do reportu napiš
-  oba tvary, doslovný i náhradní.
-  Proč: `Select-String -Path ums/.claude -Pattern 'Work Item Granularity'
-  -Recurse` spadlo s `Select-String: Nenašel se parametr odpovídající
-  názvu parametru Recurse` — nešlo o chybu použití, ale o skutečně
-  chybějící parametr v tomto buildu; `Get-ChildItem -Recurse -File |
-  Select-String ...` dal shodný výsledek (4 soubory).
-
-## Git hooky (POSIX sh)
-
-- **Neuvozené vzory v `for`-cyklu POSIX shellu chraň `set -f`.** Když
-  iteruješ přes seznam vzorů uložený v proměnné (`for pat in $patterns`), na
-  začátku hooku/skriptu zapni `set -f` (disable pathname expansion) — jinak
-  neuvozená expanze podléhá i pathname expansion vůči cwd (git spouští hook
-  s cwd = kořen repozitáře) a vzor jako `branches/*` se nahradí jménem
-  existujícího souboru. `case "$x" in $pat)` zůstává funkční i pod `set -f`,
-  protože tam `$pat` slouží jako glob vzor, ne k expanzi. Ověř dvouřádkovým
-  `sh -c` v adresáři, který vzor splňuje, a fixturu testu postav tak, aby ten
-  adresář skutečně obsahovala — jinak je test zelený i pro rozbitou
-  implementaci.
-  Proč: vzor `branches/*` v `is_protected()` vypadl jako `branches/notes.txt`
-  a ochrana pro celý vzor tiše zmizela; push na chráněnou větev prošel beze
-  zmínky v výstupu hooku.
-- **Hook, který čte stdin, ať načte konfiguraci a všechny pomocné hodnoty
-  před hlavní `while read` smyčkou.** Do smyčky nedávej nic, co může čerpat
-  stdin (`read`, `while read`, `ssh`, `git` podpříkaz bez přesměrování) —
-  podřízeným příkazům, u kterých si nejsi jistý, uzavři stdin explicitně
-  (`cmd </dev/null`). Testuj vždy pushem více refů najednou — jednořádkový
-  push past neodhalí. Regresní test na krádež stdin ověř mutací, která stdin
-  SKUTEČNĚ krade — přesun celého bloku čtení konfigurace do smyčky nestačí,
-  pokud ten blok sám nečte stdin (např. čte jen soubor); past spouští teprve
-  `while read` bez přesměrování.
-  Proč: platí pro `pre-push`/`pre-receive`/`post-receive` (ne `update`, ten
-  stdin nedostává) — přehlédnutá past je neviditelná v exit kódu (0), hook
-  prostě přestane kontrolovat zbylé refy.
-- **CR/CRLF chování v POSIX shellu posuzuj empiricky a per platformu, nikdy
-  úsudkem ani jedním testem.** Protrasuj každý stupeň pipeline přes `od -c`,
-  a totéž zopakuj s binárními režimy (`sed --binary`, `grep -U`), které
-  emulují skutečný POSIX shell — msys nástroje na Windows CR zahazují samy
-  v textovém režimu, reálný POSIX shell ne. Robustní řešení je odstranit CR
-  přímo v pipeline (`tr -d '[:blank:]\r'`), ne spoléhat na to, že producent
-  souboru napíše správné řádkování.
-  Proč: „na Windows CRLF nevadí" bylo empiricky obráceně — msys `sed`/`grep`
-  CR zahazují, ale neuvozený POSIX shell (Linux/macOS/WSL) ne, takže tvrzení
-  „musí LF" popisovalo bezpečnou platformu a přehlédlo tu nechráněnou.
-- **Testovací/důkazní běh nad hookem, který si sám dohledává konfigurační
-  soubor podle `cwd` (`git rev-parse --git-common-dir`), spusť z pracovního
-  adresáře cílového repozitáře** (`cd "$root" && …`, spojeno `&&`, aby
-  neúspěšný `cd` důkaz položil). Kontrolní otázka: „projde stejně, když ho
-  pustím v čistém klonu, kde instalátor nikdy neběžel?"
-  Proč: běh spuštěný odjinud četl konfiguraci repozitáře, ze kterého byl
-  instalátor spuštěn, ne fixture repa — nový test tak zelenal podle stavu
-  cizího souboru, ne podle testované logiky.
-- **Krok ověřující řetězení proti reálnému LFS hooku prováděj v throwaway
-  klonu, který má nakonfigurovaný (byť fiktivní) remote `origin`.**
-  Proč: instalátor cizí hook správně odsunul a zřetězil, ale self-test proof
-  bez `origin` skončil exitem 1 — accept běh volá skrz `run_chained`
-  skutečný `git-lfs`, který se pokusí resolvnout remote `origin` a bez něj
-  spadne (`Invalid remote name "origin"`). Po `git remote add origin
-  https://example.invalid/repo.git` proof prošel čistě. Jinak by se chyba
-  bez souvislosti s řetězením četla jako regrese.
-- **`-c core.hooksPath=` (prázdná hodnota) NENÍ „bez override" na gitu 2.51
-  — nemá význam „výchozí/nenastaveno".** Izolaci od zděděného
-  `core.hooksPath` (např. při generování hooku do fixture repa) řeš buď
-  úplným vynecháním `-c core.hooksPath=...` (spolehni se na to, že čerstvě
-  `git init`nutý adresář nemá LOCAL config, případně v kombinaci
-  s přesměrováním `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`), nebo explicitním
-  pinem reálného defaultu (`-c core.hooksPath=.git/hooks`) — nikdy prázdnou
-  hodnotou.
-  Proč: `git -C $tmp -c core.hooksPath= lfs install --local` mělo
-  neutralizovat zděděný override pro izolovaný temp repo; místo toho
-  `git lfs install --local` tiše zapsal `pre-push`/`post-commit`/atd. přímo
-  do `$tmp` samotného místo `$tmp/.git/hooks`, takže `Test-IsLfsHook`
-  nahlásilo „git lfs negeneroval rozpoznatelný pre-push hook", ačkoli
-  generování ve skutečnosti „uspělo", jen na špatném místě. Izolovaná repro
-  proti tomuto repu: `git -c core.hooksPath= rev-parse --git-path
-  hooks/pre-push` vrátí `/pre-push` (kořen pracovního stromu), zatímco bez
-  override vrátí `.git/hooks/pre-push`.
-- **Fixturu pro „tenhle tvar guard vůbec nerozpozná" postav na UVOZENÉM
-  `git` tokenu** (`bash -c '…'`, `echo "git push …"`), ne na neuvozeném za
-  jiným příkazem — a před zapsáním asercie ji jednou pusť ručně (`printf
-  '%s' '<json>' | node <guard>`) a přečti skutečný výstup. Rozhoduje
-  uvozovka před `git`, ne to, že je na řádku dřív jiný příkaz.
-  Proč: `echo git push --mirror` guard ZAMÍTL — tokenizér `echo` přeskočí,
-  na indexu 1 najde NEUVOZENÝ token `git` a spadne na `--mirror`. Naopak
-  `bash -c 'git push --mirror origin'` prošel (prázdný stdout), protože
-  token je `'git` a `isGitToken` ho neuzná.
-- **Testovací sada, jejíž reálné (ne izolované) asercie závisí na chování
-  gatovaném značkou, kterou sama zavádí, musí tu značku nastavit explicitně
-  NA ÚROVNI SADY**, ne spoléhat na harness, který ji spouští — jinak sada
-  tajně funguje jen v jednom konkrétním harnessu/prostředí.
-  Proč: nastavení `$env:MB_AGENT_SESSION = '1'` na úrovni celého souboru
-  marker-gate sady neposunulo počet passed u ~170 pre-existing případů,
-  protože marker-gate helpery samy kolem sebe izolují a restaurují — sadová
-  proměnná je jen jejich vstupní/výstupní hodnota, ne překážka. Bez ní
-  sada nezávisela jen na testovaném kódu, ale i na tom, že ji spouští
-  Claude Code s ambientním `CLAUDECODE=1`.
-- **Když dvě kontroly v hooku zamítají tentýž vstup, testuj i TEXT hlášky,
-  ne jen zamítací kód — a u každé kontroly se ptej, který vstup se sem
-  dostane dřív jinou větví a co mu ta věta říká.** Nedosažitelná chybová
-  hláška je signál špatného pořadí, ne mrtvý kód.
-  Proč: v `pre-push` s pravidlem o chráněné větvi před zákazem mazání
-  posílá mazání nulovou local sha, `is_integration_push` proto vrátí
-  false a chráněná větev se trefí první — uživatel dostal „projde jen
-  fast-forward" místo hlášky o mazání, ačkoli verdikt (zamítnutí) byl
-  správný, takže žádný test na kód to nechytil.
-- **Před nabídkou kandidátů báze ověř, že sklizená práce je i integrovaná.**
-  Pro každého kandidáta (a pro každou lokální IDLE, ale v bázi nepřítomnou
-  tiketovou větev) spusť `git log --oneline <kandidát>..<aktuální větev>`
-  a nahlas každého kandidáta, který neobsahuje větev, na které sezení stojí.
-  Neprázdný výsledek na sklizené větvi znamená čekající lidský integrační
-  push, ne novou práci — předej holý refspec příkaz a čekej. Než ho předáš,
-  dokaž, že ho hook přijme: propusť poctivou čtveřici (`<local ref> <new
-  sha> <remote ref> <old base sha>`) přes rozřešený hook — exit 0 znamená,
-  že do příkazu nepatří žádná lidská úniková proměnná.
-  Proč: báze 34 commitů pozadu byla jednou zvolena mlčky — nesla kontrakt
-  v2.10 a `pre-push` bez přípony ` v2`, tedy přesně základy, na kterých nová
-  práce stavěla, a nic ve vstupní bráně se na tohle nedívá (čistý strom,
-  prázdný stash, `mb-doc-index` bez nálezů).
-
-## Upgrade upstreamu (revendor)
-
-Vendorované kopie s overlay bloky vznikají až v cíli nasazení, takže revendor
-běží **v monorepu**, ne v tomto repu. Postup je dvoucommitový:
-
-1. V tomto forku sloučit nový upstream: `git fetch vanila --tags`, pak
+- **Revendor spouštěj v monorepu, ne v tomto forku.**
+  Proč: vendorované kopie s overlay bloky vznikají až v cíli nasazení,
+  ne ve forku samotném. Důkaz: 1a03314.
+**Postup revendoru upstreamu (dvoucommitový)**
+1. V tomto forku slouč nový upstream: `git fetch vanila --tags`, pak
    `git merge vanila/main` (na `main`, odtud do `ums-memory-bank`).
-2. V monorepu:
-   `pwsh .claude/scripts/revendor-superpowers.ps1 -Tag <nový tag> -NoOverlays`
-   → commit „vanilla sync".
-3. `pwsh .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly`
-   → commit „overlay".
-
-Proč dva commity: první nese výhradně upstream diff, druhý výhradně zásah UMS.
-Ve sloučeném commitu už nejde poznat, co přinesl upstream a co vrstva.
-
+2. V monorepu: `pwsh .claude/scripts/revendor-superpowers.ps1 -Tag <tag>
+   -NoOverlays` → commit „vanilla sync".
+3. `pwsh .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly` → commit
+   „overlay".
+Proč: první commit nese jen upstream diff, druhý jen zásah UMS.
+Důkaz: 1a03314.
+- **Revendorové commity nikdy neslučuj do jednoho.**
+  Proč: sloučený commit nejde rozlišit na to, co přinesl upstream
+  a co je zásah vrstvy. Důkaz: 1a03314.
 - **Vendorované soubory nikdy needituj ručně mimo bloky
-  `<!-- UMS-OVERLAY BEGIN/END -->`.** Změna patří do fragmentu
-  `shared/overlays/*.overlay.md` a aplikuje se dalším během.
-  Proč: revendor rozbalí upstream znovu a overlaye aplikuje na čistý soubor —
-  ruční úprava mimo bloky se tím tiše ztratí.
-- **Miss kotvy `ANCHOR-BEFORE` je detektor driftu upstreamu, ne chyba
-  k obejití.** Kotva musí matchovat právě jeden řádek cílového souboru; když
-  nematchuje, upstream ten řádek změnil. Skript přitom vypíše přesně ty
-  fragmenty, které potřebují lidský zásah — oprav je, synchronizuj zpět do
-  forku a spusť revendor znovu; nikdy kotvu neuvolňuj, aby „prošla".
-- **Revendor spouštěj z PowerShellu, ne z Git Bash shellu.** V Git Bashi
-  zdědí skript přes PATH msys `tar`, který windowsovou cestu čte jako
-  vzdálený host; v PowerShellu `tar` resolvuje na
-  `C:\WINDOWS\system32\tar.exe` a vendor krok projde.
-  Proč: běh z Git Bash spadl na `/usr/bin/tar: Cannot connect to C: resolve
-  failed` při rozbalování `skills.tar`.
-- Verifikační pass běží vždy jako poslední a shodí skript na viselých
-  relativních odkazech, zbytcích v5 souborů, chybějících v6 souborech,
-  nevyvážených overlay markerech, CRLF v bashových skriptech a na funkčním
-  testu SDD skriptů v Git Bashi. Běh je hotový, teprve když skončí
-  `Verification passed.`
-- Samotnou verifikaci bez vendoringu spustíš přepínačem `-VerifyOnly`.
-
-## CRLF u bezpříponových shellových skriptů
-
-Bashové skripty bez přípony — upstream SDD skripty (`sdd-workspace`,
-`task-brief`, `review-package`) a git hook
-[`ums/.claude/hooks/pre-push`](../ums/.claude/hooks/pre-push) — musí být
-v pracovním stromu s LF.
-
-- **Nevendoruj je prostým `git archive` při `core.autocrlf=true`.** Konverze na
-  CRLF rozbije shebang a skript přestane jít spustit. `revendor-superpowers.ps1`
-  proto po rozbalení normalizuje konce řádků na LF a verifikační pass CRLF
-  kontroluje.
-- **Nový bezpříponový shellový soubor commitni až s pravidlem `text eol=lf`**
-  v `.gitattributes` (v monorepu `.claude/skills/** text eol=lf`, v tomto forku
-  [`ums/.gitattributes`](../ums/.gitattributes)).
-  Proč: git podle přípony nepozná, že jde o skript, takže bez pravidla ho
-  `core.autocrlf` na Windows převede — a chyba se projeví až u toho, kdo si
-  soubor checkoutuje.
-
-## Nasazení vrstvy
-
-`pwsh ums/sync-with-monorepo.ps1` bez parametrů se v interaktivní konzoli
-doptá na každý parametr a nabídne default (Enter potvrdí); v neinteraktivním
-běhu použije defaulty potichu.
-
+  `<!-- UMS-OVERLAY BEGIN/END -->` — změnu piš do fragmentu
+  `shared/overlays/*.overlay.md`.** Proč: revendor rozbalí upstream
+  znovu a ruční úprava mimo bloky se tiše ztratí. Důkaz: 1a03314.
+- **Miss kotvy `ANCHOR-BEFORE` oprav ve fragmentu a spusť revendor
+  znovu — nikdy ji neuvolňuj, aby „prošla".** Proč: je to detektor
+  driftu upstreamu, kotva musí matchovat přesně jeden řádek.
+  Důkaz: 1a03314.
+- **Revendor spouštěj z PowerShellu, ne z Git Bash shellu.**
+  Proč: Git Bash zdědí msys `tar` z PATH, který windowsovou cestu čte
+  jako vzdálený host a spadne na „Cannot connect to C: resolve failed".
+  Důkaz: ae2230c.
+- **Spouštění `sync-with-monorepo.ps1` bez parametrů je bezpečné
+  interaktivně i neinteraktivně** — v konzoli doptá defaulty, jinak
+  je použije potichu. Proč: běh musí fungovat i bez terminálu (CI,
+  agent). Důkaz: 1a03314.
+**Parametry `sync-with-monorepo.ps1`**
 | Parametr | Hodnoty | Default |
 |---|---|---|
 | `-Agent` | `claude`, `codex`, `gemini`, `kilocode` | `claude` |
 | `-Scope` | `Monorepo`, `UserProfile` | `Monorepo` |
 | `-Direction` | `FromMonorepo`, `ToMonorepo` | `FromMonorepo` |
 | `-MonorepoRoot` | cesta ke klonu monorepa | `D:\_datasys\ums` |
-
-- **`claude` + `Monorepo` je jediná obousměrná kombinace.** `FromMonorepo`
-  (default) táhne živou kopii z monorepa do `ums/` tohoto forku — spusť ji po
-  každé změně vrstvy provedené v monorepu a výsledek commitni. `ToMonorepo` je
-  opačný směr. Každá jiná kombinace je jednosměrný deploy z `ums/` do cíle
-  a `-Direction` se ignoruje.
-- **Před jakýmkoli nasazením směrem `-Direction ToMonorepo` nejdřív potáhni
-  aktuální stav monorepa (`-Direction FromMonorepo`, viz výše) a slouč do
-  forku vše, kde je monorepo napřed — teprve pak spusť `ToMonorepo`.** Traktuj
-  pořadí FromMonorepo → ToMonorepo jako pevné, nikdy jako volbu; default
-  skriptu (`FromMonorepo`) tenhle krok automaticky neudělá, protože
-  `-Direction ToMonorepo` musí být zadán explicitně a hazard je tak
-  neviditelný pro každého, kdo default jen bez rozmyslu přijme.
-  Proč: příprava kroku „Šíření" přesně podle plánu (spustit `ToMonorepo`
-  rovnou) by přepsala 89 řádků, o které byl monorepo napřed
-  v `.claude/skills/mb-jira-update/SKILL.md` (dva commity z 2026-09-11) —
-  `-Direction ToMonorepo` zrcadlí KAŽDÝ `mb-*` skill směrem fork → monorepo
-  bez ohledu na to, který strom je novější.
-- **Drift mezi forkem a monorepem hledej jen v UMS-vlastněných položkách**
-  (`skills/mb-*`, `skills/shared`, top-level `hooks/*`) **po jednotlivých
-  adresářích — přesně tak, jak je enumeruje `sync-with-monorepo.ps1`** — ne
-  `git diff --no-index --stat` přes celý `skills` strom obou stran.
-  `hooks/tests/` sync nesynchronizuje nikdy, takže rozdíl tam čekej a neřeš
-  ho jako drift.
-  Proč: plošný diff dal 190 souborů / 203 242 vložených řádků čistého šumu —
-  monorepo `skills` adresář nese navíc vendorované superpowers skilly
-  a projektové skilly (`wf-*`, bpmn tooling), které se ve fork mirroru vůbec
-  nevyskytují, takže KAŽDÝ z nich vyjde jako rozdíl.
-- `gemini` a `kilocode` nemají adresář skillů — dostanou jen glue a blok
-  preferencí v instrukčním souboru.
-- **`settings.json` se na ne-Claude cíle nenasazuje.**
-  Proč: je to registrační soubor Claude Code a přepsal by cizí konfiguraci
-  (například `.gemini/settings.json`) — u ostatních harnessů se hooky registrují
-  ručně.
-- Glue soubory se do cílového config adresáře **mergují po souborech** a nikdy
-  nemažou cizí obsah. Blok preferencí se do instrukčního souboru vkládá mezi
-  markery `UMS-MEMORY-BANK BEGIN/END`, takže opakovaný běh ho nahradí na místě.
-  Při `-Scope UserProfile` se před blok přidá věta omezující platnost pravidel
-  na monorepo.
-- Vendorované superpowers skilly tento skript nesynchronizuje nikdy — ty
-  vznikají revendorem (výše).
-- **`cp -r zdroj cíl/` do existujícího stejnojmenného cílového adresáře
-  SLUČUJE, nevnořuje** — přidá/přepíše soubory ze zdroje a cizí soubor
-  v cíli zachová. Než spustíš plánem předepsané `cp -r` přes živý, sezením
-  čtený netrackovaný adresář se shodným jménem posledního segmentu zdroje
-  a cíle, ověř chování na dvouřádkové fixture ve scratchpadu (existující cíl
-  se svým markerem, zdroj se svým) — ne odvozením z četby příkazu.
-  Proč: ověřeno měřením na throwaway fixture: `dst/shared/keepme.txt`
-  přežil, nové soubory ze zdroje přibyly, `dst/shared/shared` nevzniklo.
-- **Než nasazení postavíš na merge-copy (`cp -r` bez `--delete`), ověř
-  `git diff --name-status <base>..HEAD -- <zdrojový-strom>` na řádky D/R.**
-  Bez mazání/přejmenování je merge-copy dostatečná; s nimi by nasazení
-  uneslo osamocené soubory, které zdroj už nemá, a je potřeba mirror-sync
-  nebo explicitní `rm` cílů.
-  Proč: kontrola nad tímto plánem nenašla žádné D/R (čistě A/M), což
-  potvrdilo, že merge-copy nemůže nechat mrtvý soubor.
-
-### Instalace git hooků do klonu
-
+Důkaz: 1a03314.
+- **Traktuj `claude`+`Monorepo` jako jedinou obousměrnou kombinaci
+  syncu.** Proč: jen ona táhne oběma směry (`FromMonorepo` z
+  monorepa, `ToMonorepo` opačně) — jinak jde vždy jednosměrný
+  deploy z `ums/`. Důkaz: 1a03314.
+**Pořadí `FromMonorepo` → `ToMonorepo` je pevné**
+Před `-Direction ToMonorepo` vždy nejdřív spusť `-Direction FromMonorepo`
+a slouč do forku vše, kde je monorepo napřed — až pak `ToMonorepo`.
+Default skriptu (`FromMonorepo`) tenhle krok neudělá automaticky.
+Proč: přímé `ToMonorepo` by přepsalo 89 řádků, kde byl monorepo napřed
+— `ToMonorepo` zrcadlí každý `mb-*` skill bez ohledu na to, který
+strom je novější.
+Důkaz: 0a13ef1.
+**Kde hledat drift forku a monorepa**
+- Porovnávej jen UMS-vlastněné položky (`skills/mb-*`, `skills/shared`,
+  `hooks/*`) po jednotlivých adresářích, přesně jak je enumeruje
+  `sync-with-monorepo.ps1` — nikdy plošný diff celého `skills` stromu.
+- `hooks/tests/` sync nesynchronizuje nikdy, rozdíl tam je očekávaný.
+- `gemini` a `kilocode` nemají adresář skillů — dostanou jen glue
+  a blok preferencí v instrukčním souboru.
+Proč: plošný diff dal 190 souborů / 203 242 řádků šumu z cizích
+(nevlastněných) skillů, které fork mirror vůbec nemá.
+Důkaz: 0a13ef1.
+**Co `sync-with-monorepo.ps1` nasazuje a jak**
+- `settings.json` se na ne-Claude cíle nenasazuje — je to registrační
+  soubor Claude Code, přepsal by cizí konfiguraci; u ostatních
+  harnessů se hooky registrují ručně.
+- Glue soubory se do cílového adresáře mergují po souborech, cizí
+  obsah nikdy nemažou. Blok preferencí jde mezi markery
+  `UMS-MEMORY-BANK BEGIN/END`, opakovaný běh ho nahradí na místě.
+- Vendorované superpowers skilly tento skript nesynchronizuje nikdy —
+  vznikají jen revendorem.
+Důkaz: 1a03314.
+- **`cp -r zdroj cíl/` do existujícího adresáře SLUČUJE, nevnořuje**
+  — ověř to na dvouřádkové fixture ve scratchpadu, ne odvozením
+  z četby příkazu. Proč: ověřeno měřením — cizí soubor v cíli
+  přežil, nové soubory přibyly. Důkaz: 7da3545.
+- **Než nasazení postavíš na merge-copy (`cp -r` bez `--delete`),
+  ověř `git diff --name-status <base>..HEAD` na řádky D/R.** Bez
+  mazání/přejmenování je merge-copy dostatečná, s nimi ne.
+  Proč: bez D/R merge-copy nemůže nechat mrtvý soubor. Důkaz: 7da3545.
+**Instalace git hooků do klonu**
 ```bash
 pwsh -NoProfile -File ums/.claude/hooks/install-git-hooks.ps1 -RepoRoot <klon>
 ```
-
-Proč vůbec: git hooky jsou netrackované, takže se s klonem nepřenesou —
-`pre-push` záruka publikačního kontraktu v novém klonu chybí, dokud ji tam
-někdo nenainstaluje.
-
-- Při `-Scope Monorepo` ho volá `sync-with-monorepo.ps1` sám; při
-  `-Scope UserProfile` ne (profil nemá jeden přiřazený repozitář), tam ho spusť
-  ručně.
-- **Nenulový exit instalátoru neignoruj** — znamená, že záruka není potvrzená:
-  `1` = self-test selhal, `2` = ponechán cizí hook, `3` = nainstalováno, ale
-  neověřeno (chybí shell pro self-test). Sync ho jen vypíše jako varování
-  a pokračuje, takže v dlouhém výpisu snadno zapadne.
-
-### Obnova nasazené kopie v tomto repu
-
-Kořenový `.claude/` a `.agents/skills/` jsou netrackovaná nasazení, ale sezení
-v tomto repu čte právě je. **Po každé změně zdroje v `ums/.claude/` nasazení
-obnov**, jinak agent pracuje podle staré verze kontraktu i skillů.
-
-- UMS obsah (`shared/`, `mb-*`, `hooks/`, `scripts/`, `settings.json`) je prostá
-  kopie z `ums/.claude/` do kořenového `.claude/`; pro Codex ještě
-  `ums/.claude/skills/` do `.agents/skills/`.
-- Kontrola, že je nasazení aktuální: `Contract-Version` v
-  `.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md` musí souhlasit se zdrojem
-  a v `.claude/skills/` musí být všechny adresáře `mb-*`, které jsou
-  v `ums/.claude/skills/`. Chybějící skill je nejrychlejší příznak zastaralého
-  nasazení.
-- **Tahle kontrola (Contract-Version + přítomnost všech `mb-*` adresářů)
-  odhalí jen CHYBĚJÍCÍ nasazení, ne ZASTARALÉ.** Na staleness (obsah
-  souboru se změnil, ne jen jeho existence) použij `diff -rq ums/.claude
-  .claude` — a pamatuj, že čtyři vendorované skilly s overlay bloky se musí
-  srovnávat proti monorepo kopii, ne proti `ums/`, kde vůbec neleží (viz
-  bod níž).
-  Proč: deployovaná kopie `finishing-a-development-branch/SKILL.md` nesla
-  16řádkový overlay popisující lokální merge, zatímco zdrojový fragment
-  v `ums/.claude/skills/shared/overlays/` měl 109 řádků popisujících
-  FF-push integraci s playbook gate — `Contract-Version` i přítomnost
-  `mb-*` adresářů přitom obě kontroly prošly beze zmínky.
-- Čtyři upstream skilly s overlay bloky (`brainstorming`,
-  `subagent-driven-development`, `finishing-a-development-branch`,
-  `writing-plans`) se kopií nevyrobí — po změně overlay fragmentu je musí
-  vygenerovat revendor.
-- **Po každém revendoru dorovnej vendorované skilly i v `.agents/skills`
-  kopií z `.claude/skills`** — platí pro tento fork i pro monorepo. Revendor
-  cílí jen na `.claude/skills` a sync vendorované skilly nesynchronizuje
-  nikdy, takže Codex kopie tiše zaostane. Ověření: `diff -rq` přes všech 14
-  vendorovaných adresářů musí být prázdný.
-  Proč: po revendoru na kontrakt v2.10 nesl `.agents/skills/brainstorming/`
-  v obou repech starý overlay bez bodu oponentury, zatímco `.claude` kopie
-  už byla nová — `mb-*` skilly přitom sync dorovnal, takže rozdíl nebyl na
-  první pohled vidět.
-- **Po editaci overlay fragmentu v `ums/` nejdřív obnov nasazení (kopie
-  `ums/.claude/.` → `.claude/`), teprve pak spusť revendor** — revendor sám
-  čte fragmenty z NASAZENÉ kopie (`.claude/skills/shared/overlays/`), takže
-  pořadí kopie → revendor je závazné. Výsledek ověř grepem na
-  charakteristický text nové verze fragmentu ve vygenerovaném souboru.
-  Proč: revendor spuštěný bez předchozí obnovy kopie tiše aplikoval starou
-  verzi fragmentů a verify pass prošel zeleně; chybějící text ve
-  vygenerovaném skillu odhalil až cílený grep.
-- **U grepové verifikace vygenerovaného overlay textu vždy ověř i
-  case-insensitive variantou (`grep -ni`) dřív, než se nulový zásah
-  nahlásí jako anchor-miss STOP** — a v briefu piš frázi přesně tak, jak je
-  v overlay fragmentu (včetně velkého počátečního písmene), aby
-  korespondovala 1:1.
-  Proč: doslovný grep na `"publication guarantee self-check"` (malými
-  písmeny) dal nulový zásah, ačkoli fragment i vygenerovaný soubor nesly
-  frázi s velkým počátečním písmenem (`Publication guarantee self-check`)
-  — bez case-insensitive dokontroly by to vypadalo jako chyba revendoru,
-  přestože overlay byl aplikován správně a šlo jen o casing v briefu.
-- **Grepová kontrola přítomnosti fráze v próze (Markdown, overlay fragment,
-  text kontraktu), která se může tvrdě zalomit, potřebuje před nahlášením
-  anchor-miss/nulového zásahu i variantu se ZTIŠTĚNÝM veškerým whitespace,
-  ne jen s nahrazenými novými řádky** — `tr -s '[:space:]' ' ' < soubor |
-  grep -o '<fráze>' | wc -l`. Prosté `tr '\n' ' '` nestačí: nahradí nový
-  řádek přesně jednou mezerou, ale odsazení pokračovacího řádku (typicky
-  dvě mezery) v textu zůstane a hledaný vzor čeká jednu mezeru, ne tři.
-  Proč: fráze `first-publication rule` existovala potřetí v souboru, ale
-  Markdown ji tvrdě zalomil přesně mezi dvěma slovy a odsazení pokračovacího
-  řádku dopadlo mezi ně — neviditelné pro jednořádkový grep (jiný důvod než
-  casing výše) a stále neviditelné i po `tr '\n' ' '`. Je to druhá,
-  nezávislá třída falešné příčiny vedle case-sensitivity — jedna schová
-  shodu hláskováním, druhá vloženým zalomením plus odsazením přímo doprostřed
-  fráze — a obě patří do sekvence dřív, než se anchor-miss nebo nulový
-  zásah nahlásí jako reálný.
-- **Regenerace nasazených (i monorepo) vendorovaných skillů po změně
-  fragmentu bez upstream bumpu = plný jednoprůchodový revendor s pinovaným
-  tagem (`revendor-superpowers.ps1 -Tag <pin>`), ne `-OverlaysOnly`.**
-  `-OverlaysOnly` funguje jen na čerstvě vendorované (pristine) soubory hned
-  po běhu `-NoOverlays`.
-  Proč: nasazené vendorované soubory už nesou předchozí overlay bloky, takže
-  `-OverlaysOnly` skončil FAIL „'brainstorming/SKILL.md' already contains an
-  overlay block. Re-vendor first (vendored files must be pristine…)".
-- **Editaci, která mění jen TĚLO overlay fragmentu, ověřuj diffem, ne
-  revendorem.** Zkontroluj dvě věci:
-  `git diff <báze>..HEAD -- <adresář overlayů> | grep -E "^[+-].*(ANCHOR|ASSERT|UMS-OVERLAY)"`
-  musí být prázdný (nezměnil se žádný řádek kotvy, assertu ani markeru bloku)
-  a každý overlay soubor musí mít pořád právě jeden `UMS-OVERLAY BEGIN`
-  a jeden `END`. Revendor je pak samostatný krok NASAZENÍ; do jeho proběhnutí
-  hlas nasazené vendorované skilly jako zastaralé.
-  Proč: vlna, která chtěla anchoring ověřit spuštěním redeploy skriptu,
-  skončila bez ověření úplně — revendor spadl z Bash toolu na
-  `tar: Cannot connect to C: resolve failed`, `-OverlaysOnly` odmítl běžet nad
-  už nepristine vendorovanými soubory a plný revendor přes PowerShell tool
-  zamítl klasifikátor nástroje. Selhání `tar`u přitom není nález o samotné
-  editaci.
-- `sync-with-monorepo.ps1` na tohle není: cílí na monorepo nebo na profil
-  uživatele, ne na kořen tohoto forku.
-
-## Kontrakt a skilly: soudržnost pravidel a dokumentů
-
-- **Pravidlo má jeden domov.** Napiš ho nejdřív do KONTRAKTU (pořadí kroků,
-  aktér, jediný netriviální důvod) a skill smí říct jen „per <jméno sekce>"
-  plus co je čistě lokální (nástroj, pořadí vůči vlastním krokům, co NAOPAK
-  nedělá) — věta, která v skillu parafrázuje důvod, je budoucí rozchod. Když
-  je STEJNÁ chyba objevena rozbitá ve víc než jednom konzumentovi sdíleného
-  kontraktu, nespravuj ji lokálně — nejdřív vypiš VŠECHNY konzumenty té
-  operace; implementuje-li ji víc než jeden, oprava patří do kontraktu.
-  Bezvýjimková zákazová hláška v hlavičce skillu (např. „⛔ ŽÁDNÝ git
-  commit/add/push") potřebuje pro jednu dovolenou operaci JMENOVANOU výjimku
-  přímo v zákazu, omezenou na konkrétní krok, s napsanou hranicí, kterou
-  nepřekračuje — ne tichý rozpor.
-  Proč: stejná chyba v pořadí publikace (`push` po každém commitu) se
-  ukázala i v `mb-abort`, který ji měl celou — dva konzumenti si vymysleli
-  vlastní pořadí pro tutéž operaci a jen jeden byl prověřen; a `git rm -f`
-  vyžadovaný kontraktem pro playbook-candidate soubor by bez jmenované
-  výjimky přímo odporoval hlavičce `mb-harvest`.
-- **Když přebíráš pravidla jiné sekce odkazem, kvalifikuj podstatné jméno
-  („pravidla ČTENÁŘSKÉ BEZPEČNOSTI té podsekce", ne „každé čtenářské
-  pravidlo") a napiš NEGATIVNÍ seznam:** která pravidla té sekce
-  NEcestují a jaká vlastnost obě skupiny odděluje. Odkaz bez negativního
-  seznamu je neomezený kvantifikátor nad sekcí, kterou neřídíš.
-  Proč: věta „každé čtenářské pravidlo té podsekce tu platí beze změny",
-  následovaná dvojtečkovým výčtem těch skutečně míněných — výčet větu
-  nesvázal. Citovaná sekce nesla i consume-on-read (přejmenování souboru po
-  vydání), pravidlo o validaci instrukcí a pravidlo nikdy neselhat hlasitě;
-  implementátor čtoucí tu větu jako specifikaci by je importoval všechna
-  a consume-on-read by nad stále čteným ledgerem ZNIČIL právě ten soubor,
-  o kterém se reportuje.
-- **`allowed-tools` v hlavičce skillu RESTRINGUJE dostupné nástroje — než
-  přebereš navržený seznam pro nový skill, vypiš si napřed VŠECHNY nástroje,
-  které skill vlastními kroky používá** (i ty, ke kterým se dostane přes
-  jiný skill — `mb-git-commit` potřebuje `git add`/`git commit`, publikace
-  `git push`, jakýkoli zápis do ledgeru nebo dokumentu `Edit`) — a porovnej
-  seznam proti tomuto inventáři DŘÍV, než ho porovnáš proti próze zadání.
-  Seznam zúžený na POSTOJ skillu vůči CIZÍM workspace („read-only git vůči
-  slotům poolu") není totéž jako seznam, který kryje i vlastní zápisy
-  skillu doma; kde se ta dvě čtení pole rozcházejí o to, jestli skill vůbec
-  proběhne, řekni to v reportu, nerozšiřuj ani nenasazuj seznam mlčky.
-  Proč: briefovaný seznam pro `mb-epic-run` vynechal `Edit` a každé
-  git-zápisové sloveso, přestože krok 3 operace `spawn` edituje ledger,
-  commitne ho a publikuje větev — pod restringujícím výkladem pole by
-  centrální operace skillu nemohla běžet vůbec. Sémantika pole byla v této
-  vrstvě dřív bez precedentu (nikde v repozitáři, vendorované skilly
-  nevyjímaje — `grep -rl 'allowed-tools' --include=SKILL.md .` nulový
-  zásah); referenční dokumentace skillů v tomto stroji ji ale uvádí
-  jednoznačně jako „Restrict tool access", takže restringující výklad je
-  ten správný.
-- **Grep lock spuštěný přes adresář, který obsahuje AKTIVNÍ návrh/plán pro
-  právě prováděný task, počítej se třetí kategorií residua: dokument
-  samotný, který cituje starou formulaci jako popis problému nebo cituje
-  samotný grep příkaz jako narativ.** Nevynucuj tohle do seznamu rulingem
-  předem daných kategorií (např. „dvě záměrné zmínky" / „tři out-of-scope
-  významy") — pojmenuj ji v reportu jako vlastní, samostatnou kategorii.
-  Proč: grep lock spuštěný přes `ums/` i `memory-bank/` matchnul několik
-  řádků v `design_lfs_prepush_chain_obnova.md` a
-  `plan_lfs_prepush_chain_obnova.md` — vlastních dokumentech tohoto tasku —
-  protože citují STAROU formulaci jako problem statement a dokonce citují
-  sám grep příkaz (nutně obsahující hledaný literál). Žádný z rulingů tuhle
-  kategorii nepředvídal, takže 100% pokrytí residua podle jen dřív daných
-  seznamů není vždy dosažitelné, i když je každá substantivní úprava
-  správná.
-- **Po dokončení briefem jmenovaných editů hardcoded literálu spusť grep
-  lock PŘED commitem** (ne až jako formální krok briefu) **a každý přeživší
-  zásah uvnitř souboru, který je už na edit listu, čti jako silný signál, že
-  brief podcenil počet výskytů právě v tom souboru** — oprav ho a odchylku
-  popiš v reportu, místo abys residuum „ospravedlnil" tím, že ho brief
-  nejmenoval.
-  Proč: brief jmenoval jen `memory-bank/tech.md:117` pro hardcoded literál
-  verze hooku; grep lock po editu odhalil druhý, nejmenovaný výskyt téhož
-  literálu o sedm řádků dřív (`tech.md:104`), popisující stejný
-  `settings.json` hook z jiného řádku tabulky.
-- **Rys, který je git-faktem (tracked/foreign/published), testuj git
-  příkazem nebo porovnáním CESTY — nikdy čtením obsahu souboru.** Derivovaný
-  stav „nic k udělání", který gatuje krok sahající na git-IGNOROVANOU cestu,
-  tu cestu musí probovat explicitně, ne odvozovat ze tří běžných git
-  příkazů (`status`, `stash list`, `log --branches --not --remotes`), které
-  na ni nevidí.
-  Proč: stará podoba `mb-harvest` gate četla „cizí slug" z prvního řádku
-  souboru, přestože s jedním souborem na slug je cizost fakt o cestě; a
-  netrackovaný neprázdný `playbook-candidates/<slug>.md` je pro
-  `.superpowers/` (git-ignored) neviditelný pro všechny tři standardní
-  příkazy, takže odvozené „už zaparkováno" nechalo evidenci v pracovním
-  stromu přesně v scénáři, pro který výjimka `git add -f` vznikla.
-- **Tvrzení „tahle cesta je netrackovaný deployment, commit se jí nedotýká"
-  ověřuj `git status --short --ignored=matching -- <cesta>` a čti kód
-  `!!`, ne jen absenci řádku v prostém `git status`.**
-  Proč: `!!` je git status kód specificky pro ignorovaný obsah, odlišný od
-  `??` (untracked); prostá absence řádku by neodlišila „ignorováno" od
-  „shodou okolností žádná změna v tomto běhu" — `git status --short
-  --ignored=matching -- .claude .agents ums` vrátil `!! .claude/` a
-  `!! .agents/skills/` jako strojový důkaz.
-- **Po vložení/odstranění kroku v číslovaném pořadí (kontrakt, skill, overlay
-  fragment) grepni CELÝ soubor na `step [0-9]`/číslo kroku a přečti seznam
-  znovu; odkazuj na sousední krok JMÉNEM fáze, ne pořadovým číslem** — čísla
-  se posouvají, jména ne. Grep na `step [0-9]` samotný nechytí plurál
-  („steps 4 to 6", „steps 4 and 6" — písmeno `s` láme match) ani spelled-out
-  počet („the six steps below") — přidej `steps? [0-9]`/case-insensitive
-  `\bstep` a grep na číslovky slovem (`\bšest\b`, `\bsedm\b` apod.), obě
-  navíc k plné ruční četbě. Po restrukturaci vícekrokové instrukce ji projdi
-  jako chladný čtenář pro KAŽDÝ podporovaný záměr zvlášť, s proměnným stavem
-  (např. „je strom čistý?") jako sloupcem tabulky. Chování git příkazu,
-  který skript nově použije jako detektor (co vrací na poškozeném/hraničním
-  vstupu), ověř EMPIRICKY (např. zapsat 40 hex znaků do rozbitého refu
-  a přečíst exit kód) PŘED rozhodnutím, kam v kódu patří jeho ošetření.
-  Proč: vložení kroku posunulo dvě interní křížové reference na číslo kroku
-  beze zmínky, protože žádný grep na termín kontraktu by je nenašel;
-  číslovaný odkaz „fáze 4" v kontraktu ukazoval na krok, který dělá fáze 3;
-  tabulkový průchod dvou záměrů hned odhalil defekt pod review i
-  nesouvisející mezeru (krok 3 přijímá „bez tiketu", krok 4 už předpokládá
-  kód tiketu); `git for-each-ref` na refu s neexistujícím objektem skončil
-  `fatal: missing object` a exit 128 sám o sobě — opak předpokladu „to jen
-  čte metadata, nespadne"; a plurál „steps 4 and 6"/intro věta „the six
-  steps below" po vložení nového kroku zůstaly stejně stale jako singulární
-  ordinály, jen je nenajde `step [0-9]`-tvarovaný grep.
-- **Věta o pořadí NEOPRAVUJE operaci, která sedí ve špatném kroku** — najdi
-  instrukci, která operaci provádí, a přesuň JI. Dvě už existující věty
-  tvrdící stejné pořadí jsou signál, že operace je špatně umístěná, ne že je
-  potřeba třetí. Po přidání explicitního startpointu k vytvoření větve
-  (`switch -c … <báze>` — báze zvolená ve fázi Intent vstupní brány při
-  prvním pinování práce, nebo efektivní báze, je-li práce už pinovaná)
-  zkontroluj VŠECHNY kroky před ním — pokud
-  některý commituje, přesuň vytvoření větve před něj (nekomitovaná práce
-  jde s `switch -c` samo).
-  Proč: věta „aktivace probíhá na tiketové větvi" nezměnila to, že move byl
-  textově i operačně před vytvořením větve — agent čtoucí pořadí zezdola by
-  dirtnul strom dřív, než větev vznikla; a explicitní startpoint v kroku PO
-  kroku, který komitoval, uvíznul commit na špatné větvi — projevilo se to
-  až o dva kroky dál, na STOPu dosažitelnosti.
-- **Když se STOP/gate test v jednom kroku skillu rozšíří na strukturálně
-  větší množinu stavů, přečti VŠECHNY pozdější kroky TÉHOŽ skillu (ne jen
-  jiné soubory) na větve, které předpokládaly starou, užší množinu.** Případ,
-  který nová brána zachytí dřív, se stává mrtvým kódem i uvnitř
-  report/message šablon, a token-based grep na charakteristickou frázi
-  změněného pravidla ho nenajde — mrtvý text tu frázi nemusí obsahovat.
-  Proč: rozšíření STOPu z „aktuální větev == odvozené jméno báze" na
-  „aktuální větev odpovídá libovolnému vzoru v `protectedBranches`" nechalo
-  v kroku Publikace mb-parku bod pro „větev v `protectedBranches`, ale ne
-  báze" nedosažitelný — stejná mrtvá větev se objevila potřetí v šabloně
-  úspěšného reportu parku.
-- **Když overlay/refaktor přesune akci DŘÍV, než ji popisuje existující bod
-  checklistu, ten bod musí na začátku říct, jaký stav při čtení PLATÍ
-  („tohle už existuje"), a výslovně pozastavit vlastní kontroly** —
-  jednosměrný forward-reference odkaz nestačí, bod se pořadovým čtením
-  stejně vykoná jako instrukce.
-  Proč: agent, který u nezměněného bodu (kde brief pravidlo popsal) znovu
-  testoval IDLE postcondition proti vlastnímu čerstvě zapsanému pinu,
-  přečetl ACTIVE a vykonal bodovu vlastní instrukci „STOP, smaž větev
-  a opakuj" — se lživým nálezem, že práce byla integrována bez harvestu.
-- **Overlay úpravu vždy verifikuj proti KONTRAKTU, ne proti briefu**, který
-  ho jen parafrázuje — brief je práce k dohledání místa, ne zdroj pravdy.
-  Totéž platí o kterémkoli briefově tvrzení „tenhle spotřebitel úpravu
-  nepotřebuje": je to závěr k ověření, ne daný fakt — grepni ten konkrétní
-  soubor a řádek na charakteristické tokeny měněného pravidla, i když to
-  brief tvrdí sebejistě a sám žádá „spíš potvrď, než abys mi věřil".
-  Když overlay NAHRAZUJE upstream krok (ne rozšiřuje), jmenovitě neguj staré
-  příkazy v textu fragmentu, protože zůstávají viditelné vedle přebíjeného
-  textu. Po KAŽDÉ změně pravidla v kontraktu grepni celou vrstvu na jeho
-  charakteristický token VČETNĚ hlaviček hooků, šablon reportů a overlay
-  fragmentů, a oprav každé restatement ve stejném commitu; a re-čti každou
-  cestu, která NĚČÍM konči práci (integrace, abandon, park), a každou větu,
-  která předpokládá, co je/není na `origin` — tvrzení pravdivá pod starým
-  pořadím publikace se pod novým tiše obrátí.
-  Proč: fragment psaný jen z brief formulace by povolil přepis TRACKED
-  playbook-candidate souboru, který kontrakt (užší) zakazuje; fragment
-  „integrace je fast-forward push" bez negace `git checkout`/`pull`/
-  `merge`/`branch -d` nechal oba postupy vypadat platně; po vlně měnící
-  `core.hooksPath` a STOP v `mb-park` zůstalo pět z šesti nálezů v místech,
-  která pravidlo jen RESTATOVALA; a změna „publikuj po každém commitu"
-  nechala nekomitovaný abandon-move zničit jedinou kopii a zapsat trvalou
-  „KOLIZI AKTIVNÍ PRÁCE" na originu. A tam, kde brief tvrdil, že jistý
-  spotřebitel „žádnou nabídku nerestatuje, úpravu nepotřebuje", nesl řádek
-  `mb-architect-review/SKILL.md:267` text „fail-open, **offer only**" —
-  doslovný, zastaralý restatement rušeného mechanismu, přesný opak briefova
-  tvrzení.
-- **Jedna obecná definiční věta („kdekoli tento dokument píše token X, myslí
-  se…") nezneplatní specifickou větu, která svou hodnotu tvrdí jako
-  VÝHRADNÍ** („jen", „všude jinde", „jediná báze, která se počítá") —
-  čtenář narazí na výhradní větu první a nemá signál, že je překonaná. Po
-  zavedení obecné věty grepuj i na vlastní exkluzivní/autoritativní
-  slovník specifických míst, ne jen na slovník nové obecné věty. Totéž
-  u VÝJIMKY z kategorického pravidla: sweep na vlastní tokeny výjimky
-  nestačí — grepni i tokeny pravidla, ze kterého se vyjímáš, a přečti
-  zastudena odstavec, který to pravidlo tvrdí nejkategoričtěji.
-  Proč: holý placeholder token je obecnou větou tiše kryt, ale věta navíc
-  JMENUJÍCÍ svůj zdroj (`baseRef` per Repository Configuration) nebo
-  tvrdící „jediná, která se počítá" zůstává v rozporu, i když obě čtení
-  vedou ke stejné hodnotě. A sweep na tokeny nové výjimky
-  (`epicBranchPattern`, `epic line`) přišel čistý a problém najít NEMOHL:
-  věta, kterou výjimka falsifikovala („the MOMENT of integration belongs to
-  the human"), žádný z nových tokenů neobsahuje — odhalila ji až chladná
-  četba sekce, kterou výjimka sama cituje.
-- **Po zavedení nové instance něčeho, co existující věta počítá jako
-  jedinou** („the single exception", „jediná výjimka", „přesně jedna"),
-  **grepuj celý dokument na tu POČÍTACÍ frázi samotnou** — samostatně od
-  greppu na jméno konceptu — a oprav KAŽDOU větu, která ji používá, se
-  zachováním vlastního důvodu každé výjimky u své vlastní věty. Zkontroluj
-  po opravě nulový výskyt staré frazování stejným greppem.
-  Proč: slovo „jediná" se stalo nepravdivým ve DVOU nezávislých větách ve
-  dvou různých sekcích v okamžiku, kdy vznikla druhá instance výjimky — ani
-  jedna věta nebyla špatně o svém VLASTNÍM důvodu, jen o kardinalitě, kterou
-  tvrdila.
-- **Nabídka kurátorovaného seznamu kandidátů, po které následuje pravidlo
-  spouštějící se jen na hodnotě MIMO ten seznam, musí explicitně napsat, že
-  odpověď mimo nabídku je přípustná** — existence spouštěče sama o sobě
-  není důkaz, že nabídka to dovoluje.
-  Proč: nabídka postavená výhradně z větví shodných s `protectedBranches`
-  (tedy chráněných konstrukcí) nikdy nenapsala, že volná odpověď je
-  přijata, čímž byl scénář, pro který STOP existuje (báze mimo
-  `protectedBranches`), textově nedosažitelný.
-- **Report/status hláška, která jmenuje konkrétní stav nebo tvrdí „opraveno
-  X", musí ten stav v TOMTO běhu PŘEČÍST, ne dovodit z jiného pravidla nebo
-  napsat ze cvičné paměti.** Když se cesta v kódu přepočítá, přečti CELÝ
-  report/hlášku od začátku do konce a u KAŽDÉ věty se zeptej, jestli na
-  téhle cestě ještě platí — dej raději samostatnou variantu reportu než
-  hedge vlepený do hlášky o úspěchu. Věta „tato změna navíc opravila X"
-  patří do reportu jen podložená stavem PŘED změnou ve STEJNÉM sezení
-  (`git show <base-sha>:<path>`) — bez něj se vyřazuje.
-  Proč: degradovaná cesta instalátoru tvrdila konkrétní chráněné větve
-  odvozené z toho, že „hook má fallback" — fallback naskočí jen při
-  prázdném seznamu, takže `main` byl ve skutečnosti nechráněný, přestože ho
-  výstup jmenoval jako chráněný; jinde jedna oprava patchla souhrn a
-  hlavička/závěrečná věta téhož reportu dál tvrdily dokončený park
-  a dosažitelnost z originu, která už neplatila; a tvrzení o opraveném
-  duplicitním nadpisu se nekonalo — `git show` základní verze žádný duplicit
-  neukázal.
-- **Dvě hlášení o témže stavu (souhrn × varování, dvě fáze téhož výpočtu)
-  musí čerpat z JEDNOHO zdroje pravdy** — po změně textu na jednom místě
-  vygrepuj VŠECHNA místa, která o tom stavu mluví, a srovnej je v jednom
-  commitu; test piš na CELÝ zploštělý výstup, ne na jednu sekci. Platí i pro
-  autoritu OBSAHU vs. autoritu VÝBĚRU: příkaz, který je fakticky autoritou
-  na to, co commit obsahuje, není zároveň autoritou na to, KTERÉ položky se
-  mají zobrazit — filtr výběru drž jako samostatnou mapu a výstup autority
-  s ní protni.
-  Proč: souhrn hlásil skutečný seznam chráněných větví, varování o pět
-  řádků výš dál jmenovalo vestavěné vzory — kdo se zastavil u (červeně
-  psaného) varování, odešel s dojmem, že `main` je chráněný, i když push
-  projde; a `branch -r --contains` vrátil VŠECHNY vzdálené větve obsahující
-  commit včetně těch, které fáze výběru vyřadila — uspaná větev by se
-  vrátila zadními dvířky přes commit společný s živou.
-- **Přejmenování toho, co fail-closed brána OVĚŘUJE (např. z lokálního merge
-  commitu na pushnutý tip tiketové větve), vyžaduje přepočítat i JEJÍ
-  PŘÍKAZ**, odvozený znovu z otázky, ne ze starého příkazu — a v multi-step
-  skillu vypiš všechny kroky, které mutují (commit, switch, push, write,
-  delete), a VYTÁHNI každý STOP PŘED první z nich, s napsaným důvodem
-  pozice v textu.
-  Proč: `git branch -r --contains <sha>` dál procházel po přejmenování cíle
-  na „pushnutý tip", protože commit byl na originu přes tiketovou větev —
-  brána přestala testovat to, co její vlastní próza tvrdila; a STOP na bázi
-  v `mb-park`, umístěný čitelně v kroku, kde se báze stává relevantní,
-  odpálil AŽ PO tom, co kroky 2–3 před ním už commitovaly — po vzniku
-  přesně toho stavu, který má zabránit.
-- **Když kontrakt zdůvodňuje manuální krok slabinou automatizovaného, napiš
-  tu slabinu jako MECHANISMUS (co automat vzorkuje, co odvozuje, kam
-  nedosáhne), ne jako VERDIKT** („nic neprokazuje"). Mechanismus lze znovu
-  ověřit proti kódu a hlasitě přestane sedět, když se kód změní; verdikt
-  tiše zůstane lží. Stejné pravidlo platí pro reviewera takové věty — ověř
-  ji otevřením skriptu, ne důvěrou ve větu nebo v review, které ji citovalo.
-  Proč: kontraktová věta „instalátorův self-test prověřuje jen svůj fixní
-  pár větví a nic neprokazuje o nově přidaném vzoru" byla měřitelně
-  nepravdivá — `install-git-hooks.ps1` obsahuje třetí ověřovací běh přesně
-  pro tyto vzory (řádky 451–514) — přestože manuální krok samotný byl
-  potřeba z jiného, mechanického důvodu (vzorkuje `Select-Object -First 1`,
-  odvozuje jméno větve substitucí `*`→`x`).
-- **Než degraduješ chybějící hodnotu na „neutrální" default, dohledej každé
-  místo, kde se ta hodnota POUŽÍVÁ, a přečti polaritu testu, do kterého
-  teče.** Default bezpečný pod `===`/`.test()` („nematchne nic") je pod
-  `!==` nebezpečný („liší se od všeho"). Kde hodnota teče do negativního
-  testu, odmítni raději celé pravidlo, než abys hodnotu defaultoval — a nikdy
-  za ni nedosazuj odhad.
-  Proč: prázdný řetězec na pravé straně `stripRef(dest) !== epic.baseBranch`
-  udělal podmínku trvale pravdivou a hlídka degradovala k MENŠÍ ochraně;
-  naměřeno, že raw-SHA push do dodávkové linie prošel pouze proto, že
-  `baseRef` chyběl.
-- **Než na chybějící závislost vrátíš tvrdou výjimku, dohledej VOLAJÍCÍHO
-  a zjisti, co s ní udělá** — zvol tu z obou konečných cest (výjimka vs.
-  degradovaný provoz), po které zůstane VÍC ochrany. Náprava (remedy), která
-  končí commitem, prověř po celé cestě dál — lze ji pushnout, přenést na
-  větev, která ji převezme, kdo ji později vyzdvihne? Když je odpověď „ne"
-  na všechny tři, náprava práci uvězní; tvar je „nejdřív vytvoř větev, pak
-  commituj", protože nekomitovaná změna jde s `switch -c` samo.
-  Proč: `throw` na chybějícím loaderu konfigurace by v degradované cestě
-  volajícího (syncu, který nenulový kód tlumí na varování) nechal
-  repozitář BEZ hooku a s nechráněným `develop` — méně ochrany než vestavěný
-  fallback samotného hooku; a náprava „commituj leftovers na téhle větvi"
-  na bázi produkovala nepushnutelný, nepřenositelný a nezaparkovatelný
-  commit.
-- **Než „opravíš" cestu v instrukci, rozliš, čeho je součástí: MARKDOWN
-  odkaz se rozpouští proti adresáři OBSAHUJÍCÍHO souboru, shellový/
-  PowerShellový argument proti PRACOVNÍMU adresáři agenta (kořen
-  repozitáře).** Precedens z jedné třídy není důkaz pro druhou. Musí-li
-  placeholder adresáře skillu na místě zůstat, udělej ho rozpoznatelným
-  jednou větou jmenující adresář, na který ukazuje — nepovyšuj ho na
-  definici na úrovni kontraktu (to je druhý domov pravidla).
-  Proč: návrh nahradit placeholder v PowerShell příkazu (`. <mb-shared>/
-  scripts/Get-UmsBaseCandidates.ps1`) spellingem z markdown odkazu v
-  `mb-init/SKILL.md` by ukázal mimo repozitář, protože příkaz se rozpouští
-  vůči kořeni repa, ne vůči adresáři souboru; kontrakt sám přitom stejný
-  tvar placeholderu už používá (`pwsh <mb-doc-index>/scripts/doc-index.ps1`).
-- **Hodnotu z konfigurace, která už nese svůj prefix** (`baseRef` =
-  `origin/develop`), **nikdy neprefixuj podruhé** v dokumentaci ani
-  v příkazu — u KAŽDÉ takové hodnoty se nejdřív podívej na její default
-  v loaderu a příkaz vyzkoušej s reálnou hodnotou z repa, ne se zástupným
-  symbolem. Zavedeš-li placeholder užívaný na READ místech i na PUSH místě,
-  sweepuj OBĚ špatné hláskování zvlášť (`origin/<placeholder>` a
-  `HEAD:<placeholder>`) — nejde o jednu chybu formulovanou dvakrát.
-  Proč: `git rev-list --count HEAD..origin/<baseRef>` skončil `fatal:
-  ambiguous argument 'HEAD..origin/origin/ums-memory-bank'`; a 25 výskytů
-  placeholderu ve dvou dokumentech se rozpadlo na dva nezávislé defekty —
-  doublovaný prefix na čtecích místech a `HEAD:<baseRef>` na jediném push
-  místě (vytvoří vzdálenou větev `origin/develop`, kterou `protectedBranches`
-  nezachytí).
-- **Rozšíření skillu o schopnost, kvůli které ho má někdo nově VOLAT, uprav
-  ve STEJNÉM commitu i `description` ve frontmatteru** — jazykem otázky,
-  kterou uživatel položí, ne jménem interní sekce těla; triggering řídí
-  výhradně `description`. Tvrzení „(read-only)"/„nic tu nefetchuje" o volání
-  JINÉHO skillu nebo skriptu je tvrzení K OVĚŘENÍ, ne premisa — otevři ten
-  skript a najdi konkrétní příkazy, zvlášť `fetch`, který se nepromítne do
-  `git status`.
-  Proč: `mb-state` dostal celou vrstvu způsobilosti workspace, ale
-  `description` dál slibovala jen starý rozsah — na otázku „je tenhle
-  workspace v pořádku" by se skill nevyvolal; a `doc-index.ps1`, volaný jako
-  „(read-only)", ve skutečnosti pouštěl `git fetch --prune origin`, pokud
-  nedostal `-NoFetch`.
-- **Když detektor musí vybrat jednu větev/hodnotu z několika rovnocenných
-  long-lived kandidátů, přečti DVA nezávislé signály (ne jeden)** a nesouhlas
-  mezi nimi řeš OTÁZKOU na uživatele, ne pravidlem pro tichý tie-break.
-  Signál odvozený z checkoutnuté PRACOVNÍ větve (jejíž upstream je ona sama)
-  zahoď.
-  Proč: `symbolic-ref refs/remotes/origin/HEAD` samotný by ve forku, který
-  nese upstream default branch jako read-only zrcadlo, napsal `origin/main`
-  neopotřebovaně — druhý signál (`@{upstream}` dlouhožijící větve) dal
-  `origin/ums-memory-bank`, shodné se symrefem v monorepu.
-- **Bump verze v dokumentu, který vede running „Supersedes" historii,
-  přeformuluj i ŘÁDEK, který byl current PŘEDTÍM** (`Supersedes vOLD` →
-  `vPREV superseded vOLD`), ve STEJNÉM editu — i když brief dává jen text
-  nového řádku. Konvenci ověř čtením alespoň dvou historických položek pod
-  místem vkládání, ne jen podle textu, který dostaneš.
-  Proč: bez přeformulování by po bumpu na v2.8 vznikly dvě po sobě jdoucí
-  neverzované „Supersedes" věty, ze kterých nelze poznat, jaký přechod
-  verzí každá popisuje.
-- **Pro každý volitelný řádek stavového souboru (`context.md`), který
-  existující reset zachovává, ověř ZVLÁŠŤ dvě otázky: co ho ZACHOVÁVÁ a co
-  ho PŘEPISUJE na KAŽDÉ cestě.** Nemá-li druhá otázka odpověď, řádek
-  zestárne přesně tam, kde to sesterský řádek nemůže. Zjisti to mechanicky
-  (`grep -rn "<Pole>:" ums/.claude/`) a najdi všechny writery a readery
-  před rozhodnutím, kam opravu umístit.
-  Proč: `Jira:` je zachováván A nepodmínečně přepisován zápisem pinu, takže
-  nemůže zestárnout; nový `Báze:` kopíroval jen zachovávací polovinu vzoru
-  a psal se „když se báze liší" — nic ho neodstraňovalo, takže by jedna
-  maintenance větev tiše určila výchozí bázi pro všechny další (base sync,
-  harvest diff i integrační příkaz).
-- **Nově vytvořenou tiketovou větev publikuj explicitním
-  `git push -u origin <branch>`, nikdy bare `git push`.** `git switch -c
-  <branch> <báze>` nastaví upstream nové větve na BÁZI, ne na ni samu —
-  bare push by tak cílil na (typicky chráněnou) bázi. `-u` upstream
-  přepíše a past platí jen do prvního publikování; při kontrole workspace
-  považuj „upstream tiketové větve je chráněná větev" za nález, ne za
-  normální stav.
-  Proč: `git rev-parse --abbrev-ref '@{upstream}'` po `switch -c` potvrdil
-  upstream nastavený na `origin/ums-memory-bank` — pre-push hook by bare
-  push zachytil, ale jen jako zamítnutí na konci, bez náznaku, že příčinou
-  je tracking nastavený už při vytvoření větve.
-- **V komentáři u rozhodovacího kódu nepiš POČET, JEDINEČNOST ani UZAVŘENÝ
-  VÝČET cest — ani jako opravu předchozího počítacího tvrzení; a opravenou
-  větu vždy proměř jako nový test, ne jako hotovou opravu starého.** Piš,
-  co dělá TENHLE check a proč, u toho checku; kde čtenář potřebuje celek,
-  odkaž na funkci, která rozhoduje (`see evaluatePush`). Vytáhni z opravené
-  věty PREDIKÁT (podle čeho se ta třída pozná), najdi funkci, která ho
-  počítá, a pusť aspoň jeden PŘÍKLAD a jeden PROTIPŘÍKLAD sondou. Test
-  každé věty, která přežije: „zneplatní ji přidání větve jinde, aniž by se
-  téhle řádky někdo dotkl?" — když ano, je to počítací tvrzení v
-  přestrojení.
-  Proč: náhrada tvrzení o jedinečnosti („the ONE fail-open path") jednou
-  kladnou větou vyjmenovávající celý výčet cest se rozbila hned a tiše —
-  vznikly dvě nové nepravdy („exactly two ways left to be allowed", „one
-  of the two ways"), měřitelně vyvrácené (`git push $r develop` zamítá
-  z jiného důvodu; `git push -u origin feature/x` je třetí cesta, žádný
-  problém). Jinde náhrada za `isGitToken`-predikát zavedla nepravdivý
-  predikát „shape this file does not recognize as a command at all", který
-  soubor o šest řádků níž definuje jako command position — ne fail-open
-  třídu; protipříklady `echo git push origin develop`, `sudo git push
-  origin develop`, `cd /repo; git push origin develop` byly všechny DENY.
-- **Slovník sweepu po opravě nepravdivé věty skládej ze slov, kterými se
-  POČÍTÁ a zobecňuje, ne z názvů konceptů, které zrovna měníš**
-  (`only|any|never|always|both|either|exactly|unless|one|two|the one|
-  everywhere except` plus jména postojů). Grepni obě strany (kód i sadu)
-  a KAŽDÝ výskyt přečti proti kódu, jak stojí dnes.
-  Proč: slovník omezený na pojmy toho kola (`fail-open`, `fail-closed`,
-  `expansion`, `command position`, `the one`, `exactly`) minul dva nálezy,
-  které přežily tři kola: „the one thing this layer still catches" (od
-  kola 0) a „Any other flag means 'not simple' -> allow", věta tvrdící od
-  jednoho tasku pravý opak kódu o dvě řádky níž — chytila je až slova
-  `any`, `only`, `never`, `unless`, `both`, `either`, `one`, `two`.
-- **Když review najde věty odporující kódu, neopravuj jen jmenované —
-  udělej greppovaný inventář slovníku toho pravidla přes VŠECHNY soubory,
-  kterých se týká (kód i testy), a u KAŽDÉHO výskytu si odpověz „platí tohle
-  po dnešní změně?".** Zvlášť hlídej věty tvrdící POČET nebo JEDINEČNOST
-  („the one", „exactly two", „everywhere except") — ty se lámou přidáním
-  nové cesty, ne změnou té, kterou popisují, takže je grep na jméno
-  změněného konceptu nenajde. Stejně tak u ČÍSEL: opravuješ-li počet, který
-  je SOUČTEM výčtu ve stejném dokumentu, nech výčet sečíst strojově
-  (`grep -oE '\(([0-9]+)' | awk '{s+=$1}'`) a vyžaduj rovnost s headlinem;
-  nesedí-li, rozsah opravy je celý výčet, ne jmenované instance — a napiš to
-  do reportu, ať rozšíření nezůstane nevysvětlené.
-  Proč: po opravě per-token tolerance grep přes `FAIL-OPEN|FAIL-CLOSED|
-  expansion|command position` v obou souborech našel další tři nepravdivé
-  věty mimo diff té opravy — dvě tvrdily jedinečnost, která přestala platit
-  vznikem druhé cesty k povolení, jedna pocházela ještě z kola 0 a
-  zneplatnil ji samotný task. U čísel dopadl týž vzor stejně: opravený součet
-  seděl ve větě s dalším chybným počtem sad a tři per-sadová čísla jinde
-  v témž seznamu byla také odchýlená (jedno z nich odchýlila právě ta vlna,
-  co opravovala) — oprava jen čtyř jmenovaných by nechala headline
-  neověřitelný a zavedla novou nepravdu.
-- **Ke greppu na jména pojmů přidej druhý průchod po sekcích: vypiš
-  sekce, kterých se změna věcně týká, a přečti je celé** — restatement
-  pravidla bývá napsaný jinými slovy než pravidlo samo, takže ho jméno
-  pojmu nenajde.
-  Proč: grep na `two-tier`, `UMS_ALLOW_SHARED_PUSH`, `agent NEVER pushes`
-  nenašel dvě nepravdivé věty bez těch pojmů: „they must never give
-  different answers for the same configuration" (obě vrstvy dnes ZÁMĚRNĚ
-  dávají různé verdikty) a „a missing or unverified `pre-push` hook"
-  („unverified" už neznamená totéž co „neověřený v prostředí téhle
-  session").
-- **Když do dokumentace píšeš, že nějaká vlastnost platí pro KAŽDOU
-  položku dříve vyjmenovaného seznamu, projeď ten seznam sondou položku po
-  položce**, i když je vlastnost „zjevná" a seznam jsi nesestavoval ty —
-  položka, která do seznamu patří z jiného důvodu než ostatní, tvrzení
-  zabije. Platí pro kontrakt, hlavičky hooků i review poznámky, kdekoli
-  se píše kvantifikátor („každý", „všechny", „žádný") nad výčtem.
-  Proč: věta „čitelný chráněný cíl je zamítnut přes KAŽDÝ z dříve
-  vyjmenovaných nosičů ztracené command position" byla pravdivá o pěti
-  nosičích ze šesti; šestý (`X=1|git push …`) byl v seznamu omylem — jiná
-  třída (nerozpoznaný token), měřený verdikt ALLOW. Bez šestiřádkové sondy
-  by věta odešla do kontraktu jako devátá kódem vyvrácená věta téhle
-  větve.
-- **Upřesnění komentářového bloku nikdy nepřidávej jako NOVÝ odstavec
-  vedle starého tvrzení — nejdřív najdi větu, kterou upřesnění mění,
-  a přepiš JI**; teprve co se do ní nevejde, připoj zvlášť. Kontrolní čtení
-  dělej odshora dolů celý blok jako cizí čtenář, ne jen diff — v diffu
-  vypadá přidaný odstavec správně, protože stará věta v něm není vidět.
-  Proč: nová upřesňující věta o postoji vrstvy skončila přesně pod větou,
-  kterou vyvracela, a obě zůstaly v souboru vedle sebe — review to
-  označilo jako čtvrtý výskyt téhož vzoru na tomto plánu, dvakrát v textu
-  psaném právě v tom kole, které předchozí výskyt opravovalo.
-- **Když upřesňuješ komentářový blok, přečti si ho CELÝ odshora dolů po
-  editaci a hledej dvojice věta–výjimka, které stojí odděleně: sluč je do
-  JEDNÉ věty na tom místě, kde padá rozhodnutí.** Absolutní formulaci
-  („X je vždy zamítnuto") nech v komentáři jen tam, kde pod ní není žádná
-  podmínka; jinak ji od začátku piš s tou podmínkou uvnitř, ne jako
-  tvrzení, které o odstavec dál bereš zpátky.
-  Proč: v `evaluatePush` vedle sebe stály „A protected target that IS
-  readable is denied whatever else on the line is not" (absolutní) a
-  o 17 řádků níž „Reading targets out of a MESSY invocation is itself
-  gated on command position" (přesné) — cizí čtenář odshora narazí na
-  nepravdivou první; je to potřetí na tomtéž plánu.
-- **Nadpis komentáře musí být TÝŽ tvar pravidla jako věta, která ho
-  vysvětluje — ne jeho zkratka o stupeň silnější.** Kde je nejlákavější
-  oprava nebezpečná, přidej k ní jednořádkový `WARNING:` s důvodem;
-  komentář, který jen popisuje správný stav, budoucího čtenáře před tou
-  opravou neochrání.
-  Proč: nadpis „ONE PROBLEM PER OFFENDING TOKEN" byl silnější než skutečné
-  pravidlo o tři řádky níž („a problem may only be recorded on tokens that
-  all bear on it") a o dvacet řádků níž stál kód, který nadpis porušuje ze
-  správného důvodu (arita je vlastnost MNOŽINY) — nabízená „oprava" podle
-  nadpisu by zrušila reálný fix.
-- **Když soubor popisuje jeden mechanismus na víc než jednom místě
-  (stromový komentář + tabulka, hlavička skriptu + tělo), po úpravě
-  KTERÉHOKOLI z nich vyhledej ostatní popisy STEJNÉHO mechanismu ve
-  STEJNÉM souboru a srovnej je vedle sebe** — ne jen jednotlivě proti kódu,
-  i proti sobě navzájem.
-  Proč: po opravě jednoho popisu výjimky (buffer arm nad markerem) měla
-  druhá formulace ve stejném souboru (tabulkový řádek „Publication
-  guarantee") výjimku správně už z předchozího kola, zatímco stromový
-  komentář o pět řádků výš ve stejném kole ji neměl — přesně scénář
-  „falsified from a sibling line ve stejném commitu".
-- **U každé absolutní věty o hooku („nevynucuje nic", „vždy propustí")
-  přečti kód NAD branou, na kterou se ta věta odvolává, a výjimku napiš do
-  stejného odstavce.** Totéž platí pro věty o rozsahu — fail-closed
-  plumbing arm bývá nad rozsahovou branou taky.
-  Proč: věta „The hook enforces NOTHING outside an agent session" nebrala
-  v úvahu větev NAD branou — selhání bufferu stdinu — která zamítne push
-  komukoli, se značkou i bez ní; hook to sám komentářem říká, ale grep na
-  pojem měněného pravidla (`agent session`, `marker`) ten komentář najde
-  až v odstavci, který čtenář briefu přeskočí.
-- **Když v dokumentu ROZŠÍŘÍŠ působnost pravidla („platí nově i pro X a
-  Y"), vypiš mechanismy, které o tom pravidle NĚCO SLIBUJÍ (hlášky,
-  zprávy, nápovědy, exit kódy), a u KAŽDÉHO ověř v kódu, jestli slib platí
-  i pro nově přidané X a Y.** Kontrolní otázka: „kolik z případů, které
-  pravidlo nově pokrývá, tenhle slib skutečně splňuje?" — a když ne
-  všechny, napiš do věty které.
-  Proč: rozšíření lidské výjimky z jednoho pravidla na tři (protected-
-  branch, deletion ban, force-push ban) nechalo beze změny větu „its own
-  rejection message names it" — pravdivou, dokud výjimka zvedala JEDNO
-  pravidlo, nepravdivou pro dvě ze tří zdí, protože mazání větve ani
-  force push výjimku vůbec nezmiňují. Grep na měněné pojmy takové věty
-  nenajde — neobsahují nic, co by je odlišilo od desítek správných
-  výskytů téhož slova.
-- **U rozhodovacího ramene, které popisuješ prózou, si opiš konkrétní
-  ŘÁDEK, který o něm rozhoduje (celý výraz včetně ternárního operátoru a
-  guardů), a spočítej podmínky v něm — teprve pak piš větu.** Ke KAŽDÉ
-  přiznané mezeře připiš, co ta mezera NESTOJÍ, jinak se z opravy
-  over-claimu stane under-claim, který je stejně nepravdivý.
-  Proč: popis fail-closed chování jako „posture + jedna jmenovaná výjimka"
-  (odkaz na `evaluatePush`, aby se autor vyhnul výčtu, který podle
-  hlavičky souboru vždy zestará) svedl k opačné chybě — rameno má DVĚ
-  podmínky (`atCommandPosition ? problems.find(…) : undefined`), jmenovaná
-  byla jen jedna, takže kontrakt sliboval zamítnutí, které kód nedodá.
-- **Popis chování rozhodovací funkce piš až po přečtení CELÉ funkce (ne
-  hlavičky, ne rulingů) a formuluj ho jako „posture + jmenovaná výjimka +
-  odkaz na funkci", nikdy jako výčet větví.** Když soubor sám varuje, že
-  jeho souhrny zestarávají, ber to jako zákaz souhrnu, ne jako výzvu napsat
-  lepší.
-  Proč: věty „denies anything it cannot parse" a „document text passes"
-  sepsané z hlavičky souboru a z rulingů v ledgeru byly obě nepravdivé
-  proti kódu — protected target čitelný v plain textu se zamítá i BEZ
-  command position, a nečitelný push se naopak POVOLUJE, když nečitelnost
-  způsobila shell expanze.
-- **Než vložíš doslovný snippet, který NAHRAZUJE strukturovaný útvar
-  (tabulku, číslovaný seznam, pojmenované vrstvy), projdi snippet na odkazy
-  do té struktury — ordinály („Tier 1", „krok 3"), jména sloupců a řádků —
-  a přepiš je na jméno PRAVIDLA, ne na pozici.** Doslovnost snippetu se tím
-  neporušuje: mění se odkaz, ne tvrzení.
-  Proč: snippet vložený doslova (včetně věty „Tier 1 lets the agent publish
-  its own ticket branch unassisted") odkazoval po vložení na strukturu,
-  která už v souboru nebyla — týž krok mazal tabulku, která pojem „Tier 1"
-  definovala; v diffu to vypadalo správně, protože smazaná tabulka i nový
-  odstavec jsou vidět vedle sebe, ale že jeden odkazuje na druhý, ukáže až
-  čtení výsledku.
-- **Ohrazený příklad, proti kterému někdo napíše parser, si před commitem
-  přečti ZNOVU proti pravidlům na třídy znaků, velikost a tvar, která táž
-  sekce ukládá — doslova.** Obvyklý viník je placeholder v „ostrých
-  závorkách"; použij konkrétní realistickou hodnotu a to hláskování nech jen
-  okolní PRÓZE.
-  Proč: kanonický příklad bloku `NOW` napsaný s dokumentačním placeholderem
-  `plan_<slug>` v hodnotě `Look at:` by byl odmítnut čtenářskou disciplínou,
-  kterou tatáž sekce přejímá o čtyři odstavce níž (parsovaná hodnota nesmí
-  obsahovat ostrou závorku) — a autor parseru by z něj napsal fixturu, která
-  MUSÍ selhat.
-- **Když měřené pravidlo říká „pravidlo patří do STEJNÉHO odstavce jako
-  artefakt" a artefaktem je ohrazený blok, dej pravidlo TĚSNĚ NAD ohrazení,
-  bez prázdného řádku, a ukonči větu dvojtečkou, která na blok ukazuje.**
-  Pod blok ani do následujícího odstavce pravidlo nikdy nepiš — to je právě
-  to oddělení, kterému má bránit.
-  Proč: v Markdownu ohrazení odstavec ukončí, takže pravidlo a artefakt spolu
-  doslova jeden odstavec sdílet nemohou. Tučný odstavec končící „Tohle je ten
-  artefakt:" a ohrazení hned na dalším řádku bez prázdné mezery dá jeden
-  neoddělitelný textový celek — každá kopie bloku začínající u předchozího
-  prázdného řádku si pravidlo odnese s sebou — a CommonMark blok pořád
-  vykreslí jako kód (ohrazený blok smí odstavec přerušit).
-- **Po definici uzavřeného výčtu nad záznamem s povinnými poli projdi KAŽDÝ
-  člen a vypiš pro něj celý záznam doslova.** Vynutí-li některý člen prázdné
-  nebo bezvýznamné pole, ten člen nemá hláskování — dej mu pevnou literální
-  hodnotu pro to pole, ve stejné sekci a viditelně v tabulce samotného
-  výčtu, ještě než se formát commitne.
-  Proč: člen, kvůli kterému artefakt vůbec vznikl (`stalled`), byl zároveň
-  ten jediný nezapsatelný: se všemi položkami povinnými dělá chybějící
-  položka záznam malformed a malformed byl definován jako nepřítomný, takže
-  skutečně uvíznuté sezení by se vykreslilo jako žádný záznam — přesně ta
-  neviditelnost, kterou měl artefakt odstranit. Vada přežila autorovu vlastní
-  revizi; chytil ji až cizí recenzent křížovou četbou tří odstavců téže
-  sekce.
-- **Kde duplikace ohraničeného regionu signalizuje, že PISATEL porušil
-  pravidlo o přepisu, definuj odpověď čtenáře jako malformed → nepřítomný,
-  ne jako pravidlo o přednosti.** Nepřítomnost pošle čtenáře ke skutečnému
-  zdroji; přednost tiše povýší jednoho ze dvou nedůvěryhodných kandidátů
-  a schová vadu pisatele. Důvod napiš hned vedle pravidla, ať ho pozdější
-  kolo „nevylepší" na poslední-vyhrává.
-  Proč: „první pár vyhrává" i „poslední pár vyhrává" vykreslí region, jehož
-  aktuálnost nelze zjistit — druhý kompletní pár je podpis pisatele, který
-  místo přepsání připojil, takže první je zastaralý a druhý může být
-  fragment. U tohoto artefaktu je precedens naměřený: blok tvrdil běžící
-  review hodiny poté, co se review vrátilo se čtyřmi Critical nálezy.
-- **Když úloha ruší pojmenovaný koncept, sweep na doslovný token
-  proměnné/příkazu, který koncept provázel, NESTAČÍ — grepni zvlášť i na
-  frázi, kterou byl koncept POJMENOVÁN v prózi** (česky i anglicky),
-  protože se může objevit bez doprovodné proměnné.
-  Proč: sweep širším slovníkem („dvouúrovňová", „two-tier",
-  „harness-agnostic") napříč celým `ums/`, ne jen soubory jmenovanými
-  briefem, našel dva další výskyty mimo brief scope
-  (`guard-git-push.mjs` dvě hlášky, overlay fragment řádek 93) — briefův
-  Step 1 grep jen na proměnnou `UMS_ALLOW_SHARED_PUSH` by je nenašel.
-- **Když komentář/hlavička popisuje bezpečnostní vlastnost funkce jako
-  „X je pravda" (remote má commit, uživatel je ověřený, soubor je
-  uzamčený), ověř, ZDA to kód dokazuje PŘÍMO (kontaktuje autoritativní
-  zdroj), nebo jen NEPŘÍMO přes lokální/cache proxy** (remote-tracking ref,
-  cache soubor, session proměnná) — a pokud nepřímo, napiš to explicitně
-  („dosažitelnost z lokální kopie X, poctivé jen potud, pokud je X
-  synchronizované") místo věty tvrdící vlastnost samotného zdroje.
-  Proč: komentář „commits that already exist on the remote" popisoval jiný
-  mechanismus, než jaký `is_integration_push` implementuje — kód nikdy
-  remote nekontaktuje, kontroluje jen lokální `refs/remotes/$remote_name/*`,
-  zapisovatelné (`git update-ref`) i bez skutečné publikace. Prosa tak
-  slibovala silnější záruku, než hook reálně dává.
-- **Když úkol píše konkrétní konfigurační klíč/soubor pro cizí nástroj
-  (jiný harness, jiné SDK, cokoli mimo tuhle vrstvu) a briefu/plánu chybí
-  citace oficiální dokumentace, ověř klíč/soubor proti primárnímu zdroji
-  (WebSearch → WebFetch na nejrelevantnější docs stránku) PŘED
-  implementací**, ne až když to review vrátí. Cituj nález (URL + citovaná
-  věta) přímo v kódu vedle zápisu, ne jen v reportu.
-  Proč: brief cílil na `[env]` v TOML a `"env"` klíč v `settings.json` pro
-  Codex/Gemini CLI — obě místa byla špatně. Codex čte
-  `[shell_environment_policy].set`, ne `[env]`; Gemini CLI env injektuje jen
-  přes `.env` soubor, `settings.json` žádný `env` klíč nemá. Bez ověření by
-  soubor po deployi vypadal „nakonfigurovaně" (marker string by fyzicky
-  ležel), ale hook by se v obou harnessech dál tiše sám vypínal.
-- **Než přijmeš navrženou podmínku jako kompletní, projdi VŠECHNY
-  případy, které má vyřešit, jeden po druhém proti té podmínce, a spusť je
-  jako červené testy PŘED implementací.** Případ, který podmínka
-  nepokrývá, je signál, že chybí druhá ortogonální podmínka — a osu té
-  druhé podmínky hledej tam, kde odděluje „nevím, co se pushuje" (expanze)
-  od „vím a nelíbí se mi to" (uvozovky kolem literálu), ne v okolí prvního
-  nápadu.
-  Proč: revizní pokyn „fail-closed jen na command position" jednou
-  podmínkou nestačil — `git push "$remote" "$branch"` stojí na indexu 0,
-  je tedy na command position, ale fail-closed by ho dál zamítal
-  (`nesrozumitelné jméno remote`). Teprve druhá podmínka (žádná shellová
-  expanze v argumentech) ten případ propustila, aniž otevřela únik přes
-  uvozovky.
-- **Ke KAŽDÉMU rozšíření vzoru, který se z povolovacího změnil na
-  zamítací, dopiš negativní asercie na tři osy zvlášť: jiná HODNOTA, jiné
-  UKONČENÍ a jiný PREFIX jména.** Polarita rozhoduje o směru rizika — dokud
-  vzor povoloval, byl úzký vzor konzervativní; jakmile zamítá, je úzký vzor
-  díra a široký vzor falešný poplach, takže obě strany potřebují důkaz.
-  Proč: pozitivní asercie na sedm zápisů by prošly i výrazu, který matchne
-  skoro cokoli; teprve čtyři negativní (`="0"`, `='0'`, `=10`,
-  `NOT_MB_HUMAN_PUSH=1`) drží alternaci na uzdě — `NOT_…` navíc testuje
-  hranici `(^|\s)`, kterou by rozšíření hodnot mohlo nechtěně uvolnit.
-- **Před KAŽDÝM splicem (vystřihni a vlož) si čísla řádků vytáhni znovu
-  (`grep -n '<kotva>' <soubor>`), nikdy je neber z dřívějšího výpisu
-  téhož sezení, a po zápisu si dotčený rozsah vypiš a přečti.** U
-  komentářů je syntax check bezcenný jako kontrola — projde i nad
-  rozstříhaným odstavcem; jediná kontrola je přečíst to.
-  Proč: úprava komentářového bloku přes `head -n N`/`tail -n +M` s čísly
-  z výpisu pořízeného před předchozími editacemi téhož souboru byla o pět
-  řádků posunutá — splice vyřízl prostředek jednoho odstavce a nechal
-  viset konec jiného, a `node --check` prošel čistě, protože poškozený byl
-  jen komentář.
-- **Bump verze kontraktu je vlastní sweep, mimo sweep na slovník
-  pravidla.** Kromě sweepu slovníku měněných pravidel spusť před commitem
-  `grep -rn '<stará verze>' ums/ memory-bank/ CLAUDE.md` a rozděl nálezy
-  podle vlastníka: soubory vrstvy patří implementaci, dokumenty Memory Bank
-  patří harvestu.
-  Proč: oba slovníkové sweepy byly kompletní a oba minuly samotnou verzi —
-  sedm restatementů `2.11`, které žádný slovníkový grep nechytí, a
-  `brief.md` nebyl v žádném hand-off seznamu vůbec.
-- **Sweep na restatementy pouštěj přes `ums/` I `memory-bank/` jedním
-  příkazem a grepuj NEJKRATŠÍ rozlišující fragment.** Memory Bank dokumenty
-  vrstvu popisují a její tvary restatují, takže patří do stejného průchodu
-  jako zdrojový strom; a ve flektivním jazyce je dvouslovný token skoro
-  zárukou minutí — `sloupc`, ne `šest sloupců`; `Draft (větev`, ne celá
-  hlavička řádku. Výsledek zkřížuj s `git diff --name-only` vlastního
-  commitu: soubor, který jsi editoval a sweep ho netrefil, je první místo
-  k ruční kontrole.
-  Proč: sweep nahlásil jeden restatement a byly dva. Druhý ležel
-  v `memory-bank/architecture.md`, souboru, který týž commit editoval
-  čtyřikrát kvůli bumpu verze — a schovala ho i druhá, nezávislá příčina:
-  fráze ve zdroji zní „šest **pozičních** sloupců", takže ji token
-  `šest sloupc` nemohl matchnout.
-- **Inventáře sweepuj podle DRUHU artefaktu, ne podle jeho jména.** Po
-  slovníkovém sweepu spusť druhý průchod cílený na druh vytvořeného
-  artefaktu — ptej se „kdo počítá nebo vyjmenovává věci tohoto druhu?"; pro
-  tuhle vrstvu to znamená `tech.md` (počty sad, součty asercí, inventář
-  nástrojů, řádek `settings.json`), `ums/README.md` (adresářové stromy,
-  matice harnessů) a `SKILLS_MANIFEST.md`. Grepuj na jména SOUROZENECKÝCH
-  artefaktů, nikdy na jméno nového, které z definice zatím nikde neleží.
-  Proč: čtyři inventární věty zůstaly nepravdivé a žádná z nich
-  neobsahovala slovo „overlay", „baton" ani „stop"; všechny čtyři odhalila
-  až adversariální review, ne vlastní sweepy autora.
-- **Grep tool bez `output_mode: "content"` zahodí `-n`.** Když čísla řádků
-  odvozuješ znovu Grep toolem místo syrového shellového `grep`, předej
-  `output_mode: "content"` explicitně spolu s `-n`.
-  Proč: vynechání tiše spadne na výpis souborů se shodou a nedá žádná čísla
-  řádků.
-- **Vložení odstavce i nadpisu do prózy cíli na konec ÚTVARU, ověřený čtením
-  dopředu.** Než vložíš nový odstavec „za" pojmenovanou větu nebo
-  číslovaný seznam, přečti dopředu za řádek, který vypadá jako konec,
-  a potvrď, že nejde o zalomené pokračování téže věty; upřednostni
-  přirozený konec odstavce, pokud instrukce jasně nemíří na přerušení.
-  Vkládáš-li NADPIS do dlouhé sekce, zjisti navíc, jestli v ní vůbec nějaké
-  nadpisy té úrovně jsou: nemá-li žádné, jediná umístění, která
-  nepřeparentují existující text, jsou KONEC sekce nebo restrukturace, která
-  koncové odstavce zvedne nad nový nadpis — vyber konec a napiš to do
-  reportu, místo abys tiše spolkl ocas sekce.
-  Proč: jedno vložení rozdělilo jedinou větu na dva odstavce, protože řádek
-  vypadající jako konec odstavce byl uprostřed věty zalomený; v jiném
-  případě následovala za pojmenovanou větou dvojtečka a inline výčet
-  patřící téže větě, takže vložení by oddělilo tvrzení od jeho vlastního
-  zdůvodnění. A `###` nadpis vložený do `##` sekce v bodě, který jmenoval
-  brief, by pod sebe přeparentoval pět následujících odstavců — včetně
-  invariantu, který nová podsekce sama cituje —, protože ta sekce žádnou
-  podsekci neměla.
-- **Nadpis úrovně H1 (`# Title`) reference v `contract/`, který duplikuje
-  vlastní `###`/`##` nadpis pod ním, NEMAZAT jako kosmetický duplikát —
-  shape-suita indexuje jen `^#{2,4}\s+`, H1 nikdy.** Před úklidem
-  duplicitního nadpisu v kontraktovém stromu zjisti, které úrovně nadpisů
-  shape-suita indexuje; reference citovaná vlastním titulkem potřebuje ten
-  titulek jako `##`, ne jen jako `#` souboru.
-  Proč: `epic-line.md` nese `# The epic line` přímo nad `### The epic
-  line`; smazání H1 duplikátu by proměnilo zelenou citaci v červenou — tři
-  reference, které nesou titulek JEN jako H1 (`escalation.md`,
-  `message-protocol.md`, `worktree-pool.md`), jsou z přesně tohoto důvodu
-  už červené. Duplikát se místo mazání povýšil `###` → `##`.
-- **Dokumentuj syntax citace ŽIVOU instancí té syntaxe, nikdy
-  metasyntaktickým placeholderem** (`` `(contract, "<section>")` ``).
-  Placeholder prochází stejným scannerem jako každá jiná citace v souboru a
-  shape-suita ho vyhodnotí jako reálnou (rozbitou) citaci.
-  Proč: sekce „Citation & Versioning" s placeholderovým příkladem
-  `` `(contract, "<section>")` `` vyrobila 24. špatnou citaci proti
-  `UMS_MEMORY_BANK_CONTRACT.md` — červenou asserci zplozenou právě větou,
-  která pravidlo vysvětluje. Náhrada živými, rozpoznatelnými příklady
-  (`(contract, "Fail-Closed Behavior")`, `(contract/epic-line.md, "The
-  epic line")`) obě resolvují, takže příklad ověřuje stejný běh, který
-  ověřuje všechno ostatní, a nemůže tiše zestárnout.
-- **Hlavička nové `contract/<jméno>.md` reference v „cite as" příkladu musí
-  jmenovat REÁLNÝ vlastní nadpis souboru** (jako všech 16 existujících
-  referencí), ne generický placeholder typu `"Section"`, i když to brief
-  transkribuje doslova jako fixní text. Než napíšeš hlavičku nové
-  reference, přečti hlavičku existující — placeholder v template slotu se
-  nepřepisuje stejně jako fixní próza.
-  Proč: shape-suitin citační scanner traktuje KAŽDÝ výskyt
-  `(contract/<file>.md, "…")` v celé vrstvě jako citaci k ověření — i
-  uvnitř hlavičky reference, která o citační konvenci jen MLUVÍ. Doslovný
-  placeholder `"Section"` z briefu proto spadl na „každá citace má cíl",
-  protože žádná sekce s tím jménem v souboru neexistuje.
-- **Citaci `(contract[/soubor.md], "Název sekce")` piš celou na JEDNÉ
-  fyzické řádce zdroje — nikdy ji nenech rozlomit editorovým soft-wrapem,
-  vlastním zalomením prózy, ani zalomeným `#`-komentářem v `.ps1`.**
-  Shape-suita čte citace řádkovým regexem, a znaková třída v `[^"]+`
-  matchne i `\n` — zalomená citace se buď stane „citace bez cíle" (regex ji
-  nenajde vůbec), nebo se do uvozovek vtáhne konec řádku místo mezery. Po
-  každé úpravě/přidání citace zkontroluj `grep -n '(contract' <soubor>`
-  a potvrď, že celý zápis vyšel na jeden výstupní řádek.
-  Proč: na jednom work itemu padla tahle past ČTYŘIKRÁT, ve čtyřech různých
-  tvarech: (1) reflow okolní prózy kolem citace při zkracování řádků, (2)
-  editorův vlastní soft-wrap při psaní nové overlay-bullet citace, (3)
-  zalomený `#`-komentář v `epic-gate.ps1`, kde citace byla poslední větou
-  víceřádkového anglického komentáře, (4) citace dopsaná do plynoucí prózy
-  v `protocol.md`. Všechny čtyři dělaly z existující, správně cílené
-  citace „citace nemá cíl" — defekt neviditelný při vizuální četbě
-  zalomeného markdownu.
-- **Briefova tabulka „skill → přiřazená reference" řídí jen skillovu
-  hlavičkovou řádku „References:" — inline citace UVNITŘ těla skillu může
-  legitimně mířit na jinou referenci, než jakou hlavička jmenuje.**
-  Shape-suita ověřuje jen to, že se citace resolvuje na NĚJAKÝ existující
-  nadpis (v jádru nebo v libovolné referenci) a že každá reference má
-  NĚJAKÉHO konzumenta — nekontroluje shodu banner/citace per skill.
-  Opravuj takovou citaci na referenci, která tu citovanou sekci opravdu
-  nese, bez ohledu na členství v banner sadě.
-  Proč: `mb-jira-update` cituje `repository-configuration.md`, který není
-  v jeho vlastní přiřazené referenční sadě podle briefovy tabulky — přesto
-  je to platná, existující citace, kterou by „oprava" podle tabulky
-  zbytečně přesměrovala.
-- **Mechanický split Markdown dokumentu podle nadpisového regexu
-  (`^(##|###) `) musí nejdřív vyloučit nadpisy UVNITŘ ohraničených bloků
-  kódu — postav tabulku ohraničení (`^\s*(```|~~~)`) PŘED tabulkou nadpisů
-  a nadpisy uvnitř ohraničení vyřaď.** Zakóduj rozdělení jako explicitní
-  tabulku 1-based inclusive řádkových rozsahů přes CELÝ soubor a nech
-  skript `throw`, dokud rozsahy nesloží souvislou partition (`From` každého
-  rozsahu = předchozí `To + 1`, poslední `To` = počet řádků) a každý cíl
-  nemá metadata — kontrola partition je silnější a dřívější záruka než
-  downstream multiset test: selže s číslem řádku v okamžiku editace
-  tabulky rozsahů, ne až po zápisu poškozených souborů.
-  Proč: 5 ze 44 řádků matchujících `^#{1,3} ` v
-  `UMS_MEMORY_BANK_CONTRACT.md` bylo UVNITŘ ohraničených bloků (šablona
-  `# Brief — <name>` na 200–206, `## <short title>` na 293, `# Context`/
-  `## Active Work` na 1579/1581) — naivní splitter by rozřezal `## Memory
-  Bank Document Set`, `### Playbook Contract` a `## context.md Schema &
-  Writers` uprostřed jejich vlastních příkladů. Deset ohraničení bylo
-  v souboru, všechna vyvážená, jedno odsazené o dvě mezery
-  (`  ```markdown` na 1450), takže regex ohraničení potřebuje `^\s*`.
-- **`[IO.File]::ReadAllText(...) -split "`n"` na souboru končícím novým
-  řádkem vrátí o jeden prázdný element víc, než je řádků** — u
-  LF-terminated souboru odstraň poslední prázdný element explicitně a
-  ověř výsledný počet proti číslu získanému NEZÁVISLE (`git show <ref> |
-  Measure-Object -Line`, nebo počet LF bajtů).
-  Proč: `UMS_MEMORY_BANK_CONTRACT.md` má 3066 řádků, ale
-  `ReadAllText -split "`n"` dal pole o 3067 prvcích — partition self-check
-  (`expected 3066`) to okamžitě odhalil. Stejné `+1` platí obráceně při
-  zpětném počítání řádků z napsaného souboru (`.Count - 1` je správný
-  počet). Nezávislé měření (`([IO.File]::ReadAllBytes($p) | Where-Object
-  {$_ -eq 10}).Count` = 3066) navíc potvrdilo, že soubor je čistě LF, bez
-  BOM, s koncovým novým řádkem.
-- **Ověřování „přežilo tohle pravidlo kompresi?" dělej
-  `[regex]::IsMatch($text, $vzor, 'IgnoreCase')` s KAŽDOU mezerou ve vzoru
-  napsanou jako `\s+`, nikdy `String.Contains`.** Token extrahovaný z páru
-  zpětných apostrofů je jen KANDIDÁT k posouzení, ne verdikt — každý nález
-  rozřaď na PŘESUNUTO / ILUSTRACE / SKUTEČNÁ ZTRÁTA v reportu, protože jen
-  třetí kategorie je defekt.
-  Proč: substring test `$new.Contains('fast-forward push whose tip')`
-  nahlásil 4 ze 46 sledovaných frází jako CHYBĚJÍCÍ, a všechny čtyři byly
-  falešně pozitivní — soubor se zalamuje na ~80 znacích, takže
-  `fast-forward\npush whose tip` je přítomné doslova, jen rozdělené
-  zalomením; jedna fráze navíc selhala jen proto, že komprese změnila
-  velikost písmen (`Never search` → `never search`) uvnitř sloučené věty.
-  Pátá třída šla opačným směrem: extraktor tokenů mezi backticky nahlásil
-  `` ` → slug ` `` jako ztracený code span, přestože je to jen text MEZI
-  dvěma code spany.
-- **Kompresi normativního textu ověřuj proti PRE-WAVE COMMITU, ne proti
-  tomu, že testová sada zůstává zelená.** Pin SHA před prvním editem
-  a spusť na konci token-úrovňový diff (`git show <pre-wave-sha>:<cesta>`)
-  proti výslednému souboru — sada dokazuje, že tvar (nadpisy, floor klíče,
-  evidence markery) přežil, jen diff dokazuje, že přežil i OBSAH.
-  Proč: komprese 20 sekcí ve třech vlnách nechala sadu na stejných
-  8 červených (z 890 řádků na 751) po celou dobu — sada je slepá vůči
-  ztrátě pravidla, protože kontroluje jen šest floor klíčů, pět nadpisů
-  sekcí a evidence markery. Nezaznamenala ani dvě ilustrace, které
-  komprese skutečně odstranila, ani `additionalContext` příklad odstraněný
-  a pak vrácený zpět — jen token diff proti pre-wave SHA je odhalil.
-- **Je-li task gatovaný nástrojem, který ověřuje „zachovej každý řádek"
-  (line-preservation), přečti nástrojův allow-pattern PŘED vykonáním move
-  mapy a zkontroluj proti němu KAŽDOU položku mapy, která žádá textovou
-  změnu nadpisu** (např. povýšení úrovně při přesunu). Kde se mapa
-  a nástroj rozejdou, vyhrává nástroj a odchylka se hlásí; neoslabuj
-  allow-pattern (širší `-AllowExtraPattern` by udělal běh zeleným, ale
-  tiše dovolil libovolné nové `## ` řádky kdekoli).
-  Proč: `Test-UmsContractMove`ův default `AllowExtraPattern` je
-  `'^(# |Part of contract|Doklad: )'` — nezachytí `## Link Conventions`
-  (druhý znak není mezera po `#`). Briefova move mapa žádala právě tohle
-  povýšení (`### Link Conventions` → `## Link Conventions` při přesunu do
-  jádra); provedení by dalo `Missing = ['### Link Conventions']` a
-  `UnexpectedExtra = ['## Link Conventions']`, `Ok=False` — vlastní
-  akceptační kritérium kroku. Brief a nástroj byly vzájemně nesplnitelné
-  a nástroj rozhodl.
-- **Novou `###` podsekci do kontraktové reference vkládej na PŘIROZENOU
-  hranici sekce (konec souboru, nebo hned za příbuznou sesterskou
-  podsekcí), nikdy doprostřed dvou odstavců, které pokračují v JEDNÉ
-  myšlence.** Po vložení si okolní prózu přečti znovu jako celek, ne jen
-  diff — narušenou návaznost citační shape-test nezachytí.
-  Proč: vložení nové podsekce mezi „On a finding..." a „The ticket session
-  then continues..." v `epic-backflow.md` rozdělilo jedinou myšlenkovou
-  linku tak, že věta „The ticket session then continues" četla, jako by
-  odkazovala na novou podsekci, ne na finding odstavec nad ní —
-  strukturálně matoucí i přesto, že to shape-suita neumí poznat; opraveno
-  přesunem podsekce na konec souboru.
-- **Když acceptance check tasku pojmenovává GLOBÁLNÍ invariant (grep na
-  retirující se termín), grepuj CELOU vrstvu, ne jen briefův seznam Files,
-  dřív, než ho prohlásíš vyčerpaným.** Briefův seznam může minout
-  konzumenta, kterého Interfaces/Steps nejmenují, ale který je stejným
-  invariantem vázán.
-  Proč: po úklidu sdíleného `notes.md` podle briefova seznamu popisoval
-  `mb-epic-elaboration/SKILL.md` (mimo seznam) zrušené chování na dvou
-  místech dál jako živé — Step 5 grep by nahlásil víc než jeden
-  substantivní (non-doklad, non-negation) výskyt `notes.md` a task by
-  spadl na vlastní acceptance check, přestože každý soubor z briefova
-  seznamu byl opraven správně.
-
-## Psaní plánů, návrhů a commitů
-
-- **V plánu ani návrhu nikdy nezačínej řádek zpětnými apostrofy**, pokud to
-  není skutečný ohraničovač bloku. Chceš-li v próze ukázat apostrofy, popiš je
-  slovy. Vnořený stejně dlouhý ohraničovač je tatáž třída chyby.
-  Proč: `scripts/task-brief` přepíná sledování ohrazených bloků na každém
-  řádku odpovídajícím `^` + tři apostrofy, takže osamocený takový řádek ho
-  nechá natrvalo „uvnitř bloku" a přestane rozpoznávat nadpisy dalších úloh.
-  Projevilo se to briefem o 1164 řádcích místo 346 — obsahoval celý zbytek
-  plánu. Po napsání plánu proto spusť `task-brief` pro **každé** číslo úlohy
-  a zkontroluj, že rozsahy odpovídají; brief výrazně větší než jeho sekce je
-  ten příznak.
-- **Českou diakritiku v commit message piš přímo**, i když ji skládáš přes
-  bash heredoc — UTF-8 tudy projde správně. Nenahrazuj ji ASCII transliterací
-  „pro jistotu".
-  Proč: tiše vznikne zpráva, která nevyhovuje konvenci repa, a přijde se na to
-  až při kontrole. V tomhle běhu se to stalo dvakrát. Kontrola je jeden
-  příkaz: `git log -1 --format=%B | od -c` a podívat se, jestli tam jsou
-  vícebajtové sekvence.
-- **Na rozdíl od bash heredocu diakritika PŘES PowerShellový here-string
-  (`git commit -m @'...'@`) tiše NEPŘEŽIJE.** Commit projde bez chyby, ale
-  `git log -1` ukáže diakritiku nahrazenou ASCII transliterací — zpráva
-  vypadá věrohodně a na první pohled projde. Napiš přesnou zprávu nástrojem
-  `Write` do souboru (zachová UTF-8 bajt po bajtu) a commituj `git commit -F
-  <soubor>` (nebo `--amend -F <soubor>` na opravu už vytvořeného commitu);
-  po commitu vždy ověř bajtově (`git log -1 --format=%B` do hex dumpu),
-  stejně jako u bash heredocu výše — nikdy nevěř tomu, že „minule to bylo
-  v pořádku, tak je to jen code page".
-  Proč: commit zpráva s diakritikou (`hlásí`, `chybějící`, `řetěz`,
-  `instalátoru`) předaná jako PowerShellový `@'...'@` here-string argument
-  `git commit -m` prošla bez chyby, ale `git log -1` ukázal diakritiku
-  tiše nahrazenou ASCII transliterací (`hlasi`, `chybejici`, `retez`,
-  `instalatoru`) — plausibilní, ale špatný text.
+Proč: git hooky jsou netrackované, takže se s klonem nepřenesou.
+Důkaz: 1a03314.
+- **V novém klonu bez instalace hooků `pre-push` záruka chybí.**
+  Proč: git hooky jsou netrackované a s klonem se nepřenesou — záruka
+  publikačního kontraktu je aktivní, jen když ji někdo nainstaluje.
+  Důkaz: 1a03314.
+- **Při `-Scope UserProfile` spusť instalátor hooků ručně** — při
+  `-Scope Monorepo` ho volá `sync-with-monorepo.ps1` sám.
+  Proč: profil nemá jeden přiřazený repozitář, díky kterému by
+  ho šlo zavolat automaticky. Důkaz: 1a03314.
+- **Nenulový exit instalátoru hooků neignoruj** — `1` = self-test
+  selhal, `2` = ponechán cizí hook, `3` = nainstalováno, ale neověřeno.
+  Proč: sync ho jen vypíše jako varování a v dlouhém výpisu zapadne,
+  takže nepotvrzená záruka snadno unikne pozornosti. Důkaz: 1a03314.
+- **Po každé změně zdroje v `ums/.claude/` obnov nasazenou kopii
+  (`.claude/`, `.agents/skills/`)** — obojí je netrackované, sezení
+  v tomto repu čte právě je. Proč: jinak agent pracuje podle staré
+  verze kontraktu i skillů. Důkaz: 1a03314.
+**Co je nasazená kopie**
+- UMS obsah (`shared/`, `mb-*`, `hooks/`, `scripts/`, `settings.json`)
+  je prostá kopie z `ums/.claude/` do kořenového `.claude/`; pro Codex
+  ještě `ums/.claude/skills/` do `.agents/skills/`.
+- Kontrola aktuálnosti: `Contract-Version` v
+  `.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md` musí souhlasit
+  se zdrojem a všechny `mb-*` adresáře ze zdroje musí být přítomny.
+Proč: chybějící skill je nejrychlejší příznak zastaralého nasazení.
+Důkaz: 1a03314.
+**Kontrola nasazení odhalí jen chybějící, ne zastaralé**
+`Contract-Version` + přítomnost všech `mb-*` adresářů odhalí jen
+CHYBĚJÍCÍ nasazení. Na staleness (obsah se změnil, ne jen existence)
+použij `diff -rq ums/.claude .claude` — čtyři vendorované skilly s
+overlay bloky srovnávej proti MONOREPO kopii, ne proti `ums/`, kde
+vůbec neleží (nevyrobí se kopií, jen revendorem — `brainstorming`,
+`subagent-driven-development`, `finishing-a-development-branch`,
+`writing-plans`).
+Proč: deployovaná kopie nesla 16řádkový overlay o lokálním merge,
+zatímco zdrojový fragment měl 109 řádků o FF-push integraci — obě
+kontroly to prošly beze zmínky.
+Důkaz: 44ccb57.
+- **Po každém revendoru dorovnej vendorované skilly i v
+  `.agents/skills` kopií z `.claude/skills`** (fork i monorepo).
+  Proč: revendor cílí jen na `.claude/skills`, sync tam
+  nesynchronizuje nikdy. Ověř `diff -rq`. Důkaz: f69c145.
+- **Po editaci overlay fragmentu v `ums/` nejdřív obnov nasazení
+  (kopie do `.claude/`), teprve pak spusť revendor** — revendor čte
+  fragmenty z NASAZENÉ kopie. Ověř grepem na text nové verze.
+  Proč: bez pořadí tiše aplikuje starou verzi. Důkaz: e3dfc90.
+- **Grepovou verifikaci vygenerovaného overlay textu ověřuj i
+  case-insensitive (`grep -ni`)** dřív, než nulový zásah nahlásíš
+  jako anchor-miss STOP. Proč: grep malými písmeny minul frázi
+  s velkým počátečním písmenem. Důkaz: 0d40535.
+**Grepová verifikace overlay textu potřebuje ztištěný whitespace**
+Ověř variantu se ZTIŠTĚNÝM veškerým whitespace, ne jen s nahrazenými
+novými řádky: `tr -s '[:space:]' ' ' < soubor | grep -o '<fráze>' |
+wc -l`. Prosté `tr '\n' ' '` nestačí — odsazení pokračovacího řádku
+(typicky dvě mezery) v textu zůstane a vzor čeká jednu mezeru, ne tři.
+Proč: Markdown tvrdě zalomil frázi mezi dvěma slovy s odsazením
+přesně uprostřed — druhá, nezávislá třída falešné příčiny vedle
+casingu.
+Důkaz: 0d40535.
+- **Regenerace nasazených vendorovaných skillů po změně fragmentu
+  bez upstream bumpu = plný revendor s pinovaným tagem (`-Tag <pin>`),
+  ne `-OverlaysOnly`.** Proč: `-OverlaysOnly` funguje jen na
+  pristine soubory. Důkaz: 4d72c46.
+**Editaci jen TĚLA overlay fragmentu ověřuj diffem, ne revendorem**
+Zkontroluj: `git diff <báze>..HEAD -- <adresář overlayů> | grep -E
+"^[+-].*(ANCHOR|ASSERT|UMS-OVERLAY)"` je prázdný a každý overlay má
+právě jeden pár `UMS-OVERLAY BEGIN/END`. Revendor je samostatný krok
+nasazení; do jeho proběhnutí drž nasazené vendorované skilly jako
+zastaralé. `sync-with-monorepo.ps1` na tohle není — cílí na monorepo
+nebo profil, ne na kořen tohoto forku.
+Proč: pokus ověřit anchoring přes redeploy neuspěl (tar/PATH pasti),
+selhání nástroje není nález o samotné editaci.
+Důkaz: ae2230c.

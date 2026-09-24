@@ -144,7 +144,7 @@ Notes on fields that are easy to misread:
 ## Running the test suites
 
 Each script has its own suite, plain PowerShell with hand-rolled assertions
-(no Pester — see `../../../../memory-bank/playbook.md`, "Testy vrstvy"):
+(no Pester — see `../../../../memory-bank/playbook.md`, "Když píšeš nebo měníš test"):
 
 ```bash
 pwsh -NoProfile -File ums/.claude/skills/mb-epic-run/tests/pool-status.tests.ps1

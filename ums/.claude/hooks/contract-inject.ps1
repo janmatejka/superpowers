@@ -56,7 +56,7 @@ try {
             $deployedHash = (Get-FileHash -LiteralPath $corePath -Algorithm SHA256).Hash
             $sourceHash = (Get-FileHash -LiteralPath $sourceCorePath -Algorithm SHA256).Hash
             if ($deployedHash -ne $sourceHash) {
-                $warning = 'WARNING: deployed contract core differs from source ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md — refresh the deployment (playbook, "Obnova nasazené kopie v tomto repu").'
+                $warning = 'WARNING: deployed contract core differs from source ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md — refresh the deployment (playbook, "Když nasazuješ nebo revendoruješ").'
                 $parts = @($warning, '')
             }
         }

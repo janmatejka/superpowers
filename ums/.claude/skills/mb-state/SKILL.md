@@ -292,7 +292,7 @@ performing one. Reading another branch's state never checks that branch out.
 📊 Stav Memory Bank
 
 Projekt: <name>   Kořen: <MB_ROOT>
-Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ⚠️ LFS pre-push řetěz chybí nebo je neúplný> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)> <+ ⚠️ nasazení za zdrojem (obnov dle playbooku, „Obnova nasazené kopie v tomto repu") | + ℹ️ mimo fork — kontrola nasazení přeskočena>
+Workspace: <✅ způsobilý | ⚠️ pre-push hook chybí/neověřený | ⚠️ pre-push je starší verze než zdrojová (spusť install-git-hooks.ps1)> <+ ⚠️ core.hooksPath je absolutní — hook je společný pro víc repozitářů (ověřen značkou, ale instalace/odinstalace zasáhne i je)> <+ ⚠️ LFS pre-push řetěz chybí nebo je neúplný> <+ ℹ️ ums-repo.json chybí (platí vestavěné defaulty)> <+ ⚠️ nasazení za zdrojem (obnov dle playbooku, „Když nasazuješ nebo revendoruješ") | + ℹ️ mimo fork — kontrola nasazení přeskočena>
 Fáze: IDLE | ACTIVE_WORK
 Jira: <ticket|žádný>   Cílová MB: <Target MB Pin|nepřipnuto>
 Work item: <slug> — [kompletní pár | jen návrh | grandfathered v1 | nekonzistentní]
