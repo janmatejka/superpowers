@@ -3,6 +3,8 @@
 <!-- ASSERT: Before your first question, classify the request and say the -->
 <!-- ASSERT: **Terminal states are path-bound.** Architectural: the ONLY skill you -->
 <!-- ASSERT:   one. No spec file, no implementation plan document. -->
+<!-- ASSERT:   written-spec approval only permits invoking writing-plans. -->
+<!-- ASSERT: 3. **Carry intent into the design.** Preserve the agreed understanding in -->
 
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
@@ -24,8 +26,8 @@ review" is itself an architectural signal — upgrade the path (the ratchet
 is one-way); the Architect Review Gate below is never offered on bounded.
 
 Where an adjustment below names an upstream checklist item, it names it
-**by phase name** — all three paths number their own items 1–5, so an
-ordinal alone no longer identifies a step.
+**by phase name** — each of the three paths numbers its own items from 1, so
+an ordinal alone no longer identifies a step.
 
 Adjustments to the checklist above:
 
@@ -165,6 +167,13 @@ Adjustments to the checklist above:
   and ACTIVE state you wrote yourself is not a finding to report and not a reason
   to delete anything.
 
+  **The upstream "Carry intent into the design" step lands in the design's
+  `## Cíl` section.** Write the understanding your human partner confirmed —
+  the intended outcome, who it is for, the success criteria and the constraints
+  — there, before the technical design, and check the proposed approach
+  against it. The same holds for the design file the bounded path writes after
+  its in-chat approval.
+
   The rule that governed that creation, invoked by the **Create the ticket
   branch** step above and stated here in full: **always with an explicit starting
   point**, `git switch -c <TICKET>-<kebab-slug> <chosen base>` after a
@@ -213,6 +222,16 @@ Adjustments to the checklist above:
   (contract, "Work Item Granularity"), and then as a preliminary draft in
   proposals/next/ with a framing ticket
   (contract/jira.md, "Ticket description template").
+- **The HARD-GATE's "written-spec approval only permits invoking
+  writing-plans" (architectural path).** In this repository two offers stand
+  between the written-spec approval and writing-plans: the agentic opposition
+  offer and then the Architect Review Gate, both below. The written-spec
+  approval permits making them; writing-plans follows only once both are
+  resolved — each declined or not offered, or its outcome taken back (the
+  opposition by the re-approval of the changed passages, the architect review
+  by `mb-architect-review` resume). Neither is an implementation action, so
+  the gate's ban on implementation before the plan is reviewed and its
+  execution method selected stands unchanged.
 - **Agentic opposition offer (architectural path only — after the user
   approves the written spec, BEFORE the Architect Review Gate offer):**
   offer an independent agentic opposition of the design per
