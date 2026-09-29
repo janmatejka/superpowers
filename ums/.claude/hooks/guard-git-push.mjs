@@ -172,64 +172,18 @@ const loadProtected = (cwd) => {
   return BUILTIN_PROTECTED.map(globToRe);
 };
 
-// Reads `epicBranchPattern` and derives `<baseBranch>` from `baseRef`; a
-// missing, empty or non-string value of either yields no exception (null).
-// See (contract/epic-line.md, "The epic line").
-//
-// `baseRef` here is the CONFIGURATION KEY, by name, and not the effective base
-// of a work item — the escape the effective-base rule provides,
-// taken deliberately. Why, and what residual risk it leaves and which control
-// covers that: (contract/epic-line.md, "The epic line"), condition 3. Not restated here.
-const loadEpicRule = (cwd) => {
-  try {
-    const raw = readFileSync(join(cwd || process.cwd(), 'memory-bank', 'ums-repo.json'), 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-    const pat = parsed.epicBranchPattern;
-    if (typeof pat !== 'string' || pat.trim() === '') return null;
-    // Trimmed BEFORE it is judged and before the derivation below, so
-    // `"origin/develop "` yields `develop` and not `"develop "`.
-    const baseRef = (typeof parsed.baseRef === 'string' ? parsed.baseRef : '').trim();
-    // A `refs/`-prefixed spelling (`refs/remotes/origin/develop`) is
-    // DECLINED, not parsed: the accepted shape is `origin/<branch>`
-    // (contract/repository-configuration.md, "Repository Configuration").
-    if (/^refs\//i.test(baseRef)) return null;
-    // <baseBranch> = baseRef minus the remote and the SINGLE following slash.
-    const baseBranch = baseRef.replace(/^[^/]+\//, '');
-    // No usable base name (absent, empty, non-string, whitespace-only, or a
-    // `origin/` that reduces to nothing) -> no exception, and never a
-    // guessed base. Why declining is the right degradation here: see
-    // (contract/epic-line.md, "The epic line").
-    if (baseBranch === '') return null;
-    return { re: globToRe(pat), baseBranch };
-  } catch { return null; }
-};
-
-const RAW_SHA_RE = /^[0-9a-fA-F]{40}$/;
-
 const stripRef = (ref) => String(ref).replace(/^refs\/heads\//i, '');
 const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
 
-// The actor-rule exception for the epic line. The contract's FOUR
-// conditions, ANDed, behind a fifth clause that only asks whether a usable
-// epic rule was read from the configuration at all. In evaluation order:
-//
-//   0. `epic !== null` — a usable rule exists;
-//   1. the refspec names a SOURCE and it is a raw 40-hex SHA;
-//   2. the destination matches `epicBranchPattern`;
-//   3. the destination IS protected;
-//   4. the destination is not `<baseBranch>` (compared case-insensitively,
-//      the same way stripRef and the pre-push hook compare branch names).
-//
-// Why each condition is there, and what the exception is for, is written
-// once — see (contract/epic-line.md, "The epic line"). Not restated
-// here, because a rule has exactly one home.
-const isEpicFastForward = (dest, src, patterns, epic) =>
-  epic !== null &&
-  src !== null && RAW_SHA_RE.test(src) &&
-  epic.re.test(stripRef(dest)) &&
-  isProtected(dest, patterns) &&
-  stripRef(dest).toLowerCase() !== epic.baseBranch.toLowerCase();
+// There is NO exception to the actor rule for the epic line. The epic line
+// `epic/<KEY>` is an UNPROTECTED integration base (design 4.2): a push to it
+// is judged like any push to an unprotected branch, and a push to a branch
+// that IS protected is denied without exception, whatever it names as source.
+// The former four-condition exception (raw-SHA source, epicBranchPattern
+// match, protected destination, destination not the base) is gone together
+// with its configuration reading; this file no longer reads epicBranchPattern
+// or baseRef at all. What still holds on the epic line is the pre-push hook,
+// which bans force-push and branch deletion on every branch.
 
 // Hands over the PLAIN command on purpose, with no escape in front of it: an
 // integration whose commits are already published on the remote is exactly
@@ -453,9 +407,6 @@ const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 //
 //   targets  — every destination this push can be read to name. An unreadable
 //              token blinds the guard to THAT destination, not to the others.
-//   sources  — index-parallel to `targets`: the refspec source each
-//              destination came from, or null where the invocation names
-//              none. Only the epic exception asks this question.
 //   problems — a LIST of what could not be read, each with the tokens that
 //              made it unreadable. A list, because one problem being excused
 //              says nothing about the next one.
@@ -474,10 +425,8 @@ const unquote = (tok) => tok.replace(/^(['"])([\s\S]*)\1$/, '$2');
 // itself below rather than summarised here.
 //
 // `atCommandPosition` DEFAULTS TO TRUE so a stale call site omitting it
-// degrades toward more protection, the same rule loadProtected follows. `epic`
-// DEFAULTS TO NULL for the same reason read the other way round: a call site
-// that does not pass the epic rule gets no exception, never a wider one.
-function evaluatePush(args, cwd, patterns, atCommandPosition = true, epic = null) {
+// degrades toward more protection, the same rule loadProtected follows.
+function evaluatePush(args, cwd, patterns, atCommandPosition = true) {
   const flags = args.filter((t) => t.startsWith('-'));
   const positionals = args.filter((t) => !t.startsWith('-'));
 
@@ -490,14 +439,7 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true, epic = null
   const note = (what, tokens) => problems.push({ what, tokens });
 
   const targets = [];
-  // Index-parallel to `targets`: the refspec SOURCE each destination came
-  // from, or null where the invocation names none. The epic exception
-  // (isEpicFastForward) asks WHAT is being pushed and not only where, and this
-  // collection used to answer the second question alone — the destination was
-  // kept and the source dropped on the floor. Both arrays are written ONLY
-  // through addTarget, which is what keeps the two indices aligned.
-  const sources = [];
-  const addTarget = (dest, src = null) => { targets.push(dest); sources.push(src); };
+  const addTarget = (dest) => { targets.push(dest); };
   // A current branch that cannot be resolved contributes NO target rather than
   // a guessed one: an unguessable branch is not a recognized protected target,
   // and denying there would block legitimate work from a detached HEAD.
@@ -516,18 +458,11 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true, epic = null
     } else {
       for (const r of refspecs) {
         const bare = unquote(r);
-        // Cut at the LAST colon, which is where `bare.split(':').pop()` took
-        // the destination from before the source was kept as well: whatever a
-        // refspec with more than one colon means, both halves have to be read
-        // off the same separator or they would describe different refspecs.
-        // REFSPEC_RE admits at most one colon today, so nothing currently
-        // exercises the difference — that is precisely why the shape is
-        // preserved rather than rewritten to `[1]`.
-        if (REFSPEC_RE.test(bare)) {
-          const cut = bare.lastIndexOf(':');
-          if (cut === -1) addTarget(bare);
-          else addTarget(bare.slice(cut + 1), bare.slice(0, cut));
-        }
+        // The destination is what follows the LAST colon (the whole token when
+        // there is none). REFSPEC_RE admits at most one colon today, so
+        // nothing currently exercises the difference — that is precisely why
+        // the shape is preserved rather than rewritten to `[1]`.
+        if (REFSPEC_RE.test(bare)) addTarget(bare.slice(bare.lastIndexOf(':') + 1));
       }
       // The RAW token decides "cleanly written", the unquoted one decided
       // "names a destination" above - so a quoted branch yields a readable
@@ -570,17 +505,11 @@ function evaluatePush(args, cwd, patterns, atCommandPosition = true, epic = null
   // permission — it was spelled out. Read out of one this file could not fully
   // parse, it only counts as a destination if the `git` was a command in the
   // first place; otherwise `develop` in a heredoc body would be a push target.
-  //
-  // A destination that satisfies isEpicFastForward is STEPPED OVER here — the
-  // one narrow exception to the actor rule (contract/epic-line.md, "The epic line").
+  // A protected destination is denied, with no exception of any kind.
   if (problems.length === 0 || atCommandPosition) {
-    // An INDEX, not the value: the source that decides the exception is only
-    // reachable through the position the destination was found at.
-    const hitIndex = targets.findIndex(
-      (t, i) => isProtected(t, patterns) && !isEpicFastForward(t, sources[i], patterns, epic),
-    );
-    if (hitIndex !== -1) {
-      return { deny: true, reason: sharedBranchMessage(stripRef(targets[hitIndex])) };
+    const hit = targets.find((t) => isProtected(t, patterns));
+    if (hit !== undefined) {
+      return { deny: true, reason: sharedBranchMessage(stripRef(hit)) };
     }
   }
 
@@ -675,9 +604,6 @@ process.stdin.on('end', () => {
   // silently receive `undefined` and match nothing, i.e. a guard that never
   // guards.
   const patterns = loadProtected(cwd);
-  // Read once, beside the protected list and from the same file: the epic-line
-  // exception is configuration, not a property of an individual invocation.
-  const epic = loadEpicRule(cwd);
 
   // Context-free substring check: `--no-verify` next to `push` (in a command
   // that also mentions `git`, so e.g. `npm run push -- --no-verify` does not
@@ -812,7 +738,7 @@ process.stdin.on('end', () => {
     }
 
     if (subcommand === 'push') {
-      const r = evaluatePush(args, cwd, patterns, atCommandPosition, epic);
+      const r = evaluatePush(args, cwd, patterns, atCommandPosition);
       if (r.deny) deny(r.reason);
     } else if (subcommand === 'fetch') {
       const r = evaluateFetch(args, patterns);

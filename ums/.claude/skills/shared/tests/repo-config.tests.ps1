@@ -124,21 +124,46 @@ function New-ConfigFixture([string] $Json) {
     return $r
 }
 
-Write-Host "== epicBranchPattern: novy klic, vychozi je PRAZDNO (zadna epikova linie)"
-$r = New-ConfigFixture '{ "epicBranchPattern": "epic/*" }'
-Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern 'epic/*' 'epicBranchPattern se nacte z konfigurace'
+Write-Host "== epicBranchPattern: chybejici klic = vestavene epic/*, explicitne prazdny nebo nestringovy = zadna linie epiku"
+$r = New-ConfigFixture '{ "epicBranchPattern": "release-epic/*" }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern 'release-epic/*' 'epicBranchPattern se nacte z konfigurace'
 Remove-Item -Recurse -Force $r
 
 $r = New-ConfigFixture '{ "baseRef": "origin/develop" }'
-Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'chybejici epicBranchPattern degraduje na prazdno, ne na vzor'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern 'epic/*' 'chybejici klic v existujicim konfigu = vestaveny default epic/*'
+Remove-Item -Recurse -Force $r
+
+$r = New-ConfigFixture '{}'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern 'epic/*' 'prazdny objekt {} nechava default epic/*'
 Remove-Item -Recurse -Force $r
 
 $r = New-ConfigFixture '{ "epicBranchPattern": "" }'
-Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'prazdna hodnota se chova jako chybejici'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'explicitne prazdna hodnota = zadna linie epiku (ne default)'
 Remove-Item -Recurse -Force $r
 
-$r = New-ConfigFixture '{ "epicBranchPattern": 42 }'
-Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'nestringova hodnota degraduje na prazdno, nestringifikuje se'
+$r = New-ConfigFixture '{ "epicBranchPattern": "   " }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'hodnota jen z mezer = zadna linie epiku'
+Remove-Item -Recurse -Force $r
+
+$r = New-ConfigFixture '{ "epicBranchPattern": 5 }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'ciselna hodnota = zadna linie epiku, nestringifikuje se'
+Remove-Item -Recurse -Force $r
+
+$r = New-ConfigFixture '{ "epicBranchPattern": ["epic/*"] }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'pole misto retezce = zadna linie epiku'
+Remove-Item -Recurse -Force $r
+
+# JSON null is a value the key HAS, and not a string: same answer as any other
+# non-string value, NOT the default (the key is present).
+$r = New-ConfigFixture '{ "epicBranchPattern": null }'
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern '' 'null = neretezcova hodnota = zadna linie epiku'
+Remove-Item -Recurse -Force $r
+
+# No file / unusable file: nothing was said about the key, so the built-in
+# default applies (the loader degrades to its defaults as a whole).
+$r = Join-Path ([IO.Path]::GetTempPath()) ("ums-cfg-nofile-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $r | Out-Null
+Assert-Eq (Get-UmsRepoConfig $r).EpicBranchPattern 'epic/*' 'chybejici soubor = default epic/*'
 Remove-Item -Recurse -Force $r
 
 # ---------------------------------------------------------------------------

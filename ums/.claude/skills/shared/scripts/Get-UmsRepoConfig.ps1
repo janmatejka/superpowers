@@ -12,7 +12,11 @@
     SAFER side (built-in protected list = more protection, not less; empty
     projectMarkers/sharedRoots = the drift heuristic offers verification more
     often, not less). A malformed file writes one warning to the warning
-    stream and falls back to defaults.
+    stream and falls back to defaults. ONE deliberate exception to "safer
+    side": EpicBranchPattern defaults to 'epic/*' (a widening - an epic line
+    is a legitimate unprotected base with no configuration step), a decision
+    the user recorded in design 4.2; an explicit empty or non-string value
+    of the key switches the epic line off.
 
     Source reports WHERE the loader looked, not how much it used: 'file'
     means a config file was found and parsed as an object (an object with
@@ -33,7 +37,7 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
         TicketPattern     = '^[A-Z][A-Z0-9]+-[0-9]+'
         ProjectMarkers    = @()
         SharedRoots       = @()
-        EpicBranchPattern = ''
+        EpicBranchPattern = 'epic/*'
         PermalinkTemplate = ''
         Source            = 'default'
     }
@@ -80,13 +84,25 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
     if ($propNames -contains 'ticketPattern' -and $json.ticketPattern) {
         $cfg.TicketPattern = [string]$json.ticketPattern
     }
-    # epicBranchPattern: contract "The epic line". -is [string] is
-    # load-bearing: without it, a non-string value (e.g. 42) crashes this
-    # call on .Trim() instead of falling back to the safer side, the empty
-    # string — measured, not the list-key loop's silent-stringification
-    # failure mode below, which is only an analogy, not this key's own.
-    if ($propNames -contains 'epicBranchPattern' -and $json.epicBranchPattern -is [string] -and $json.epicBranchPattern.Trim() -ne '') {
-        $cfg.EpicBranchPattern = [string]$json.epicBranchPattern
+    # epicBranchPattern: identifies the epic line `epic/<KEY>` as a legitimate
+    # UNPROTECTED integration base (design 4.2; Test-UmsIntegrationBase). The
+    # key has THREE states, and only the first differs from every other key
+    # here: ABSENT = the built-in default `epic/*` (already in $cfg above -
+    # the user decided an epic runs without an extra configuration step);
+    # PRESENT and a non-blank string = that pattern; PRESENT and anything else
+    # (an empty or blank string, a number, an array, null) = '' = NO epic line,
+    # an explicit opt-out, and NOT a fall-back to the default. -is [string] is
+    # load-bearing: without it, a non-string value (e.g. 42) crashes this call
+    # on .Trim() instead of degrading to '' - measured, not the list-key
+    # loop's silent-stringification failure mode below, which is only an
+    # analogy, not this key's own.
+    if ($propNames -contains 'epicBranchPattern') {
+        if ($json.epicBranchPattern -is [string] -and $json.epicBranchPattern.Trim() -ne '') {
+            $cfg.EpicBranchPattern = [string]$json.epicBranchPattern
+        }
+        else {
+            $cfg.EpicBranchPattern = ''
+        }
     }
     # permalinkTemplate: contract "Permalinks". Same -is [string] guard as
     # epicBranchPattern above — a non-string value (e.g. a JSON number) must

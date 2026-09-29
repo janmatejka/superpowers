@@ -22,7 +22,7 @@ Set-Content -LiteralPath (Join-Path $work 'memory-bank/ums-repo.json') -Encoding
 '@
 Invoke-Git $work @('add', '-A')
 Invoke-Git $work @('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'init')
-foreach ($b in @('main', 'Branches/5.36', 'Branches/5.37', 'feature/UMS-1-neco')) {
+foreach ($b in @('main', 'Branches/5.36', 'Branches/5.37', 'feature/UMS-1-neco', 'epic/UMS-1')) {
     Invoke-Git $work @('branch', $b)
 }
 Invoke-Git $work @('push', '--no-verify', 'origin', '--all')
@@ -33,7 +33,7 @@ Invoke-Git $work @('push', '--no-verify', 'origin', '--all')
 Invoke-Git $work @('fetch', 'origin')
 Invoke-Git $work @('remote', 'set-head', 'origin', '-a')
 
-Write-Host "== kandidati jsou jen chranene vetve existujici na origin"
+Write-Host "== kandidati jsou chranene vetve a linie epiku existujici na origin"
 $c = Get-UmsBaseCandidates $work 'develop'
 $refs = @($c | ForEach-Object { $_.Ref })
 Assert-True ($refs -contains 'origin/develop') 'develop je kandidat'
@@ -69,6 +69,37 @@ Write-Host "== aktualni vetev mimo chranene se kandidatem nestava"
 $c = Get-UmsBaseCandidates $work 'feature/UMS-1-neco'
 Assert-True (-not (@($c | ForEach-Object { $_.Ref }) -contains 'origin/feature/UMS-1-neco')) `
     'nechranena aktualni vetev neni nabidnuta jako baze'
+
+Write-Host "== linie epiku (nechranena, vychozi vzor epic/*) je kandidat a nese IsEpicLine"
+$c = Get-UmsBaseCandidates $work 'develop'
+$refs = @($c | ForEach-Object { $_.Ref })
+Assert-True ($refs -contains 'origin/epic/UMS-1') 'epic/UMS-1 je kandidat, ac neni chranena a konfig klic epicBranchPattern nema'
+$epic = @($c | Where-Object { $_.Ref -eq 'origin/epic/UMS-1' }) | Select-Object -First 1
+Assert-True (($epic | Select-Object -ExpandProperty IsEpicLine) -eq $true) 'linie epiku nese IsEpicLine'
+Assert-Eq ($epic | Select-Object -ExpandProperty Branch) 'epic/UMS-1' 'Branch linie epiku je Ref bez remote prefixu'
+$dev = @($c | Where-Object { $_.Ref -eq 'origin/develop' }) | Select-Object -First 1
+Assert-True (($dev | Select-Object -ExpandProperty IsEpicLine) -eq $false) 'chranena develop nenese IsEpicLine'
+Assert-Eq (@($c) | Select-Object -First 1 -ExpandProperty Ref) 'origin/develop' 'vychozi baze zustava prvni i s linii epiku'
+$c2 = Get-UmsBaseCandidates $work 'epic/UMS-1'
+Assert-Eq (@($c2) | Select-Object -Skip 1 -First 1 -ExpandProperty Ref) 'origin/epic/UMS-1' 'aktualni linie epiku nasleduje hned za vychozi bazi'
+Assert-True (-not (@($c | ForEach-Object { $_.Ref }) -contains 'origin/feature/UMS-1-neco')) 'pracovni vetev je mimo kandidaty i s linii epiku'
+
+Write-Host "== explicitne prazdny epicBranchPattern = zadna linie epiku mezi kandidaty"
+$cfgPath = Join-Path $work 'memory-bank/ums-repo.json'
+$cfgOrig = Get-Content -LiteralPath $cfgPath -Raw
+Set-Content -LiteralPath $cfgPath -Encoding UTF8 -Value '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "main", "Branches/*"], "epicBranchPattern": "" }'
+$c = Get-UmsBaseCandidates $work 'develop'
+Assert-True (-not (@($c | ForEach-Object { $_.Ref }) -contains 'origin/epic/UMS-1')) 'prazdny vzor: epic/UMS-1 neni kandidat'
+Assert-True (@($c | Where-Object { $_.IsEpicLine }).Count -eq 0) 'prazdny vzor: zadny kandidat nenese IsEpicLine'
+Set-Content -LiteralPath $cfgPath -Encoding UTF8 -Value $cfgOrig -NoNewline
+
+Write-Host "== epic/UMS-1 na seznamu chranenych = protected kandidat, ne linie epiku"
+Set-Content -LiteralPath $cfgPath -Encoding UTF8 -Value '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "epic/*"] }'
+$c = Get-UmsBaseCandidates $work 'develop'
+$epic = @($c | Where-Object { $_.Ref -eq 'origin/epic/UMS-1' }) | Select-Object -First 1
+Assert-True ($null -ne $epic) 'chranena epic/UMS-1 je kandidat'
+Assert-True (($epic | Select-Object -ExpandProperty IsEpicLine) -eq $false) 'chranena vetev vyhrava: IsEpicLine je false'
+Set-Content -LiteralPath $cfgPath -Encoding UTF8 -Value $cfgOrig -NoNewline
 
 Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 Complete-Tests

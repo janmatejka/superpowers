@@ -366,111 +366,80 @@ Assert-Eq $fullBadStdin.Code 0 'exit 0: nerozparsovatelný vstup nezpůsobí pá
 Assert-Eq $fullBadStdin.Err '' 'žádný stderr: nerozparsovatelný vstup nevyhodí nezachycenou výjimku'
 
 # ---------------------------------------------------------------------------
-# Epiková výjimka podle aktéra. Čtyři podmínky, každá s vlastním negativem.
+# Linie epiku (design 4.2): `epic/<KLÍČ>` je NECHRÁNĚNÁ integrační báze. Guard
+# už nezná žádnou epikovou výjimku — čtyřpodmínková výjimka (surové SHA, vzor,
+# chráněnost, ne-báze) je zrušená, protože linie epiku už chráněná není.
+# Rozhodnutí uživatele zaznamenané v návrhu: chráněná větev je zamítnuta BEZ
+# výjimky, nechráněná linie epiku projde jako každá nechráněná větev; „go“
+# správce je text kontraktu, ne mechanismus (přijaté zbytkové riziko).
 # ---------------------------------------------------------------------------
 $SHA = '0123456789abcdef0123456789abcdef01234567'
-$cfgEpic = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
 
-# POZITIVNÍ: přesně tvar protokolu.
-Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: refspec se surovým SHA do epic/* projde výjimkou'
-
-# NEGATIVNÍ 1 — zdroj není surové SHA. Zavírá to REFSPEC bez surového zdroje:
-# `HEAD:`, jméno větve, refspec bez zdroje. NEZAVÍRÁ to holý `git push` —
-# ten se do téhle podmínky vůbec nedostane, protože cílem je pak JMÉNO
-# aktuální větve (tiketová větev, nechráněná) a verdikt je ALLOW; co drží
-# holý push, je `push.default=simple` a obsahové pravidlo `pre-push`
-# (kontrakt, „The epic line").
-Assert-Match (Test-Cmd 'git push origin HEAD:refs/heads/epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: HEAD jako zdroj není surové SHA'
-Assert-Match (Test-Cmd 'git push origin UMS-3400-x:refs/heads/epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: jméno větve jako zdroj není surové SHA'
-Assert-Match (Test-Cmd 'git push origin epic/UMS-3400' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: refspec bez zdroje výjimku neotevírá'
-
-# NEGATIVNÍ 2 — cíl neodpovídá epikovému vzoru.
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: surové SHA do develop výjimku nedostane'
-
-# NEGATIVNÍ 2b — TOHLE JE VLASTNÍ NEGATIV PODMÍNKY O VZORU, a v briefu
-# chyběl: v NEGATIVNÍM 2 je `develop` současně bází, takže tu asercii drží
-# podmínka o bázi a odebrání podmínky o vzoru by nezčervenalo nic. Cíl
-# `main` je tady chráněný, není bází a vzoru neodpovídá — jediný tvar, kde
-# rozhoduje právě a jen podmínka o vzoru. Měřeno: bez ní tenhle push projde.
-$cfgOther = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "epic/*", "main"], "epicBranchPattern": "epic/*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/main" $cfgOther) 'permissionDecision.*deny' 'zamítnuto: surové SHA do chráněné větve mimo epikový vzor výjimku nedostane'
-Remove-Item -Recurse -Force $cfgOther
-
-# NEGATIVNÍ 3 — cíl je větev odvozená z baseRef. Zavírá epicBranchPattern
-# nastavený tak široce, že by pohltil bázi.
-$cfgWide = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgWide) 'permissionDecision.*deny' 'zamítnuto: vzor pohlcující bázi výjimku neotevírá'
-Remove-Item -Recurse -Force $cfgWide
-
-# NEGATIVNÍ 4 — cíl odpovídá vzoru, ale NENÍ chráněný. Výjimka se vztahuje
-# jen na chráněné větve; jinak by konfigurace udělovala právo na jmenný
-# prostor, který nikdo nehlídá.
+# NECHRÁNĚNÁ linie epiku: povoleno v každém tvaru refspecu, s epicBranchPattern
+# i bez něj — guard tenhle klíč vůbec nečte, na verdiktu nic nemění.
 $cfgUnprot = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "epic/*" }'
-Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgUnprot) 'permissionDecision.*deny' 'povoleno: nechráněná větev nebyla zamítnutá ani předtím — výjimka tu nic nemění'
+Assert-NotMatch (Test-Cmd 'git push origin HEAD:epic/UMS-1' $cfgUnprot) 'permissionDecision.*deny' 'povoleno: HEAD:epic/UMS-1 (nechráněná linie epiku)'
+Assert-NotMatch (Test-Cmd 'git push origin HEAD:refs/heads/epic/UMS-1' $cfgUnprot) 'permissionDecision.*deny' 'povoleno: HEAD:refs/heads/epic/UMS-1 (nechráněná linie epiku)'
+Assert-NotMatch (Test-Cmd 'git push origin epic/UMS-1' $cfgUnprot) 'permissionDecision.*deny' 'povoleno: refspec bez zdroje na nechráněnou linii epiku'
+Assert-NotMatch (Test-Cmd 'git push origin UMS-1-x:refs/heads/epic/UMS-1' $cfgUnprot) 'permissionDecision.*deny' 'povoleno: jméno větve jako zdroj na nechráněnou linii epiku'
+Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-1" $cfgUnprot) 'permissionDecision.*deny' 'povoleno: surové SHA na nechráněnou linii epiku (jako každá nechráněná větev)'
+Assert-NotMatch (Test-CmdPs 'git push origin HEAD:epic/UMS-1' $cfgUnprot) 'permissionDecision.*deny' 'povoleno: nechráněná linie epiku i na PowerShell toolu'
+# Výchozí vzor epic/* nese Get-UmsRepoConfig, ne guard: bez klíče i s prázdným
+# klíčem je verdikt guardu stejný (nechráněná větev = povoleno).
+$cfgNoKey = New-ConfigFixture '{ "protectedBranches": ["develop"] }'
+Assert-NotMatch (Test-Cmd 'git push origin HEAD:epic/UMS-1' $cfgNoKey) 'permissionDecision.*deny' 'povoleno: chybějící epicBranchPattern guard nezajímá'
+Remove-Item -Recurse -Force $cfgNoKey
+$cfgEmptyPat = New-ConfigFixture '{ "protectedBranches": ["develop"], "epicBranchPattern": "" }'
+Assert-NotMatch (Test-Cmd 'git push origin HEAD:epic/UMS-1' $cfgEmptyPat) 'permissionDecision.*deny' 'povoleno: prázdný epicBranchPattern guard nezajímá (nechráněná větev je povolena)'
+Remove-Item -Recurse -Force $cfgEmptyPat
+# Guard čte JEN seznam chráněných: žádná větev není zamítnuta jen proto, že
+# odpovídá vzoru, a vzor `*` nepohltí nic jiného než to, co už chrání seznam.
+$cfgStar = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
+Assert-NotMatch (Test-Cmd 'git push origin feature/UMS-1-x' $cfgStar) 'permissionDecision.*deny' 'povoleno: vzor epiku * nezamítá nechráněnou větev'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgStar) 'permissionDecision.*deny' 'zamítnuto: surové SHA do develop (vzor * nic neotvírá)'
+Remove-Item -Recurse -Force $cfgStar
+# Síla --force na nechráněné linii: guard ji fail-closed zamítá jako neznámý
+# přepínač (čtení tvaru), a skutečný zákaz force a mazání na KAŽDÉ větvi,
+# tedy i na nechráněné linii epiku, drží pre-push (pre-push.tests.ps1).
+Assert-Match (Test-Cmd 'git push --force origin HEAD:epic/UMS-1' $cfgUnprot) 'permissionDecision.*deny' 'zamítnuto: force push na nechráněnou linii epiku (neznámý přepínač)'
 Remove-Item -Recurse -Force $cfgUnprot
 
-# BEZ KLÍČE: výjimka neexistuje vůbec.
-$cfgNoKey = New-ConfigFixture '{ "protectedBranches": ["develop", "epic/*"] }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgNoKey) 'permissionDecision.*deny' 'zamítnuto: chybějící epicBranchPattern znamená žádnou výjimku'
-Remove-Item -Recurse -Force $cfgNoKey
-
-# NEPOUŽITELNÝ baseRef: výjimka taky neexistuje vůbec. Bez použitelného
-# jména báze nemá podmínka o bázi co srovnávat — prázdný string se nerovná
-# ničemu, takže by ji nešlo splnit a dost široký vzor by pohltil i doručovací
-# linii. Měřeno: přesně tenhle tvar guard propouštěl.
-$cfgNoBase = New-ConfigFixture '{ "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgNoBase) 'permissionDecision.*deny' 'zamítnuto: chybějící baseRef znamená žádnou výjimku (bázi se nehádá)'
-Remove-Item -Recurse -Force $cfgNoBase
-
-$cfgWideNoBase = New-ConfigFixture '{ "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgWideNoBase) 'permissionDecision.*deny' 'zamítnuto: vzor pohlcující bázi a chybějící baseRef nesmí pustit surové SHA do doručovací linie'
-Remove-Item -Recurse -Force $cfgWideNoBase
-
-$cfgEmptyBase = New-ConfigFixture '{ "baseRef": "", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEmptyBase) 'permissionDecision.*deny' 'zamítnuto: prázdný baseRef znamená žádnou výjimku'
-Remove-Item -Recurse -Force $cfgEmptyBase
-
-$cfgNonStrBase = New-ConfigFixture '{ "baseRef": 42, "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgNonStrBase) 'permissionDecision.*deny' 'zamítnuto: nestringový baseRef znamená žádnou výjimku'
-Remove-Item -Recurse -Force $cfgNonStrBase
-
-# `origin/` je validní string, ale po odebrání remote a jednoho lomítka
-# nezbyde žádné jméno větve — degradace musí být stejná jako u chybějícího.
-$cfgRemoteOnlyBase = New-ConfigFixture '{ "baseRef": "origin/", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgRemoteOnlyBase) 'permissionDecision.*deny' 'zamítnuto: baseRef "origin/" se redukuje na prázdno, tedy žádná výjimka'
-Remove-Item -Recurse -Force $cfgRemoteOnlyBase
-
-# `refs/remotes/origin/develop` je taky validní string, ale kontrakt tenhle
-# tvar pro `baseRef` nepřipouští (sekce "Repository Configuration": baseRef je
-# `origin/<větev>`, tedy BEZ prefixu `refs/remotes/`). Odebrání remote a jednoho
-# lomítka z něj udělá `remotes/origin/develop` — jméno, které se žádné skutečné
-# bázi nikdy nerovná, takže podmínka o bázi je trvale splněná. Měřeno: přesně
-# tenhle tvar guard propouštěl.
-$cfgRefsBase = New-ConfigFixture '{ "baseRef": "refs/remotes/origin/develop", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgRefsBase) 'permissionDecision.*deny' 'zamítnuto: baseRef s prefixem refs/ se neparsuje, znamená žádnou výjimku'
-Remove-Item -Recurse -Force $cfgRefsBase
-
-# Bílé znaky okolo hodnoty: `"origin/develop "` by bez trimu dalo jméno
-# `"develop "`, které se `develop` nerovná — tedy zase trvale splněná podmínka
-# o bázi. Měřeno: i tenhle tvar guard propouštěl.
-$cfgSpaceBase = New-ConfigFixture '{ "baseRef": "origin/develop ", "protectedBranches": ["develop"], "epicBranchPattern": "*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgSpaceBase) 'permissionDecision.*deny' 'zamítnuto: baseRef s koncovou mezerou nesmí odzbrojit podmínku o bázi'
-Remove-Item -Recurse -Force $cfgSpaceBase
-
-# KONTROLA opačným směrem: trim udělá z nedbale zapsané, ale správné hodnoty
-# hodnotu funkční — nezamítne ji. Táž konfigurace tedy chrání bázi A ZÁROVEŇ
-# pouští legitimní epikový fast-forward. Vzor je schválně `*`, aby o zamítnutí
-# báze rozhodovala JEDINĚ podmínka o bázi, tedy právě ten trim; s `epic/*` by
-# ji zamítla už podmínka o vzoru a fixture by o trimu nic nedokazovala.
-$cfgTrimBase = New-ConfigFixture '{ "baseRef": " origin/develop ", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "*" }'
-Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgTrimBase) 'permissionDecision.*deny' 'zamítnuto: obalený baseRef se po trimu pozná jako báze'
-Assert-NotMatch (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgTrimBase) 'permissionDecision.*deny' 'povoleno: obalený baseRef výjimku pro epikovou linii neruší'
-Remove-Item -Recurse -Force $cfgTrimBase
-
-# TÝŽ TVAR V POWERSHELLOVÉM ZÁPISU — guard je registrovaný na Bash|PowerShell.
-Assert-NotMatch (Test-CmdPs "git push origin ${SHA}:refs/heads/epic/UMS-3400" $cfgEpic) 'permissionDecision.*deny' 'povoleno: výjimka platí i na PowerShell toolu'
-
+# CHRÁNĚNÁ linie epiku (epic/* v protectedBranches): zamítnuto BEZ výjimky.
+# Konfigurace má přesně tvar, který dříve epikovou výjimku otevíral (baseRef +
+# epicBranchPattern + chráněná epic/*), a surové SHA byl přesně protokolový tvar.
+$cfgEpic = New-ConfigFixture '{ "baseRef": "origin/develop", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-1" $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: surové SHA do chráněné epic/* (výjimka zrušena)'
+Assert-Match (Test-Cmd "git push origin ${SHA}:epic/UMS-1" $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: surové SHA bez refs/heads/ do chráněné epic/*'
+Assert-Match (Test-Cmd 'git push origin HEAD:epic/UMS-1' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: HEAD:epic/UMS-1 na chráněnou epic/*'
+Assert-Match (Test-Cmd 'git push origin HEAD:refs/heads/epic/UMS-1' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: HEAD:refs/heads/epic/UMS-1 na chráněnou epic/*'
+Assert-Match (Test-Cmd 'git push origin epic/UMS-1' $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: refspec bez zdroje na chráněnou epic/*'
+Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: surové SHA do develop'
+Assert-Match (Test-CmdPs "git push origin ${SHA}:refs/heads/epic/UMS-1" $cfgEpic) 'permissionDecision.*deny' 'zamítnuto: surové SHA do chráněné epic/* i na PowerShell toolu'
+$rEpicDeny = Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-1" $cfgEpic
+Assert-Match $rEpicDeny 'sdílená větev' 'zamítnutí je hláška o sdílené větvi (ne o nečitelném pushi)'
+Assert-Match $rEpicDeny 'epic/UMS-1' 'hláška pojmenovává chráněnou linii'
 Remove-Item -Recurse -Force $cfgEpic
+
+# Bez výjimky nezáleží na tom, co je v baseRef: konfigurace, které dříve
+# výjimku vypínaly (chybějící, prázdný, nestringový, `origin/`, `refs/` a
+# obalený baseRef), dostávají dnes TENTÝŽ verdikt jako ta, která ji zapínala —
+# zamítnuto.
+foreach ($fx in @(
+    '{ "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }',
+    '{ "baseRef": "", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }',
+    '{ "baseRef": 42, "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }',
+    '{ "baseRef": "origin/", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "epic/*" }',
+    '{ "baseRef": "refs/remotes/origin/develop", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "*" }',
+    '{ "baseRef": " origin/develop ", "protectedBranches": ["develop", "epic/*"], "epicBranchPattern": "*" }',
+    '{ "protectedBranches": ["develop", "epic/*"] }')) {
+    $cfgX = New-ConfigFixture $fx
+    Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/epic/UMS-1" $cfgX) 'permissionDecision.*deny' "zamítnuto: chráněná epic/* bez výjimky bez ohledu na baseRef/epicBranchPattern: $fx"
+    Assert-Match (Test-Cmd "git push origin ${SHA}:refs/heads/develop" $cfgX) 'permissionDecision.*deny' "zamítnuto: develop bez výjimky: $fx"
+    Remove-Item -Recurse -Force $cfgX
+}
+
+# Bez konfigurace platí vestavěná čtveřice chráněných větví a epic/* v ní není.
+Assert-NotMatch (Test-Cmd 'git push origin HEAD:epic/UMS-1') 'permissionDecision.*deny' 'povoleno: bez konfigurace není epic/* chráněná (vestavěná čtveřice ji nezná)'
 
 # ---------------------------------------------------------------------------
 # MB_HUMAN_PUSH=1 — the human escape the pre-push hook honours, DENIED here.
