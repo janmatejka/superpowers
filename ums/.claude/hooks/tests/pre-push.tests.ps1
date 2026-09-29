@@ -415,7 +415,7 @@ Assert-Eq $LASTEXITCODE 0 'refs/TAGS/develop zůstává mimo rozsah (tagy se neh
 
 # ---------------------------------------------------------------------------
 # 14. sync-with-monorepo.ps1 must install the hook AFTER the sync, not before.
-# With the default -Direction FromMonorepo the fork's hooks/ is rewritten by
+# With -Direction FromMonorepo the fork's hooks/ is rewritten by
 # the very run doing the installing, so installing first deploys the fork's
 # pre-sync copy instead of the one the run just made authoritative. Proven
 # with two distinguishable variants of the real hook (both functional, both

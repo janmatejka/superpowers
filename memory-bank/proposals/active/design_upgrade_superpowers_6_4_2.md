@@ -724,8 +724,9 @@ monorepo. Kroky 2 až 5 se týkají monorepa `D:\_datasys\ums`.
    přepni na větev, kam má vrstva jít.
 3. **První nasazení do monorepa.** Nejdřív nanečisto:
    `pwsh ums/sync-with-monorepo.ps1 -Agent claude -Scope Monorepo -WhatIf`
-   - Čekej **exit 3**: bez manifestu je drift každý rozdíl. Projdi seznam
-     driftu a teprve pak rozhodni o `-Force`.
+   - `-WhatIf` končí **exit 0** a vypíše DRIFT plus „would STOP here
+     (exit 3)"; exit 3 dá až ostrý běh bez `-Force`. Bez manifestu je drift
+     každý rozdíl. Projdi seznam driftu a teprve pak rozhodni o `-Force`.
    - STOP při prvním běhu nabízí `-Direction FromMonorepo`. **Tuto nabídku
      pro tento upgrade nepřijímej.** Bez manifestu je směr neznámý
      a přepsal by novější UMS položky forku (např. overlaye pro v6.4.2)
@@ -733,9 +734,9 @@ monorepo. Kroky 2 až 5 se týkají monorepa `D:\_datasys\ums`.
 4. **Dvoufázové nasazení při změně tagu (v6.3.0 → v6.4.2).**
    - Běh s `-Force`, který skončí **exit 4**, zapsal JEN vanilla revendor.
      Commitni ho v monorepu jako „vanilla sync".
-   - Druhý běh se na týchž nevendorovaných souborech zastaví znovu
-     a potřebuje `-Force` znovu. Hlášení prvního běhu tvrdí, že byly
-     přepsané, ale to ještě neplatí.
+   - Drift vypsaný prvním během se v něm nepřepisuje a hlášení to říká
+     („not overwritten in this run"). Druhý běh se na týchž souborech
+     zastaví znovu a potřebuje `-Force` znovu; teprve ten drift přepíše.
    - Po druhém běhu commitni „overlay".
 5. **Při prvním nasazení se migruje `CLAUDE.md` monorepa** na blok mezi
    markery. Sekce patřící vrstvě se nahradí na místě; projektové sekce

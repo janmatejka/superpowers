@@ -1432,7 +1432,7 @@ foreach ($x in $drifted) {
 }
 if ($drifted.Count -gt 0) {
     if ($Force) {
-        Write-Host '-Force: the drifted files listed above are overwritten.' -ForegroundColor Yellow
+        # Says nothing yet: whether the drift is overwritten depends on the vanilla decision below.
     }
     elseif ($Preview) {
         Write-Host 'WhatIf: without -Force this run would STOP here (exit 3); below is what a run with -Force would write.' -ForegroundColor Yellow
@@ -1499,6 +1499,9 @@ if ($vanilla.Count -gt 0) {
     foreach ($u in @($vendorUnits.Values | Where-Object { $_.Mode -ne 'vanilla-only' })) {
         Write-Host "note: $(Get-TargetRel $u.Dir) is left for the next run (the vanilla phase writes nothing else)." -ForegroundColor DarkGray
     }
+    if ($Force -and $drifted.Count -gt 0) {
+        Write-Host '-Force: the drifted files listed above are not overwritten in this run (the vanilla phase writes nothing else); the next run stops on them again and needs -Force again.' -ForegroundColor Yellow
+    }
     if ($Preview) {
         Write-Host 'WhatIf: the run would end after the vanilla phase with exit 4; nothing was written.' -ForegroundColor Cyan
         exit 0
@@ -1522,6 +1525,9 @@ if ($vanilla.Count -gt 0) {
 }
 
 # ---- 4. full deployment: UMS items, vendored skills, instructions, marker, hooks
+if ($Force -and $drifted.Count -gt 0) {
+    Write-Host '-Force: the drifted files listed above are overwritten.' -ForegroundColor Yellow
+}
 foreach ($u in $vendorUnits.Values) {
     foreach ($name in @(Get-UmsTargetOnlySkills $u.Dir $forkSkills)) {
         Write-Host "warning: '$(Get-TargetRel $u.Dir)\$name' exists only in the target - it is not part of the layer and stays untouched." -ForegroundColor Yellow

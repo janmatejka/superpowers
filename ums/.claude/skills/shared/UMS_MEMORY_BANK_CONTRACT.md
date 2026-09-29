@@ -633,8 +633,8 @@ correction or a handoff artifact travelling back up carries none of it.
   with, which of two things goes first, when it stops. The sender owns that
   boundary, or a written rule does, and the recipient can check it against
   whichever is claimed. A fact of the sender's OWN action, verifiable by the
-  recipient in a shared artifact (the fast-forward landed, at this SHA, onto this
-  branch), is an instruction too: the marking is BINARY and total, and a message
+  recipient in a shared artifact (the epic line was created, at this tip, from
+  this base), is an instruction too: the marking is BINARY and total, and a message
   must never go out unmarked for want of a third mark.
 - **`Mark: conjecture`** — the message states a CAUSE or a prediction: why
   something is happening, what a symptom means, what the recipient is about to

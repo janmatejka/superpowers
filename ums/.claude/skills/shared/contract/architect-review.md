@@ -23,7 +23,7 @@ names are ASCII; existing branches carrying diacritics are NOT renamed — a ren
 would break the request comment's authoritative branch name for no benefit.
 
 **Push policy:** per the Publication Contract — the ticket branch is the actor's
-own branch, so the handoff push is announced, not negotiated; shared branches are
+own branch, so the handoff push is announced, not negotiated; a protected branch is
 never pushed by the agent. Steps are ordered so one handoff needs exactly **one**
 push, and the order is what makes that true: the base merge (resolver side only)
 comes FIRST and is not pushed on its own, the handoff state is committed after it,

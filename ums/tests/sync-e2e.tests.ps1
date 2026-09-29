@@ -44,7 +44,7 @@ function Set-MonoAtT2($Fixture) {
 }
 
 $warnCursor = [regex]::Escape("the pre-push guarantee does not bind 'cursor' (no documented environment-injection mechanism)")
-$fxA = $null; $fxB = $null; $fxC = $null; $fxD = $null
+$fxA = $null; $fxB = $null; $fxC = $null; $fxD = $null; $fxE = $null
 $envBefore = $env:UMS_SYNC_MONOREPO_ROOT
 try {
     # --- data: kdo je kryty bez markeru (Pi) a koho zaruka neváže -------------------
@@ -142,6 +142,19 @@ try {
     $r = Invoke-Sync $fxA @('-MonorepoRoot', $monoA)
     Assert-Eq $r.Code 0 '(4) opakovany beh bez zmen: exit 0 (zadny falesny drift)'; Show-OnFail $r 0
     Remove-SyncFixture $fxA; $fxA = $null
+
+    # (6) -Force pri zmene tagu u trackovaneho cile s driftem: vanilla faze drift NEPREPISUJE,
+    # vypis to nesmi tvrdit (a rika, ze dalsi beh potrebuje -Force znovu)
+    $fxE = New-SyncFixture
+    $monoE = $fxE.Mono
+    [IO.File]::WriteAllText((Join-Path $monoE '.claude\settings.json'), "{ `"mine`": true }`n")
+    $r = Invoke-Sync $fxE @('-MonorepoRoot', $monoE, '-Force')
+    Assert-Eq $r.Code 4 '(6) -Force + drift + zmena tagu: exit 4'; Show-OnFail $r 4
+    Assert-Match $r.Output ([regex]::Escape('.claude\settings.json')) '(6) -Force vanilla faze: drift je vypsan'
+    Assert-True ($r.Output -notmatch 'are overwritten') '(6) -Force vanilla faze: NETVRDI, ze drift je prepsan'
+    Assert-Match $r.Output 'not overwritten in this run' '(6) -Force vanilla faze: rika, ze drift se v tomto behu neprepisuje'
+    Assert-Eq (Read-Text (Join-Path $monoE '.claude\settings.json')) "{ `"mine`": true }`n" '(6) -Force vanilla faze: settings.json cile nedotcen'
+    Remove-SyncFixture $fxE; $fxE = $null
 
     # ============ fixtura B: monorepo uz na t2 (pripady 2, 3, 5, 7, 1) ============
     $fxB = New-SyncFixture
@@ -276,7 +289,7 @@ try {
 }
 finally {
     $env:UMS_SYNC_MONOREPO_ROOT = $envBefore
-    foreach ($fx in $fxA, $fxB, $fxC, $fxD) { if ($fx) { Remove-SyncFixture $fx } }
+    foreach ($fx in $fxA, $fxB, $fxC, $fxD, $fxE) { if ($fx) { Remove-SyncFixture $fx } }
 }
 
 Complete-Tests

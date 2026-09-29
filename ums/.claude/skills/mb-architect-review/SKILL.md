@@ -57,7 +57,7 @@ for request in the same session).
 
 Per the contract's **Publication Contract**: the ticket branch is the actor's
 own branch, so the handoff push is announced (branch + outgoing commits), not
-negotiated; shared branches are never pushed by the agent. One handoff = one
+negotiated; a protected branch is never pushed by the agent. One handoff = one
 push. A refusal to publish stops the handoff — without the push the other side
 sees neither the design nor `context.md`.
 

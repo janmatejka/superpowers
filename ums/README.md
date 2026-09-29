@@ -72,7 +72,7 @@ ums/
     │   ├── session-intent.ps1         ← SessionStart hook — delivers the session intent baton
     │   ├── contract-inject.ps1        ← SessionStart/PostCompact hook — injects the contract CORE as context
     │   └── tests/                     ← own Pester-free *.tests.ps1 + _assert.ps1 per this layer's convention
-    ├── scripts/revendor-superpowers.ps1  ← vendors skills/ of THIS repo into the monorepo
+    ├── scripts/revendor-superpowers.ps1  ← vendors the fork's pinned upstream skills into a target (the sync runs it per target)
     └── skills/
         ├── shared/           ← contract 3.2 core + contract/ references + contract/doklad/ evidence,
         │                       CHANGELOG.md, manifest, VENDORED_FROM.md, scripts/, tests/,
@@ -335,7 +335,7 @@ hook — run `install-git-hooks.ps1 -RepoRoot <repo>` per clone.
    written and any drift; nothing is changed.
 2. Deploy: `pwsh ums/sync-with-monorepo.ps1` (`-Direction ToMonorepo` is the
    default). One run copies this layer, vendors the skills of the fork's pin,
-   applies the overlays and writes the `CLAUDE.md` block — a target that does
+   applies the overlays and writes the `CLAUDE.md` block — a target that does not
    have a pin yet, or is not tracked by git, gets everything in one pass; a
    git-tracked target that pins another tag needs the two runs described above.
 3. Verify: the revendor's verification pass, whose output the sync relays, must

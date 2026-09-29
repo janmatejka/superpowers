@@ -289,6 +289,7 @@ Doklad: doklad/publication.md, "The chained hook's executable bit"
 into each harness's own documented mechanism: Claude Code through the `env` block of
 this layer's `settings.json`, Codex through `config.toml`
 `[shell_environment_policy].set`, Gemini through a `.env` file in its config
-directory. For **Kilo Code no documented mechanism to inject an environment variable
-was found**, so there the marker never arrives — the state the core calls a missing
-guarantee.
+directory. For a harness with **no documented mechanism to inject an environment
+variable** (the harness matrix in `ums/README.md` names them; the sync either rejects
+such a harness by name or prints "the pre-push guarantee does not bind '<agent>'") the
+marker never arrives — the state the core calls a missing guarantee.
