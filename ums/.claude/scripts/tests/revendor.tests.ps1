@@ -178,6 +178,8 @@ try {
     Add-RevendorFixtureOverlays (Join-Path $gtSkills 'shared\overlays')
     $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile)
     Assert-Eq $res.Exit 0 'full run (vendor + overlays + verify) into a target inside git succeeds'
+    # A fragment's links are written relative to its TARGET skill, not to shared/overlays/.
+    Assert-True (-not $res.Out.Contains('dangling link in shared\overlays\')) 'fragment files are not link-scanned (their links resolve from the target skill)'
     $gtAlpha = Join-Path $gtSkills 'alpha\SKILL.md'
     $gtRaw = [IO.File]::ReadAllText($gtAlpha)
     Assert-Eq ([regex]::Matches($gtRaw, 'UMS-OVERLAY BEGIN').Count) 2 'alpha/SKILL.md carries two BEGIN markers'
@@ -208,6 +210,13 @@ try {
     [IO.File]::WriteAllText($gtAlpha, $gtRaw, [Text.UTF8Encoding]::new($false))
     $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-VerifyOnly')
     Assert-Eq $res.Exit 0 '-VerifyOnly passes again once the file is restored'
+
+    Write-Host '== verify: a dangling link in an overlayed skill still fails'
+    [IO.File]::WriteAllText($gtAlpha, $gtRaw + "[gone](../no-such-dir/x.md)`n", [Text.UTF8Encoding]::new($false))
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-VerifyOnly')
+    Assert-True ($res.Exit -ne 0) '-VerifyOnly fails on a dangling link in a vendored skill'
+    Assert-Match $res.Out 'dangling link in alpha\\SKILL\.md: \.\./no-such-dir/x\.md' 'output names the vendored file and the dangling link'
+    [IO.File]::WriteAllText($gtAlpha, $gtRaw, [Text.UTF8Encoding]::new($false))
 
     Write-Host '== verify: required v6.4.2 files follow the pin'
     $vt = Join-Path $fx.Root 'verify-target'

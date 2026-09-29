@@ -441,7 +441,13 @@ function Invoke-Verify {
     }
     if (Test-Path -LiteralPath $SharedDir) { $linkScanDirs += $SharedDir }
     if ($linkScanDirs.Count -gt 0) {
-        Get-ChildItem -Path $linkScanDirs -Recurse -Filter '*.md' | ForEach-Object {
+        # Overlay fragments are skipped: their links are written relative to the TARGET
+        # skill and are checked where they land, in the overlayed SKILL.md.
+        $overlaysPrefix = [IO.Path]::GetFullPath($OverlaysDir).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        Get-ChildItem -Path $linkScanDirs -Recurse -Filter '*.md' |
+            Where-Object { -not ($_.Name.EndsWith('.overlay.md', [StringComparison]::OrdinalIgnoreCase) -and
+                                 $_.FullName.StartsWith($overlaysPrefix, [StringComparison]::OrdinalIgnoreCase)) } |
+            ForEach-Object {
             $file = $_
             $raw = Get-Content -Path $file.FullName -Raw
             # Skip links inside fenced code blocks and inline code - those are examples.

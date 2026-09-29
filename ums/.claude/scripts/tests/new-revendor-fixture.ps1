@@ -97,6 +97,7 @@ function Add-RevendorFixtureOverlays([string] $OverlaysDir) {
         "<!-- ASSERT: line two -->`n" +
         "<!-- UMS-OVERLAY BEGIN (fixture body) -->`n" +
         "Alpha body block.`n" +
+        "Target-relative link: [pin](../shared/VENDORED_FROM.md)`n" +
         "<!-- UMS-OVERLAY END -->`n")
     Write-FxFile (Join-Path $OverlaysDir 'alpha.pointer.overlay.md') (
         "<!-- TARGET: alpha/SKILL.md -->`n" +
