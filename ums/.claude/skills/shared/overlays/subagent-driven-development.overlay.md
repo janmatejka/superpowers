@@ -7,158 +7,76 @@
 <!-- UMS-OVERLAY BEGIN (ums-memory-bank v2) -->
 ## UMS Memory Bank Overlay
 
-> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [playbook-contract.md](../shared/contract/playbook-contract.md), [now-block.md](../shared/contract/now-block.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md). Read the named references before acting.
+> Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [playbook-contract.md](../shared/contract/playbook-contract.md), [now-block.md](../shared/contract/now-block.md), [session-intent-baton.md](../shared/contract/session-intent-baton.md), [repository-configuration.md](../shared/contract/repository-configuration.md). Read the named references before acting.
+
+The rules of plan execution live in the core and in those references; this
+block cites them and adds only what is specific to dispatching subagents.
 
 - **Model selection:** follow the Model Selection section above — UMS pins no
-  models. One UMS guard (contract, "Dispatch Model Policy"):
-  summarization-only dispatches (Czech commit messages, Jira
-  comments, harvest notes) use the cheapest capable tier. Always set the model
-  explicitly on every dispatch.
-- **Rulings and STOPs:** rule on conflicts per the SKILL text above; this
-  layer's fail-closed STOPs already fall within the four stop classes
-  (contract, "Fail-Closed Behavior"), paragraph "Rulings and these STOPs".
-  Locally: merging the effective base
-  into the agent's OWN ticket branch is NOT the "side effect outside this
-  worktree" the four classes mean — it is mandatory at phase boundaries
-  (Base sync below) and is never put to the user.
+  models. Set the model explicitly on EVERY dispatch; summarization-only
+  dispatches (Czech commit messages, Jira comments, harvest notes, read-only
+  scans) use the cheapest capable tier (contract, "Dispatch Model Policy").
+- **Rulings and STOPs:** rule on conflicts per the SKILL text above. This
+  layer's fail-closed STOPs fall within the four classes, and merging the
+  effective base into the agent's OWN ticket branch is not a "side effect
+  outside this worktree" and is never put to the user (contract, "Fail-Closed Behavior") — paragraph "Rulings and these STOPs".
 - **A fifth stop class: context rotation.** The SKILL text above says "Four
-  things stop you, **and only these**". In this repository there is a fifth, and
-  that sentence is hereby narrowed: it enumerates the ESCALATION stops — the ones
-  where you stop and ASK, then continue in this same session. Context rotation is
-  a HANDOFF stop: this session ends and a fresh one continues. The layer already
-  has one (the Architect Review Gate). The four are untouched and unweakened;
-  this is additive.
-
-  Permitted **only at a task boundary** — after the completion line is appended
-  to the ledger and the todo is marked complete, and before the next dispatch.
-  Nowhere else: mid-task the on-disk state is incomplete and a rotation discards
-  a live review cycle.
-
-  At that boundary, when the remaining context looks insufficient for another
-  task: write the session intent baton (contract/session-intent-baton.md, "Session Intent Baton") with
-  `Kind: plan-resume`, the plan path, the ledger path, the branch, the slug, the
-  number of the next incomplete task and the required `Instruction:` line naming
-  subagent-driven-development; append a plain note to the ledger that the session
-  was rotated here (a note, NOT a `Ruling:` — no conflict was decided); report in
-  Czech; and stop with the single instruction to type `/clear`.
-
-  **`Instruction` is REQUIRED and its value is VALIDATED** (contract, same
-  subsection): the reader accepts it only when it names a skill that exists in
-  this deployment and stays under a short length ceiling. A baton written
-  without it — or with a value that names no skill — is rejected as stale and
-  the handoff is silently lost.
-
-  **This is a judgement call, not a measurement.** Hook input carries no reliable
-  token-budget field; do not build a threshold detector and do not claim one
-  exists. The operator's own meter overrides you in BOTH directions.
-
-  **Writer precondition:** per the contract subsection, write no baton where no
-  consumer will read it — report instead that the intent will not be delivered
-  automatically.
-
-  **A resumed session does NOT re-run the base sync or the baseline.** The Base
-  sync bullet below says "before dispatching the first task"; that means task 1
-  of the PLAN, not task 1 of a session. `Next task: N` in the baton is what tells
-  a fresh session which it is. Reading it the other way would make a rotation a
-  direct trigger of the mid-phase base merge that same bullet forbids.
+  things stop you, **and only these**". In this repository that sentence is
+  narrowed: it enumerates the ESCALATION stops (stop, ask, continue in this
+  session); context rotation is a HANDOFF stop (this session ends, a fresh one
+  continues), additive and leaving the four untouched. When it is permitted,
+  what to write and how a resumed session proceeds is defined in (contract/session-intent-baton.md, "The context-rotation stop");
+  its `Instruction:` line names `subagent-driven-development`.
 - **Authority and the Spec field:** where the upstream text above says "the
   spec is the binding authority, the plan is its argument", read it with the
-  contract's subject split — a conflict between the design and the plan is
-  resolved per (contract, "Active Work Item (Design + Plan Pair)"):
-  WHAT should be built is the design's to decide, HOW and in what
-  order is the plan's (the plan was written against the code). The
-  plan header carries `**Spec:** [design_<slug>.md](design_<slug>.md)`, so
-  the upstream instruction "if the plan names a Spec, read that too" is
-  satisfied and rulings are not provisional; tolerate the legacy
-  `**Návrh:**` alias in plans written under contract ≤ v2.8.
-- **Batched dispatches:** the playbook chain path (Playbook below)
-  is attached to a batch dispatch exactly as to a single-task dispatch, and
-  one batch report ends with ONE `## Playbook candidates` section covering
-  the whole batch.
-- **Rulings vs playbook candidates:** a ruling is a decision, a candidate is
-  a procedure — a ruling becomes a candidate only when it carries `Happened`
-  evidence reaching beyond this work item (contract/playbook-contract.md, "Playbook Contract").
-- **The `NOW` block:** the progress ledger opens with it, per
-  (contract/now-block.md, "The `NOW` Block") — the markers,
-  the six items, the closed state class, the marker behaviour and the reader's
-  rules live THERE and are not repeated here. What is local to this loop is
-  WHEN: write the block before the first dispatch, and rewrite it at every
-  point where what you are waiting on changes — at each dispatch, at each
-  report that comes back, and before every end of turn. Rewrite it by the
-  OPERATION that section defines; the block is never edited in place.
-- **Finish:** `rm -rf <workspace>` removes `.superpowers/sdd/<plan-basename>/`
-  only. The playbook-candidate file lives in
-  `.superpowers/playbook-candidates/`, OUTSIDE the plan workspace, and
-  survives the workspace deletion — only the harvest removes it
-  (contract/playbook-contract.md, "Playbook Contract").
-- **Language:** dispatch prompts, task briefs, implementer/reviewer reports
-  and the progress ledger stay English. Commit messages produced by
-  implementer subagents MUST be Czech — state this in every implementer
-  dispatch. User-facing summaries are Czech.
-  `Ruling:` ledger lines stay English; the final "Rulings I made" list is
-  user-facing and therefore Czech (contract, "Language Contract").
-- **Isolation:** git worktrees are banned in this repository (see CLAUDE.md).
-  The using-git-worktrees step resolves to branch-in-place: ensure you are on
-  a feature branch (never main/master without explicit consent) and continue
-  in the existing working directory. Isolation comes from the workspace, and the
-  **workspace is the user's choice** — the user creates it and picks it; the
-  session runs in the workspace where the work already is and never provisions
-  another one (contract/workspace-discipline.md, "Workspace Discipline"). "One session per workspace",
-  including the pool carve-out, is that same section's own rule — see it by
-  name (contract/workspace-discipline.md, "Workspace Discipline"); "One session per workspace" rather
-  than a restatement here.
+  contract's subject split (contract, "Active Work Item (Design + Plan Pair)"):
+  WHAT should be built is the design's to decide, HOW and in what order is the
+  plan's. The plan header carries `**Spec:** [design_<slug>.md](design_<slug>.md)`,
+  so "if the plan names a Spec, read that too" is satisfied and rulings are not
+  provisional; tolerate the legacy `**Návrh:**` alias in plans written under
+  contract ≤ v2.8.
+- **Batched dispatches:** the playbook chain path (Playbook below) is attached
+  to a batch dispatch exactly as to a single-task dispatch, and one batch report
+  ends with ONE `## Playbook candidates` section covering the whole batch.
+- **The `NOW` block:** the progress ledger opens with it; write it before the
+  first dispatch and rewrite it at the subagent-driven-development points of (contract/now-block.md, "When the block is rewritten").
+- **Finish:** deleting the plan workspace leaves the playbook-candidate file in
+  place (contract/playbook-contract.md, "Playbook Contract").
+- **Language:** dispatch prompts, task briefs, implementer/reviewer reports and
+  the progress ledger stay English. Commit messages produced by implementer
+  subagents MUST be Czech — state this in every implementer dispatch.
+  User-facing summaries and the final "Rulings I made" list are Czech (contract, "Language Contract").
+- **Isolation:** git worktrees are banned here (contract, "Worktree Policy"); the
+  using-git-worktrees step resolves to branch-in-place in the existing working
+  directory, on a feature branch, in the workspace the user chose (contract/workspace-discipline.md, "Workspace Discipline").
   Where the upstream text above says "outside this worktree", read "outside
-  this clone/workspace" — worktrees are banned here.
-- **Playbook:** resolve the playbook chain of `PLAN_MB` FIRST
-  (contract/playbook-contract.md, "Playbook chain"): dot-source
-  `shared/scripts/Get-UmsPlaybookChain.ps1` and run
+  this clone/workspace".
+- **Playbook:** resolve the playbook chain of `PLAN_MB` first (contract/playbook-contract.md, "Playbook chain"):
+  dot-source `shared/scripts/Get-UmsPlaybookChain.ps1` and run
   `Get-UmsPlaybookChain <MB_ROOT> <Target MB Pin> -Out` (the second argument is
-  the repository-relative `memory-bank/` directory). Attach the returned `OutPath`
-  (`<MB_ROOT>/.superpowers/playbook-chain/<mb>.md`) to EVERY implementer
-  dispatch alongside the task brief, introduced as "procedures that bind this
-  project — follow them"; attach the path, never the inlined content. When the
-  chain has no segment, say so in the dispatch instead of omitting the line.
-  Take the build and test procedures for the baseline check before the first
-  task from the chain's `Když stavíš nebo spouštíš testy` sections (a legacy
-  segment has no such section — take them from where it carries them).
+  the repository-relative `memory-bank/` directory). Attach the returned
+  `OutPath` to EVERY implementer dispatch alongside the task brief, introduced
+  as "procedures that bind this project — follow them" — the path, never the
+  inlined content; when the chain has no segment, say so in the dispatch. Take
+  the baseline build and test procedures from the chain's
+  `Když stavíš nebo spouštíš testy` sections (a legacy segment carries them
+  elsewhere).
 - **Playbook candidates:** every implementer dispatch requires the report to
-  end with a `## Playbook candidates` section — procedural knowledge learned
-  while doing the task that was not already in the brief or the playbook chain, each
-  entry carrying the three mandatory fields `Tried` / `Happened` / `Procedure`,
-  plus two optional fields, added only when they apply: `Target MB` (state its
-  path when the harvest spans several Memory Banks and this procedure belongs
-  to one other than `PLAN_MB`) and `Corrects` (name the existing item of the
-  chain when this procedure contradicts one already there). An empty section
-  is legitimate and common; an entry without `Happened` is not written. Before
-  copying an entry, run `Find-UmsPlaybookMatch <entry text> <MB_ROOT> <Target MB Pin>`
-  (dot-source `shared/scripts/Find-UmsPlaybookMatch.ps1`) and add a `Relates:`
-  line for an item it touches — the only addition to the verbatim copy
-  (contract/playbook-contract.md, "Playbook Contract"); an entry that duplicates another
-  candidate or an item of the chain is not copied — name it in your report
-  instead. As controller, COPY confirmed entries verbatim into
-  `<MB_ROOT>/.superpowers/playbook-candidates/<slug>.md` — **one file per
-  work-item slug**, first line `# Playbook candidates — work item: <slug>`. Only
-  the CURRENT slug's file may be replaced, and only while it is **untracked**
-  (ordinary git-ignored scratch, left over from a slug whose work finished or was
-  abandoned); a **tracked** file is parked evidence, so APPEND to it and leave its
-  removal to the harvest. Files of FOREIGN slugs have their own paths and are
-  never overwritten and never deleted
-  (contract/playbook-contract.md, "Playbook Contract"). Do not
+  END with a `## Playbook candidates` section in the candidate format of (contract/playbook-contract.md, "Playbook Contract");
+  an empty section is legitimate and common. As controller you are that
+  section's COPYING writer: run `Find-UmsPlaybookMatch` per entry and copy
+  confirmed entries verbatim into the current slug's candidate file under that
+  section's file rules; name a dropped duplicate in your report instead. Do not
   rephrase entries; the playbook gate presents them to the user.
-- **Base sync:** before dispatching the first task — a phase boundary — run
-  `git fetch origin` and then `git merge <effective base>` on the ticket branch
-  (the effective base per (contract/repository-configuration.md, "Repository Configuration"): the
-  `Báze:` line of `context.md`, else `baseRef` from `<CTX_DIR>/ums-repo.json`),
-  followed by the intersection assessment and the verification that follows from it
-  per (contract, "Base Sync & Drift Detection").
-  **Never merge the base in the middle of a task** — a task that starts on one
-  tree and finishes on another cannot be reviewed against its own brief. The
-  mandatory baseline build/test check before the first dispatch stays mandatory,
-  and it runs on the merged tree.
-- **Publication:** the agent pushes its OWN ticket branch **after every commit**,
-  always announcing the branch and the outgoing commits (Publication Contract).
-  That covers the commit carrying the implementation plan before the first
-  dispatch, the base-merge commit, and an implementer's commit for a task that
-  verified green. A commit that is not pushed is work only this workspace can
-  see. Shared branches are never pushed by the agent.
+- **Base sync:** before the first task of the plan — a phase boundary — fetch
+  and merge the effective base into the ticket branch, assess the intersection
+  and verify per (contract, "Base Sync & Drift Detection"); never in the
+  middle of a task. The mandatory baseline build/test check runs on the merged
+  tree, before the first dispatch.
+- **Ranges against the base:** where the upstream text above writes
+  `git merge-base main HEAD` — the final review's `MERGE_BASE`, the
+  intersection sets — cut the range from the effective base (contract/repository-configuration.md, "Repository Configuration").
+- **Publication:** push the OWN ticket branch after every commit, announcing the
+  branch and the outgoing commits (contract, "Publication Contract"); shared
+  branches are never pushed by the agent.
 <!-- UMS-OVERLAY END -->

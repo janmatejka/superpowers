@@ -143,4 +143,29 @@ foreach ($r in $refs) {
     if ($hits.Count -eq 0) { $noConsumer += $r.Name }
 }
 Assert-Eq @($noConsumer).Count 0 ("každá reference má konzumenta: " + ($noConsumer -join ', '))
+
+# --- both plan executors' overlays cite the same references --------------------
+# Pravidla exekuce plánu mají domov v referencích a OBA exekutory — SDD i Native
+# (`executing-plans`) — je citují bannerovým řádkem `> Contract core: … ·
+# References: …`. Rozejdou-li se bannery, jeden exekutor přestane číst referenci,
+# kterou druhý čte, a stejný plán se pod každým řídí jinými pravidly. Porovnává se
+# seřazená množina jmen `contract/*.md` z bannerového řádku, ne celý text: inline
+# citace v odrážkách se smějí lišit (každý exekutor má jiné body přepisu NOW).
+# Funkce vrací spojený řetězec, ne pole, a chybějící soubor nebo jiný než jeden
+# bannerový řádek vrací jako čitelnou značku — ta se s množinou nikdy neshoduje.
+function Get-UmsBannerRefSet([string] $Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return '<soubor chybí>' }
+    $banner = @(Get-Content -LiteralPath $Path -Encoding utf8 | Where-Object { $_ -match '^> Contract core:' })
+    if ($banner.Count -ne 1) { return "<bannerových řádků: $($banner.Count)>" }
+    $names = @([regex]::Matches($banner[0], 'contract/(?<f>[a-z0-9-]+\.md)') | ForEach-Object { $_.Groups['f'].Value })
+    return ((@($names | Sort-Object -Unique -CaseSensitive)) -join ',')
+}
+$overlayDir = Join-Path $shared 'overlays'
+$sddOverlay = Join-Path $overlayDir 'subagent-driven-development.overlay.md'
+$epOverlay = Join-Path $overlayDir 'executing-plans.overlay.md'
+Assert-True (Test-Path -LiteralPath $epOverlay) 'executing-plans.overlay.md existuje'
+$sddRefSet = Get-UmsBannerRefSet $sddOverlay
+$epRefSet = Get-UmsBannerRefSet $epOverlay
+Assert-Match $sddRefSet '^[a-z0-9-]+\.md(,[a-z0-9-]+\.md)*$' 'banner overlaye SDD cituje aspoň jednu referenci'
+Assert-Eq $epRefSet $sddRefSet 'banner overlaye executing-plans cituje stejnou množinu referencí jako banner overlaye SDD'
 Complete-Tests
