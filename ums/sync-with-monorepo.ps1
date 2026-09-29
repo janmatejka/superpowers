@@ -17,7 +17,7 @@
     The monorepo is the LIVE deployment and the normal master copy; run the
     default direction after changing the layer in the monorepo.
 
-    Every other combination — other agents (codex, gemini, kilocode) and/or
+    Every other combination — other agents (the 15 harnesses superpowers supports) and/or
     Scope 'UserProfile' — is a one-way DEPLOY from this fork's ums/ layer
     (the Direction parameter is ignored):
       * the skills content (shared/ contract + mb-* utilities) into the
@@ -32,8 +32,8 @@
         file, wrapped in UMS-MEMORY-BANK BEGIN/END markers (re-runs replace
         the marked block in place). UserProfile deploys prepend a scoping
         line so the rules apply only when working in the UMS monorepo.
-    Per-agent target paths (per scope) live in the $AgentTargets table below
-    — adjust there if a harness expects a different layout.
+    Per-agent target paths (per scope) live in the table inside
+    Get-UmsSyncTargets — adjust there if a harness expects a different layout.
 
     Vendored superpowers skills are never synced by this script - they are
     produced in the monorepo by .claude/scripts/revendor-superpowers.ps1
@@ -49,7 +49,8 @@
 param(
     [ValidateSet('FromMonorepo', 'ToMonorepo')]
     [string]$Direction = 'FromMonorepo',
-    [ValidateSet('claude', 'codex', 'gemini', 'kilocode')]
+    [ValidateSet('claude', 'codex', 'gemini', 'qwen', 'opencode', 'pi', 'hermes', 'cursor', 'copilot',
+        'devin', 'droid', 'kimi', 'muse', 'antigravity', 'grok')]
     [string]$Agent = 'claude',
     [ValidateSet('Monorepo', 'UserProfile')]
     [string]$Scope = 'Monorepo',
@@ -81,23 +82,166 @@ $AGENT_MARKER_NAME = 'MB_AGENT_SESSION'
 #              settings.json has NO env-injection key at all (an earlier
 #              round wrote "env" into settings.json, which Gemini CLI never
 #              reads); .env loading is the only documented mechanism.
-#   kilocode - NO documented mechanism found. kilo.jsonc only lets config
-#              VALUES read existing env vars via {env:VAR} - it has no
-#              analog of "set"/.env to inject new ones for the terminal/
-#              subprocess Kilo Code shells out to. Checked
-#              https://kilo.ai/docs/automate/extending/shell-integration and
-#              https://kilo.ai/docs/getting-started/settings ; neither
-#              documents env injection. This is a genuine, currently
-#              unclosed gap for this harness - see the harness matrix.
+#   qwen     - .env file in the agent's own config dir (.qwen/.env). Confirmed
+#              at https://raw.githubusercontent.com/QwenLM/qwen-code/main/docs/users/configuration/auth.md
+#              (Qwen Code docs, 2026-09-29): ".qwen/.env" is searched first
+#              (then ".env", "~/.qwen/.env", "~/.env"), the first file found
+#              is auto-loaded, and "Only variables not already present in
+#              process.env are loaded". Caveat: only the FIRST .env found is
+#              read, variables are not merged across files.
+#   opencode - plugin exporting a "shell.env" hook. Confirmed at
+#              https://opencode.ai/docs/plugins/ : the hook will "Inject
+#              environment variables into all shell execution (AI tools and
+#              user terminals)" via `output.env.X = ...`; plugin files live in
+#              ".opencode/plugins/" (project) or "~/.config/opencode/plugins/"
+#              (global). We own <ConfigDir>/plugins/ums-agent-session.js.
+#   pi       - NOTHING to write. Confirmed at
+#              https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/environment-variables.md :
+#              "AI_AGENT=pi is a generic marker that lets tooling identify Pi
+#              as the agent that launched the process" - set by the CLI and
+#              RPC entry points and inherited by child processes (NOT set when
+#              Pi is embedded through the SDK). The pre-push hook's
+#              is_agent_session() accepts any non-empty AI_AGENT, so Pi is
+#              covered by the AI_AGENT fallback. Pi's own alternative,
+#              settings "shellCommandPrefix" ("Prefix prepended to every shell
+#              command", docs/settings.md), is therefore not needed.
+#   hermes   - profile scope only: ~/.hermes/config.yaml
+#              terminal.env_passthrough plus ~/.hermes/.env. Confirmed at
+#              https://hermes-agent.nousresearch.com/docs/user-guide/security :
+#              "Both execute_code and terminal strip sensitive environment
+#              variables from child processes", "For env vars not declared by
+#              any skill, add them to terminal.env_passthrough in config.yaml",
+#              and ".env" values are NOT passed to subprocesses on their own -
+#              only declared passthrough variables are (config.yaml example:
+#              terminal: / env_passthrough: [list]). Hermes has no
+#              project-level config (https://hermes-agent.nousresearch.com/docs/user-guide/configuration),
+#              hence Monorepo/Fork -> NotSupportedException.
+#   all others (cursor, copilot, devin, droid, kimi, muse, antigravity, grok,
+#              and claude, whose marker is the settings.json "env" block plus
+#              the hook's CLAUDECODE fallback) - no documented env-injection
+#              mechanism this function may write: NotSupportedException
+#              naming the harness. kilocode was removed (upstream superpowers
+#              does not support it).
 # Each write is idempotent - a repeated deploy must not grow the file or
 # duplicate a key.
-function Set-AgentMarker([string] $ConfigDir, [string] $Agent) {
+function Set-AgentMarker([string] $ConfigDir, [string] $Agent, [string] $Scope = 'Monorepo') {
     switch ($Agent) {
         'codex'    { Set-CodexEnvMarker $ConfigDir; return }
         'gemini'   { Set-DotEnvMarker (Join-Path $ConfigDir '.env'); return }
-        'kilocode' { throw [System.NotSupportedException]::new("Set-AgentMarker: no documented environment-injection mechanism for 'kilocode' - marker NOT written, gap is open (see harness matrix).") }
-        default    { throw "Set-AgentMarker: unsupported agent '$Agent'" }
+        'qwen'     { Set-DotEnvMarker (Join-Path $ConfigDir '.env'); return }
+        'opencode' { Set-OpenCodePluginMarker $ConfigDir; return }
+        'pi'       { throw [System.NotSupportedException]::new("Set-AgentMarker: nothing to write for 'pi' - covered by AI_AGENT fallback (Pi's CLI sets AI_AGENT=pi and the pre-push hook accepts any non-empty AI_AGENT; not set when Pi is embedded via the SDK).") }
+        'hermes'   {
+            if ($Scope -ne 'UserProfile') {
+                throw [System.NotSupportedException]::new("Set-AgentMarker: 'hermes' has no project-level configuration - terminal.env_passthrough exists only in the profile (~/.hermes); marker NOT written for scope '$Scope'.")
+            }
+            Set-HermesPassthroughMarker $ConfigDir
+            return
+        }
+        default    { throw [System.NotSupportedException]::new("Set-AgentMarker: no documented environment-injection mechanism for '$Agent' - marker NOT written, the pre-push guard self-disables there (see harness matrix).") }
     }
+}
+
+# Writes the OpenCode plugin that injects the marker into every shell
+# execution. The file is owned by this layer (ums- prefix), so a differing
+# copy is simply rewritten; other plugins in the directory are never touched.
+function Set-OpenCodePluginMarker([string] $ConfigDir) {
+    $dir = Join-Path $ConfigDir 'plugins'
+    $file = Join-Path $dir 'ums-agent-session.js'
+    $body = @(
+        '// Generated by ums/sync-with-monorepo.ps1 - do not edit; re-run the sync instead.'
+        '// Marks every OpenCode shell execution as an agent session so that the'
+        '// pre-push guard is active (see UMS_MEMORY_BANK_CONTRACT.md).'
+        'export const UmsAgentSession = async () => {'
+        '  return {'
+        '    "shell.env": async (input, output) => {'
+        "      output.env.$AGENT_MARKER_NAME = `"1`""
+        '    },'
+        '  }'
+        '}'
+    ) -join "`n"
+    $body += "`n"
+    if ((Test-Path -LiteralPath $file) -and ([IO.File]::ReadAllText($file) -ceq $body)) { return }
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    [IO.File]::WriteAllText($file, $body, [Text.UTF8Encoding]::new($false))
+}
+
+# Adds MB_AGENT_SESSION to terminal.env_passthrough in <ConfigDir>/config.yaml
+# and MB_AGENT_SESSION=1 to <ConfigDir>/.env. The YAML edit is line-based and
+# touches only the terminal block; shapes it cannot edit safely (e.g. a flow
+# map `terminal: { ... }`) throw InvalidOperationException and leave the file
+# untouched.
+function Set-HermesPassthroughMarker([string] $ConfigDir) {
+    New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+    $file = Join-Path $ConfigDir 'config.yaml'
+    $raw = if (Test-Path -LiteralPath $file) { [IO.File]::ReadAllText($file) } else { '' }
+    if ($raw -notmatch "(?m)^[^#\r\n]*$AGENT_MARKER_NAME") {
+        $nl = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $lines = [System.Collections.Generic.List[string]]::new()
+        if ($raw) {
+            foreach ($l in ($raw -split '\r?\n')) { $lines.Add($l) }
+            if ($raw.EndsWith("`n")) { $lines.RemoveAt($lines.Count - 1) }
+        }
+
+        $termIdx = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^terminal:(.*)$') {
+                if (($Matches[1] -replace '(^|\s)#.*$', '').Trim()) {
+                    throw [System.InvalidOperationException]::new("Set-HermesPassthroughMarker: 'terminal:' in $file has an inline value - edit terminal.env_passthrough manually (add $AGENT_MARKER_NAME).")
+                }
+                $termIdx = $i; break
+            }
+        }
+
+        if ($termIdx -lt 0) {
+            $lines.Add('terminal:'); $lines.Add('  env_passthrough:'); $lines.Add("    - $AGENT_MARKER_NAME")
+        }
+        else {
+            $endIdx = $lines.Count
+            for ($i = $termIdx + 1; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match '^\S' -and $lines[$i] -notmatch '^#') { $endIdx = $i; break }
+            }
+            $childIndent = '  '
+            for ($i = $termIdx + 1; $i -lt $endIdx; $i++) {
+                if ($lines[$i].Trim() -and $lines[$i] -notmatch '^\s*#') { $null = $lines[$i] -match '^(\s*)'; $childIndent = $Matches[1]; break }
+            }
+            $keyIdx = -1
+            for ($i = $termIdx + 1; $i -lt $endIdx; $i++) {
+                if ($lines[$i] -match '^(\s+)env_passthrough:(.*)$') { $keyIdx = $i; break }
+            }
+            if ($keyIdx -lt 0) {
+                $lines.Insert($termIdx + 1, "$childIndent  - $AGENT_MARKER_NAME")
+                $lines.Insert($termIdx + 1, "${childIndent}env_passthrough:")
+            }
+            else {
+                $null = $lines[$keyIdx] -match '^(\s+)env_passthrough:(.*)$'
+                $keyIndent = $Matches[1]; $rest = $Matches[2]
+                $comment = if ($rest -match '(\s+#.*)$') { $Matches[1] } else { '' }
+                $value = ($rest -replace '(^|\s)#.*$', '').Trim()
+                $itemIndent = "$keyIndent  "
+                if ($value -in @('', 'null', '~')) {
+                    $next = if ($keyIdx + 1 -lt $endIdx) { $lines[$keyIdx + 1] } else { '' }
+                    if ($next -match '^(\s*)-\s') { $itemIndent = $Matches[1] }
+                    $lines[$keyIdx] = "${keyIndent}env_passthrough:$comment"
+                    $lines.Insert($keyIdx + 1, "$itemIndent- $AGENT_MARKER_NAME")
+                }
+                elseif ($value -match '^\[(.*)\]$') {
+                    if ($Matches[1].Trim()) {
+                        $lines[$keyIdx] = "${keyIndent}env_passthrough: [$($Matches[1].TrimEnd()), $AGENT_MARKER_NAME]$comment"
+                    }
+                    else {
+                        $lines[$keyIdx] = "${keyIndent}env_passthrough:$comment"
+                        $lines.Insert($keyIdx + 1, "$itemIndent- $AGENT_MARKER_NAME")
+                    }
+                }
+                else {
+                    throw [System.InvalidOperationException]::new("Set-HermesPassthroughMarker: unrecognised terminal.env_passthrough value '$value' in $file - add $AGENT_MARKER_NAME manually.")
+                }
+            }
+        }
+        [IO.File]::WriteAllText($file, (($lines -join $nl) + $nl), [Text.UTF8Encoding]::new($false))
+    }
+    Set-DotEnvMarker (Join-Path $ConfigDir '.env')
 }
 
 # Merges `set = { $AGENT_MARKER_NAME = "1" }` into config.toml's
@@ -153,42 +297,115 @@ function Set-CodexEnvMarker([string] $ConfigDir) {
 # directory) if missing, and preserving any pre-existing lines.
 function Set-DotEnvMarker([string] $File) {
     New-Item -ItemType Directory -Force -Path (Split-Path $File) | Out-Null
-    if ((Test-Path -LiteralPath $File) -and ((Get-Content -LiteralPath $File -Raw) -match $AGENT_MARKER_NAME)) {
-        return
+    $lead = ''
+    if (Test-Path -LiteralPath $File) {
+        $existing = Get-Content -LiteralPath $File -Raw
+        if ($existing -match $AGENT_MARKER_NAME) { return }
+        # A last line without a line ending must not swallow the marker.
+        if ($existing -and -not $existing.EndsWith("`n")) { $lead = [Environment]::NewLine }
     }
-    Add-Content -LiteralPath $File -Value "$AGENT_MARKER_NAME=1" -Encoding utf8
+    Add-Content -LiteralPath $File -Value "$lead$AGENT_MARKER_NAME=1" -Encoding utf8
+}
+
+# The single source of truth for where each harness reads skills and
+# instructions, where its config directory is, and which marker mechanism
+# Set-AgentMarker has for it (design 3.6). Returns one object per requested
+# agent, in the requested order (all 15 when -Agent is omitted), with
+# absolute paths under -Root and $null where the harness has none:
+#   SkillsDir    - where the harness discovers skills
+#   ConfigDir    - config directory receiving glue artifacts (hooks/, scripts/)
+#   Instructions - instructions file receiving the preference block; always
+#                  $null for -Scope Fork (the fork's CLAUDE.md is manual and
+#                  AGENTS.md is an upstream file)
+#   Marker       - settings-env | codex-toml | dotenv | opencode-plugin |
+#                  pi-prefix | hermes-passthrough | none
+# Output is unrolled: wrap the call in @() to get an array for one agent.
+# Scope Fork uses the Monorepo layout (Root = the fork's git toplevel).
+function Get-UmsSyncTargets(
+    [string[]] $Agent,
+    [Parameter(Mandatory)] [ValidateSet('Monorepo', 'UserProfile', 'Fork')] [string] $Scope,
+    [Parameter(Mandatory)] [string] $Root
+) {
+    function Row($Skills, $Config, $Instr, $Marker) { @{ Skills = $Skills; Config = $Config; Instr = $Instr; Marker = $Marker } }
+    # Harnesses without a documented marker mechanism or config dir.
+    $generic = @{
+        Monorepo    = Row '.agents\skills' $null 'AGENTS.md' 'none'
+        UserProfile = Row '.agents\skills' $null $null 'none'
+    }
+    $table = [ordered]@{
+        claude = @{
+            Monorepo    = Row '.claude\skills' '.claude' 'CLAUDE.md' 'settings-env'
+            UserProfile = Row '.claude\skills' '.claude' '.claude\CLAUDE.md' 'settings-env'
+        }
+        codex = @{
+            Monorepo    = Row '.agents\skills' '.codex' 'AGENTS.md' 'codex-toml'
+            UserProfile = Row '.agents\skills' '.codex' '.codex\AGENTS.md' 'codex-toml'
+        }
+        gemini = @{
+            Monorepo    = Row '.agents\skills' '.gemini' 'GEMINI.md' 'dotenv'
+            UserProfile = Row '.agents\skills' '.gemini' '.gemini\GEMINI.md' 'dotenv'
+        }
+        qwen = @{
+            Monorepo    = Row '.qwen\skills' '.qwen' 'QWEN.md' 'dotenv'
+            UserProfile = Row '.qwen\skills' '.qwen' '.qwen\QWEN.md' 'dotenv'
+        }
+        opencode = @{
+            Monorepo    = Row '.agents\skills' '.opencode' 'AGENTS.md' 'opencode-plugin'
+            UserProfile = Row '.agents\skills' '.config\opencode' '.config\opencode\AGENTS.md' 'opencode-plugin'
+        }
+        # Pi: AI_AGENT=pi is set by its CLI, the pre-push fallback covers it.
+        pi = @{
+            Monorepo    = Row '.agents\skills' '.pi' 'AGENTS.md' 'none'
+            UserProfile = Row '.agents\skills' '.pi\agent' '.pi\agent\AGENTS.md' 'none'
+        }
+        # Hermes: no project-level config; the marker exists only in the profile.
+        hermes = @{
+            Monorepo    = Row '.agents\skills' $null '.hermes.md' 'none'
+            UserProfile = Row '.hermes\skills' '.hermes' $null 'hermes-passthrough'
+        }
+        cursor = $generic
+        copilot = @{
+            Monorepo    = Row '.agents\skills' $null '.github\copilot-instructions.md' 'none'
+            UserProfile = $generic.UserProfile
+        }
+        devin = $generic
+        droid = $generic
+        kimi = $generic
+        muse = $generic
+        antigravity = @{
+            Monorepo    = $generic.Monorepo
+            UserProfile = Row '.gemini\antigravity-cli\skills' $null $null 'none'
+        }
+        grok = @{
+            Monorepo    = Row '.grok\skills' $null 'AGENTS.md' 'none'
+            UserProfile = Row '.grok\skills' $null $null 'none'
+        }
+    }
+    $names = if ($Agent) { $Agent } else { @($table.Keys) }
+    foreach ($name in $names) {
+        if (-not $table.Contains($name)) {
+            $extra = if ($name -ceq 'kilocode') { ' (kilocode was removed - upstream superpowers does not support it)' } else { '' }
+            throw "Get-UmsSyncTargets: unknown agent '$name'$extra. Known agents: $(@($table.Keys) -join ', ')."
+        }
+    }
+    $layout = if ($Scope -eq 'UserProfile') { 'UserProfile' } else { 'Monorepo' }
+    foreach ($name in $names) {
+        $r = $table[$name][$layout]
+        $abs = { param($rel) if ($rel) { Join-Path $Root $rel } else { $null } }
+        [pscustomobject]@{
+            Agent        = $name
+            SkillsDir    = & $abs $r.Skills
+            ConfigDir    = & $abs $r.Config
+            Instructions = if ($Scope -eq 'Fork') { $null } else { & $abs $r.Instr }
+            Marker       = $r.Marker
+        }
+    }
 }
 
 # Tests need only the function definitions, not the full sync run.
 if ($DotSourceOnly) { return }
 
 $ErrorActionPreference = 'Stop'
-
-# Per-agent, per-scope targets (paths relative to the scope root — monorepo
-# root or the user profile).
-#   SkillsDir    - where the agent discovers skills (null = no skills
-#                  mechanism; only glue + the instructions block is deployed)
-#   ConfigDir    - agent config directory receiving glue artifacts (hooks/,
-#                  scripts/, ...)
-#   Instructions - instructions file that receives the preference block
-$AgentTargets = @{
-    claude = @{
-        Monorepo    = @{ SkillsDir = '.claude\skills'; ConfigDir = '.claude'; Instructions = 'CLAUDE.md' }
-        UserProfile = @{ SkillsDir = '.claude\skills'; ConfigDir = '.claude'; Instructions = '.claude\CLAUDE.md' }
-    }
-    codex = @{
-        Monorepo    = @{ SkillsDir = '.agents\skills'; ConfigDir = '.codex'; Instructions = 'AGENTS.md' }
-        UserProfile = @{ SkillsDir = '.agents\skills'; ConfigDir = '.codex'; Instructions = '.codex\AGENTS.md' }
-    }
-    gemini = @{
-        Monorepo    = @{ SkillsDir = $null; ConfigDir = '.gemini'; Instructions = 'GEMINI.md' }
-        UserProfile = @{ SkillsDir = $null; ConfigDir = '.gemini'; Instructions = '.gemini\GEMINI.md' }
-    }
-    kilocode = @{
-        Monorepo    = @{ SkillsDir = $null; ConfigDir = '.kilocode'; Instructions = '.kilocode\rules\ums-memory-bank.md' }
-        UserProfile = @{ SkillsDir = $null; ConfigDir = '.kilocode'; Instructions = '.kilocode\rules\ums-memory-bank.md' }
-    }
-}
 
 # ------------------------------------------------- interactive parameter setup
 function Read-WithDefault([string]$Prompt, [string]$Default) {
@@ -202,13 +419,12 @@ $isNonInteractive = [Console]::IsInputRedirected -or
 if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
     Write-Host 'No parameters given - interactive setup (Enter = default):' -ForegroundColor Cyan
 
-    $agentNames = @('claude', 'codex', 'gemini', 'kilocode')
+    $agentNames = @(Get-UmsSyncTargets -Scope Monorepo -Root $MonorepoRoot | ForEach-Object { $_.Agent })
     do {
-        $agentAnswer = Read-WithDefault 'Target AI agent: 1 = claude, 2 = codex, 3 = gemini, 4 = kilocode' '1'
-        $valid = $agentAnswer -in @('1', '2', '3', '4') -or $agentAnswer -in $agentNames
-        if (-not $valid) { Write-Host '  Enter 1-4 or an agent name.' -ForegroundColor Yellow }
+        $Agent = Read-WithDefault "Target AI agent ($($agentNames -join ', '))" 'claude'
+        $valid = $Agent -in $agentNames
+        if (-not $valid) { Write-Host '  Enter one of the listed agent names.' -ForegroundColor Yellow }
     } until ($valid)
-    $Agent = if ($agentAnswer -in $agentNames) { $agentAnswer } else { $agentNames[[int]$agentAnswer - 1] }
 
     do {
         $scopeAnswer = Read-WithDefault "Scope: 1 = Monorepo ($MonorepoRoot), 2 = UserProfile ($UserProfileRoot)" '1'
@@ -301,7 +517,8 @@ function Set-MarkedBlock([string]$File, [string]$Content) {
 }
 
 $forkClaude = Join-Path $ForkUmsDir '.claude'
-$target = $AgentTargets[$Agent][$Scope]
+$baseRoot = if ($Scope -eq 'UserProfile') { $UserProfileRoot } else { $MonorepoRoot }
+$target = @(Get-UmsSyncTargets -Agent $Agent -Scope $Scope -Root $baseRoot)[0]
 
 # Install/refresh this layer's git hooks (currently: pre-push, the
 # Publication Contract enforcement boundary - see
@@ -384,16 +601,15 @@ if ($Agent -eq 'claude' -and $Scope -eq 'Monorepo') {
 }
 # ------------------------------------- everything else: one-way deploy
 else {
-    $baseRoot = if ($Scope -eq 'UserProfile') { $UserProfileRoot } else { $MonorepoRoot }
-
     # 1. Portable skills content -> agent's skills directory (when it has one).
+    $skillsRel = if ($target.SkillsDir) { [IO.Path]::GetRelativePath($baseRoot, $target.SkillsDir) } else { $null }
     if ($target.SkillsDir) {
-        $dstSkills = Join-Path $baseRoot $target.SkillsDir
+        $dstSkills = $target.SkillsDir
         $items = @('shared') + (Get-ChildItem -Path (Join-Path $forkClaude 'skills') -Directory -Filter 'mb-*' |
             ForEach-Object { $_.Name })
         foreach ($name in $items) {
             Copy-Mirrored (Join-Path $forkClaude "skills\$name") (Join-Path $dstSkills $name)
-            Write-Host "deployed skills\$name -> $($target.SkillsDir)\$name"
+            Write-Host "deployed skills\$name -> $skillsRel\$name"
         }
     }
     else {
@@ -405,32 +621,43 @@ else {
     #    content. settings.json is intentionally skipped: it is Claude Code's
     #    registration file and would clobber the agent's own settings (e.g.
     #    .gemini/settings.json); register hooks manually per harness.
-    $dstConfig = Join-Path $baseRoot $target.ConfigDir
-    Get-ChildItem -Path $forkClaude -Directory |
-        Where-Object { $_.Name -ne 'skills' } |
-        ForEach-Object {
-            Copy-Merged $_.FullName (Join-Path $dstConfig $_.Name)
-            Write-Host "deployed $($_.Name)\ -> $($target.ConfigDir)\$($_.Name)\ (merged)"
-        }
+    $dstConfig = $target.ConfigDir
+    if ($dstConfig) {
+        $configRel = [IO.Path]::GetRelativePath($baseRoot, $dstConfig)
+        Get-ChildItem -Path $forkClaude -Directory |
+            Where-Object { $_.Name -ne 'skills' } |
+            ForEach-Object {
+                Copy-Merged $_.FullName (Join-Path $dstConfig $_.Name)
+                Write-Host "deployed $($_.Name)\ -> $configRel\$($_.Name)\ (merged)"
+            }
+    }
+    else {
+        Write-Host "Agent '$Agent' has no config directory at scope $Scope - glue (hooks/, scripts/) not deployed." -ForegroundColor DarkGray
+    }
     if (-not ($Agent -eq 'claude')) {
         Write-Host "note: settings.json not deployed (Claude Code registration format) - wire hooks manually for '$Agent'." -ForegroundColor DarkGray
         try {
-            Set-AgentMarker $dstConfig $Agent
+            Set-AgentMarker $dstConfig $Agent $Scope
             Write-Host "note: agent-session marker ($AGENT_MARKER_NAME) written into '$Agent' config - without it the pre-push guard disables itself there." -ForegroundColor DarkGray
         }
         catch [System.NotSupportedException] {
-            Write-Host "WARNING: no known agent-session marker mechanism for '$Agent' - the pre-push guard self-disables there until this harness gets one. This is a named, open gap, not a silent failure." -ForegroundColor Yellow
+            if ($_.Exception.Message -match 'covered by AI_AGENT fallback') {
+                Write-Host "note: no marker written for '$Agent' - covered by the AI_AGENT fallback of the pre-push guard." -ForegroundColor DarkGray
+            }
+            else {
+                Write-Host "WARNING: no known agent-session marker mechanism for '$Agent' at scope $Scope - the pre-push guard self-disables there until this harness gets one. This is a named, open gap, not a silent failure." -ForegroundColor Yellow
+            }
         }
     }
     elseif ($Scope -eq 'UserProfile') {
-        Write-Host "note: settings.json not deployed - merge hook registration into $($target.ConfigDir)\settings.json manually if wanted." -ForegroundColor DarkGray
+        Write-Host "note: settings.json not deployed - merge hook registration into $configRel\settings.json manually if wanted." -ForegroundColor DarkGray
     }
 
     # 3. Preference block from CLAUDE.md.sample -> agent's instructions file.
     $content = (Get-Content -Path (Join-Path $ForkUmsDir 'CLAUDE.md.sample') -Raw) -replace "`r`n", "`n"
     if ($target.SkillsDir) {
         # Repoint skill-pack references to the agent's own skills location.
-        $skillsFwd = $target.SkillsDir -replace '\\', '/'
+        $skillsFwd = $skillsRel -replace '\\', '/'
         $content = $content -replace [regex]::Escape('.claude/skills/'), "$skillsFwd/"
     }
     if ($Scope -eq 'UserProfile') {
@@ -446,9 +673,13 @@ else {
 > v Claude Code — zde platí výše uvedená pravidla jako závazný text.
 "@
     }
-    $instrFile = Join-Path $baseRoot $target.Instructions
-    Set-MarkedBlock $instrFile $content
-    Write-Host "deployed preference block -> $($target.Instructions)"
+    if ($target.Instructions) {
+        Set-MarkedBlock $target.Instructions $content
+        Write-Host "deployed preference block -> $([IO.Path]::GetRelativePath($baseRoot, $target.Instructions))"
+    }
+    else {
+        Write-Host "WARNING: agent '$Agent' has no known instructions file at scope $Scope - the preference block was NOT deployed; add it to the harness's instructions by hand." -ForegroundColor Yellow
+    }
 
     # 4. Git hook install (Monorepo only - see Install-PublicationHooks above).
     if ($Scope -eq 'Monorepo') {

@@ -83,19 +83,171 @@ Assert-Match $content 'FOO=bar' 'gemini (existující .env): cizí řádek pře�
 Assert-Match $content 'MB_AGENT_SESSION=1' 'gemini (existující .env): značka přibyla'
 Remove-Item -Recurse -Force $dir
 
-# --- kilocode: žádný zdokumentovaný mechanismus - otevřená mezera ----------
+# .env bez koncového konce řádku: značka nesmí slepit poslední řádek.
+$dir = New-TempDir 'dotenv-no-eol'
+[IO.File]::WriteAllText((Join-Path $dir '.env'), 'FOO=bar')
+Set-AgentMarker $dir 'gemini'
+$content = Get-Content -LiteralPath (Join-Path $dir '.env') -Raw
+Assert-Match $content '(?m)^FOO=bar\r?$' 'gemini (.env bez EOL): cizí poslední řádek zůstal celý'
+Assert-Match $content '(?m)^MB_AGENT_SESSION=1\r?$' 'gemini (.env bez EOL): značka je na vlastním řádku'
+Remove-Item -Recurse -Force $dir
 
-$dir = New-TempDir 'kilocode'
+# --- qwen: .qwen/.env (stejný dotenv mechanismus jako gemini) -------------
+
+$dir = New-TempDir 'qwen-none'
+Set-AgentMarker $dir 'qwen'
+$envFile = Join-Path $dir '.env'
+Assert-True (Test-Path -LiteralPath $envFile) 'qwen (bez souboru): .env vznikl'
+$content = Get-Content -LiteralPath $envFile -Raw
+Assert-Match $content '(?m)^MB_AGENT_SESSION=1\r?$' 'qwen (bez souboru): .env dostal značku'
+$size1 = (Get-Item -LiteralPath $envFile).Length
+Set-AgentMarker $dir 'qwen'
+Assert-Eq (Get-Item -LiteralPath $envFile).Length $size1 'qwen: druhý běh .env nezvětší'
+Assert-Eq ([regex]::Matches((Get-Content -LiteralPath $envFile -Raw), 'MB_AGENT_SESSION').Count) 1 'qwen: značka jen jednou'
+Remove-Item -Recurse -Force $dir
+
+$dir = New-TempDir 'qwen-existing'
+Set-Content -LiteralPath (Join-Path $dir '.env') -Value 'OPENAI_API_KEY=x' -Encoding utf8
+Set-AgentMarker $dir 'qwen'
+$content = Get-Content -LiteralPath (Join-Path $dir '.env') -Raw
+Assert-Match $content 'OPENAI_API_KEY=x' 'qwen (existující .env): cizí řádek přežil'
+Assert-Match $content 'MB_AGENT_SESSION=1' 'qwen (existující .env): značka přibyla'
+Remove-Item -Recurse -Force $dir
+
+# --- opencode: plugin s hookem shell.env ----------------------------------
+
+$dir = New-TempDir 'opencode'
+Set-AgentMarker $dir 'opencode'
+$plugin = Join-Path $dir 'plugins\ums-agent-session.js'
+Assert-True (Test-Path -LiteralPath $plugin) 'opencode: plugins\ums-agent-session.js vznikl'
+$content = Get-Content -LiteralPath $plugin -Raw
+Assert-Match $content 'shell\.env' 'opencode: plugin registruje hook shell.env'
+Assert-Match $content 'output\.env\.MB_AGENT_SESSION\s*=\s*"1"' 'opencode: hook nastavuje MB_AGENT_SESSION = "1"'
+Assert-Match $content 'export const \w+ = async' 'opencode: plugin exportuje pojmenovanou async funkci'
+$hash1 = (Get-FileHash -LiteralPath $plugin).Hash
+Set-AgentMarker $dir 'opencode'
+Assert-Eq (Get-FileHash -LiteralPath $plugin).Hash $hash1 'opencode: druhý běh soubor nezmění'
+Assert-Eq @(Get-ChildItem -Recurse -File $dir).Count 1 'opencode: vznikl jediný soubor'
+# Cizí plugin vedle nesmí být dotčen.
+Set-Content -LiteralPath (Join-Path $dir 'plugins\jiny.js') -Value 'export const X = async () => ({})' -Encoding utf8
+Set-AgentMarker $dir 'opencode'
+Assert-True (Test-Path -LiteralPath (Join-Path $dir 'plugins\jiny.js')) 'opencode: cizí plugin přežil'
+# Ručně poškozený vlastní soubor se při dalším nasazení obnoví.
+Set-Content -LiteralPath $plugin -Value '// poškozeno' -Encoding utf8
+Set-AgentMarker $dir 'opencode'
+Assert-Match (Get-Content -LiteralPath $plugin -Raw) 'shell\.env' 'opencode: poškozený vlastní plugin se obnoví'
+Remove-Item -Recurse -Force $dir
+
+# --- pi: kryje AI_AGENT fallback hooku, nic se nezapisuje -----------------
+
+$dir = New-TempDir 'pi'
+$err = $null
+try { Set-AgentMarker $dir 'pi' } catch [System.NotSupportedException] { $err = $_.Exception.Message }
+Assert-True ($null -ne $err) 'pi: Set-AgentMarker hlásí NotSupportedException'
+Assert-Match ([string]$err) 'AI_AGENT' 'pi: hláška říká, že marker kryje AI_AGENT fallback'
+Assert-Eq @(Get-ChildItem -Recurse -File $dir -ErrorAction SilentlyContinue).Count 0 'pi: nevznikl žádný soubor'
+Remove-Item -Recurse -Force $dir
+
+# --- hermes: jen profil - terminal.env_passthrough v config.yaml + .env ---
+
+$dir = New-TempDir 'hermes-mono'
+$err = $null
+try { Set-AgentMarker $dir 'hermes' 'Monorepo' } catch [System.NotSupportedException] { $err = $_.Exception.Message }
+Assert-True ($null -ne $err) 'hermes/Monorepo: NotSupportedException (mechanismus existuje jen v profilu)'
+Assert-Match ([string]$err) 'hermes' 'hermes/Monorepo: hláška nese jméno harnessu'
+Assert-Eq @(Get-ChildItem -Recurse -File $dir -ErrorAction SilentlyContinue).Count 0 'hermes/Monorepo: nevznikl žádný soubor'
+Remove-Item -Recurse -Force $dir
+
+function Get-HermesYamlPassthrough([string] $Dir) {
+    Get-Content -LiteralPath (Join-Path $Dir 'config.yaml') -Raw
+}
+
+# bez souboru
+$dir = New-TempDir 'hermes-none'
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+$yaml = Get-HermesYamlPassthrough $dir
+Assert-Match $yaml '(?m)^terminal:\r?$' 'hermes (bez souboru): config.yaml má klíč terminal'
+Assert-Match $yaml '(?m)^  env_passthrough:\r?$' 'hermes (bez souboru): env_passthrough pod terminal'
+Assert-Match $yaml '(?m)^    - MB_AGENT_SESSION\r?$' 'hermes (bez souboru): značka je položka seznamu'
+Assert-Match (Get-Content -LiteralPath (Join-Path $dir '.env') -Raw) '(?m)^MB_AGENT_SESSION=1\r?$' 'hermes (bez souboru): .env má MB_AGENT_SESSION=1'
+$s1 = (Get-Item -LiteralPath (Join-Path $dir 'config.yaml')).Length
+$s2 = (Get-Item -LiteralPath (Join-Path $dir '.env')).Length
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+Assert-Eq (Get-Item -LiteralPath (Join-Path $dir 'config.yaml')).Length $s1 'hermes: druhý běh config.yaml nezvětší'
+Assert-Eq (Get-Item -LiteralPath (Join-Path $dir '.env')).Length $s2 'hermes: druhý běh .env nezvětší'
+Remove-Item -Recurse -Force $dir
+
+# terminal existuje bez env_passthrough
+$dir = New-TempDir 'hermes-terminal'
+Set-Content -LiteralPath (Join-Path $dir 'config.yaml') -Value "model: x`nterminal:`n  backend: local`nother: 1" -Encoding utf8
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+$yaml = Get-HermesYamlPassthrough $dir
+Assert-Match $yaml '(?m)^  backend: local\r?$' 'hermes (terminal bez passthrough): cizí klíč terminalu přežil'
+Assert-Match $yaml '(?m)^other: 1\r?$' 'hermes (terminal bez passthrough): klíč za blokem přežil'
+Assert-Match $yaml '(?s)terminal:.*env_passthrough:\s*\r?\n\s+- MB_AGENT_SESSION.*other: 1' 'hermes (terminal bez passthrough): seznam je uvnitř bloku terminal'
+Remove-Item -Recurse -Force $dir
+
+# env_passthrough: []
+$dir = New-TempDir 'hermes-empty-list'
+Set-Content -LiteralPath (Join-Path $dir 'config.yaml') -Value "terminal:`n  env_passthrough: []  # names" -Encoding utf8
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+$yaml = Get-HermesYamlPassthrough $dir
+Assert-True (-not ($yaml -match '\[\]')) 'hermes (prázdný seznam): prázdné [] zmizelo'
+Assert-Match $yaml '(?m)^    - MB_AGENT_SESSION\r?$' 'hermes (prázdný seznam): značka je položka blokového seznamu'
+Remove-Item -Recurse -Force $dir
+
+# blokový seznam s cizí položkou
+$dir = New-TempDir 'hermes-block-list'
+Set-Content -LiteralPath (Join-Path $dir 'config.yaml') -Value "terminal:`n  env_passthrough:`n    - MY_KEY`nnext: 1" -Encoding utf8
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+$yaml = Get-HermesYamlPassthrough $dir
+Assert-Match $yaml '(?m)^    - MY_KEY\r?$' 'hermes (blokový seznam): cizí položka přežila'
+Assert-Match $yaml '(?m)^    - MB_AGENT_SESSION\r?$' 'hermes (blokový seznam): značka přibyla'
+Assert-Match $yaml '(?m)^next: 1\r?$' 'hermes (blokový seznam): klíč za blokem přežil'
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+Assert-Eq ([regex]::Matches((Get-HermesYamlPassthrough $dir), 'MB_AGENT_SESSION').Count) 1 'hermes (blokový seznam): opakovaný běh značku neduplikuje'
+Remove-Item -Recurse -Force $dir
+
+# inline seznam s položkami
+$dir = New-TempDir 'hermes-inline-list'
+Set-Content -LiteralPath (Join-Path $dir 'config.yaml') -Value "terminal:`n  env_passthrough: [MY_KEY, OTHER]" -Encoding utf8
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+$yaml = Get-HermesYamlPassthrough $dir
+Assert-Match $yaml 'env_passthrough: \[MY_KEY, OTHER, MB_AGENT_SESSION\]' 'hermes (inline seznam): značka doplněna, cizí položky zachovány'
+Remove-Item -Recurse -Force $dir
+
+# jiná struktura, kterou neumíme bezpečně upravit: nepoškodit, jasně selhat
+$dir = New-TempDir 'hermes-flow-map'
+Set-Content -LiteralPath (Join-Path $dir 'config.yaml') -Value "terminal: { backend: local }" -Encoding utf8
+$threwOther = $false
+try { Set-AgentMarker $dir 'hermes' 'UserProfile' } catch [System.NotSupportedException] { } catch { $threwOther = $true }
+Assert-True $threwOther 'hermes (terminal jako flow mapa): jasná výjimka místo tiché úpravy'
+Assert-Eq (Get-Content -LiteralPath (Join-Path $dir 'config.yaml') -Raw).Trim() 'terminal: { backend: local }' 'hermes (terminal jako flow mapa): config.yaml nedotčen'
+Remove-Item -Recurse -Force $dir
+
+# CRLF soubor zůstane CRLF
+$dir = New-TempDir 'hermes-crlf'
+[IO.File]::WriteAllText((Join-Path $dir 'config.yaml'), "terminal:`r`n  backend: local`r`n")
+Set-AgentMarker $dir 'hermes' 'UserProfile'
+$raw = [IO.File]::ReadAllText((Join-Path $dir 'config.yaml'))
+Assert-True (-not ($raw -match "(?<!`r)`n")) 'hermes (CRLF): žádný holý LF, konce řádků zachovány'
+Assert-Match $raw '- MB_AGENT_SESSION' 'hermes (CRLF): značka přibyla'
+Remove-Item -Recurse -Force $dir
+
+# --- harnessy bez mechanismu: cursor (nedoloženo) --------------------------
+
+$dir = New-TempDir 'cursor'
 $threw = $false
 try {
-    Set-AgentMarker $dir 'kilocode'
+    Set-AgentMarker $dir 'cursor'
 }
 catch [System.NotSupportedException] {
     $threw = $true
+    Assert-Match $_.Exception.Message 'cursor' 'cursor: hláška nese jméno harnessu'
 }
-Assert-True $threw 'kilocode: Set-AgentMarker hlásí NotSupportedException (žádný zdokumentovaný mechanismus, ne tichý úspěch)'
+Assert-True $threw 'cursor: Set-AgentMarker hlásí NotSupportedException (žádný zdokumentovaný mechanismus, ne tichý úspěch)'
 $anyFile = @(Get-ChildItem -Recurse -File $dir -ErrorAction SilentlyContinue)
-Assert-Eq $anyFile.Count 0 'kilocode: nevznikl žádný soubor, který by jen předstíral konfiguraci'
+Assert-Eq $anyFile.Count 0 'cursor: nevznikl žádný soubor, který by jen předstíral konfiguraci'
 Remove-Item -Recurse -Force $dir
 
 Complete-Tests
