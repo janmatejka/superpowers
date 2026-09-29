@@ -7,7 +7,8 @@
 .DESCRIPTION
     Offers protected branches and the epic line `epic/<KEY>` (an UNPROTECTED
     integration base identified by epicBranchPattern, default `epic/*`),
-    per contract, "Repository Configuration" and design 4.2. Choosing any
+    per (contract/repository-configuration.md, "Repository Configuration")
+    and (contract/epic-line.md, "The epic line"). Choosing any
     other branch is a fail-closed STOP owned by the caller, together with the
     remedy. Test-UmsIntegrationBase decides what is allowed; this function
     only intersects that with what really exists on origin.

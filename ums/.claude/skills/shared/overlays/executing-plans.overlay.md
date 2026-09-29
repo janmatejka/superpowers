@@ -72,8 +72,10 @@ only what is specific to executing the plan yourself (Native execution).
   Task 1.
 - **Publication:** push the OWN ticket branch after every commit — each task's
   commits, the base-merge commit, the fix-pass commits — announcing the branch
-  and the outgoing commits (contract, "Publication Contract"); shared branches
-  are never pushed by the agent.
+  and the outgoing commits (contract, "Publication Contract"); no other branch
+  is pushed during execution. Even onto an epic line — a shared branch the
+  agent may push — the integration push belongs to finishing, after the
+  manager's `go` (contract/epic-line.md, "Integration after the manager's go").
 - **Finish:** deleting the plan workspace leaves the playbook-candidate file in
   place (contract/playbook-contract.md, "Playbook Contract").
 <!-- UMS-OVERLAY END -->

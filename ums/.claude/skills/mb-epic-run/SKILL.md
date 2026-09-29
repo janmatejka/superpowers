@@ -1,6 +1,6 @@
 ---
 name: mb-epic-run
-description: Use when a ticket is to be STARTED as its own Claude session in a pool slot, or when you need the state of the machine's slot pool — which slot is free, which slot holds which ticket, whether a session is live in one, which messages between the epic's manager and its ticket sessions still await a reply ("rozjeď tiket UMS-1234 do slotu", "pusť sezení na tiket", "co je volné", "stav poolu", "kde běží ten tiket", "co je připravené rozjet", "na co se čeká", "nezodpovězené zprávy") — and when a finished ticket's handoff arrives and its work is to be fast-forwarded into the epic line by the epic's manager ("integruj tiket UMS-1234 do epikové linie", "zaintegruj předání", "přišlo předání tiketu"). This is about SLOTS, live sessions and the manager's own integration push, not about documents on branches. Companion of mb-epic-elaboration; the pool is a set of linked worktrees the operator provisioned and marked.
+description: Use when a ticket is to be STARTED as its own Claude session in a pool slot, or when you need the state of the machine's slot pool — which slot is free, which slot holds which ticket, whether a session is live in one, which messages between the epic's manager and its ticket sessions still await a reply ("rozjeď tiket UMS-1234 do slotu", "pusť sezení na tiket", "co je volné", "stav poolu", "kde běží ten tiket", "co je připravené rozjet", "na co se čeká", "nezodpovězené zprávy") — and when a finished ticket's handoff arrives and the epic's manager is to check it and answer go or STOP before the ticket fast-forwards the epic line itself ("integruj tiket UMS-1234 do epikové linie", "zaintegruj předání", "přišlo předání tiketu", "dej tiketu go"). This is about SLOTS, live sessions, the epic line's creation and the manager's integration answer, not about documents on branches. Companion of mb-epic-elaboration; the pool is a set of linked worktrees the operator provisioned and marked.
 license: MIT
 metadata:
   author: UMS Project
@@ -20,16 +20,19 @@ allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(
 # Command: mb-epic-run
 
 **Action:** Show the state of the pool, put both readiness oracles side by
-side, start a session on a ticket in a free slot, point the operator at the
-slot that holds a ticket, and — as the epic's manager — fast-forward a
-finished ticket's handoff into the epic line.
+side, start a session on a ticket in a free slot (creating the epic line the
+first time), point the operator at the slot that holds a ticket, and — as the
+epic's manager — check a finished ticket's handoff and answer it `go` or
+`STOP`; on `go` the TICKET fast-forwards the epic line itself
+(contract/epic-line.md, "Integration after the manager's go").
 
 **Execution:** Read-only towards every slot. The TRACKED writes this skill
 ever makes are ledger lines on the ELABORATION branch, in this repository —
-`spawn`'s intent line and `integrate`'s integration note, never inside a slot —
-plus the one write that leaves this repository at all: `integrate`'s
-fast-forward push of a ticket's commit onto the epic line, by refspec (iron
-rule 11). The two state files it asks the
+`spawn`'s delivery-line header and intent line and `integrate`'s integration
+note, never inside a slot — plus the one write that leaves this repository at
+all: `spawn`'s creation of the epic line on `origin` when it does not exist
+yet (`New-UmsEpicLine`, a creation only). `integrate` pushes nothing onto the
+epic line (iron rule 11). The two state files it asks the
 scripts to write (`-Json`) land under this repository's git-ignored
 `.superpowers/`, and so does the outbox, `.superpowers/epic/<KEY>/outbox.md`,
 which is written by `spawn` and `integrate` and only READ by `status`.
@@ -75,15 +78,17 @@ These are not style. Each one closes a measured failure.
     question is answered from the **union of `slots[].branch` and
     `excluded[].branch`** in its JSON. That union covers the primary worktree
     too, which is where a ticket branch is most likely to be checked out.
-11. **`integrate` never touches a slot's working tree and never merges.** Its
-    ONLY write outside this repository is the fast-forward push by refspec;
-    everything else it writes — the ledger line, its commit, the publication of
-    the elaboration branch — happens here. The ticket's commit is authored by
-    the ticket session and arrives finished: composing content, resolving a
-    conflict or merging anything into the epic line is not this operation's
-    job, and there is nothing in it that a merge would fix (contract,
-    Publication Contract, "Integration"). A push refused as non-fast-forward
-    is a resynchronization for the TICKET session, never a merge here.
+11. **`integrate` never touches a slot's working tree, never merges and never
+    pushes the epic line.** It checks and ANSWERS; the fast-forward onto the
+    line is the ticket session's own push after the `go`
+    (contract/epic-line.md, "Integration after the manager's go"). Everything
+    `integrate` writes — the outbox entry, the ledger note, its commit, the
+    publication of the elaboration branch — happens here. The ticket's commit
+    is authored by the ticket session and arrives finished: composing content,
+    resolving a conflict or merging anything into the epic line is not this
+    operation's job, and there is nothing in it that a merge would fix
+    (contract/integration.md, "Integration"). A line that moved under the
+    handoff is a resynchronization for the TICKET session, never a merge here.
 
 **`allowed-tools` is not what protects the slots — the rules above are.** The
 field RESTRICTS: a tool the list does not name cannot be used at all. It is
@@ -92,9 +97,9 @@ ledger line, commits it through `mb-git-commit` and publishes the branch, all
 three in the ORCHESTRATOR's own repository: that needs `Edit`, `Skill` and
 `git add` / `git commit` / `git push`, and without them the step cannot run at
 all. `integrate` needs the same three plus `git fetch` and `pwsh` for the
-handoff gate, and its fast-forward by refspec is a `git push` as well — a field
+handoff gate, and publishing its ledger note is a `git push` as well — a field
 narrowed to this skill's read-only STANCE towards foreign workspaces would make
-the central operation of the epic's manager impossible to run.
+the central operations of the epic's manager impossible to run.
 
 Narrowing the field back would break `spawn` and buy nothing for slot
 safety, because a tool pattern at the granularity of `Bash(git commit:*)`
@@ -218,7 +223,7 @@ skill's job.
    - **The table decides where to look, never whether to integrate.** The
      contract fixes this boundary for the block itself
      (contract/now-block.md, "The `NOW` Block") and it applies unchanged to this rendering: a
-     fast-forward rests on the Handoff gate and on the checks of
+     `go` rests on the Handoff gate and on the checks of
      `mb-epic-run integrate`, never on what this column says.
 6. Print `excluded` as a separate short list (why a worktree is not a slot),
    and the repository-wide `stash` count as ONE line that is explicitly NOT a
@@ -381,7 +386,41 @@ In this order, and the order is the point.
 2. **Choose the slot.** Among free slots prefer a detached one, then one whose
    branch name equals its own directory name (the parked shape), then the
    rest. Announce which and why.
-3. **Write the intent line** into the epic's ledger section `## Rozjetí`, in
+3. **Make sure the epic line exists, then write the intent line.**
+
+   **The epic line first** — the base every ticket branch of this epic is cut
+   from (contract/epic-line.md, "The epic line"). The delivery line is the
+   ledger header's `- **Dodávková linie:**` value when the header carries one,
+   otherwise `baseRef` from `Get-UmsRepoConfig`; ask whether `epic/<EPIK>` may
+   be a base at all, then create it when `origin` does not have it:
+
+       . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
+       . <mb-shared>/scripts/Test-UmsIntegrationBase.ps1
+       . <this skill>/scripts/epic-line.ps1
+       $root = git rev-parse --show-toplevel
+       $cfg  = Get-UmsRepoConfig $root
+       $kind = (Test-UmsIntegrationBase "epic/<EPIK>" $cfg).Kind
+       if ($kind -eq 'epic-line') {
+           $line = New-UmsEpicLine -RepoRoot $root -EpicKey <EPIK> -DeliveryRef <delivery line>
+       }
+
+   `none` — the configuration switched the epic line off (`epicBranchPattern`
+   explicitly empty) or names another pattern — is a STOP with that reason: a
+   ticket branch cut from a base the entry gate would refuse cannot start.
+   `protected` — a legacy configuration that still lists the line in
+   `protectedBranches` — creates nothing: where `origin/epic/<EPIK>` is absent
+   that is a STOP (a human creates a protected branch), and where it exists the
+   tickets integrate into it by a human's command, so no `go` of yours moves
+   it — say so in the report. A thrown `New-UmsEpicLine` (failed fetch,
+   unresolvable delivery line, malformed key, refused push) is a STOP; never
+   name a base that does not exist.
+   `$line.Created` → report „linie epiku založena z <delivery line> na
+   <$line.Sha>" and, when the header does not carry it yet, add
+   `- **Dodávková linie:** <delivery line>` directly below the ledger's
+   `- **Epic:**` line; `$line.Existed` → nothing is moved, the line is the
+   epic's own history.
+
+   **Then the intent line** into the epic's ledger section `## Rozjetí`, in
    `memory-bank/epics/<epic_snake>/ledger.md`. The section has **seven
    columns, in this order**, and the order is binding because the ledger
    parser indexes them **positionally**:
@@ -412,10 +451,12 @@ In this order, and the order is the point.
 
    There is deliberately **no column for the chosen base**: a work item's base
    has one home, the `Báze:` line of its `context.md`, and a second home would
-   diverge at the first session that picks a different base. A non-trivial
-   base goes into `Pasti` as a sentence.
+   diverge at the first session that picks a different base. The spawn prompt
+   (step 4) NAMES the epic line as the recommended base; the session's entry
+   gate decides it and writes that line. A non-trivial base goes into `Pasti`
+   as a sentence.
 
-   Then commit that line with `mb-git-commit` and publish the ELABORATION
+   Then commit the header and intent lines with `mb-git-commit` and publish the ELABORATION
    branch per the contract's Publication Contract. Nothing is written into the
    slot.
 
@@ -440,10 +481,14 @@ In this order, and the order is the point.
    ask** — do not pick a default, and do not infer one from what happens to be
    installed on this machine.
 
-   The prompt is SHORT and one line: what to do, which ticket, **which branch**
-   and where to read the rest. Shape:
+   The prompt is SHORT and one line: what to do, which ticket, **which base**,
+   **which branch** and where to read the rest. Shape:
 
-   `Převezmi tiket <TIKET>. Zbytek si najdi v ledgeru epiku <EPIK> na větvi <elaborační větev>, cesta memory-bank/epics/<epic_snake>/ledger.md, sekce Rozjetí. Odpověz na tuto zprávu, první řádek Re: <SENT>.`
+   `Převezmi tiket <TIKET>, báze origin/epic/<EPIK>. Zbytek si najdi v ledgeru epiku <EPIK> na větvi <elaborační větev>, cesta memory-bank/epics/<epic_snake>/ledger.md, sekce Rozjetí. Odpověz na tuto zprávu, první řádek Re: <SENT>.`
+
+   **The base is named so the entry gate recommends it rather than guesses**:
+   the slot's session offers its base candidates and the epic line is the one
+   this ticket integrates into (contract/workspace-discipline.md, "Workspace Discipline").
 
    **The prompt is a message and requires a reply** (contract/message-protocol.md, "Replies are required"),
    which is what the last sentence asks for. `<SENT>` is the send time in UTC,
@@ -586,10 +631,12 @@ with its whole eligibility gate, and offering `spawn` is the only thing
 The manager's side of the handoff. The ticket session has finished its own
 procedure and, because its effective base is an epic line, rendered its
 handoff artifact as a message to the manager instead of a command for the
-user (contract, Publication Contract, "Integration"); this operation receives
-that artifact and performs the fast-forward under the actor-rule exception
-(contract, Repository Configuration, "The epic line"). Six steps, referred to
-below by these names and never by number.
+user (contract/integration.md, "Integration"); this operation receives that
+artifact, checks it and ANSWERS — `go` with the epic-line tip it checked
+against, or `STOP` with the blocking check — and pushes nothing onto the
+line: on `go` the ticket session fast-forwards it itself and announces the
+landing (contract/epic-line.md, "Integration after the manager's go"). The
+steps are referred to below by their names, never by number.
 
 **Input — the handoff artifact, and only what it carries.** Its four fields are
 (contract/integration.md, "Integration"), the Handoff phase. Read
@@ -597,7 +644,7 @@ them out of the artifact as given: do not reconstruct a field the ticket
 session did not send, and do not accept a summary in place of the verification
 output (same section, for why that field is what it is). **A missing field is a
 STOP:** report which one is missing and ask the ticket session to send a new
-handoff (a new message, with a new send time) — the epic line stays untouched, as it does on every STOP here. What
+handoff (a new message, with a new send time) — the epic line stays untouched, as it does throughout this operation. What
 the artifact does NOT carry is the epic: derive it exactly as `spawn`'s eligibility step
 does, by scanning `memory-bank/epics/*/ledger.md` for the ticket code, where
 zero and more than one match are each a STOP. **The ledger that matched is the
@@ -625,7 +672,7 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
           -Subject 'handoff <TIKET>'
 
   **One handoff gets ONE answer, and the answer closes its entry.** A STOP is
-  answered like a landed fast-forward (see the answer below), so after a STOP
+  answered like a `go` (see the answer below), so after a STOP
   the entry is `closed` and closed is final. The next attempt is therefore a NEW
   handoff, which the ticket session sends after it has dealt with the cause and
   which carries a NEW send time; that is a new message with its own entry and
@@ -637,9 +684,8 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   do not send a second `Re:` and do not call the closing command below (it would
   refuse, closed being final); report in Czech „Toto předání už dostalo
   odpověď; počkej na nové předání s novým časem odeslání" and STOP.
-- **Epic checks.** Two mechanical checks that bind the fast-forward to THIS
-  epic and to its unconfirmed decisions (contract, Repository
-  Configuration, "The epic line"). Dot-source this skill's own script and
+- **Epic checks.** Two mechanical checks that bind the `go` to THIS
+  epic and to its unconfirmed decisions (contract/epic-line.md, "The epic line"). Dot-source this skill's own script and
   call it against `$ledgerPath` — **the path the Input step matched, passed
   as that variable and never re-derived here** — with `<KLÍČ>` the epic
   Input derived, never a value read from the artifact, which carries no
@@ -656,8 +702,8 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   `-LedgerPath` is resolved against it instead of against the process
   working directory. Both checks pass TRIVIALLY when the ledger file is
   absent — by design, because a check without input must not stop anything
-  — so a path that merely fails to resolve would come back `Ok` and let the
-  fast-forward through.
+  — so a path that merely fails to resolve would come back `Ok` and earn the
+  handoff a `go`.
 
   The script reads only that one ledger file, prints nothing and mutates
   nothing; the Czech reporting is yours. `$epicGate.Ok` false is a STOP:
@@ -700,15 +746,15 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
     remedy to the session that handed the artifact over.
 - **Dirty-set warnings.** Print `$epicGate.Warnings` in Czech under
   „Varování (neblokují)" — never as a STOP. An open `## Dirty-set` row naming
-  `<TIKET>` means work was deferred onto it: before the fast-forward,
+  `<TIKET>` means work was deferred onto it: before answering `go`,
   re-own the row or close it with a reason, otherwise the finding is
   orphaned once `<TIKET>` integrates (contract/escalation.md, "Ledger evidence rules").
 - **Cross-cutting judgement check.** By judgement, because nothing mechanical
   covers it: does the handoff contradict anything in the epic's own evidence —
   the ledger, its neighbouring tickets, what the epic already decided? This
-  check is the reason the fast-forward belongs to a manager at all; a
-  contradiction is a STOP that goes back to the ticket session with what it
-  contradicts.
+  check is the reason a handoff into the epic line goes through a manager at
+  all; a contradiction is a STOP that goes back to the ticket session with
+  what it contradicts.
 - **Handoff gate re-run.** The three checks that depend on the freshly
   fetched tip — `ancestor`, the context check and `unpublished` — run again,
   against the freshly fetched tip: time passed between the handoff and this
@@ -733,24 +779,60 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   `origin` could not be reached from this clone — retry, check the network or
   the remote, then re-run the gate; it is the one name whose remedy is local.
   `ancestor` means the epic line moved under the handoff: the ticket
-  resynchronizes and verifies again, and no amount of retrying the push from
-  here changes it.
-- **Fast-forward by refspec.** From THIS clone:
+  resynchronizes and verifies again, and nothing done here changes it.
 
-      git push origin <SHA>:refs/heads/epic/<KLÍČ>
+  **With `$gate.Ok` true, record the tip the checks ran against** — the
+  `go` names exactly this commit, and the ticket session pushes only onto it:
 
-  **The source side must be the raw SHA** — never `HEAD`, never a branch name,
-  never absent: that is the fourth of the four conditions under which
-  `guard-git-push.mjs` grants the exception (contract/epic-line.md, "The epic line"), and
-  the other three are properties of the destination the configuration already
-  decides. **The overlookable assumption:** the `pre-push` hook judges
-  reachability from the remote-tracking refs of THIS clone, so the manager must
-  have fetched AFTER the ticket agent published its branch. The Fetch and read
-  the handoff step and the gate's own fetch cover that only because they run in
-  this same clone immediately before the push — a fetch performed anywhere else,
-  or before the ticket agent's push, does not.
-- **Per-ticket epic file, now on the epic line.** The fast-forward already
-  carried the ticket's own `memory-bank/epics/<epic_snake>/tickets/<TICKET>.md`
+      $tip = (git rev-parse origin/epic/<KLÍČ>).Trim()
+
+- **Answer: `go` or `STOP` — mandatory, not a courtesy.** The Handoff phase of
+  (contract/integration.md, "Integration") makes the manager owe that session
+  an answer on both outcomes, and without it the ticket never pushes. One handoff gets ONE
+  answer. Mark it `Mark: instruction` per the contract, "Message Protocol" — a
+  `go` sets a boundary: which branch the ticket may push, onto which tip. It is
+  also the REPLY to the handoff, so its class line is `Re: <SENT>` — the send
+  time the handoff carried, directly below the mark
+  (contract/message-protocol.md, "Replies are required") — and the ticket
+  session does not answer it in turn. The channel is the one the handoff
+  arrived by; do not invent another format.
+  - **`go`** — every step above passed. The answer carries `go`, the epic line
+    `epic/<KLÍČ>` and `$tip`, and what the ticket does with it: `git fetch
+    origin`, verify that `origin/epic/<KLÍČ>` is still `$tip` (a different
+    tip spends the `go` — resynchronize and send a new handoff), then
+    `git push origin HEAD:epic/<KLÍČ>`, its Confirmation phase, and an
+    `Oznámení:` back here with the landed tip.
+  - **`STOP`** — any STOP above: name the blocking check, its `Detail` and
+    whose remedy it is. The line stays as it was, and the next attempt is a
+    NEW handoff with a new send time.
+
+  **Once the answer is sent, close the outbox entry** — on a `go` and on a
+  STOP alike, because the answer is owed on both:
+
+      Set-UmsOutboxState -RepoRoot (git rev-parse --show-toplevel) -EpicKey <KLÍČ> `
+          -SentUtc <SENT> -To manager -State closed
+
+  This ends the checking half of the operation. **Nothing here waits for the
+  push**: the ticket session pushes at its own pace, and its announcement
+  starts the landing half below.
+
+**The landing — on the ticket's `Oznámení:`.** The announcement states that
+the fast-forward landed and the line's new tip. It needs no reply and is NOT
+entered in the outbox (contract/message-protocol.md, "Replies are required");
+it is acted on:
+
+- **Verify the landing.** The tip the announcement names must BE the
+  handed-over `<SHA>` — the `go` covered that commit onto `$tip` and nothing
+  else — and after `git fetch origin`,
+  `git merge-base --is-ancestor <SHA> origin/epic/<KLÍČ>` must exit 0 (a later
+  landing of another ticket may already sit on top of it). A different tip —
+  commits the handoff never carried, or a push nobody gave a `go` for — is not a STOP of
+  this operation, because the line has already moved and nothing here moves
+  it back: report it to the human in Czech as the materialized residual risk
+  of (contract/epic-line.md, "Integration after the manager's go"), and do not
+  write the ledger note as though the handoff landed.
+- **Per-ticket epic file, now on the epic line.** The fast-forward carried
+  the ticket's own `memory-bank/epics/<epic_snake>/tickets/<TICKET>.md`
   (contract/epic-backflow.md, "The per-ticket epic file") when the ticket
   session committed its `## Předání` line before its Publish phase's push;
   read it now from the epic line's new tip —
@@ -765,25 +847,6 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   word or a reordering. Commit it with `mb-git-commit` and publish the
   ELABORATION branch per the contract's Publication Contract.
 
-  **Then answer the session that handed the artifact over — mandatory, not a
-  courtesy** (contract, Publication Contract, "Integration", the Handoff phase:
-  the manager owes that session an answer on both outcomes). The answer carries
-  that the fast-forward landed, the target branch and the epic line's new tip
-  SHA; **on a STOP the same answer is owed**, naming the blocking check. Mark
-  it per the contract, "Message Protocol" — this answer is the textbook case
-  its instruction clause names, a fact of the sender's own action the recipient
-  can verify in a shared artifact. It is also the REPLY to the handoff, so its
-  class line is `Re: <SENT>` — the send time the handoff carried, directly
-  below the mark (contract/message-protocol.md, "Replies are required")
-  — and the ticket session does not answer it in turn. The channel is the one
-  the handoff arrived by; do not invent another format.
-
-  **Once the answer is sent, close the outbox entry** — on a landed
-  fast-forward and on a STOP alike, because the answer is owed on both:
-
-      Set-UmsOutboxState -RepoRoot (git rev-parse --show-toplevel) -EpicKey <KLÍČ> `
-          -SentUtc <SENT> -To manager -State closed
-
   Then prompt the OTHER sessions to resynchronize: the epic line has moved, so
   every other ticket branch cut from it is now behind, and a ticket that
   verified against the previous tip is no longer a fast-forward. **That prompt
@@ -795,22 +858,21 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   announcement needs no reply and is NOT entered in the outbox (contract/message-protocol.md, "Replies are required"); the
   sessions resynchronize at their own next phase boundary either way.
 
-**A STOP in this operation leaves the epic line exactly as it was**, which iron
-rule 11 makes trivially true for every step before Fast-forward by refspec.
+**This operation never moves the epic line** — on a STOP, on a `go` and on the
+landing alike (iron rule 11).
 
 **One ticket at a time.** Integration is a QUEUE, not a merge: when two tickets
 verified against the same epic tip and the first lands, the second must
-resynchronize and verify again. That is why the instruction „dokonči a
-integruj" is given to one ticket at a time, and why nothing here tries to
-combine two handoffs.
+resynchronize and verify again — the tip check its `go` demands is what makes
+it do so. That is why the instruction „dokonči a integruj" is given to one
+ticket at a time, why a second `go` against a tip an outstanding `go` already
+names waits for the first landing, and why nothing here tries to combine two
+handoffs.
 
-**An unusable `baseRef` in this clone's `ums-repo.json` is a STOP, not an
-obstacle to route around.** An unusable value declines the exception outright —
-which values those are is the contract's list (Repository Configuration, "The
-epic line"), not restated here — so the guard denies the push. The remedy is to fix the configuration — with the operator, as
-configuration always is. Not to rewrite the refspec, not to reach for the
-human-escape variable, and not to hand the command to the user as if there were
-no manager.
+**A `go` is a rule, not a mechanism.** Nothing stops a ticket session pushing
+onto the unprotected line without one, or pushing more than it handed over —
+the accepted residual risk of (contract/epic-line.md, "Integration after the manager's go"). The landing half's tip check is where it shows; the remedy is
+the human's, not a push of yours.
 
 ## Quick reference
 
@@ -820,12 +882,13 @@ no manager.
 | Both readiness oracles in one place | `ready <EPIK>` |
 | Start a ticket in a slot | `spawn <TIKET>` |
 | Where does a ticket run | `attach <TIKET>` |
-| Land a finished ticket in the epic line | `integrate <TIKET>` |
-| The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a new handoff (new send time) |
-| Answer the handing-over ticket session | mandatory, both on a landed fast-forward and on a STOP; without it that session's Confirmation phase never runs |
+| Check a finished ticket's handoff and answer it | `integrate <TIKET>` — `go` with the checked tip or `STOP`; the ticket pushes, never you |
+| The four fields of a handoff artifact | (contract/integration.md, "Integration"), Handoff phase — a missing field is a STOP, ask for a new handoff (new send time) |
+| Answer the handing-over ticket session | mandatory, `go` or `STOP`, `Re: <SENT>` below the mark; without it that session never pushes |
+| The ticket's `Oznámení:` after its push | the announced tip IS the handed-over `<SHA>` and `<SHA>` is on `origin/epic/<KLÍČ>`; then the ledger note and the resync prompt; no reply |
+| Create the epic line | `spawn`, step 3: `New-UmsEpicLine` when `Test-UmsIntegrationBase` says `epic-line` and `origin/epic/<EPIK>` is absent |
 | Re-run the handoff gate | `Test-UmsHandoffGate -RepoRoot … -Sha … -BaseRef origin/epic/<KLÍČ>` — `-BaseRef` always explicit |
 | Run the epic checks | `Test-UmsEpicGate -RepoRoot … -LedgerPath $ledgerPath -Ticket <TIKET> -Epic <KLÍČ>` — the path Input matched, `-RepoRoot` always passed; `spawn-epic` and `decision-ack`, both mechanical, both pure (contract/epic-line.md, "The epic line") |
-| Source side of the integration refspec | the raw 40-hex `<SHA>`, never `HEAD`, never a branch name (contract/epic-line.md, "The epic line"); condition four |
 | Is a branch checked out anywhere | ticket code as a case-sensitive SUBSTRING of the union of `slots[].branch` and `excluded[].branch` — never `git worktree list`, never equality |
 | Which epic owns a ticket | scan `memory-bank/epics/*/ledger.md` for the code; zero or more than one is a STOP |
 | Dependency graph oracle | the `mb-epic-graph` **skill** — never `epic-graph.ps1` directly (Jira mode refuses without `-InputFile`) |
@@ -850,6 +913,8 @@ no manager.
 | "The branch union said nothing, so the checkout will work" | A prunable worktree keeps its branch reserved while reporting `branch: null`. A refused checkout in the spawned session is a legitimate STOP, not a broken spawn. |
 | "The gate passed for the ticket agent, no need to run it again" | Time passed and the epic line may have moved since. The gate is re-run here against the freshly fetched tip — that is the Handoff gate re-run step, and the contract requires the fresh fetch (Publication Contract, "Integration"). |
 | "It is not a fast-forward, I will just merge it into the epic line" | Iron rule 11: `integrate` never merges. Not a fast-forward means the ticket session resynchronizes and verifies again. |
+| "The checks passed, I will push the SHA onto the line myself — it is quicker" | Iron rule 11: `integrate` never pushes the epic line. The answer is `go` with the checked tip, and the push is the ticket session's own. |
+| "The line moved a little since my check, the `go` still holds" | A `go` names one tip. A moved line spends it: the ticket resynchronizes and sends a new handoff. |
 | "The ticket session has not answered, I will ask again until it does" | ONE repeat after `Due`, then the human (contract/message-protocol.md, "Replies are required"). And never to a session that waits on a subagent. |
 | "I will mark this message `Oznámení:` so nobody has to answer it" | An announcement is a fact of the sender's OWN action, verifiable in a shared artifact. A message that asks the recipient to do anything, sets a boundary for its work or explains a cause is not one, whatever its first line says. |
 | "The outbox is empty, so nobody owes an answer" | Empty is also what an absent, damaged or over-size file yields, and a message nobody entered is invisible to it. Say „podle outboxu". |

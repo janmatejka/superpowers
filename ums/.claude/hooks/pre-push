@@ -18,8 +18,9 @@
 #
 # GATED ON AN AGENT-SESSION MARKER: everything below the stdin buffer only
 # fires when is_agent_session() finds MB_AGENT_SESSION=1 (injected by this
-# layer's own settings.json into every harness it configures), or — Claude
-# Code only — a non-empty AI_AGENT or CLAUDECODE=1 as a fallback. Without the
+# layer's own settings.json into every harness it configures), or, as a
+# fallback, a non-empty AI_AGENT (whichever harness sets it - Pi's CLI sets
+# AI_AGENT=pi) or CLAUDECODE=1 (Claude Code). Without the
 # marker this hook enforces none of its OWN checks: it delegates straight to
 # the chained foreign hook (run_chained) and exits with its result. The
 # fail-closed stdin buffer above still applies to everyone regardless of the
@@ -117,9 +118,10 @@ run_chained() {
 }
 
 # This layer injects the marker itself into every harness's own
-# configuration. AI_AGENT/CLAUDECODE are a fallback for Claude Code only -
-# someone else owns those variables, and other harnesses do not have them
-# at all.
+# configuration. AI_AGENT/CLAUDECODE are only a fallback - someone else owns
+# those variables: any non-empty AI_AGENT counts, whichever harness set it
+# (Pi relies on it, its CLI sets AI_AGENT=pi), and CLAUDECODE=1 is Claude
+# Code's; a harness that sets neither depends on the marker alone.
 is_agent_session() {
     [ "$MB_AGENT_SESSION" = "1" ] && return 0
     [ -n "$AI_AGENT" ] && return 0

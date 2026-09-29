@@ -77,6 +77,8 @@ block cites them and adds only what is specific to dispatching subagents.
   `git merge-base main HEAD` — the final review's `MERGE_BASE`, the
   intersection sets — cut the range from the effective base (contract/repository-configuration.md, "Repository Configuration").
 - **Publication:** push the OWN ticket branch after every commit, announcing the
-  branch and the outgoing commits (contract, "Publication Contract"); shared
-  branches are never pushed by the agent.
+  branch and the outgoing commits (contract, "Publication Contract"); no other
+  branch is pushed during execution. Even onto an epic line — a shared branch
+  the agent may push — the integration push belongs to finishing, after the
+  manager's `go` (contract/epic-line.md, "Integration after the manager's go").
 <!-- UMS-OVERLAY END -->

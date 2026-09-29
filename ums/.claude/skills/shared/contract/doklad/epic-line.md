@@ -1,63 +1,73 @@
 # Doklad — The epic line
 Part of contract 3.x — evidence read on demand, never the home of a rule.
 
-## The residual risk of condition 3
+## Why the epic line is unprotected
 
-**The residual risk, plainly:** in a repository whose work items integrate into
-maintenance branches other than `baseRef`, combined with an over-broad
-`epicBranchPattern` (`*` is contemplated as a realistic mistake in
-contract/epic-line.md, in the four-condition list),
-condition 3 excludes `baseRef`'s own branch and nothing else — so the actual
-delivery line of such a work item is excluded by conditions 1 and 2 only.
-**The control that covers it is not another condition here**, and adding one
-would mean resolving an effective base inside a push guard, which is new design:
-it is the Escalation floor (`## Escalation & Autonomy`), which puts a change to
-`epicBranchPattern` or `protectedBranches` with the HUMAN, unconditionally and
-at every autonomy level. The pattern is how that risk is entered, so the pattern
-is where it is guarded.
+**Until contract 3.2 the epic line was a protected branch with an actor-rule
+exception**: it belonged in `protectedBranches`, and `guard-git-push.mjs` let
+the agent's own tool call fast-forward it under four conditions (destination
+matching `epicBranchPattern`, destination protected, destination not
+`<baseBranch>`, raw-SHA source), so that only the manager's `integrate` could
+push it. Practice did not follow: in the monorepo (2026-09-29) the lines
+`origin/epic/SKODASMS-237` and `origin/epic/UMS-3557` existed, were NOT
+protected, and `epicBranchPattern` was absent — the contract of that day would
+have stopped both as a base. The four-condition exception was therefore dead
+code over a configuration nobody wrote, and it was removed with its tests.
 
-## What each condition closes, and what the raw-SHA test does not do
+**What replaced it moves the question** from WHO MAY PUSH WHAT back into WHAT
+MAY BE A BASE: `epicBranchPattern` no longer exempts a protected branch from the
+actor rule, it identifies an unprotected branch as a legitimate base. The
+default `epic/*` for a missing key is a deliberate widening, decided by the
+user in the design opposition — an epic is meant to run without an extra
+configuration step — and it is the human's decision recorded in the design,
+not the code's.
 
-Each condition closes its own hole. Without the protected test, configuration
-would grant push rights over a namespace nothing guards. Without the
-`baseBranch` exclusion, a pattern of `*` would swallow the base itself. And the
-raw-SHA test is what keeps a REFSPEC-LESS invocation from reaching the
-exception: the `switch -c` that cuts a ticket branch from
-`origin/epic/<EPIC-KEY>` sets the new branch's upstream to the epic LINE
-(measured), so the `git branch --unset-upstream` required with it stops being
-hygiene here.
-**What the raw-SHA test does NOT do is stop a bare `git push`, and the mechanism
-is worth stating exactly, because it is not this guard's.** Verified in
-`guard-git-push.mjs`: with no positional arguments the evaluation resolves the
-target through `addCurrent()`, which contributes the CURRENT BRANCH NAME and no
-source at all — never the destination the upstream would resolve to. A ticket
-branch is not a protected name, so the guard's verdict on a bare push from one
-is ALLOW, and the suite pins it as such. What actually keeps a bare push off
-`origin/epic/<KEY>` is git's own `push.default=simple`, which refuses when the
-upstream's branch name differs from the local branch's, plus the `pre-push`
-content rule while the ticket branch is unpublished. The guarantee holds; it is
-simply owed to git and to `pre-push`, and a reader who believed this guard
-carried it would look for it in the wrong file.
+## The residual risk: go is not enforced
+
+**Recorded so that the rule does not look enforced.** The `go` of the manager
+is what the integration waits for, but nothing binds it to the push: the
+`pre-push` hook judges content (a fast-forward, no deletion) and the epic line
+is unprotected, so any agent session holding a descendant of the line can
+fast-forward it — before any handoff, without a `go`, or with a commit added
+after the handoff the manager checked. The tip verification the ticket runs
+after `go` catches a line that MOVED; it cannot catch a ticket that pushes more
+than it handed over. The user accepted this in the design opposition: binding
+the checked commit to the pushed one would need either a protected line with an
+agent exception (the removed mechanism) or state shared between two sessions
+that a push guard would have to read. What still holds is the hook's floor —
+only fast-forwards, no deletion — and the human exit: whatever lands on the
+line reaches the delivery line only through a human.
 
 ## The threat model
 
 **The threat model is stated because the choice rests on it.** The pattern lives
-in a file the agent may edit, so this exception defends against **mistake, not
-intent** — the same trust model the rest of this contract runs on, where an agent
-never setting `MB_HUMAN_PUSH=1` is likewise a rule and not a mechanism. Reading
-the pattern from the base instead was weighed and dropped as complexity that buys
-nothing under that assumption.
+in a file the agent may edit, so it defends against **mistake, not intent** —
+the same trust model the rest of this contract runs on, where an agent never
+setting `MB_HUMAN_PUSH=1` is likewise a rule and not a mechanism. A pattern
+widened by mistake (`*`) would let an arbitrary unprotected branch be chosen as
+a base without the fail-closed STOP; it would not open any protected branch,
+because protection wins over the pattern. That is why a change to
+`epicBranchPattern` stays on the Escalation floor, with the human,
+unconditionally and at every autonomy level.
 
 ## What licenses an agentic write here
 
 **What licenses an agentic write here at all is the single exit.** Not that the
 push is contentless — it is not. The epic line reaches the delivery line only
-through a human fast-forward, so the rule that the moment of integration belongs
-to the human keeps holding where it decides anything.
+through a human act, so the rule that the moment of integration belongs to the
+human keeps holding where it decides anything: in the delivery line.
 
-## The third category
+## A bare push and the epic line
 
-**A third category does exist:** "a protected branch an agent may push to". What
-the epic line changes is where the category sits — it moved out of the question
-WHAT MAY BE A BASE into the question WHO MAY PUSH WHAT, which is the smaller of
-the two and the better guarded.
+**A bare `git push` from a ticket branch does not reach the epic line, and the
+mechanism is not the PreToolUse guard's.** The `switch -c` that cuts a ticket
+branch from `origin/epic/<EPIC-KEY>` sets the new branch's upstream to the epic
+LINE (measured), and with no positional arguments `guard-git-push.mjs` resolves
+the target through `addCurrent()`, which contributes the CURRENT BRANCH NAME and
+no source — never the destination the upstream would resolve to; a ticket
+branch is not a protected name, so its verdict is ALLOW, and the suite pins it
+so. What keeps a bare push off the line is git's own `push.default=simple`,
+which refuses when the upstream's branch name differs from the local branch's,
+and the `git branch --unset-upstream` required right after the `switch -c`.
+Since the line is unprotected, the `pre-push` content rule does not stand
+behind them here — the unset-upstream step is load-bearing, not hygiene.

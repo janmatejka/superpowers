@@ -15,7 +15,8 @@
     stream and falls back to defaults. ONE deliberate exception to "safer
     side": EpicBranchPattern defaults to 'epic/*' (a widening - an epic line
     is a legitimate unprotected base with no configuration step), a decision
-    the user recorded in design 4.2; an explicit empty or non-string value
+    a human made and the contract records
+    (contract/epic-line.md, "The epic line"); an explicit empty or non-string value
     of the key switches the epic line off.
 
     Source reports WHERE the loader looked, not how much it used: 'file'
@@ -85,7 +86,8 @@ function Get-UmsRepoConfig([string] $RepoRoot) {
         $cfg.TicketPattern = [string]$json.ticketPattern
     }
     # epicBranchPattern: identifies the epic line `epic/<KEY>` as a legitimate
-    # UNPROTECTED integration base (design 4.2; Test-UmsIntegrationBase). The
+    # UNPROTECTED integration base (Test-UmsIntegrationBase;
+    # contract/epic-line.md, "The epic line"). The
     # key has THREE states, and only the first differs from every other key
     # here: ABSENT = the built-in default `epic/*` (already in $cfg above -
     # the user decided an epic runs without an extra configuration step);

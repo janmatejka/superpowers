@@ -20,7 +20,7 @@ introduced:**
 |---|---|
 | `baseRef` | `mb-doc-index`, ticket-branch creation, base sync, integration |
 | `protectedBranches` | the `pre-push` hook (through the plain-text list the installer generates — the core's `## Publication Contract`), `guard-git-push.mjs` |
-| `epicBranchPattern` | `guard-git-push.mjs` (the actor-rule exception) |
+| `epicBranchPattern` | `Test-UmsIntegrationBase` (the epic line as an unprotected base — the entry gate's base candidates, the invariant below, the Handoff rendering), `mb-epic-run` |
 | `ticketPattern` | `mb-state`, the entry gate, `mb-architect-review` |
 | `projectMarkers`, `sharedRoots` | the intersection heuristic (see Base Sync & Drift Detection) |
 
@@ -51,10 +51,10 @@ remainder against `protectedBranches`, where `origin/develop` appears nowhere.
 named in its remote-tracking form.
 
 **A missing file is not an error, and the degradation leans to the safer
-side:** `baseRef` falls back to `origin/develop` — except for the epic-line
-exception, which declines rather than falls back (see The epic line);
-`protectedBranches` falls back to the built-in list, i.e. to *more* protection,
-never less; and without
+side:** `baseRef` falls back to `origin/develop`; `protectedBranches` falls back
+to the built-in list, i.e. to *more* protection, never less; `epicBranchPattern`
+is the one deliberate exception — a missing key is the built-in `epic/*`, a
+widening decided by a human (contract/epic-line.md, "The epic line"); and without
 `projectMarkers` / `sharedRoots` the verification after a base merge is offered
 for **every** non-empty incoming diff rather than for none.
 
@@ -102,10 +102,13 @@ base-choice dialog left to run — that earlier Intent-phase choice is exactly w
 the effective base now resolves to, so the effective base IS the correct start
 point there.
 
-**Invariant: an integration branch is always a protected branch.** A base that
-matches no pattern in the effective `protectedBranches` is a fail-closed STOP at the
-moment it is chosen — the agent would be free to push into it, which is the whole
-guarantee this layer exists to keep. The remedy is ordered: add the missing pattern
+**Invariant: an integration branch is always a protected branch — with ONE named
+exception, the epic line** (contract/epic-line.md, "The epic line"): an unprotected
+branch matching `epicBranchPattern`, into which a ticket integrates only after
+the manager's `go`. Any other base that matches no pattern in the effective
+`protectedBranches` is a fail-closed STOP at the moment it is chosen — the agent
+would be free to push into it, which is the whole guarantee this layer exists to
+keep; the one reader of both answers is `Test-UmsIntegrationBase`. The remedy is ordered: add the missing pattern
 to `ums-repo.json` (a targeted edit; `mb-init` is for founding or regenerating the
 configuration as a whole, not for one pattern); re-run `install-git-hooks.ps1`
 because the generated list is a build product of the configuration; PROVE it with

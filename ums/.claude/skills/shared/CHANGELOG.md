@@ -13,7 +13,20 @@
   truncated to 5,000 tokens after a compaction (`doklad/compaction.md`); every
   range against the base (review package, final-review `MERGE_BASE`, base-sync
   intersection) cut from the effective base, never the local `main`
-  (`repository-configuration.md`).
+  (`repository-configuration.md`). The epic line `epic/<KEY>` becomes an
+  UNPROTECTED integration base identified by `epicBranchPattern` (a missing key
+  is the built-in `epic/*`, an explicitly empty or non-string value means no
+  epic line) — the one named exception to "an integration branch is always a
+  protected branch", offered among the base candidates and created by
+  `mb-epic-run spawn` from the delivery line; the four-condition actor-rule
+  exception in `guard-git-push.mjs` is removed. A ticket integrates into the
+  line only after the manager's `go`: `mb-epic-run integrate` checks and
+  answers `go` (with the checked tip) or `STOP` and pushes nothing, the ticket
+  verifies the tip, fast-forwards the line itself and sends an `Oznámení:`;
+  that `go` is not mechanically enforced is recorded as an accepted residual
+  risk (`epic-line.md` and its doklad). The escalation floor keeps the exit
+  into the delivery line and deleting the line with a human. The Publication
+  Contract no longer calls the `AI_AGENT` fallback Claude-Code-only.
 - 3.1 — playbook tree and ancestor chain, file and item shape, escalation
   threshold with a ratchet, legacy mode, harvest gate v2, consolidation of one
   Memory Bank and of the whole tree, Scope Lock exceptions for playbook writes

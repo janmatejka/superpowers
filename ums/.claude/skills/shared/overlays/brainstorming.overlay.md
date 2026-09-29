@@ -102,7 +102,9 @@ Adjustments to the checklist above:
      parallel work.
   4. **Choose the base** — the entry gate's intent phase decision, per
      (contract/repository-configuration.md, "Repository Configuration") (the effective base and the
-     invariant that an integration branch is always a protected branch). Build the
+     invariant that an integration branch is always a protected branch, with its
+     one named exception, the unprotected epic line
+     (contract/epic-line.md, "The epic line")). Build the
      candidate list mechanically, never by hand — `<mb-shared>` is this layer's
      `skills/shared/` directory, the sibling of the skill directory this overlay is
      injected into, the same directory that holds `UMS_MEMORY_BANK_CONTRACT.md`:
@@ -112,12 +114,23 @@ Adjustments to the checklist above:
      Get-UmsBaseCandidates (git rev-parse --show-toplevel) (git branch --show-current)
      ```
 
-     Present them in that order (default, current, rest) with `baseRef` as the
-     recommendation and let the USER decide. With a linked and reachable Jira
+     Present them in that order (default, current, rest), naming a candidate
+     whose `IsEpicLine` is true as an epic line, with `baseRef` as the
+     recommendation — or, in a session `mb-epic-run spawn` started, the epic line
+     its prompt names — and let the USER decide. With a linked and reachable Jira
      ticket, a version named in its text orders the list further; an unreachable
-     Jira skips that signal with a one-line note. A base outside
-     `protectedBranches` is the contract's fail-closed STOP — follow its ordered
-     remedy and do NOT continue with an unprotected base.
+     Jira skips that signal with a one-line note. A free-form answer outside the
+     list is checked with the same resolver the candidates came from:
+
+     ```powershell
+     . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
+     . <mb-shared>/scripts/Test-UmsIntegrationBase.ps1
+     (Test-UmsIntegrationBase <branch> (Get-UmsRepoConfig (git rev-parse --show-toplevel))).Kind
+     ```
+
+     `none` — a base neither in `protectedBranches` nor an epic line — is the
+     contract's fail-closed STOP: follow its ordered remedy and do NOT continue
+     with such a base.
   5. **Create the ticket branch** — the entry gate's intent phase — with the tree
      clean, or carrying only the leftovers the **Entry gate** step decided to
      commit here (nothing
@@ -181,7 +194,7 @@ Adjustments to the checklist above:
   --unset-upstream`** (Publication Contract, the first-publication rule),
   where the chosen base defaults to `baseRef` from
   `<CTX_DIR>/ums-repo.json` (contract/repository-configuration.md, "Repository Configuration")
-  unless the user picked a different protected branch in the **Choose the
+  unless the user picked a different candidate in the **Choose the
   base** step above. The implicit form, without a starting point, branches off whatever
   happens to be checked out: run on a foreign ticket branch it pulls that
   branch's pin and its active pair into your history. The local base branch is

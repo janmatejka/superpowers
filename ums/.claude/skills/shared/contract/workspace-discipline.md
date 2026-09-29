@@ -149,9 +149,12 @@ Leftovers split in two:
    preliminary design draft waits in `next/` → activation; otherwise a new
    branch.
    **Choosing the base** belongs here, before the branch is created, because
-   `git switch -c` needs it as its start point. Offer the candidates — the protected
-   branches that exist on `origin`, ordered default first, then the branch the
-   session stands on, then the rest — and let the USER decide; the offer is not a
+   `git switch -c` needs it as its start point. Offer the candidates — the branches
+   on `origin` that may be a base: the protected ones and the epic lines, an epic
+   line named as such (contract/epic-line.md, "The epic line") — ordered default
+   first, then the branch the session stands on, then the rest — and let the USER
+   decide; a session spawned for an epic ticket has its epic line named in the
+   spawn prompt as the recommendation. The offer is not a
    restriction, and a free-form answer outside it is accepted — it is the only way
    the STOP below can ever fire. When a Jira ticket is
    linked and reachable, a version mentioned in its text is a further ordering
@@ -159,9 +162,9 @@ Leftovers split in two:
    DECIDES the `Báze:` line from this choice — writes it when the choice differs
    from `baseRef`, REMOVES any existing one when it does not (`context.md` Schema
    & Writers) — because the line survives both the IDLE reset and the integration
-   push and would otherwise be inherited by the next work item. A base
-   outside `protectedBranches` triggers the fail-closed STOP and its ordered remedy
-   (Repository Configuration, the invariant).
+   push and would otherwise be inherited by the next work item. A base that is
+   neither in `protectedBranches` nor an epic line triggers the fail-closed STOP
+   and its ordered remedy (Repository Configuration, the invariant).
 4. **Pin write** into `context.md`.
 
 Doklad: doklad/workspace-discipline.md, "Why the hook check is the most important agent duty"

@@ -176,14 +176,18 @@ performing one. Reading another branch's state never checks that branch out.
 - **Resolve the effective base, its origin and its protection** — once, before
   the two checks below (contract/repository-configuration.md, "Repository Configuration"); the effective base
   of a work item, and the invariant that an integration branch is always a
-  protected branch):
+  protected branch, with its one exception, the epic line
+  (contract/epic-line.md, "The epic line")):
 
   ```powershell
   . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
   . <mb-shared>/scripts/Get-UmsEffectiveBase.ps1
   . <mb-shared>/scripts/Test-UmsProtectedBranch.ps1
+  . <mb-shared>/scripts/Test-UmsIntegrationBase.ps1
   $base = Get-UmsEffectiveBase (git rev-parse --show-toplevel)
-  $prot = Test-UmsProtectedBranch $base.Branch (Get-UmsRepoConfig (git rev-parse --show-toplevel)).ProtectedBranches
+  $cfg  = Get-UmsRepoConfig (git rev-parse --show-toplevel)
+  $prot = Test-UmsProtectedBranch $base.Branch $cfg.ProtectedBranches
+  $kind = (Test-UmsIntegrationBase $base.Branch $cfg).Kind
   ```
 
   `Get-UmsRepoConfig.ps1` is dot-sourced explicitly here even though
@@ -193,7 +197,7 @@ performing one. Reading another branch's state never checks that branch out.
   break it. `<mb-shared>` is this layer's `skills/shared/` directory, the
   sibling of `mb-state/`. `$base.Ref` is `<effective base>` in the two commands
   below; `$base.Source` (`context` or `config`), `$base.Malformed` and
-  `$prot.Matched` are what the
+  `$kind` are what the
   report's `Báze:` line names as origin, unreadable line and protection — read them
   here, never
   guessed from whether a `- **Báze:**` line happens to be visible elsewhere in
@@ -359,7 +363,8 @@ no drift, so the report always names which of the two happened.
 A third note, on the `Báze:` line: `(z context.md | výchozí z ums-repo.json)` is
 `$base.Source` (`context` / `config`) translated to Czech — read from the resolve
 step above, never guessed. `(⛔ není mezi chráněnými větvemi)` is appended only
-when `$prot.Matched` is false; per the contract's invariant (Repository
+when `$kind` is `none` — an epic line (`$kind` `epic-line`) is a legitimate
+unprotected base and gets no such clause; per the contract's invariant (Repository
 Configuration, "an integration branch is always a protected branch") this is only
 ever a REPORTED finding here — mb-state does not fail closed on it and performs
 none of the invariant's remedy, which belongs to whoever chose the base. A

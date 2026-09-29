@@ -73,23 +73,33 @@ After the user chooses and BEFORE executing the choice:
     set, and a set learned after the verification already ran cannot be what
     the verification ran.
 
-    Resolve the repository configuration once, here — the same `$cfg` is
-    reused by the **Handoff gate** and **Handoff** phases below, so it is
-    derived once rather than three times:
+    Resolve the repository configuration once, here — the same `$cfg`, and
+    the `$baseKind` derived from it below, are reused by the **Handoff gate**
+    and **Handoff** phases, so they are derived once rather than three times:
 
     ```powershell
     . <mb-shared>/scripts/Get-UmsRepoConfig.ps1
     $cfg = Get-UmsRepoConfig (git rev-parse --show-toplevel)
     ```
 
-    A missing, empty or non-string `$cfg.EpicBranchPattern` means **no epic
-    line** — never "every branch" (contract, Repository Configuration, "The
-    epic line"). One test — does `$base.Branch` match
-    `$cfg.EpicBranchPattern`? — picks the set's home here and the artifact's
-    rendering in the **Handoff** phase. The gate itself never resolves this
+    One test — is `$base.Branch` an epic line? — picks the set's home here and
+    the artifact's rendering in the **Handoff** phase. Ask it of the one
+    resolver, once, here:
+
+    ```powershell
+    . <mb-shared>/scripts/Test-UmsIntegrationBase.ps1
+    $baseKind = (Test-UmsIntegrationBase $base.Branch $cfg).Kind
+    ```
+
+    `$baseKind -eq 'epic-line'` is that test: an UNPROTECTED branch matching
+    `$cfg.EpicBranchPattern` — the built-in `epic/*` when the key is missing,
+    no epic line at all when it is explicitly empty or not a string, never
+    "every branch" (contract/epic-line.md, "The epic line"). A branch that is
+    also protected comes back `protected`, and a human integrates it like any
+    protected base. The gate itself never resolves this
     (contract/integration.md, "Integration"): it only compares what it
     is handed, so finding the set's home is this phase's job, not the gate's.
-    - **The base matches** (a ticket that belongs to an epic) → the set lives
+    - **The base is an epic line** (a ticket that belongs to an epic) → the set lives
       in the epic's own ledger, declared once for the whole epic so every one
       of its tickets measures the identical thing. **That ledger sits on the
       epic's ELABORATION branch, and this working tree does not carry it** —
@@ -137,7 +147,7 @@ After the user chooses and BEFORE executing the choice:
       `<epic_key_snake>` is `$base.Branch` with its `epic/` prefix stripped,
       lower-cased, with `-` turned to `_` — the same convention `mb-epic-run`
       uses for the ledger's directory name.
-    - **The base does NOT match** (no epic) → the set lives in the work
+    - **The base is NOT an epic line** (no epic) → the set lives in the work
       item's own document, under its own `## Ověřovací sada` heading — the
       SAME heading and shape as the epic ledger's, so the SAME reader applies.
       **Which document depends on what this work item HAS**, and that is the
@@ -223,8 +233,8 @@ After the user chooses and BEFORE executing the choice:
 
     **This phase resolves nothing.** It consumes the values earlier phases
     assigned — `$verificationSet` from the **Sync** phase, `$citedCommands`
-    from the **Green verification** phase, and `$cfg` from the **Sync** phase,
-    which the **Handoff** phase below reuses to pick its rendering.
+    from the **Green verification** phase, and `$baseKind` from the **Sync**
+    phase, which the **Handoff** phase below reuses to pick its rendering.
     Re-deriving any of them here is how a gate ends up comparing a set against
     itself and proving nothing.
 
@@ -312,39 +322,59 @@ After the user chooses and BEFORE executing the choice:
     verification evidence.
 
     Both renderings are built from that SAME artifact, and a **single
-    condition** picks between them — the SAME `$cfg`/`$base.Branch` test the
-    **Sync** phase already ran to find the verification set's home, reused
-    here rather than re-derived: does `$base.Branch` match
-    `$cfg.EpicBranchPattern` (`epicBranchPattern` in
-    `<CTX_DIR>/ums-repo.json`)? The condition picks a
+    condition** picks between them — the SAME `$baseKind` the **Sync** phase
+    already resolved to find the verification set's home, reused here rather
+    than re-derived: is `$baseKind` `epic-line`? The condition picks a
     rendering, nothing else: every phase above and below runs identically in
     both cases.
-    - **The base does NOT match** (no manager) → ask (Czech)
+    - **The base is NOT an epic line** (no manager) → ask (Czech)
       „Integrovat větev do `$($base.Branch)` pushem?" and hand the user the
       exact command with the outgoing commits enumerated:
       `! git push origin HEAD:$($base.Branch)`, with `$($base.Branch)` expanded
       to its value in both the question and the command. The refspec form is
       deliberate: integration pushes the ticket branch onto the base ref.
-    - **The base DOES match** (there is a manager) → the artifact is rendered as
-      a **message to the epic's manager**, the session holding the epic's
-      elaboration branch, who performs the fast-forward under the actor-rule
-      exception. The message carries the artifact and nothing else: destination
-      branch, `<sha>`, the enumerated outgoing commits, and the verification
-      commands with their output. Its exact wire protocol is the epic
-      orchestration's (`mb-epic-run`, integration mode) — do not invent one
-      here. **This session does not end its turn on a push**; it waits for the
-      manager's answer — which the manager owes on both outcomes
-      (contract/integration.md, "Integration"), the Handoff phase — and continues
-      with the **Confirmation** phase once the manager reports the fast-forward
-      landed.
+    - **The base IS an epic line** (there is a manager) → the artifact is
+      rendered as a **message to the epic's manager**, the session holding the
+      epic's elaboration branch, whose `mb-epic-run integrate` checks it and
+      pushes nothing (contract/epic-line.md, "Integration after the manager's go").
+      The message carries the artifact and nothing else: destination branch,
+      `<sha>`, the enumerated outgoing commits, and the verification commands
+      with their output — plus its own send time in UTC, to the second, because
+      it requires a reply (contract/message-protocol.md, "Replies are required").
+      Its exact wire protocol is the epic orchestration's (`mb-epic-run`,
+      integration mode) — do not invent one here. **Then wait for the answer,
+      and NAME the wait**: finishing has no `NOW` block, so the report says
+      „čekám na správce" with the handoff's send time, and the `## Předání`
+      line the **Publish** phase committed is its artifact on the ticket branch.
+      The manager owes an answer on both outcomes, its first line `Re: <send
+      time>` below the mark:
+      - **`STOP`** with the blocking check → deal with that cause (most remedies
+        send this session back to the **Publish** phase), then send a NEW
+        handoff with a new send time; the old one is answered and spent.
+      - **`go`** with the epic-line tip the manager checked against → the
+        integration push is THIS session's own:
 
-    On the matching base the session therefore does **NOT** do what the
-    non-matching rendering does, and saying so is the point: it does not ask the
-    user „Integrovat větev … pushem?", it does not hand over a
-    `! git push origin HEAD:<baseBranch>` command for the user to run, and it
-    does not treat handing that command over as the end of its work. Conversely,
-    on a non-matching base it sends no message to any manager. Exactly one
-    rendering happens — never both, never neither.
+        ```powershell
+        git fetch origin
+        git rev-parse "origin/$($base.Branch)"   # must equal the tip the go names
+        ```
+
+        A different tip means the line moved after the check and the `go` is
+        spent: return to the **Publish** phase and send a new handoff — never
+        push on a `go` whose tip no longer stands. On the same tip, push the
+        ticket branch onto the line, `git push origin HEAD:$($base.Branch)`
+        (a fast-forward; the line is unprotected, so the hooks let it through),
+        run the **Confirmation** phase, and then send the manager an
+        `Oznámení:` — the fast-forward landed, the line's new tip — which it
+        notes in the ledger and does not answer.
+
+    On an epic line the session therefore does **NOT** do what the other
+    rendering does, and saying so is the point: it does not ask the user
+    „Integrovat větev … pushem?", it does not hand over a
+    `! git push origin HEAD:<baseBranch>` command for the user to run, it does
+    not push before a `go`, and it does not treat the handoff message as the
+    end of its work. Conversely, on any other base it sends no message to any
+    manager. Exactly one rendering happens — never both, never neither.
 
     When the ticket belongs to an epic (Jira parent, or the design header's Epic line), the line for this handoff — date, <sha>, destination branch, the verification commands, the outgoing commit count — was already appended to memory-bank/epics/<epic_snake>/tickets/<TICKET>.md, section ## Předání, and committed by the Publish phase above, before its final push (contract/epic-backflow.md, "The per-ticket epic file") — this phase does not write it again, it only reads what Publish already carried into the integration. This is the handoff artifact for a ticket that integrates without an epic line; the message to the manager, where there is one, is an acceleration over it.
   - **Confirmation.** Re-verify reachability **from the base ref** after the
@@ -355,8 +385,8 @@ After the user chooses and BEFORE executing the choice:
     ticket branch on `origin`, so a bare `git branch -r --contains <sha>`
     reports that ticket branch, comes back non-empty and would pass while the
     base has none of the code — the branch would then be closed as integrated
-    after a base push the user never ran, the manager never performed, or that
-    was rejected as non-fast-forward. Without a Jira ticket this is the ONLY
+    after a base push the user never ran, that this session never ran after a
+    `go`, or that was rejected as non-fast-forward. Without a Jira ticket this is the ONLY
     gate; `mb-jira-update`'s equivalent check never runs. A non-zero exit is a
     STOP: report it in Czech and go back to the **Handoff** phase.
 
@@ -365,7 +395,7 @@ After the user chooses and BEFORE executing the choice:
   behind on `origin` is **not deleted**; deleting a branch through a push stays
   forbidden, and the document index keys by phase, so an integrated ticket no
   longer counts as active work.
-- **The agent never pushes a shared branch and never sets `MB_HUMAN_PUSH`
+- **The agent never pushes a protected branch and never sets `MB_HUMAN_PUSH`
   itself** — the command handed over in the user rendering is the plain
   `! git push origin HEAD:<baseBranch>` because a fast-forward whose tip is
   already reachable from this clone's `refs/remotes/<remote>/*` is allowed by
@@ -373,9 +403,10 @@ After the user chooses and BEFORE executing the choice:
   non-fast-forward, it is the human, not the agent, who decides whether to set
   `MB_HUMAN_PUSH=1` and rerun it. Do NOT substitute `--no-verify`: it is a
   bypass of the guarantee, not a way to publish, and it disables every hook in
-  the repository. On an epic line the fast-forward belongs to the epic's
-  manager under the actor-rule exception (contract/epic-line.md, "The epic line") — still
-  never to this session.
+  the repository. An epic line is the one shared base this session pushes
+  itself — only as a fast-forward and only after the manager's `go`
+  (contract/epic-line.md, "Integration after the manager's go"); the exit of
+  the epic into the delivery line and deleting the line stay a human's.
 - **A push rejected as non-fast-forward** means the base moved while the sequence
   ran: repeat from the **Publish** phase (`fetch`). **At most two failed
   rounds** — after the second, STOP and report to the user instead of racing the

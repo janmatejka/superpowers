@@ -4,8 +4,9 @@
     first time a ticket of the epic is spawned (mb-epic-run `spawn`).
 
 .DESCRIPTION
-    The epic line is an UNPROTECTED integration base (design 4.2;
-    Test-UmsIntegrationBase, Get-UmsBaseCandidates). Creating it is the ONE
+    The epic line is an UNPROTECTED integration base
+    (contract/epic-line.md, "The epic line") - see also
+    Test-UmsIntegrationBase and Get-UmsBaseCandidates. Creating it is the ONE
     push `spawn` makes to a shared remote, and it is a creation only:
 
         git fetch origin

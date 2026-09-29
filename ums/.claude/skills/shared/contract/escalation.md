@@ -41,7 +41,7 @@ precisely these off the human is what a manager is for:
 
 | Kind | Measured example |
 |---|---|
-| The order and the queue of integrations | two tickets verified against the same epic tip |
+| The order and the queue of integrations — the `go` or `STOP` answer to each handoff, the push itself being the ticket's (contract/epic-line.md, "Integration after the manager's go") | two tickets verified against the same epic tip |
 | Resynchronization prompts and cross-cutting relay | "go and integrate the epic line" |
 
 **The four classes of a conflict or a failed verification, and who owns each**

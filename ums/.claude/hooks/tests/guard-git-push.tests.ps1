@@ -366,7 +366,7 @@ Assert-Eq $fullBadStdin.Code 0 'exit 0: nerozparsovatelný vstup nezpůsobí pá
 Assert-Eq $fullBadStdin.Err '' 'žádný stderr: nerozparsovatelný vstup nevyhodí nezachycenou výjimku'
 
 # ---------------------------------------------------------------------------
-# Linie epiku (design 4.2): `epic/<KLÍČ>` je NECHRÁNĚNÁ integrační báze. Guard
+# Linie epiku (contract/epic-line.md, "The epic line"): `epic/<KLÍČ>` je NECHRÁNĚNÁ integrační báze. Guard
 # už nezná žádnou epikovou výjimku — čtyřpodmínková výjimka (surové SHA, vzor,
 # chráněnost, ne-báze) je zrušená, protože linie epiku už chráněná není.
 # Rozhodnutí uživatele zaznamenané v návrhu: chráněná větev je zamítnuta BEZ

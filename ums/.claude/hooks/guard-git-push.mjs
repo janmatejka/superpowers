@@ -176,7 +176,8 @@ const stripRef = (ref) => String(ref).replace(/^refs\/heads\//i, '');
 const isProtected = (ref, patterns) => patterns.some((re) => re.test(stripRef(ref)));
 
 // There is NO exception to the actor rule for the epic line. The epic line
-// `epic/<KEY>` is an UNPROTECTED integration base (design 4.2): a push to it
+// `epic/<KEY>` is an UNPROTECTED integration base
+// (contract/epic-line.md, "The epic line"): a push to it
 // is judged like any push to an unprotected branch, and a push to a branch
 // that IS protected is denied without exception, whatever it names as source.
 // The former four-condition exception (raw-SHA source, epicBranchPattern

@@ -483,11 +483,10 @@ The points below are notable special cases, not the whole rule:
 The agent does not negotiate WHETHER to publish its own branch — but the
 harness's own permission prompt still applies (`Bash(git push:*)` is deliberately
 in neither `allow` nor `deny` in this layer's `settings.json`): **"does not ask"
-is not "the push is auto-approved"**. The effective list of protected branches is
-`protectedBranches` (see Repository Configuration; built-in fallback `develop`,
-`main`, `master`, `release/*`); both layers resolve protection from it by
-different routes — the hook through the plain-text list the installer generates,
-`guard-git-push.mjs` by reading `ums-repo.json` itself.
+is not "the push is auto-approved"**. Protected branches are `protectedBranches`
+(Repository Configuration; fallback `develop`, `main`, `master`, `release/*`),
+read by the hook from the installer's list and by `guard-git-push.mjs` from
+`ums-repo.json`; an epic line is NOT one (contract/epic-line.md, "The epic line").
 
 **Two enforcement questions, two layers:**
 
@@ -497,8 +496,8 @@ different routes — the hook through the plain-text list the installer generate
 | `guard-git-push.mjs` (PreToolUse) | **Who** pushes | The agent's own tool calls only; commands the user types with `!` never reach it |
 
 The hook's scope is `refs/heads/*` and it enforces NOTHING outside an agent
-session (marker `MB_AGENT_SESSION`; `AI_AGENT` / `CLAUDECODE` are a
-Claude-Code-only fallback), so a human pushing from a terminal or an IDE is
+session (marker `MB_AGENT_SESSION`; fallback: a non-empty `AI_AGENT` from any
+harness, or `CLAUDECODE=1`), so a human pushing from a terminal or an IDE is
 untouched. Inside one it allows, on a protected branch, only a **fast-forward
 push whose tip is already reachable on the remote being pushed to**, and it
 rejects **two bans on every branch it polices, not only protected ones: deleting
@@ -689,7 +688,7 @@ are rules.** Two of them bind every session in this layer, epic work or not:
 | Publication into the delivery line | the exit of an epic |
 | An irreversible or destructive operation | deleting a branch, a force push, rewriting history |
 | A security-sensitive action | accesses, secrets |
-| Choosing a base that is not a protected branch | today's fail-closed STOP |
+| Choosing a base that is not a protected branch | the fail-closed STOP; the one exception is an epic line (contract/epic-line.md, "The epic line") |
 | A change to `epicBranchPattern` or `protectedBranches` | widening a privilege |
 | Writing into playbook.md | the Playbook Contract's consult-before-write regime |
 
@@ -727,8 +726,9 @@ When anything important is missing or ambiguous:
 (v6.3.0+) rule on conflicts instead of stalling and stop only for four named classes.
 This layer's fail-closed STOPs are not a fifth class — they FALL WITHIN those four: a
 push to a shared branch and the integration push are "a side effect outside this
-clone that norms say you ask about first"; an active-work collision, an unprotected
-base and an unreachable pinned commit are irreversible in the same sense; a plan too
+clone that norms say you ask about first" (onto an epic line, the manager's `go` is
+that asking); an active-work collision, a base neither protected nor an epic line
+and an unreachable pinned commit are irreversible in the same sense; a plan too
 broken to follow is upstream's fourth class verbatim. The one fifth class is a
 handoff, not an escalation (contract/session-intent-baton.md, "The context-rotation stop").
 One thing is deliberately NOT such a side effect: **merging the effective base into
@@ -749,7 +749,7 @@ it owns there:
 | Target-MB Discovery & Pinning | overlay brainstorming | `target-mb-discovery.md` |
 | Brainstorming Paths | overlay brainstorming, overlay finishing | `brainstorming-paths.md` |
 | Repository Configuration (minus the epic line) | `mb-init`, `mb-state`, overlays, hook docs | `repository-configuration.md` |
-| The epic line, decision registry | `mb-epic-run`, `mb-epic-elaboration`, `guard-git-push.mjs` (comment) | `epic-line.md` |
+| The epic line, integration after the manager's go, decision registry | `mb-epic-run`, `mb-epic-elaboration`, overlay finishing, overlay brainstorming, script and hook comments | `epic-line.md` |
 | Playbook Contract | overlay SDD, overlay executing-plans, `mb-harvest`, `mb-park`, `mb-playbook-consolidate`, overlay brainstorming, `mb-architect-review`, `mb-epic-elaboration`, `mb-init`, `mb-sync`, `mb-migrate-docs` | `playbook-contract.md` |
 | Session Intent Baton | `session-intent.ps1`, `mb-park`, `mb-abort`, `mb-harvest`, overlay writing-plans, overlay SDD, overlay executing-plans | `session-intent-baton.md` |
 | The `NOW` Block | overlay SDD, overlay executing-plans, `mb-epic-run` | `now-block.md` |

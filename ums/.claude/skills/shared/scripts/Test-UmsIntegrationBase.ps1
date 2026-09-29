@@ -11,7 +11,8 @@
       epic-line   an UNPROTECTED branch matching Config.EpicBranchPattern
                   (built-in default `epic/*`, see Get-UmsRepoConfig): the
                   epic line `epic/<KEY>` is a legitimate integration base
-                  that nobody protects (design 4.2). An empty pattern means
+                  that nobody protects
+                  (contract/epic-line.md, "The epic line"). An empty pattern means
                   there is no epic line and nothing matches it.
 
     A protected branch WINS: a branch that is both protected and matches the

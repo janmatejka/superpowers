@@ -22,81 +22,59 @@ the other ticket had written — a parameter too many, a different parameter
 order, the wrong arity — caught only by chance, not by any mechanism.
 
 **The stub is authored on a ticket branch, like any other work, and reaches
-the epic line by the same fast-forward as everything else** — the manager
-performs that push but never authors the stub. Whose branch: the ticket that
-owns the interface, or, where neither owns it, one created for it during
-elaboration. "Committed before either implements against it" is therefore an
-ordering claim about the queue, not a licence to write the stub directly onto
-the epic line.
+the epic line by the same integration as everything else** — after the
+manager's `go`, pushed by the ticket that authored it; the manager never
+authors the stub. Whose branch: the ticket that owns the interface, or, where
+neither owns it, one created for it during elaboration. "Committed before
+either implements against it" is therefore an ordering claim about the queue,
+not a licence to write the stub directly onto the epic line.
 
-**It belongs in `protectedBranches`**, so the invariant of
-contract/repository-configuration.md — an integration branch is always a
-protected branch — holds for it literally, and both
-enforcement layers resolve its protection by their usual routes.
+**The epic line is an UNPROTECTED integration base, and `epicBranchPattern` is
+what identifies it.** It is deliberately NOT in `protectedBranches`, and it is
+the ONE named exception to the invariant of contract/repository-configuration.md
+that an integration branch is always a protected branch: a branch that matches
+`epicBranchPattern` is a legitimate base — offered among the base candidates and
+chosen without the fail-closed STOP. A branch matching a protected pattern as
+well is protected; protection wins, and such a line is integrated by a human like
+any protected base. **A missing key means the built-in default `epic/*`** — a
+widening a human decided when this model was designed, so that an epic runs with
+no extra configuration step. An explicitly empty, blank or non-string value
+means **no epic line at all**, never "every branch": no exception, and a base
+outside `protectedBranches` stays the fail-closed STOP. Every reader asks
+`Test-UmsIntegrationBase` (`Kind` `protected` | `epic-line` | `none`) over
+`Get-UmsRepoConfig`; nothing re-derives the answer by hand.
 
-**`epicBranchPattern` does NOT govern protection.** Its one job is the
-actor-rule exception that lets the agent's own tool call fast-forward such a
-branch (Publication Contract). A missing, empty or non-string value therefore
-means **no exception at all** — never "every branch" — which is the same
-safer-side degradation the keys of contract/repository-configuration.md follow.
+**What still guards the line is `pre-push`**, and nothing else: it bans deleting
+a branch through a push and a non-fast-forward push on every branch it polices,
+the epic line included, so only a fast-forward ever reaches it.
+`guard-git-push.mjs` judges a push to the line like a push to any unprotected
+branch; it grants no exception and reads neither `epicBranchPattern` nor
+`baseRef`.
 
-**An unusable `baseRef` likewise means no exception**, and the fallback to
-`origin/develop` does NOT apply here. Missing, non-string, empty, whitespace
-only, `refs/`-prefixed (`refs/remotes/origin/develop` — the accepted spelling is
-`origin/<branch>`, Repository Configuration), or reducing to an empty branch
-name (`origin/`): each of these declines the exception. Surrounding whitespace
-is trimmed off first, so a sloppy but correct value still works. Declining is
-fail-closed and guessing a base is not: condition 3 below compares the
-destination AGAINST the base name, so a base name that is merely wrong — rather
-than absent — is a name no destination equals, and the condition can never
-bite.
-
-**The exception holds only where all FOUR conditions hold**, and
-`guard-git-push.mjs` is the only place that evaluates them:
-
-1. the destination matches `epicBranchPattern`;
-2. the destination IS protected;
-3. the destination is NOT `<baseBranch>`, the branch derived from `baseRef`;
-4. the SOURCE side of the refspec is a raw 40-character hex SHA — not `HEAD`,
-   not a branch name, not an absent source.
-
-**Condition 3 needs the CONFIGURATION KEY `baseRef` itself, by name, and says
-so** — this is the escape the effective-base rule of
-contract/repository-configuration.md provides ("a site that
-instead needs the config key itself, by name, says so"), taken deliberately and
-not by omission. The reason is what evaluates the condition: a `pre-push` hook
-and a `PreToolUse` guard both fire without a work item in hand. Neither can know
-which base THIS work item integrates into — that lives in `context.md`, in a
-working tree the guard is not entitled to assume it is standing in — so the
-repository default is the only base name available to both, and it must be the
-same name in both or the two would disagree about what they exclude.
-
-Doklad: doklad/epic-line.md, "The residual risk of condition 3"
-
-Doklad: doklad/epic-line.md, "What each condition closes, and what the raw-SHA test does not do"
+Doklad: doklad/epic-line.md, "Why the epic line is unprotected"
 
 Doklad: doklad/epic-line.md, "The threat model"
 
-**A human creates the branch.** On a first publication `remote_sha` is zero, so
-the content rule cannot find the tip already reachable and `pre-push` rejects the
-push; the rejection hands over the ESCAPE spelling, and the plain integration
-spelling would be rejected there again (the two spellings are deliberately
-different — see Publication Contract).
-
-Doklad: doklad/epic-line.md, "What licenses an agentic write here"
-
-Doklad: doklad/epic-line.md, "The third category"
+**`mb-epic-run spawn` creates the line** when `origin/epic/<EPIC-KEY>` does not
+exist yet, from the delivery line: `New-UmsEpicLine` fetches and pushes
+`<delivery-line sha>:refs/heads/epic/<EPIC-KEY>`, a creation only — an existing
+line is never moved. `spawn` records the delivery line in the header of the
+epic's ledger (`- **Dodávková linie:** origin/develop`), and every ticket branch
+of the epic has `Báze: origin/epic/<EPIC-KEY>`, which the spawn prompt names so
+the entry gate's base choice has a recommendation rather than a guess.
 
 **An epic line comes into being only where the tickets of an epic are not
 individually deliverable into the delivery line**; where they are, every ticket
-integrates on its own, as everywhere else. **And it ends:** once the epic has
-reached the delivery line the branch is deleted, which is a human act because
-deleting a branch through a push is forbidden. Left behind it stays protected for
-ever, and every base choice keeps offering an unrelated epic's line as a base.
+integrates on its own, as everywhere else. **And it ends:** the exit of the epic
+into the delivery line is a human act (the Escalation floor), and so is deleting
+the line after it — deleting a branch through a push is forbidden. Left behind,
+every base choice keeps offering an unrelated epic's line as a base.
+
+Doklad: doklad/epic-line.md, "What licenses an agentic write here"
 
 **An unconfirmed decision-registry row naming the integrating ticket blocks the
-epic fast-forward, and the ticket's spawn row in the epic's own ledger must
-belong to this epic** — enforced mechanically, ahead of the push, by
+manager's `go`, and the ticket's spawn row in the epic's own ledger must
+belong to this epic** — enforced mechanically, ahead of the answer, by
 `mb-epic-run`'s `integrate` operation.
 
 **The decision registry** is the `## Registr rozhodnutí` section of the epic's
@@ -136,3 +114,42 @@ which reads them.
   can satisfy a column defined as a commit of the assumed-about ticket, and that
   owner's session may be finished and closed; the owner is context to REPORT —
   whose decision is waiting — never the actor to wait for.
+
+## Integration after the manager's go
+
+**A ticket integrates into the epic line only after the manager's `go`, and the
+push is the ticket's own.** The integration procedure is the one of
+(contract/integration.md, "Integration"); on an epic line its Handoff and
+Confirmation phases run in this order:
+
+1. **Handoff.** The ticket session sends the handoff artifact to the epic's
+   manager as a message and waits for the answer, the wait NAMED — the `NOW`
+   block's `waiting-for-manager` where the block exists; in finishing, which has
+   none, the report and the `## Předání` line of the ticket's epic file.
+2. **The manager checks and pushes nothing.** `mb-epic-run integrate` runs the
+   epic checks (`spawn-epic`, `decision-ack`), the cross-cutting judgement check
+   over the epic's evidence and the Handoff gate re-run against the freshly
+   fetched line.
+3. **The manager answers — mandatory, one handoff, one answer.** `go` carries
+   the epic-line tip the checks ran against; `STOP` carries the blocking check.
+   The answer is a reply (contract/message-protocol.md, "Replies are required").
+   After a `STOP` the ticket deals with the cause and sends a NEW handoff.
+4. **On `go` the ticket pushes.** `git fetch origin`, then verify that
+   `origin/epic/<EPIC-KEY>` still IS the tip the `go` names — if it moved, the
+   `go` is spent: resynchronize (the Publish phase) and send a new handoff. Then
+   `git push origin HEAD:epic/<EPIC-KEY>`, a fast-forward, and the Confirmation
+   phase from the base.
+5. **The ticket announces it.** An `Oznámení:` to the manager — the landed
+   fast-forward and the line's new tip, checkable with `git fetch`; no reply.
+   The manager writes the ledger note and prompts the other sessions to
+   resynchronize: integration is a queue, one ticket at a time.
+
+**Accepted residual risk: `go` is a rule of this contract, not a mechanism.**
+Nothing mechanical binds what the manager checked to what reaches the line: the
+hook lets any fast-forward from any agent session through onto the unprotected
+line — without a `go`, or with a commit added after the handoff. The tip
+verification of step 4 is the ticket session's DUTY, not a gate; a human
+accepted this when the model was designed, and it is written here so that the
+rule stops looking enforced.
+
+Doklad: doklad/epic-line.md, "The residual risk: go is not enforced"

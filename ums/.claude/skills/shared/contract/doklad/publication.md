@@ -8,9 +8,11 @@ lets the agent publish its own ticket branch unassisted, so it can make any
 commit reachable on `origin` and then fast-forward the base onto it. The rule
 that the MOMENT of integration belongs to the human is carried by the
 PreToolUse layer alone — therefore only in harnesses that have one, and only
-for command shapes it can parse; the epic line is its one deliberate carve-out
-(Repository Configuration, "The epic line"). Elsewhere it is a contract
-obligation like every other rule of this layer, and server-side branch
+for command shapes it can parse. The epic line is no carve-out from it: the
+line is unprotected, so the guard never reserves it, and the ticket's push onto
+it after the manager's `go` is a contract rule, not a mechanism
+(contract/epic-line.md, "Integration after the manager's go"). Elsewhere it is a
+contract obligation like every other rule of this layer, and server-side branch
 permissions remain the real backstop.
 
 ## What the reachability claim proves

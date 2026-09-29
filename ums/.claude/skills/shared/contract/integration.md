@@ -12,15 +12,14 @@ this work item (Repository Configuration, "The effective base of a work item"),
 never the raw `baseRef` configuration key.
 
 **ONE procedure, whatever the effective base is.** A delivery line, a maintenance
-branch of a release series and an epic line (Repository Configuration, "The epic
-line") are integrated through the same phases in the same order. **Every phase
+branch of a release series and an epic line (contract/epic-line.md, "The epic line") are integrated through the same phases in the same order. **Every phase
 below runs for every base**, and the question "is the base an epic line?" is
 asked exactly TWICE — in the Sync phase, to pick the HOME the declared
 verification set is read from, and in the Handoff phase, to pick the RENDERING
 of the artifact. Neither adds, removes or reorders a step, and they are not two
 independent conditions: **both read the ONE base resolution made once, before
-the sequence starts** (the effective base and the `epicBranchPattern` match
-derived from it). One derivation, consulted twice, is what keeps this a single
+the sequence starts** (the effective base and its `Test-UmsIntegrationBase`
+kind — `epic-line` or not — derived from it). One derivation, consulted twice, is what keeps this a single
 procedure; a THIRD site asking the same question — or either of these two
 re-deriving the answer for itself — would not be, and the test named in the
 design's verification point 3 exists to turn red on exactly that.
@@ -138,14 +137,16 @@ The phases, in order:
     human, so the agent never pushes it itself, not even as the fast-forward the
     `pre-push` hook would accept.
   - **a manager** → the artifact is rendered as a message to the epic's manager,
-    the session holding the epic's elaboration branch, who performs the
-    fast-forward under the actor-rule exception ("The epic line"). Only a manager
-    performs that fast-forward; where there is none, no agent does it either and
-    the artifact falls back to the no-manager rendering above — the plain human
-    command of the core's `## Publication Contract`. **The manager
-    owes the handing-over session an answer on both outcomes** — landed: the
-    target branch and the new tip SHA; STOP: the blocking check — because that
-    session's Confirmation phase is gated on it and never runs without it.
+    the session holding the epic's elaboration branch, who checks it and pushes
+    nothing. **The manager owes the handing-over session an answer on both
+    outcomes** — `go` with the epic-line tip its checks ran against, or `STOP`
+    with the blocking check — and on `go` the TICKET session itself fetches,
+    verifies that tip is unchanged, pushes `git push origin HEAD:<baseBranch>`
+    as a fast-forward onto the unprotected line, and announces the landing to
+    the manager (contract/epic-line.md, "Integration after the manager's go").
+    No `go`, no push: where no manager answers, no agent pushes either, and the
+    artifact falls back to the no-manager rendering above — the plain human
+    command of the core's `## Publication Contract`.
 - **Confirmation.** After the push lands — whoever ran it — the TICKET session,
   on the ticket's own branch, re-verifies reachability **from the base ref**:
   `git fetch origin`, then `git merge-base --is-ancestor <sha> <effective base>`
@@ -213,7 +214,8 @@ ticket branch is DETACHED from its inherited upstream, and its first publication
 a typically protected destination it must never publish to. What stops a bare push
 in that state is git's own `push.default=simple` plus `pre-push` — **not** the
 `PreToolUse` guard, which on a bare push resolves the target as the CURRENT BRANCH
-NAME and allows it ("The epic line", where that mechanism is written once). Two
+NAME and allows it (doklad/epic-line.md, "A bare push and the epic line", where
+that mechanism is written once). Two
 steps, both at the source: run `git branch --unset-upstream` immediately after the
 `switch -c`, and publish the first time with `-u`. A ticket branch whose upstream
 is a protected branch is a finding, not a normal state.

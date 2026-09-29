@@ -18,7 +18,7 @@
                          names), when the header is missing entirely, or
                          when this ledger has no spawn row for the ticket.
                          Without this check nothing stops the manager from
-                         moving any existing `epic/*` branch.
+                         answering `go` for any existing `epic/*` branch.
       2. `decision-ack` - no unconfirmed decision names this ticket. Fails
                          when any '## Registr rozhodnutí' row has
                          AssumesAbout (column "Předpokládá o (tiket)")
