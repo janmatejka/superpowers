@@ -59,7 +59,20 @@ Writers: implementer subagents report candidates in their report section
 `## Playbook candidates`; the driving session — the same actor named in
 "`context.md` Schema & Writers", i.e. the session dispatching the subagents —
 COPIES confirmed ones into the collection file without rephrasing; sessions
-outside SDD write directly.
+outside plan execution write directly. **Under Native execution
+(`executing-plans`) there is no implementer subagent and nothing to copy: the
+executor WRITES its own candidates**, after each `task-done`, in the same
+format and under the same file rules. Every writer, copying or writing, runs
+`Find-UmsPlaybookMatch <entry text> <MB_ROOT> <Target MB Pin>` (dot-source
+`shared/scripts/Find-UmsPlaybookMatch.ps1`) before an entry and adds a
+`Relates:` line for an item it touches — the only addition to a verbatim copy;
+an entry duplicating another candidate or an item of the chain is not written.
+
+**The candidate file lies OUTSIDE the plan workspace and survives its
+deletion.** `.superpowers/playbook-candidates/` is not under
+`.superpowers/sdd/`, so the executor deleting the plan's workspace when
+execution finishes — either executor does — leaves the file in place; only the
+harvest removes it, after its content has reached `playbook.md`.
 
 Candidate format — the first three fields are mandatory, an entry missing any
 of them is not written:

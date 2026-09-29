@@ -1,6 +1,6 @@
 # UMS Memory Bank Contract
 
-- **Contract-Version:** 3.1
+- **Contract-Version:** 3.2
 
 ## Purpose & Roles
 
@@ -10,9 +10,9 @@ the Memory Bank (MB) is the **document and knowledge layer** injected into it.
 This contract defines where superpowers artifacts live in the MB tree, how the
 target MB is selected and pinned, what `context.md` contains, and how knowledge is
 harvested when a branch finishes. Its consumers are the 18 live `mb-*` utility
-skills (plus the deprecated `mb-act` / `mb-plan` stubs), the four
-`<!-- UMS-OVERLAY -->` overlays over vendored skills (`brainstorming`,
-`writing-plans`, `subagent-driven-development`, `finishing-a-development-branch`),
+skills (plus the deprecated `mb-act` / `mb-plan` stubs), the five `<!-- UMS-OVERLAY -->`
+overlays over vendored skills (`brainstorming`, `writing-plans`,
+`subagent-driven-development`, `executing-plans`, `finishing-a-development-branch`),
 this layer's hooks (`pre-push`, `guard-git-push.mjs`, `deny-superpowers-docs.mjs`,
 `session-intent.ps1`, `contract-inject.ps1` — which injects this core into every
 session), and any other agent working with Memory Bank documents.
@@ -104,13 +104,12 @@ are the named exceptions of (contract/playbook-contract.md, "Writes outside PLAN
 Explicitly **legal and outside this lock**:
 
 - Source-code changes anywhere in the repository.
-- The superpowers scratch tree `<MB_ROOT>/.superpowers/` (task briefs,
-  implementer reports, review packages, progress ledger,
-  `playbook-candidates/<slug>.md`, `session-intent.md`) — git-ignored,
-  ephemeral, owned by the superpowers execution skills and the Playbook
-  Contract. One named exception to the git-ignored rule: `mb-park` commits the
-  CURRENT slug's candidate file to the ticket branch, so parking loses no
-  evidence (see Playbook Contract).
+- The superpowers scratch tree `<MB_ROOT>/.superpowers/` (task briefs, implementer
+  reports, review packages, progress ledger, `playbook-candidates/<slug>.md`,
+  `session-intent.md`) — git-ignored, ephemeral, owned by the superpowers execution
+  skills and the Playbook Contract. One named exception to the git-ignored rule:
+  `mb-park` commits the CURRENT slug's candidate file to the ticket branch, so
+  parking loses no evidence (see Playbook Contract).
 - Plan checkboxes and task-progress tracking inside the plan file and the
   `.superpowers/sdd/` ledger.
 
@@ -155,7 +154,7 @@ Do not hardcode machine-specific or repository-root absolute paths.
 The base ref is merged into the ticket branch at **phase boundaries** only:
 
 - before `writing-plans`,
-- before dispatching the first task,
+- before the first task of the plan, whichever executor runs it,
 - before a design-review request and before a design-review resume,
 - before the whole-branch review,
 - before `mb-harvest`.
@@ -196,8 +195,8 @@ decides whether verification is offered, never whether the work is correct.
 statement of the fact is the whole report; intersection → the agent lists the
 intersecting paths and **offers** a baseline with a recommendation, the user
 decides. A merge conflict counts as an intersection automatically. In the design
-and design-review phases nothing is built, so it is purely an offer. Before
-dispatching the first task a baseline is mandatory. **STOP applies only where
+and design-review phases nothing is built, so it is purely an offer. Before the
+first task of the plan a baseline is mandatory. **STOP applies only where
 verification actually ran and came back red** — someone else's breakage of the
 base is not repaired inside a ticket branch; report it and let the user decide.
 
@@ -472,8 +471,7 @@ unpushed commit exists only in the local `.git`, and a pool slot sharing that
 The points below are notable special cases, not the whole rule:
 
 1. after the design document is written and committed (brainstorming),
-2. after the implementation plan is written and committed (before the first task
-   dispatch),
+2. after the implementation plan is written and committed (before the first task),
 3. after an implementer's commit for a task that verified green,
 4. after the commit that merges the base ref into the ticket branch (see Base
    Sync & Drift Detection),
@@ -572,11 +570,10 @@ Everything else follows the skill's own Model Selection.
 
 **Always specify the model explicitly when dispatching a subagent.** An omitted
 model inherits the session's model (often the most capable and most expensive),
-silently defeating both the superpowers tiering and this guard.
-
-This policy is additive: it never overrides a more specific per-skill instruction
-naming an exact model or session-isolation requirement, and sessions outside any
-Memory Bank workflow are unaffected.
+silently defeating both the superpowers tiering and this guard. This policy is
+additive: it never overrides a more specific per-skill instruction naming an exact
+model or session-isolation requirement, and sessions outside any Memory Bank
+workflow are unaffected.
 
 ## Language Contract
 
@@ -612,12 +609,11 @@ Memory Bank workflow are unaffected.
 ## Worktree Policy
 
 **Default: total ban.** Git worktrees must not be created by an agent in this
-monorepo. Enforced by: `permissions.deny` on `EnterWorktree`/`ExitWorktree`
-and `Bash(git worktree:*)`/`PowerShell(git worktree:*)`,
-`skillOverrides: using-git-worktrees: off`, and the CLAUDE.md ban. The
-superpowers isolation step resolves to **branch-in-place**: create a feature
-branch in the existing working directory (never work on main/master without
-explicit user consent).
+monorepo. Enforced by: `permissions.deny` on `EnterWorktree`/`ExitWorktree` and
+`Bash(git worktree:*)`/`PowerShell(git worktree:*)`, the CLAUDE.md ban and
+`skillOverrides: using-git-worktrees: off`. The superpowers isolation step
+resolves to **branch-in-place**: create a feature branch in the existing working
+directory (never work on main/master without explicit user consent).
 
 ## Message Protocol
 
@@ -703,23 +699,22 @@ When anything important is missing or ambiguous:
 
 - Stop instead of guessing. Do not silently downgrade to another root,
   repository, or artifact location.
-- Hard failures: missing git; missing root `memory-bank/`; undefined
-  `PLAN_MB` at spec-write time; ambiguous target MB; a second active proposal
-  slug **on the current branch that is not recoverable from `origin`** (the limit
-  is per branch and a parked slug is normal operation — see Active Work Item);
-  mixed-language rule surfaces; an unreachable pinned commit at
-  publication time; the same slug or ticket active on a foreign branch; a base
-  sync that cannot be performed at a phase boundary (divergence or a dirty tree);
-  the ceiling of two integration rounds; a `pre-push` hook that is missing,
-  older than the layer's own source header, or fails EITHER half of the
-  synthetic-pipe check run in this session's own environment — the
-  protected-branch line it must reject and the
+- Hard failures: missing git; missing root `memory-bank/`; undefined `PLAN_MB` at
+  spec-write time; ambiguous target MB; a second active proposal slug **on the
+  current branch that is not recoverable from `origin`** (the limit is per branch
+  and a parked slug is normal operation — see Active Work Item); mixed-language
+  rule surfaces; an unreachable pinned commit at publication time; the same slug
+  or ticket active on a foreign branch; a base sync that cannot be performed at a
+  phase boundary (divergence or a dirty tree); the ceiling of two integration
+  rounds; a `pre-push` hook that is missing, older than the layer's own source
+  header, or fails EITHER half of the synthetic-pipe check run in this session's
+  own environment — the protected-branch line it must reject and the
   ticket-branch line it must accept (contract, "Session Eligibility"); a failing
   `git fetch origin` in phase 0 of the entry gate; a missing declared
   verification set at a work item's first integration — the Handoff gate's
-  fourth check (contract/integration.md, "Integration") — its umbrella (an epic's ledger, or the
-  work item's own plan otherwise) naming no set at all is a STOP, not a silent
-  pass.
+  fourth check (contract/integration.md, "Integration") — its umbrella (an epic's
+  ledger, or the work item's own plan otherwise) naming no set at all is a STOP,
+  not a silent pass.
 - NOT failures (explicitly legal): writing source code outside
   `memory-bank/`; the `.superpowers/` scratch tree; plan checkboxes; the
   `.superpowers/sdd/<plan-basename>/progress.md` ledger; an absolute
@@ -728,18 +723,18 @@ When anything important is missing or ambiguous:
   parked active work item on another
   branch; an untracked playbook-candidate file of another slug.
 
-**Rulings and these STOPs.** Upstream subagent-driven-development (v6.3.0) rules
-on conflicts instead of stalling and stops only for four named classes. This
-layer's fail-closed STOPs are not a fifth class — they FALL WITHIN those four: a
+**Rulings and these STOPs.** Upstream subagent-driven-development and executing-plans
+(v6.3.0+) rule on conflicts instead of stalling and stop only for four named classes.
+This layer's fail-closed STOPs are not a fifth class — they FALL WITHIN those four: a
 push to a shared branch and the integration push are "a side effect outside this
-clone that norms say you ask about first"; an active-work collision, an
-unprotected base and an unreachable pinned commit are irreversible in the same
-sense; a plan too broken to follow is upstream's fourth class verbatim. One thing
-is deliberately NOT such a side effect: **merging the effective base into the
-agent's OWN ticket branch.** It is mandatory at phase boundaries (Base Sync &
-Drift Detection) and is never put to the user — reading upstream's word "merge"
-as covering it would turn the mandatory base sync before the first dispatch into
-a question.
+clone that norms say you ask about first"; an active-work collision, an unprotected
+base and an unreachable pinned commit are irreversible in the same sense; a plan too
+broken to follow is upstream's fourth class verbatim. The one fifth class is a
+handoff, not an escalation (contract/session-intent-baton.md, "The context-rotation stop").
+One thing is deliberately NOT such a side effect: **merging the effective base into
+the agent's OWN ticket branch.** It is mandatory at phase boundaries (Base Sync &
+Drift Detection) and is never put to the user — reading upstream's word "merge" as
+covering it would turn the mandatory base sync before the first task into a question.
 
 Doklad: contract/doklad/escalation.md, "Context rotation as a fifth class"
 
@@ -755,9 +750,9 @@ it owns there:
 | Brainstorming Paths | overlay brainstorming, overlay finishing | `brainstorming-paths.md` |
 | Repository Configuration (minus the epic line) | `mb-init`, `mb-state`, overlays, hook docs | `repository-configuration.md` |
 | The epic line, decision registry | `mb-epic-run`, `mb-epic-elaboration`, `guard-git-push.mjs` (comment) | `epic-line.md` |
-| Playbook Contract | overlay SDD, `mb-harvest`, `mb-park`, `mb-playbook-consolidate`, overlay brainstorming, `mb-architect-review`, `mb-epic-elaboration`, `mb-init`, `mb-sync`, `mb-migrate-docs` | `playbook-contract.md` |
-| Session Intent Baton | `session-intent.ps1`, `mb-park`, `mb-abort`, `mb-harvest`, overlay writing-plans, overlay SDD | `session-intent-baton.md` |
-| The `NOW` Block | overlay SDD, `mb-epic-run` | `now-block.md` |
+| Playbook Contract | overlay SDD, overlay executing-plans, `mb-harvest`, `mb-park`, `mb-playbook-consolidate`, overlay brainstorming, `mb-architect-review`, `mb-epic-elaboration`, `mb-init`, `mb-sync`, `mb-migrate-docs` | `playbook-contract.md` |
+| Session Intent Baton | `session-intent.ps1`, `mb-park`, `mb-abort`, `mb-harvest`, overlay writing-plans, overlay SDD, overlay executing-plans | `session-intent-baton.md` |
+| The `NOW` Block | overlay SDD, overlay executing-plans, `mb-epic-run` | `now-block.md` |
 | Harvest Contract, Document Ownership procedure | `mb-harvest`, `mb-sync`, `mb-migrate-docs` | `harvest.md` |
 | Integration, Abandon | overlay finishing, `mb-epic-run`, `mb-abort`, `mb-jira-update` | `integration.md` |
 | Cross-Branch Visibility | `mb-doc-index`, overlay brainstorming | `cross-branch-visibility.md` |
@@ -790,10 +785,15 @@ link this contract relatively from their own directory.
 **Version lives in the core only.** The `Contract-Version` line at the top of this
 file is the single authority for the contract's version; no reference or evidence
 file carries one, and the per-version history is kept in `shared/CHANGELOG.md`. The
-vendored superpowers upstream version is pinned separately in
-`shared/VENDORED_FROM.md` (tag, commit, skill list). UMS modifications to vendored
-skills exist ONLY as marked `<!-- UMS-OVERLAY BEGIN/END -->` blocks, generated from
-`shared/overlays/*.overlay.md` by `.claude/scripts/revendor-superpowers.ps1`; never
-edit vendored files by hand outside those blocks. Upgrading upstream: re-run the
-vendoring script per the procedure in `VENDORED_FROM.md` — an overlay anchor miss
-is the upstream-drift detector, not a defect to work around.
+vendored superpowers upstream version is pinned separately in `shared/VENDORED_FROM.md`
+(tag, commit, skill list). UMS modifications to vendored skills exist ONLY as marked
+`<!-- UMS-OVERLAY BEGIN/END -->` blocks, generated from `shared/overlays/*.overlay.md`
+by `.claude/scripts/revendor-superpowers.ps1`; never edit vendored files by hand
+outside those blocks. Every overlaid skill carries, besides its block, a header
+pointer — a short second block right after the frontmatter that names the block —
+because Claude Code re-injects invoked skill bodies truncated after a compaction.
+Upgrading upstream: re-run the vendoring script per the procedure in
+`VENDORED_FROM.md` — an overlay anchor miss is the upstream-drift detector, not a
+defect to work around.
+
+Doklad: contract/doklad/compaction.md, "The 5,000-token re-injection cap"

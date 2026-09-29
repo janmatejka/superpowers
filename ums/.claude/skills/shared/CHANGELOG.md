@@ -1,6 +1,19 @@
 # Contract changelog
 
-- **Contract-Version:** 3.1
+- **Contract-Version:** 3.2
+- 3.2 — superpowers v6.4.2: plan-execution rules spread into their topic
+  references for both executors, subagent-driven-development and the new Native
+  `executing-plans`, instead of living in the SDD overlay only — the
+  context-rotation stop and the baton's writers in `session-intent-baton.md`,
+  the rewrite points of the `NOW` block and the ledger's home by the workspace's
+  `plan-path` marker in `now-block.md`, the candidate file surviving the
+  workspace deletion and Native self-written candidates in
+  `playbook-contract.md`; a fifth overlay (`executing-plans`); a header pointer
+  in every overlaid skill, because Claude Code re-injects invoked skill bodies
+  truncated to 5,000 tokens after a compaction (`doklad/compaction.md`); every
+  range against the base (review package, final-review `MERGE_BASE`, base-sync
+  intersection) cut from the effective base, never the local `main`
+  (`repository-configuration.md`).
 - 3.1 — playbook tree and ancestor chain, file and item shape, escalation
   threshold with a ratchet, legacy mode, harvest gate v2, consolidation of one
   Memory Bank and of the whole tree, Scope Lock exceptions for playbook writes

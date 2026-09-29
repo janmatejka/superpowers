@@ -81,6 +81,14 @@ endpoint, a `switch --detach` target, or the `<baseBranch>` derivation — the
 effective base is meant, not necessarily the `baseRef` config value. A site that
 instead needs the config key itself, by name, says so.
 
+**Every range cut against the base is cut from the effective base** — the review
+package, the `MERGE_BASE` of the final whole-branch review, the intersection sets
+of a base sync: `git merge-base <effective base> HEAD`, never the local `main`
+that upstream examples such as `git merge-base main HEAD` name. A local branch is
+not the base: it may lag `origin` or, as in a fork whose `main` mirrors upstream,
+not be the integration line at all, and a range cut from it carries history that
+is not this work item's.
+
 **One site is deliberately NOT the effective base: the start point of the
 `git switch -c` that CREATES the ticket branch — but only when the work item is
 being pinned for the FIRST time.** There the base is the one the user picked in

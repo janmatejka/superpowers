@@ -3,8 +3,10 @@ Part of contract 3.x — evidence read on demand, never the home of a rule.
 
 ## Context rotation as a fifth class
 
-Context rotation, on the other hand, IS a fifth class, introduced by the
-subagent-driven-development overlay — and a differently shaped one: the four are
+Context rotation, on the other hand, IS a fifth class — first introduced by the
+subagent-driven-development overlay, now homed in
+`session-intent-baton.md` for both plan executors (subagent-driven-development
+and executing-plans) — and a differently shaped one: the four are
 escalation stops (stop, ask, continue here), while rotation is a handoff stop
 (this session ends, a fresh one continues), like the Architect Review Gate. It is
 additive and weakens none of the four.

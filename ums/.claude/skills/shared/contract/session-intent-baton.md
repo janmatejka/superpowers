@@ -71,6 +71,13 @@ the skill reports its result. It runs where the skill ACTED, never where it
 refused to act: a STOP that reports "nothing was committed, pushed or discarded"
 must stay true.
 
+**Writers.** `writing-plans` writes `Kind: plan-execution` when the operator
+chooses to execute the plan in a fresh session, for either execution method,
+with `Instruction:` naming the chosen executor. The plan executors —
+`subagent-driven-development` and `executing-plans` — write `Kind: plan-resume`
+at a context-rotation stop ("The context-rotation stop" below). Every other
+skill only invalidates.
+
 **Writer precondition.** A baton is written only where a consumer will read it:
 the harness must be one whose session-start hooks this layer configures
 (`CLAUDECODE` non-empty), and the hook must exist and be registered. This layer's
@@ -105,3 +112,41 @@ also force `mb-park` to decide whether to commit it, and a committed "execute
 this plan" instruction published to `origin` is a live hazard for every resuming
 session. There is therefore no exception here, and the Playbook Contract's "one
 named exception to the git-ignored rule" stays true.
+
+### The context-rotation stop
+
+Both upstream plan executors — `subagent-driven-development` and
+`executing-plans` — say "Four things stop you, and only these". In this layer
+there is a fifth, and that sentence is narrowed rather than weakened: the four
+are ESCALATION stops — stop, ask, continue in this same session — while context
+rotation is a HANDOFF stop: this session ends and a fresh one continues, like
+the Architect Review Gate. The four stay untouched; this is additive.
+
+**Only at a task boundary** — after the task's completion line is in the ledger
+and its todo is marked complete, and before the next task begins (the next
+dispatch under subagent-driven-development, the next `task-start` under
+executing-plans). Nowhere else: mid-task the on-disk state is incomplete, and a
+rotation would discard a live review cycle or a half-worked step.
+
+**At that boundary**, when the remaining context looks insufficient for another
+task: write the baton with `Kind: plan-resume`, the plan path, the ledger path,
+the branch, the slug, `Next task:` (the number of the first incomplete task) and
+the required `Instruction:` line naming the executor that is RUNNING —
+`subagent-driven-development` or `executing-plans`, never the other one; append a
+plain note to the ledger that the session was rotated here — a note, NOT a
+`Ruling:`, because no conflict was decided; report in Czech; and stop with the
+single instruction to type `/clear`. The writer precondition above binds this
+writer too: where no consumer will read a baton, write none and report that the
+intent will not be delivered automatically.
+
+**This is a judgement call, not a measurement.** Hook input carries no reliable
+token-budget field; do not build a threshold detector and do not claim one
+exists. The operator's own meter overrides the executor in BOTH directions.
+
+**A resumed session does NOT re-run the base sync or the baseline.** "Before the
+first task of the plan" (contract, "Base Sync & Drift Detection") means task 1 of
+the PLAN, not task 1 of a session, and `Next task: N` in the baton is what tells
+a fresh session which it is. Reading it the other way would make every rotation
+a mid-phase base merge, which that same section forbids.
+
+Doklad: doklad/escalation.md, "Context rotation as a fifth class"

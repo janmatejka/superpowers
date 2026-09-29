@@ -8,11 +8,25 @@ stalled session is visible without anyone reading its transcript. **It is not
 a second Session Intent Baton:** the baton carries what a NEW session must do
 after a restart, the block carries what the CURRENT session is waiting for.
 
-**It lives at the top of `.superpowers/sdd/<plan-basename>/progress.md`** —
-the SDD progress ledger that Fail-Closed Behavior already names as legal
-git-ignored scratch — directly under that file's title line, exactly one
+**It lives at the top of the plan's progress ledger, `progress.md` in the
+plan's workspace under `.superpowers/sdd/`** — the ledger that Fail-Closed
+Behavior already names as legal git-ignored scratch, and that both plan
+executors share (subagent-driven-development and executing-plans write the same
+file in the same format) — directly under that file's title line, exactly one
 marker pair per ledger; a second pair is not a variant but a malformed block
-(Marker behaviour below). It is AI-facing scratch and therefore English
+(Marker behaviour below).
+
+**The ledger's home is decided by the workspace's `plan-path` marker, never by
+the directory name.** Upstream `sdd-workspace` writes into each workspace a
+`plan-path` file holding the path of the plan that owns it (repo-relative for a
+plan inside the repository), and when `.superpowers/sdd/<plan-basename>/` is
+already owned by a different plan it creates `<plan-basename>-<parent>/` (then a
+counter) instead — in this layer, the same slug pinned in two Memory Banks. The
+plain basename directory may therefore hold another plan's block. A reader takes
+the workspace whose `plan-path` equals the path of the active pair's
+`plan_<slug>.md`; where no workspace's marker names it, there is no block.
+
+It is AI-facing scratch and therefore English
 (Language Contract), its state class included; `mb-epic-run status` translates
 on render, the same translate-on-presentation split as `Ruling:` lines.
 
@@ -146,10 +160,24 @@ on the Handoff gate and on the checks of `mb-epic-run integrate` (Publication
 Contract, "Integration"), and on nothing this block says.
 
 **Where the block does NOT exist, and that is a limitation rather than a
-property.** Its home is deleted when subagent-driven-development finishes, and
+property.** Its home is deleted when the plan executor finishes, and
 `pool-status.ps1` renders it only while the slot carries an ACTIVE pin. During
 brainstorming, writing-plans, design review and the whole of finishing —
 integration included — there is therefore NO block. A rule about ending a turn
 may name the block only where the block exists; elsewhere the wait is named in
 the report instead. Giving the block the lifetime of a work item is a
 follow-up item, not part of this contract.
+
+### When the block is rewritten
+
+The rewrite OPERATION above says HOW; this says WHEN, and it is the only part
+that differs between the two executors. The executor writes the block before
+the first task and then rewrites it — always by that operation, never by an
+edit in place — at every point where what it is waiting on changes:
+
+- **subagent-driven-development:** at each dispatch, at each report that comes
+  back, and before every end of turn.
+- **executing-plans (Native):** at the start of each task (`task-start`), after
+  each `task-done`, and before every end of turn. The executor is its own
+  implementer, so between those points it awaits nothing; a wait it does begin
+  — the final reviewer, a question to a human — is a rewrite point of its own.
