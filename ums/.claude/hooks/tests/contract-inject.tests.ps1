@@ -172,4 +172,107 @@ Assert-True (-not ($json.hookSpecificOutput.additionalContext -match 'WARNING: d
 Assert-Match $json.hookSpecificOutput.additionalContext '<contract-core>[\s\S]*Contract-Version:\*\* 3\.0[\s\S]*</contract-core>' 'identical source → core is still emitted in full (hash check ran, found no drift)'
 Remove-Item -Recurse -Force $d4, $rDrift
 
+# 15. the ledger is found by the workspace's plan-path marker, not by the
+# directory name (design: upstream sdd-workspace disambiguates a basename
+# collision as plan_<slug>-<parent>/, so plan_<slug>/ may belong to another plan).
+function New-Workspace([string] $Repo, [string] $Name, $PlanPath, [string] $TaskText) {
+    # $PlanPath is deliberately untyped: a [string] parameter turns $null ("no marker") into ''.
+    $w = Join-Path $Repo ".superpowers\sdd\$Name"
+    New-Item -ItemType Directory -Force -Path $w | Out-Null
+    if ($null -ne $PlanPath) { [IO.File]::WriteAllText((Join-Path $w 'plan-path'), $PlanPath + "`n", (New-Object Text.UTF8Encoding($false))) }
+    $blk = "# Ledger`n<!-- UMS-NOW BEGIN -->`nState: waiting-for-subagent`nWaiting on: implementer`nSince: 2026-09-17T09:00:00Z`nDue: 2026-09-17T09:30:00Z`nTask: $TaskText`nLook at: nowhere`n<!-- UMS-NOW END -->`n"
+    [IO.File]::WriteAllText((Join-Path $w 'progress.md'), $blk, (New-Object Text.UTF8Encoding($false)))
+    return $w
+}
+$ctxX = "# Context`n`n## Active Work`n`n- **Target MB Pin:** memory-bank/`n- **Work item:** x`n"
+$dm = New-Deployment $core
+
+# 15a. two workspaces: the plain-slug one is owned by an abandoned plan, the
+# suffixed one by the active plan → the active plan's block wins.
+$rm = New-Repo $ctxX
+New-Workspace $rm 'plan_x' 'memory-bank/proposals/abandoned/plan_x.md' '1 - stale' | Out-Null
+New-Workspace $rm 'plan_x-active' 'memory-bank/proposals/active/plan_x.md' '7 - live' | Out-Null
+$ac = ((Invoke-Hook $dm $rm 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac '<now-block>[\s\S]*Task: 7 - live[\s\S]*</now-block>' 'marker: the workspace owned by the active plan supplies the block'
+Assert-True (-not ($ac -match 'stale')) 'marker: the abandoned plan''s workspace is not read'
+
+# 15b. only the plain-slug workspace, WITHOUT a marker (pre-marker legacy) → used.
+$rl = New-Repo $ctxX
+New-Workspace $rl 'plan_x' $null '3 - legacy' | Out-Null
+$ac = ((Invoke-Hook $dm $rl 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac '<now-block>[\s\S]*Task: 3 - legacy[\s\S]*</now-block>' 'legacy: a plan_<slug>/ workspace without plan-path is used'
+
+# 15c. the plain-slug workspace HAS a marker naming another plan and nothing
+# else matches → no block (the directory name alone never decides).
+$ro = New-Repo $ctxX
+New-Workspace $ro 'plan_x' 'memory-bank/proposals/abandoned/plan_x.md' '1 - stale' | Out-Null
+$ac = ((Invoke-Hook $dm $ro 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac '<contract-core>' 'foreign marker: core is still emitted'
+Assert-True (-not ($ac -match '<now-block>')) 'foreign marker: no fallback to the plain-slug directory'
+Assert-True (-not ($ac -match 'stale')) 'foreign marker: foreign ledger content is not emitted'
+
+# 15d. legacy proposal_<slug>.md marker also matches; the marker compares
+# case-sensitively and after trim only.
+$rp = New-Repo $ctxX
+New-Workspace $rp 'plan_x-old' 'memory-bank/proposals/active/proposal_x.md' '5 - proposal era' | Out-Null
+$ac = ((Invoke-Hook $dm $rp 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac 'Task: 5 - proposal era' 'marker: legacy proposal_<slug>.md path matches'
+$rc = New-Repo $ctxX
+New-Workspace $rc 'plan_x-c' 'memory-bank/proposals/active/PLAN_X.md' '9 - wrong case' | Out-Null
+$ac = ((Invoke-Hook $dm $rc 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-True (-not ($ac -match 'wrong case')) 'marker: comparison is case-sensitive'
+
+# 15e. an oversized marker is never a match and never echoed.
+$rb = New-Repo $ctxX
+# The padding is trailing whitespace only, so the value EQUALS the plan path after
+# trim: the size bound alone is what rejects it. A short padding (same shape,
+# inside the bound) is the paired positive case.
+New-Workspace $rb 'plan_x-big' ('memory-bank/proposals/active/plan_x.md' + (' ' * 5000)) '2 - oversize' | Out-Null
+$ac = ((Invoke-Hook $dm $rb 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-True (-not ($ac -match 'oversize')) 'marker: an oversized plan-path is not a match'
+Assert-True (-not ($ac -match 'plan-path')) 'marker: plan-path content is never emitted'
+$rb2 = New-Repo $ctxX
+New-Workspace $rb2 'plan_x-pad' ('memory-bank/proposals/active/plan_x.md' + (' ' * 100)) '2 - padded' | Out-Null
+$ac = ((Invoke-Hook $dm $rb2 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac 'Task: 2 - padded' 'marker: trailing whitespace inside the bound is trimmed and matches'
+
+# 15f. on Windows Git Bash upstream sdd-workspace writes the marker as an
+# ABSOLUTE msys path (/c/...), because its root and its plan path come from
+# different tools. That exact spelling of THIS repo's plan matches as well.
+$rw = New-Repo $ctxX
+$rootFwd = (& git -C $rw rev-parse --show-toplevel).Trim()
+$msysRoot = if ($rootFwd -match '^(?<d>[A-Za-z]):/(?<r>.*)$') { '/' + $Matches['d'].ToLowerInvariant() + '/' + $Matches['r'] } else { $rootFwd }
+New-Workspace $rw 'plan_x-msys' ($msysRoot + '/memory-bank/proposals/active/plan_x.md') '4 - msys absolute' | Out-Null
+$ac = ((Invoke-Hook $dm $rw 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac 'Task: 4 - msys absolute' 'marker: this repo''s absolute path spelling matches'
+$rz = New-Repo $ctxX
+New-Workspace $rz 'plan_x-elsewhere' '/c/somewhere/else/memory-bank/proposals/active/plan_x.md' '6 - other repo' | Out-Null
+$ac = ((Invoke-Hook $dm $rz 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-True (-not ($ac -match 'other repo')) 'marker: an absolute path of another location does not match'
+
+# 15g. two workspaces both claiming the active plan are ambiguous → no block.
+$ra = New-Repo $ctxX
+New-Workspace $ra 'plan_x-a' 'memory-bank/proposals/active/plan_x.md' '1 - first' | Out-Null
+New-Workspace $ra 'plan_x-b' 'memory-bank/proposals/active/plan_x.md' '2 - second' | Out-Null
+$ac = ((Invoke-Hook $dm $ra 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-True (-not ($ac -match '<now-block>')) 'marker: two claimants of one plan → no block'
+
+# 15h. a pin outside the character whitelist never selects a workspace.
+$rh = New-Repo "# Context`n`n## Active Work`n`n- **Target MB Pin:** ../evil/`n- **Work item:** x`n"
+New-Workspace $rh 'plan_x-evil' '../evil/proposals/active/plan_x.md' '8 - evil pin' | Out-Null
+$ac = ((Invoke-Hook $dm $rh 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-True (-not ($ac -match 'evil pin')) 'hostile pin: no workspace is selected by it'
+
+# 16. the post-compaction instruction tells the model about truncated skill bodies.
+$ac = ((Invoke-Hook $dm $rm 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $ac 'may be truncated at 5,000 tokens' 'instruction: warns that a re-injected skill body may be truncated'
+Assert-Match $ac 'read that skill''s UMS-OVERLAY block from its SKILL\.md\.\s*$' 'instruction: the truncation sentence closes the payload'
+$fb = ((Invoke-Hook (New-Deployment $null) $rm 'SessionStart').Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+Assert-Match $fb 'Read .*\(contract core\)' 'instruction: fallback payload is unchanged'
+$res = Invoke-Hook $dm $rm 'PostCompact'
+Assert-Match (($res.Out | ConvertFrom-Json).systemMessage) '^Context was compacted\. The contract core is re-injected with your next prompt' 'PostCompact systemMessage is unchanged'
+Assert-True (-not ((($res.Out | ConvertFrom-Json).PSObject.Properties.Name) -contains 'hookSpecificOutput')) 'PostCompact still carries no additionalContext'
+
+Remove-Item -Recurse -Force $dm, $rm, $rl, $ro, $rp, $rc, $rb, $rb2, $rw, $rz, $ra, $rh
+
 Complete-Tests

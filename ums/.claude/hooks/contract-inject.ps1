@@ -11,7 +11,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $MaxPayloadBytes = 49152
 $corePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'skills\shared\UMS_MEMORY_BANK_CONTRACT.md'
 $FallbackText = "Read $corePath (contract core) and memory-bank/context.md before relying on any Memory Bank-aware behaviour."
-$Instruction = 'Invoke the Skill tool with skill: using-superpowers first, then read your active skill''s references named in its banner. Then run the Session Eligibility check (contract, "Session Eligibility").'
+$Instruction = 'Invoke the Skill tool with skill: using-superpowers first, then read your active skill''s references named in its banner. Then run the Session Eligibility check (contract, "Session Eligibility"). If a skill body was re-injected after compaction it may be truncated at 5,000 tokens — before continuing, read that skill''s UMS-OVERLAY block from its SKILL.md.'
 
 function Emit-Context([string] $EventName, [string] $Text) {
     $p = [pscustomobject] @{ hookSpecificOutput = [pscustomobject] @{ hookEventName = $EventName; additionalContext = $Text } }
@@ -85,8 +85,57 @@ try {
         # that fails simply yields no NOW block, same as any other unreadable
         # ledger.
         if ($null -ne $slug -and $slug -match '^[A-Za-z0-9_.-]+$') {
-            $ledger = Join-Path $root (".superpowers/sdd/plan_" + $slug + "/progress.md")
-            if (Test-Path -LiteralPath $ledger -PathType Leaf) {
+            # The ledger's home is decided by the workspace's plan-path marker, not
+            # by the directory name: upstream sdd-workspace writes the owning plan's
+            # path into .superpowers/sdd/<dir>/plan-path and, when plan_<slug>/ is
+            # owned by another plan, creates plan_<slug>-<parent>/ instead. The pin
+            # is attacker-reachable text like the slug, so it passes a character
+            # whitelist (no `..` segment) before it is built into a comparison
+            # string; the marker file is untrusted too — size-bounded, trimmed,
+            # compared as a string, never executed or emitted.
+            $pin = $null
+            $pinLine = @($ctxLines | Where-Object { $_ -match '\*\*Target MB Pin:\*\*\s+(?<p>\S+)' })
+            if ($pinLine.Count -gt 0 -and $pinLine[0] -match '\*\*Target MB Pin:\*\*\s+(?<p>\S+)') { $pin = $Matches['p'] }
+            if ($null -ne $pin -and $pin -match '^[A-Za-z0-9_./-]+$' -and $pin -notmatch '(^|/)\.\.(/|$)') {
+                if (-not $pin.EndsWith('/')) { $pin += '/' }
+            } else { $pin = $null }
+            $wsDir = $null
+            $sddDir = Join-Path $root '.superpowers/sdd'
+            if ($null -ne $pin -and (Test-Path -LiteralPath $sddDir -PathType Container)) {
+                $rootFwd = $root.Replace('\', '/').TrimEnd('/')
+                $rootMsys = if ($rootFwd -match '^(?<d>[A-Za-z]):/(?<r>.*)$') { '/' + $Matches['d'].ToLowerInvariant() + '/' + $Matches['r'] } else { $rootFwd }
+                # Accepted spellings of the active pair's plan path (plan_ first, legacy
+                # proposal_ second). Upstream writes the repo-relative form; under Git
+                # Bash on Windows it writes this repo's absolute msys form instead.
+                $wanted = @()
+                foreach ($f in @("plan_$slug.md", "proposal_$slug.md")) {
+                    $rel = $pin + 'proposals/active/' + $f
+                    $wanted += @($rel, "$rootFwd/$rel", "$rootMsys/$rel")
+                }
+                $claims = @()
+                foreach ($d in @(Get-ChildItem -LiteralPath $sddDir -Directory -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } | Sort-Object Name | Select-Object -First 200)) {
+                    $mf = Join-Path $d.FullName 'plan-path'
+                    if (-not (Test-Path -LiteralPath $mf -PathType Leaf)) { continue }
+                    if ((Get-Item -LiteralPath $mf).Length -gt 1024) { continue }
+                    $mv = ([IO.File]::ReadAllText($mf)).Trim()
+                    if ($wanted -ccontains $mv) { $claims += $d.FullName }
+                }
+                # Exactly one claimant; two workspaces naming the same plan are ambiguous
+                # and yield no block.
+                if ($claims.Count -eq 1) { $wsDir = $claims[0] }
+                elseif ($claims.Count -eq 0) {
+                    # A workspace from before the marker scheme has no plan-path file;
+                    # only then is the plain-slug directory the ledger's home.
+                    $legacy = Join-Path $sddDir ("plan_" + $slug)
+                    if ((Test-Path -LiteralPath $legacy -PathType Container) -and -not (Test-Path -LiteralPath (Join-Path $legacy 'plan-path'))) { $wsDir = $legacy }
+                }
+            }
+            elseif ($null -eq $pin) {
+                $legacy = Join-Path $sddDir ("plan_" + $slug)
+                if ((Test-Path -LiteralPath $legacy -PathType Container) -and -not (Test-Path -LiteralPath (Join-Path $legacy 'plan-path'))) { $wsDir = $legacy }
+            }
+            $ledger = if ($null -ne $wsDir) { Join-Path $wsDir 'progress.md' } else { '' }
+            if ($ledger -and (Test-Path -LiteralPath $ledger -PathType Leaf)) {
                 $l = @(Get-Content -LiteralPath $ledger -Encoding utf8)
                 $b = [array]::IndexOf($l, '<!-- UMS-NOW BEGIN -->'); $e = [array]::IndexOf($l, '<!-- UMS-NOW END -->')
                 if ($b -ge 0 -and $e -gt $b) {

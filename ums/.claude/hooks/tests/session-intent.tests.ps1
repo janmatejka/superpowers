@@ -808,4 +808,23 @@ try {
 }
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
+# i) the Native executing-plans baton: an Instruction that names executing-plans
+# and a task number is a valid, deliverable baton (emission, not .stale.md).
+# Runs against a hook copy whose sibling skills directory holds a real
+# executing-plans directory, so the case does not depend on the deployed tree.
+$fx = New-BatonFixture 'a2-executing-plans'
+try {
+    $hookCopy = New-DeployedHookCopy $fx.Work
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    New-SkillDirs $fx.Work @('executing-plans') | Out-Null
+    $body = (New-ValidBatonBody $fx.Work) -replace '(?m)^Instruction:.*$', 'Instruction: Continue with executing-plans at task 3.'
+    Write-Baton $fx.Work $body
+    $r = Invoke-Baton $fx.Work $hookCopy
+    Assert-Match $r.Out '<session-intent' 'A2 executing-plans Instruction is delivered'
+    Assert-Match $r.Out 'Instruction: Continue with executing-plans at task 3\.' 'A2 executing-plans Instruction is rendered'
+    Assert-True (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.consumed.md')) 'A2 executing-plans baton is consumed'
+    Assert-True (-not (Test-Path -LiteralPath (Get-BatonPath $fx.Work 'session-intent.stale.md'))) 'A2 executing-plans baton is not stale'
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
 Complete-Tests
