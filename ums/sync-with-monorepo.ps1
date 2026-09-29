@@ -1,71 +1,97 @@
 <#
 .SYNOPSIS
-    Syncs the UMS Memory Bank integration layer between this fork branch
-    (ums-memory-bank, directory ums/) and a deployment target: the UMS
-    monorepo (default) or the current user's profile. Claude Code in the
-    monorepo is two-way; every other combination is a one-way deploy.
+    Deploys the UMS Memory Bank layer from this fork (directory ums/, the
+    MASTER copy) into a target - the UMS monorepo (default), the user's
+    profile or the fork's own root - including the vendored superpowers
+    skills, with protection against overwriting changes made in the target.
 
 .DESCRIPTION
-    Agent 'claude' + Scope 'Monorepo' (default) — two-way sync of the
-    UMS-owned file set (everything in the monorepo's .claude/ EXCEPT the 14
-    vendored superpowers skill directories):
+    The fork is the master copy of the layer. The default -Direction ToMonorepo
+    deploys fork -> target for every scope. -Direction FromMonorepo is the
+    deliberate pull of changes made in the monorepo back into the fork; it
+    exists only for -Agent claude -Scope Monorepo and never pulls the vendored
+    skills (see below).
 
-      FromMonorepo (default):  <monorepo>/.claude/*  ->  <fork>/ums/.claude/*
-                               <monorepo>/CLAUDE.md  ->  <fork>/ums/CLAUDE.md.sample
-      ToMonorepo:              the reverse
+    What one ToMonorepo run writes, per target (Get-UmsSyncTargets is the one
+    table of the 15 harnesses superpowers supports - claude, codex, gemini,
+    qwen, opencode, pi, hermes, cursor, copilot, devin, droid, kimi, muse,
+    antigravity, grok - with their skills dir, config dir, instructions file
+    and marker mechanism per scope):
+      * UMS items: skills/shared (the target's shared/VENDORED_FROM.md is kept -
+        the revendor owns it) and every skills/mb-* into the skills directory;
+        for claude in Monorepo/Fork also settings.json, hooks/* and
+        scripts/revendor-superpowers.ps1; for every other harness (and claude
+        in UserProfile) the glue dirs of ums/.claude (hooks/, scripts/) are
+        merged file by file into its config dir, never deleting anything
+        there; settings.json only ever goes to claude;
+      * the vendored superpowers skills: the fork's revendor runs against the
+        target skills directory with the FORK's pin (tag, skill set) and the
+        overlay fragments just mirrored into the target;
+      * the instructions block: ums/CLAUDE.md.sample between the
+        UMS-MEMORY-BANK markers of the harness's instructions file; for
+        claude's CLAUDE.md a legacy file without markers is migrated in place
+        (its UMS-owned sections are replaced, project sections stay);
+        UserProfile prepends a scoping line;
+      * the agent-session marker (MB_AGENT_SESSION) through the harness's
+        documented mechanism; harnesses without one get the named warning
+        "the pre-push guarantee does not bind '<agent>'" (Pi is covered by its
+        own AI_AGENT variable and gets a note instead);
+      * the pre-push git hook (Monorepo: the monorepo, Fork: the fork;
+        UserProfile has no single repository - install it per clone);
+      * the deployment manifest (below).
+    Targets shared by several harnesses (a skills dir, an instructions file,
+    a glue file) are written once per run.
 
-    The monorepo is the LIVE deployment and the normal master copy; run the
-    default direction after changing the layer in the monorepo.
+    Drift protection. After every successful run (FromMonorepo too) a manifest
+    records the TARGET's post-deploy SHA-256 (LF-normalised) of everything the
+    run owns there, keyed per agent and scope, in the target's git dir (per
+    worktree; outside git in the target root). Before writing, each target is
+    compared three ways - target, manifest, fork:
+      * a file changed in the target since the last deployment whose change the
+        fork does not have -> STOP (exit 3) listing the files; resolve with
+        -Direction FromMonorepo (claude + Monorepo) or overwrite with -Force;
+      * no manifest (first run) or an unreadable one -> STOP on every
+        difference between target and fork;
+      * vendored skills are judged target vs manifest only (their fork-side
+        content exists only after a revendor), so a hand edit in the target is
+        caught; on a first run they are not judged;
+      * the instructions block is compared by its content;
+      * an mb-* directory present only in the target -> warning.
 
-    Every other combination — other agents (the 15 harnesses superpowers supports) and/or
-    Scope 'UserProfile' — is a one-way DEPLOY from this fork's ums/ layer
-    (the Direction parameter is ignored):
-      * the skills content (shared/ contract + mb-* utilities) into the
-        agent's skills directory, where the agent supports one,
-      * glue artifacts (hooks/, scripts/, and any future non-settings items
-        of ums/.claude) into the agent's config directory — merged file-by-
-        file, never wiping existing content; settings.json is deliberately
-        NOT deployed (it is Claude Code's registration file and would clobber
-        e.g. an existing .gemini/settings.json — hook registration is manual
-        per harness),
-      * the CLAUDE.md.sample preference block into the agent's instructions
-        file, wrapped in UMS-MEMORY-BANK BEGIN/END markers (re-runs replace
-        the marked block in place). UserProfile deploys prepend a scoping
-        line so the rules apply only when working in the UMS monorepo.
-    Per-agent target paths (per scope) live in the table inside
-    Get-UmsSyncTargets — adjust there if a harness expects a different layout.
+    Vendoring plan per skills directory: same tag or an untracked target -> one
+    pass (UMS items, then revendor with overlays). A tag change on a target
+    tracked by git -> ONLY the vanilla phase (revendor without overlays, nothing
+    else) and exit 4: commit it as "vanilla sync" in the target and run again,
+    the second run mirrors the layer and applies the overlays ("overlay").
 
-    Vendored superpowers skills are never synced by this script - they are
-    produced in the monorepo by .claude/scripts/revendor-superpowers.ps1
-    from this repo's skills/ tree.
+    Scopes: Monorepo (-MonorepoRoot, default D:\_datasys\ums or the environment
+    variable UMS_SYNC_MONOREPO_ROOT), UserProfile (-UserProfileRoot, default
+    $HOME) and Fork (the git toplevel of -ForkUmsDir; claude gets .claude/,
+    other harnesses their skills dir only; no instructions file and no marker
+    are written there, every deployed dir git does not ignore is added to
+    .git/info/exclude so the tree stays clean, pre-push is installed).
 
-    Scope 'Fork' deploys the layer into the fork's OWN root (git toplevel of
-    -ForkUmsDir) without dirtying its working tree, replacing the manual refresh
-    of the deployed copy. -Agent takes a list (claude,codex); targets shared by
-    several harnesses (.agents/skills) are written once:
-      * claude: .claude/ - settings.json, hooks/, scripts/revendor-superpowers.ps1,
-        skills/shared, skills/mb-*, plus the vendored superpowers skills;
-      * every other harness: shared/, mb-* and the vendored skills in its skills
-        directory only (no glue, no marker, no instructions file);
-      * instruction files are never written (the fork's CLAUDE.md is manual,
-        AGENTS.md is an upstream file);
-      * every deployed directory git does not ignore is added, idempotently, to
-        .git/info/exclude (.gitignore stays untouched);
-      * the pre-push hook is installed into the fork.
-    A target's shared/VENDORED_FROM.md is never overwritten by the mirror of
-    shared/: the revendor owns it and needs the previous pin to drop skills that
-    left the pin.
+    -WhatIf prints what the run would write and the drift, writes nothing
+    (no file, no manifest, no exclude line, no hook) and exits 0.
+    -Force deploys over drift.
+
+    Exit codes: 0 done; 1 error (nothing or part written - read the output);
+    3 drift STOP (nothing written); 4 vanilla phase done (commit "vanilla sync"
+    in the target, run again); 5 deployed, but a per-agent step failed (marker
+    writer error, pre-push not confirmed) - the summary names it.
 
     Run WITHOUT parameters in an interactive console to be prompted for each
     parameter with its default offered (Enter accepts the default). In a
-    non-interactive context (redirected stdin, pwsh -NonInteractive) the
-    defaults are used silently, so automation keeps working.
+    non-interactive process (redirected stdin, pwsh -NonInteractive) the
+    defaults apply silently: claude, Monorepo, ToMonorepo.
 #>
 #Requires -Version 7
 [CmdletBinding()]
 param(
+    # The fork is the master copy: ToMonorepo deploys fork -> target (every
+    # scope); FromMonorepo pulls the monorepo's changes back (claude+Monorepo only).
     [ValidateSet('FromMonorepo', 'ToMonorepo')]
-    [string]$Direction = 'FromMonorepo',
+    [string]$Direction = 'ToMonorepo',
     # One or more of the 15 harnesses (claude, codex, gemini, qwen, opencode, pi,
     # hermes, cursor, copilot, devin, droid, kimi, muse, antigravity, grok). Every
     # value is split on commas ('-Agent claude,codex' arrives as ONE string) and
@@ -73,13 +99,18 @@ param(
     [string[]]$Agent = @('claude'),
     [ValidateSet('Monorepo', 'UserProfile', 'Fork')]
     [string]$Scope = 'Monorepo',
-    [string]$MonorepoRoot = 'D:\_datasys\ums',
+    # Default: the environment variable UMS_SYNC_MONOREPO_ROOT when set (another
+    # clone, or a test fixture), else D:\_datasys\ums.
+    [string]$MonorepoRoot = $(if ($env:UMS_SYNC_MONOREPO_ROOT) { $env:UMS_SYNC_MONOREPO_ROOT } else { 'D:\_datasys\ums' }),
     [string]$ForkUmsDir = $PSScriptRoot,
     # Test/advanced override of the user-profile root used by -Scope UserProfile.
     [string]$UserProfileRoot = $HOME,
-    # Deploy over a target that has drifted from the last deployment. Accepted
-    # here; the drift check it overrides is wired in a later step.
+    # Deploy over a target that has drifted from the last deployment (the drift
+    # is listed, then overwritten).
     [switch] $Force,
+    # Print what the run would write and the drift; write nothing, exit 0. The
+    # script's own switch (no SupportsShouldProcess).
+    [switch] $WhatIf,
     # Dot-source this script to reuse its function definitions in tests,
     # without running the interactive/sync body below.
     [switch] $DotSourceOnly
@@ -341,6 +372,10 @@ function Set-DotEnvMarker([string] $File) {
 #                  AGENTS.md is an upstream file)
 #   Marker       - settings-env | codex-toml | dotenv | opencode-plugin |
 #                  pi-prefix | hermes-passthrough | none
+#   Guarantee    - whether the pre-push guard can recognise an agent session
+#                  there: 'marker' (a marker mechanism exists), or for Marker
+#                  'none' either 'ai-agent-fallback' (the harness sets AI_AGENT
+#                  itself - Pi) or 'none' (not covered: the sync warns)
 # Output is unrolled: wrap the call in @() to get an array for one agent.
 # Scope Fork uses the Monorepo layout (Root = the fork's git toplevel).
 function Get-UmsSyncTargets(
@@ -348,7 +383,10 @@ function Get-UmsSyncTargets(
     [Parameter(Mandatory)] [ValidateSet('Monorepo', 'UserProfile', 'Fork')] [string] $Scope,
     [Parameter(Mandatory)] [string] $Root
 ) {
-    function Row($Skills, $Config, $Instr, $Marker) { @{ Skills = $Skills; Config = $Config; Instr = $Instr; Marker = $Marker } }
+    function Row($Skills, $Config, $Instr, $Marker, $Guarantee) {
+        if (-not $Guarantee) { $Guarantee = if ($Marker -ne 'none') { 'marker' } else { 'none' } }
+        @{ Skills = $Skills; Config = $Config; Instr = $Instr; Marker = $Marker; Guarantee = $Guarantee }
+    }
     # Harnesses without a documented marker mechanism or config dir.
     $generic = @{
         Monorepo    = Row '.agents\skills' $null 'AGENTS.md' 'none'
@@ -377,8 +415,8 @@ function Get-UmsSyncTargets(
         }
         # Pi: AI_AGENT=pi is set by its CLI, the pre-push fallback covers it.
         pi = @{
-            Monorepo    = Row '.agents\skills' '.pi' 'AGENTS.md' 'none'
-            UserProfile = Row '.agents\skills' '.pi\agent' '.pi\agent\AGENTS.md' 'none'
+            Monorepo    = Row '.agents\skills' '.pi' 'AGENTS.md' 'none' 'ai-agent-fallback'
+            UserProfile = Row '.agents\skills' '.pi\agent' '.pi\agent\AGENTS.md' 'none' 'ai-agent-fallback'
         }
         # Hermes: no project-level config; the marker exists only in the profile.
         hermes = @{
@@ -420,6 +458,7 @@ function Get-UmsSyncTargets(
             ConfigDir    = & $abs $r.Config
             Instructions = if ($Scope -eq 'Fork') { $null } else { & $abs $r.Instr }
             Marker       = $r.Marker
+            Guarantee    = $r.Guarantee
         }
     }
 }
@@ -851,6 +890,221 @@ function Get-MarkedBlockContent([string] $File, [string[]] $OwnedHeadings = @())
     return ($out -join "`n")
 }
 
+# ------------------------------------------- deployment plan (design 3.2-3.4)
+# What one run would write into one target, as data - nothing here writes.
+
+# Names listed in a section ('Skills' or 'Excluded') of a pin file; nothing
+# for a missing file. Unrolled output, wrap in @().
+function Get-UmsPinNames([string] $PinFile, [string] $Section = 'Skills') {
+    if (-not $PinFile -or -not (Test-Path -LiteralPath $PinFile -PathType Leaf)) { return }
+    $in = $false
+    foreach ($line in ((Get-Content -LiteralPath $PinFile -Raw) -split '\r?\n')) {
+        if ($line -match '^- (\w+):\s*$') { $in = ($Matches[1] -ceq $Section); continue }
+        if ($in -and $line -match '^\s+([A-Za-z0-9][A-Za-z0-9._-]*)\s*$') { $Matches[1]; continue }
+        $in = $false
+    }
+}
+
+# SHA-256 of a text as the manifest records the instructions block: LF line
+# endings, trailing newlines dropped, UTF-8.
+function Get-UmsTextHash([string] $Text) {
+    $norm = $Text.Replace("`r`n", "`n").TrimEnd("`n")
+    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($norm))).ToLowerInvariant()
+}
+
+# Get-UmsTreeHashes of one file or directory, keyed '<Key>' (a file) or
+# '<Key>\<path inside>' (a directory). Empty for a missing path.
+function Get-UmsItemHashes([string] $Path, [string] $Key) {
+    $out = @{}
+    if (Test-Path -LiteralPath $Path -PathType Container) {
+        $h = Get-UmsTreeHashes $Path @('.')
+        foreach ($k in $h.Keys) { $out["$Key\$k"] = $h[$k] }
+    }
+    elseif (Test-Path -LiteralPath $Path -PathType Leaf) {
+        $h = Get-UmsTreeHashes (Split-Path -Parent $Path) @(Split-Path -Leaf $Path)
+        foreach ($v in $h.Values) { $out[$Key] = $v }
+    }
+    return $out
+}
+
+# $true when Key is one of Items or lies below one of them.
+function Test-UmsKeyUnder([string] $Key, [string[]] $Items) {
+    foreach ($i in @($Items)) {
+        if ($Key -ieq $i -or $Key.StartsWith("$i\", [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
+# Git toplevel of the repository holding Path (the nearest existing ancestor
+# is asked when Path does not exist yet), or $null outside git.
+function Get-UmsGitTop([string] $Path) {
+    $p = $Path
+    while ($p -and -not (Test-Path -LiteralPath $p -PathType Container)) { $p = Split-Path -Parent $p }
+    if (-not $p) { return $null }
+    $out = & git -C $p rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
+    return [IO.Path]::GetFullPath(([string]@($out)[0]).Trim())
+}
+
+# The preference block one harness gets from ums/CLAUDE.md.sample: skill links
+# repointed to its skills dir, the scoping line for UserProfile, the note on
+# Claude-only enforcement for every other harness. For claude in the monorepo
+# this is the sample verbatim.
+function Get-UmsInstructionContent([string] $Sample, $Target, [string] $Scope, [string] $Root, [string] $MonorepoRoot) {
+    $content = $Sample -replace "`r`n", "`n"
+    if ($Target.SkillsDir) {
+        $skillsFwd = ([IO.Path]::GetRelativePath($Root, $Target.SkillsDir)) -replace '\\', '/'
+        $content = $content -replace [regex]::Escape('.claude/skills/'), "$skillsFwd/"
+    }
+    if ($Scope -eq 'UserProfile') {
+        $preamble = "> **Rozsah platnosti:** následující pravidla platí POUZE při práci v UMS`n" +
+                    "> monorepu (``$MonorepoRoot``). V jiných projektech je ignoruj.`n`n"
+        $content = $preamble + $content
+    }
+    if ($Target.Agent -ne 'claude') {
+        $content += @"
+
+> Pozn. pro tento nástroj: mechanická vynucení (PreToolUse write-guard,
+> permission deny EnterWorktree/ExitWorktree, skillOverrides) existují jen
+> v Claude Code — zde platí výše uvedená pravidla jako závazný text.
+"@
+    }
+    return ($content -replace "`r`n", "`n")
+}
+
+# One target's deployment plan. Fields:
+#   Agent, Root (target root), SkillsDir, ConfigDir, Guarantee, Marker
+#   Items        UMS items, each @{ Kind; Src; Dst; Key }: Kind 'Mirror'
+#                (replace the destination file/dir), 'MirrorShared' (Mirror
+#                keeping the target's shared\VENDORED_FROM.md), 'File' (copy one
+#                glue file, nothing next to it is deleted); Key = Dst relative
+#                to Root
+#   Vendored     target-relative items the revendor owns: every skill of the
+#                fork pin (Skills and Excluded) and of the target pin, plus
+#                the target pin itself
+#   Instructions instructions file or $null; BlockKey '<rel>#ums-block';
+#                Content (the block); Owned (headings of a legacy claude file)
+#   SharedWith   the agent that writes the same instructions file in this run
+#                (set by the caller; the block is written once)
+function Get-UmsDeployPlan($Target, [string] $Scope, [string] $ForkClaude, [string] $Root, [string] $Sample, [string] $MonorepoRoot) {
+    $items = [System.Collections.Generic.List[object]]::new()
+    $addItem = {
+        param([string] $Kind, [string] $Src, [string] $Dst)
+        $items.Add([pscustomobject]@{ Kind = $Kind; Src = $Src; Dst = $Dst; Key = [IO.Path]::GetRelativePath($Root, $Dst).Replace('/', '\') })
+    }
+    $forkSkills = Join-Path $ForkClaude 'skills'
+    $vendored = [System.Collections.Generic.List[string]]::new()
+    if ($Target.SkillsDir) {
+        & $addItem 'MirrorShared' (Join-Path $forkSkills 'shared') (Join-Path $Target.SkillsDir 'shared')
+        foreach ($d in @(Get-ChildItem -LiteralPath $forkSkills -Directory -Filter 'mb-*' | Sort-Object Name)) {
+            & $addItem 'Mirror' $d.FullName (Join-Path $Target.SkillsDir $d.Name)
+        }
+        $skillsRel = [IO.Path]::GetRelativePath($Root, $Target.SkillsDir).Replace('/', '\')
+        $forkPin = Join-Path $forkSkills 'shared\VENDORED_FROM.md'
+        $targetPin = Join-Path $Target.SkillsDir 'shared\VENDORED_FROM.md'
+        $names = @(@(Get-UmsPinNames $forkPin 'Skills') + @(Get-UmsPinNames $forkPin 'Excluded') + @(Get-UmsPinNames $targetPin 'Skills') |
+            Where-Object { $_ } | Select-Object -Unique)
+        foreach ($n in $names) { $vendored.Add("$skillsRel\$n") }
+        $vendored.Add("$skillsRel\shared\VENDORED_FROM.md")
+    }
+    if ($Target.Agent -ceq 'claude' -and $Scope -ne 'UserProfile') {
+        # claude in Monorepo/Fork: the layer's own .claude files, mirrored.
+        foreach ($rel in @('settings.json', 'scripts\revendor-superpowers.ps1')) {
+            & $addItem 'Mirror' (Join-Path $ForkClaude $rel) (Join-Path $Target.ConfigDir $rel)
+        }
+        $srcHooks = Join-Path $ForkClaude 'hooks'
+        if (Test-Path -LiteralPath $srcHooks) {
+            foreach ($h in @(Get-ChildItem -LiteralPath $srcHooks -File | Sort-Object Name)) {
+                & $addItem 'Mirror' $h.FullName (Join-Path $Target.ConfigDir "hooks\$($h.Name)")
+            }
+        }
+    }
+    elseif ($Scope -ne 'Fork' -and $Target.ConfigDir) {
+        # Every other harness (and claude in the profile): glue merged file by
+        # file into its config dir; settings.json is Claude Code's registration
+        # file and is never deployed there.
+        foreach ($dir in @(Get-ChildItem -LiteralPath $ForkClaude -Directory | Where-Object { $_.Name -ne 'skills' } | Sort-Object Name)) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -Force | Sort-Object FullName)) {
+                $rel = [IO.Path]::GetRelativePath($ForkClaude, $f.FullName)
+                & $addItem 'File' $f.FullName (Join-Path $Target.ConfigDir $rel)
+            }
+        }
+    }
+    $content = $null; $blockKey = $null; $owned = @()
+    if ($Target.Instructions) {
+        $content = Get-UmsInstructionContent $Sample $Target $Scope $Root $MonorepoRoot
+        $blockKey = [IO.Path]::GetRelativePath($Root, $Target.Instructions).Replace('/', '\') + '#ums-block'
+        # Legacy (marker-less) migration only for claude's CLAUDE.md (design 3.4).
+        if ($Target.Agent -ceq 'claude') { $owned = $UmsOwnedHeadings }
+    }
+    return [pscustomobject]@{
+        Agent        = $Target.Agent
+        Root         = $Root
+        SkillsDir    = $Target.SkillsDir
+        ConfigDir    = $Target.ConfigDir
+        Marker       = $Target.Marker
+        Guarantee    = $Target.Guarantee
+        Items        = $items.ToArray()
+        Vendored     = [string[]]$vendored.ToArray()
+        Instructions = $Target.Instructions
+        BlockKey     = $blockKey
+        Content      = $content
+        Owned        = [string[]]@($owned)
+        SharedWith   = $null
+    }
+}
+
+# Hashes of a plan's UMS items and instructions block (not the vendored
+# skills): -Side Fork = what the run would write, -Side Target = what the
+# target holds now. The target's shared\VENDORED_FROM.md is left out of the
+# MirrorShared item on both sides - it is a vendored key.
+function Get-UmsPlanHashes($Plan, [ValidateSet('Fork', 'Target')] [string] $Side) {
+    $out = @{}
+    foreach ($it in $Plan.Items) {
+        $path = if ($Side -eq 'Fork') { $it.Src } else { $it.Dst }
+        $h = Get-UmsItemHashes $path $it.Key
+        if ($it.Kind -eq 'MirrorShared') { $h.Remove("$($it.Key)\VENDORED_FROM.md") }
+        foreach ($k in $h.Keys) { $out[$k] = $h[$k] }
+    }
+    if ($Plan.Instructions) {
+        $text = if ($Side -eq 'Fork') { $Plan.Content } else { Get-MarkedBlockContent $Plan.Instructions $Plan.Owned }
+        if ($null -ne $text) { $out[$Plan.BlockKey] = Get-UmsTextHash $text }
+    }
+    return $out
+}
+
+# Everything the manifest records for a plan, read from the TARGET: UMS items,
+# the instructions block and the vendored skills.
+function Get-UmsPlanTargetState($Plan) {
+    $state = Get-UmsPlanHashes $Plan 'Target'
+    $vend = Get-UmsTreeHashes $Plan.Root @($Plan.Vendored)
+    foreach ($k in $vend.Keys) { $state[$k] = $vend[$k] }
+    return $state
+}
+
+# Drift of one plan against the manifest's Files map ($null = no manifest).
+# UMS items and the block are judged target / manifest / fork. The vendored
+# skills have no fork-side content before a revendor, so for them the fork side
+# IS the manifest: a vendored file drifts when it differs from what the last
+# deployment left (a hand edit, a deleted or an added file). Without a manifest
+# they are not judged. Returns Test-UmsDeployDrift's result.
+function Get-UmsPlanDrift($Plan, [hashtable] $ManifestFiles) {
+    $fork = Get-UmsPlanHashes $Plan 'Fork'
+    $target = Get-UmsPlanHashes $Plan 'Target'
+    $vend = Get-UmsTreeHashes $Plan.Root @($Plan.Vendored)
+    foreach ($k in $vend.Keys) {
+        $target[$k] = $vend[$k]
+        if ($null -eq $ManifestFiles) { $fork[$k] = $vend[$k] }
+        elseif ($ManifestFiles.ContainsKey($k)) { $fork[$k] = $ManifestFiles[$k] }
+    }
+    if ($null -ne $ManifestFiles) {
+        foreach ($k in @($ManifestFiles.Keys)) {
+            if (-not $vend.ContainsKey($k) -and (Test-UmsKeyUnder $k $Plan.Vendored)) { $fork[$k] = $ManifestFiles[$k] }
+        }
+    }
+    return (Test-UmsDeployDrift $target $ManifestFiles $fork)
+}
+
 # Tests need only the function definitions, not the full sync run.
 if ($DotSourceOnly) { return }
 
@@ -864,58 +1118,68 @@ function Read-WithDefault([string]$Prompt, [string]$Default) {
 
 $isNonInteractive = [Console]::IsInputRedirected -or
     ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
+$Preview = [bool]$WhatIf
 
+# The menu appears only in an interactive session started WITHOUT parameters.
+# A non-interactive process without parameters runs the defaults silently
+# (claude, Monorepo, ToMonorepo), so automation keeps working.
 if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
     Write-Host 'No parameters given - interactive setup (Enter = default):' -ForegroundColor Cyan
 
-    $agentNames = @(Get-UmsSyncTargets -Scope Monorepo -Root $MonorepoRoot | ForEach-Object { $_.Agent })
+    # Agent names only: a scratch root, so a missing default drive (D:) cannot throw here.
+    $agentNames = @(Get-UmsSyncTargets -Scope Monorepo -Root ([IO.Path]::GetTempPath()) | ForEach-Object { $_.Agent })
     do {
-        $agentAnswer = Read-WithDefault "Target AI agent ($($agentNames -join ', '))" 'claude'
-        $valid = $agentAnswer -in $agentNames
-        if (-not $valid) { Write-Host '  Enter one of the listed agent names.' -ForegroundColor Yellow }
+        $agentAnswer = Read-WithDefault "Target AI agent(s), comma-separated ($($agentNames -join ', '))" 'claude'
+        $picked = @(ConvertTo-UmsAgentList @($agentAnswer))
+        $unknown = @($picked | Where-Object { $agentNames -cnotcontains $_ })
+        $valid = ($picked.Count -gt 0) -and ($unknown.Count -eq 0)
+        if (-not $valid) { Write-Host '  Enter one or more of the listed agent names.' -ForegroundColor Yellow }
     } until ($valid)
-    $Agent = @($agentAnswer)
+    $Agent = $picked
 
     do {
-        $scopeAnswer = Read-WithDefault "Scope: 1 = Monorepo ($MonorepoRoot), 2 = UserProfile ($UserProfileRoot)" '1'
-        $valid = $scopeAnswer -in @('1', '2', 'Monorepo', 'UserProfile')
-        if (-not $valid) { Write-Host '  Enter 1, 2, Monorepo, or UserProfile.' -ForegroundColor Yellow }
+        $scopeAnswer = Read-WithDefault "Scope: 1 = Monorepo ($MonorepoRoot), 2 = UserProfile ($UserProfileRoot), 3 = Fork (this fork's own root)" '1'
+        $valid = $scopeAnswer -in @('1', '2', '3', 'Monorepo', 'UserProfile', 'Fork')
+        if (-not $valid) { Write-Host '  Enter 1, 2, 3, Monorepo, UserProfile or Fork.' -ForegroundColor Yellow }
     } until ($valid)
-    $Scope = if ($scopeAnswer -in @('2', 'UserProfile')) { 'UserProfile' } else { 'Monorepo' }
+    $Scope = if ($scopeAnswer -in @('2', 'UserProfile')) { 'UserProfile' } elseif ($scopeAnswer -in @('3', 'Fork')) { 'Fork' } else { 'Monorepo' }
 
-    if ($agentAnswer -eq 'claude' -and $Scope -eq 'Monorepo') {
+    if ((@($Agent) -join ',') -ceq 'claude' -and $Scope -eq 'Monorepo') {
         do {
-            $dirAnswer = Read-WithDefault 'Direction: 1 = FromMonorepo (monorepo -> fork), 2 = ToMonorepo (fork -> monorepo)' '1'
-            $valid = $dirAnswer -in @('1', '2', 'FromMonorepo', 'ToMonorepo')
-            if (-not $valid) { Write-Host '  Enter 1, 2, FromMonorepo, or ToMonorepo.' -ForegroundColor Yellow }
+            $dirAnswer = Read-WithDefault 'Direction: 1 = ToMonorepo (fork -> monorepo, the fork is master), 2 = FromMonorepo (pull monorepo changes -> fork)' '1'
+            $valid = $dirAnswer -in @('1', '2', 'ToMonorepo', 'FromMonorepo')
+            if (-not $valid) { Write-Host '  Enter 1, 2, ToMonorepo or FromMonorepo.' -ForegroundColor Yellow }
         } until ($valid)
-        $Direction = if ($dirAnswer -in @('2', 'ToMonorepo')) { 'ToMonorepo' } else { 'FromMonorepo' }
+        $Direction = if ($dirAnswer -in @('2', 'FromMonorepo')) { 'FromMonorepo' } else { 'ToMonorepo' }
     }
     else {
-        Write-Host "  This combination is deploy-only (fork -> target); Direction is ignored." -ForegroundColor DarkGray
+        Write-Host '  This combination deploys fork -> target only (ToMonorepo).' -ForegroundColor DarkGray
     }
 
     if ($Scope -eq 'Monorepo') {
         $attempts = 0
         do {
             $MonorepoRoot = Read-WithDefault 'Monorepo root' $MonorepoRoot
-            $valid = Test-Path (Join-Path $MonorepoRoot '.claude')
+            $valid = Test-Path -LiteralPath $MonorepoRoot -PathType Container
             if (-not $valid) {
-                Write-Host "  No .claude/ found under '$MonorepoRoot'." -ForegroundColor Yellow
-                if ((++$attempts) -ge 3) { throw "Monorepo root not valid after 3 attempts." }
+                Write-Host "  '$MonorepoRoot' is not an existing directory." -ForegroundColor Yellow
+                if ((++$attempts) -ge 3) { throw 'Monorepo root not valid after 3 attempts.' }
             }
         } until ($valid)
     }
+    elseif ($Scope -eq 'UserProfile') {
+        $UserProfileRoot = Read-WithDefault 'User profile root' $UserProfileRoot
+    }
 
     $ForkUmsDir = Read-WithDefault 'Fork ums/ directory' $ForkUmsDir
-
-    Write-Host "Agent=$Agent  Scope=$Scope  Direction=$Direction  MonorepoRoot=$MonorepoRoot  ForkUmsDir=$ForkUmsDir" -ForegroundColor Cyan
+    $previewAnswer = Read-WithDefault 'Preview only, write nothing (-WhatIf)? y/n' 'n'
+    $Preview = $previewAnswer -match '^(y|yes)$'
 }
 
 # ------------------------------------------------------------ shared helpers
 function Copy-Mirrored([string]$Src, [string]$Dst) {
-    # Replaces the destination item entirely - use ONLY for directories this
-    # layer owns outright (skill dirs).
+    # Replaces the destination item entirely - use ONLY for items this layer
+    # owns outright (skill dirs, the layer's own files).
     if (-not (Test-Path $Src)) { throw "Source item missing: $Src" }
     if (Test-Path -PathType Container $Src) {
         if (Test-Path $Dst) { Remove-Item -Recurse -Force $Dst }
@@ -928,207 +1192,12 @@ function Copy-Mirrored([string]$Src, [string]$Dst) {
     }
 }
 
-function Copy-Merged([string]$Src, [string]$Dst) {
-    # Merges into the destination: overwrites same-named files, never deletes
-    # anything else - safe for shared config dirs (e.g. ~/.claude/hooks with
-    # the user's own hooks).
-    Get-ChildItem -Path $Src -Recurse -File | ForEach-Object {
-        $rel = $_.FullName.Substring($Src.Length).TrimStart('\', '/')
-        $dstFile = Join-Path $Dst $rel
-        New-Item -ItemType Directory -Force (Split-Path $dstFile) | Out-Null
-        Copy-Item -Force $_.FullName $dstFile
-    }
-}
-
-$forkClaude = Join-Path $ForkUmsDir '.claude'
-$baseRoot = if ($Scope -eq 'UserProfile') { $UserProfileRoot } else { $MonorepoRoot }
-$AgentList = @(ConvertTo-UmsAgentList $Agent)
-if ($AgentList.Count -eq 0) { $AgentList = @('claude') }
-
-# Install/refresh this layer's git hooks (currently: pre-push, the
-# Publication Contract enforcement boundary - see
-# .claude/hooks/install-git-hooks.ps1) into a target repository. Git hooks
-# are per-repository, not per-agent, so this only applies for Scope
-# Monorepo (the same repo regardless of which -Agent's glue is being
-# synced); UserProfile scope has no single associated repository, so hook
-# installation does not apply there - install manually per clone with
-# install-git-hooks.ps1 -RepoRoot. Called AFTER each branch's own target
-# checks/deployment below (never before), and never lets a hook-install
-# failure abort the rest of the sync - an unrelated problem with the
-# repository (not a git repo yet, permissions, ...) must not silently skip
-# every other deployed item the way an unguarded throw here once did.
-function Install-PublicationHooks([string] $RepoRoot) {
-    $installScript = Join-Path $forkClaude 'hooks\install-git-hooks.ps1'
-    if (-not (Test-Path $installScript)) {
-        Write-Host "note: install-git-hooks.ps1 not found - pre-push guarantee not installed into $RepoRoot." -ForegroundColor Yellow
-        return
-    }
-    try {
-        & $installScript -RepoRoot $RepoRoot -SourceDir (Join-Path $forkClaude 'hooks')
-        # The installer exits non-zero whenever the guarantee is NOT in place
-        # (foreign hook left alone, or the installed copy failed its own
-        # proof). A sync run that ends in a wall of "synced ..." lines must
-        # not let that scroll past unremarked.
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "warning: install-git-hooks.ps1 exited with $LASTEXITCODE - the pre-push guarantee is NOT confirmed for $RepoRoot (see its output just above)." -ForegroundColor Yellow
-        }
-    }
-    catch {
-        Write-Host "warning: could not install git hooks into $RepoRoot ($($_.Exception.Message)) - continuing sync without them." -ForegroundColor Yellow
-    }
-}
-
-# The one-agent deploy of the Monorepo and UserProfile scopes. Called once per
-# requested agent (-Agent takes a list); every agent gets its own target row.
-function Invoke-UmsAgentSync([string] $AgentName) {
-    $target = @(Get-UmsSyncTargets -Agent $AgentName -Scope $Scope -Root $baseRoot)[0]
-
-    # --------------------------------------------- claude + monorepo: two-way sync
-    if ($AgentName -eq 'claude' -and $Scope -eq 'Monorepo') {
-        $monoClaude = Join-Path $MonorepoRoot '.claude'
-        if (-not (Test-Path $monoClaude)) { throw "Monorepo .claude not found at $monoClaude" }
-
-        # UMS-owned items relative to the .claude/ root. skills/mb-* AND hooks/* are
-        # discovered dynamically on the source side so new mb-* skills or hooks are
-        # picked up without editing this script (settings.json registers hooks by
-        # path, so an un-mirrored hook would be a dangling reference).
-        $staticItems = @(
-            'settings.json',
-            'scripts\revendor-superpowers.ps1',
-            'skills\shared'
-        )
-
-        if ($Direction -eq 'FromMonorepo') { $srcClaude = $monoClaude; $dstClaude = $forkClaude }
-        else                               { $srcClaude = $forkClaude; $dstClaude = $monoClaude }
-
-        $mbSkills = Get-ChildItem -Path (Join-Path $srcClaude 'skills') -Directory -Filter 'mb-*' |
-            ForEach-Object { "skills\$($_.Name)" }
-
-        $srcHooks = Join-Path $srcClaude 'hooks'
-        $hooks = if (Test-Path $srcHooks) {
-            Get-ChildItem -Path $srcHooks -File | ForEach-Object { "hooks\$($_.Name)" }
-        } else { @() }
-
-        foreach ($rel in $staticItems + $mbSkills + $hooks) {
-            Copy-Mirrored (Join-Path $srcClaude $rel) (Join-Path $dstClaude $rel)
-            Write-Host "synced $rel"
-        }
-
-        # Root CLAUDE.md <-> ums/CLAUDE.md.sample
-        $monoClaudeMd = Join-Path $MonorepoRoot 'CLAUDE.md'
-        $forkSample   = Join-Path $ForkUmsDir 'CLAUDE.md.sample'
-        if ($Direction -eq 'FromMonorepo') { Copy-Item -Force $monoClaudeMd $forkSample; Write-Host 'synced CLAUDE.md -> CLAUDE.md.sample' }
-        else                               { Copy-Item -Force $forkSample $monoClaudeMd; Write-Host 'synced CLAUDE.md.sample -> CLAUDE.md' }
-
-        # Git hook install runs AFTER the sync above, never before: with the
-        # default -Direction FromMonorepo the hook source under $forkClaude is
-        # rewritten by this very run, and installing first would deploy the
-        # fork's pre-sync copy instead of the one this run just made
-        # authoritative.
-        Install-PublicationHooks $MonorepoRoot
-
-        Write-Host "Done (claude, Monorepo, $Direction)." -ForegroundColor Cyan
-    }
-    # ------------------------------------- everything else: one-way deploy
-    else {
-        # 1. Portable skills content -> agent's skills directory (when it has one).
-        $skillsRel = if ($target.SkillsDir) { [IO.Path]::GetRelativePath($baseRoot, $target.SkillsDir) } else { $null }
-        if ($target.SkillsDir) {
-            $dstSkills = $target.SkillsDir
-            $items = @('shared') + (Get-ChildItem -Path (Join-Path $forkClaude 'skills') -Directory -Filter 'mb-*' |
-                ForEach-Object { $_.Name })
-            foreach ($name in $items) {
-                Copy-Mirrored (Join-Path $forkClaude "skills\$name") (Join-Path $dstSkills $name)
-                Write-Host "deployed skills\$name -> $skillsRel\$name"
-            }
-        }
-        else {
-            Write-Host "Agent '$AgentName' has no skills directory - deploying glue + instructions block only." -ForegroundColor DarkGray
-        }
-
-        # 2. Glue artifacts (hooks/, scripts/, any future non-settings items of
-        #    ums/.claude) -> agent's config dir. Merged, never wiping existing
-        #    content. settings.json is intentionally skipped: it is Claude Code's
-        #    registration file and would clobber the agent's own settings (e.g.
-        #    .gemini/settings.json); register hooks manually per harness.
-        $dstConfig = $target.ConfigDir
-        if ($dstConfig) {
-            $configRel = [IO.Path]::GetRelativePath($baseRoot, $dstConfig)
-            Get-ChildItem -Path $forkClaude -Directory |
-                Where-Object { $_.Name -ne 'skills' } |
-                ForEach-Object {
-                    Copy-Merged $_.FullName (Join-Path $dstConfig $_.Name)
-                    Write-Host "deployed $($_.Name)\ -> $configRel\$($_.Name)\ (merged)"
-                }
-        }
-        else {
-            Write-Host "Agent '$AgentName' has no config directory at scope $Scope - glue (hooks/, scripts/) not deployed." -ForegroundColor DarkGray
-        }
-        if (-not ($AgentName -eq 'claude')) {
-            Write-Host "note: settings.json not deployed (Claude Code registration format) - wire hooks manually for '$AgentName'." -ForegroundColor DarkGray
-            try {
-                Set-AgentMarker $dstConfig $AgentName $Scope
-                Write-Host "note: agent-session marker ($AGENT_MARKER_NAME) written into '$AgentName' config - without it the pre-push guard disables itself there." -ForegroundColor DarkGray
-            }
-            catch [System.NotSupportedException] {
-                if ($_.Exception.Message -match 'covered by AI_AGENT fallback') {
-                    Write-Host "note: no marker written for '$AgentName' - covered by the AI_AGENT fallback of the pre-push guard." -ForegroundColor DarkGray
-                }
-                else {
-                    Write-Host "WARNING: no known agent-session marker mechanism for '$AgentName' at scope $Scope - the pre-push guard self-disables there until this harness gets one. This is a named, open gap, not a silent failure." -ForegroundColor Yellow
-                }
-            }
-        }
-        elseif ($Scope -eq 'UserProfile') {
-            Write-Host "note: settings.json not deployed - merge hook registration into $configRel\settings.json manually if wanted." -ForegroundColor DarkGray
-        }
-
-        # 3. Preference block from CLAUDE.md.sample -> agent's instructions file.
-        $content = (Get-Content -Path (Join-Path $ForkUmsDir 'CLAUDE.md.sample') -Raw) -replace "`r`n", "`n"
-        if ($target.SkillsDir) {
-            # Repoint skill-pack references to the agent's own skills location.
-            $skillsFwd = $skillsRel -replace '\\', '/'
-            $content = $content -replace [regex]::Escape('.claude/skills/'), "$skillsFwd/"
-        }
-        if ($Scope -eq 'UserProfile') {
-            $preamble = "> **Rozsah platnosti:** následující pravidla platí POUZE při práci v UMS`n" +
-                        "> monorepu (``$MonorepoRoot``). V jiných projektech je ignoruj.`n`n"
-            $content = $preamble + $content
-        }
-        if ($AgentName -ne 'claude') {
-            $content += @"
-
-> Pozn. pro tento nástroj: mechanická vynucení (PreToolUse write-guard,
-> permission deny EnterWorktree/ExitWorktree, skillOverrides) existují jen
-> v Claude Code — zde platí výše uvedená pravidla jako závazný text.
-"@
-        }
-        if ($target.Instructions) {
-            Set-MarkedBlock $target.Instructions $content
-            Write-Host "deployed preference block -> $([IO.Path]::GetRelativePath($baseRoot, $target.Instructions))"
-        }
-        else {
-            Write-Host "WARNING: agent '$AgentName' has no known instructions file at scope $Scope - the preference block was NOT deployed; add it to the harness's instructions by hand." -ForegroundColor Yellow
-        }
-
-        # 4. Git hook install (Monorepo only - see Install-PublicationHooks above).
-        if ($Scope -eq 'Monorepo') {
-            Install-PublicationHooks $MonorepoRoot
-        }
-        else {
-            Write-Host 'note: git hook enforcement (pre-push, the Publication Contract boundary) is per-repository and is NOT installed by a UserProfile-scope deploy - run install-git-hooks.ps1 -RepoRoot <repo> manually for each repository you use.' -ForegroundColor Yellow
-        }
-
-        $scopeNote = if ($Scope -eq 'UserProfile') { "user profile $baseRoot" } else { 'monorepo (this file set may be gitignored there - local per-developer deploy)' }
-        Write-Host "Done ($AgentName, $Scope deploy -> $scopeNote)." -ForegroundColor Cyan
-    }
-}
-
 # Mirrors skills\shared into a target directory like Copy-Mirrored, but keeps
 # the TARGET's own shared\VENDORED_FROM.md (an absent one stays absent, the
-# fork's is never copied): the revendor owns that file and reads it as the
+# source's is never copied): the revendor owns that file and reads it as the
 # previous pin before rewriting it, so a mirror that replaced it would leave the
-# revendor unable to delete a skill that left the pin.
+# revendor unable to delete a skill that left the pin (ruling R3). Used for
+# every scope, and by FromMonorepo so the FORK's pin stays the fork's.
 function Copy-MirroredShared([string] $Src, [string] $Dst) {
     $pin = Join-Path $Dst 'VENDORED_FROM.md'
     $keep = if (Test-Path -LiteralPath $pin -PathType Leaf) { [IO.File]::ReadAllBytes($pin) } else { $null }
@@ -1137,105 +1206,439 @@ function Copy-MirroredShared([string] $Src, [string] $Dst) {
     elseif (Test-Path -LiteralPath $pin) { Remove-Item -Force -LiteralPath $pin }
 }
 
-# -Scope Fork (design 3.5): deploy the layer into the fork's own root without
-# dirtying its working tree. Order matters: names are validated and the
-# .git/info/exclude lines written BEFORE the first file lands, so a run that
-# dies half-way still leaves a clean `git status`.
-#   claude       .claude/ - settings.json, hooks/*, scripts/revendor-superpowers.ps1,
-#                skills/shared, skills/mb-*, then the vendored skills
-#   every other  shared/, mb-* and the vendored skills in its skills dir; no glue,
-#                no agent-session marker (a config dir would show up untracked)
-#   never        instruction files (CLAUDE.md is manual, AGENTS.md is upstream)
-# A skills directory shared by several harnesses is deployed once. Drift
-# protection (manifest, -Force) is not part of this step.
-function Invoke-UmsForkDeploy([string[]] $AgentNames) {
-    $top = & git -C $ForkUmsDir rev-parse --show-toplevel 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $top) { throw "-Scope Fork: '$ForkUmsDir' is not inside a git working tree." }
-    $forkRoot = [IO.Path]::GetFullPath(([string]@($top)[0]).Trim())
-    $targets = @(Get-UmsSyncTargets -Agent $AgentNames -Scope Fork -Root $forkRoot)
-    foreach ($p in @((Join-Path $forkClaude 'skills\shared\VENDORED_FROM.md'), (Join-Path $forkClaude 'skills\shared'))) {
-        if (-not (Test-Path -LiteralPath $p)) { throw "-Scope Fork: '$p' not found - is '$ForkUmsDir' the fork's ums/ directory?" }
-    }
-    $forkPin = Join-Path $forkClaude 'skills\shared\VENDORED_FROM.md'
-
-    $claudeTarget = $targets | Where-Object { $_.Agent -ceq 'claude' } | Select-Object -First 1
-    $skillsDirs = [System.Collections.Generic.List[string]]::new()
-    $relDirs = [System.Collections.Generic.List[string]]::new()
-    foreach ($t in $targets) {
-        if (-not $t.SkillsDir) {
-            Write-Host "note: agent '$($t.Agent)' has no skills directory - nothing to deploy for it in Fork scope." -ForegroundColor DarkGray
-            continue
+# Writes one plan item (see Get-UmsDeployPlan).
+function Copy-UmsItem($Item) {
+    switch ($Item.Kind) {
+        'MirrorShared' { Copy-MirroredShared $Item.Src $Item.Dst }
+        'Mirror'       { Copy-Mirrored $Item.Src $Item.Dst }
+        'File' {
+            New-Item -ItemType Directory -Force (Split-Path -Parent $Item.Dst) | Out-Null
+            Copy-Item -Force -LiteralPath $Item.Src -Destination $Item.Dst
         }
-        if (-not ($skillsDirs | Where-Object { $_ -ieq $t.SkillsDir })) { $skillsDirs.Add($t.SkillsDir) }
-        $rel = if ($t.Agent -ceq 'claude') { '.claude' } else { [IO.Path]::GetRelativePath($forkRoot, $t.SkillsDir) }
-        if (-not ($relDirs | Where-Object { $_ -ieq $rel })) { $relDirs.Add($rel) }
+        default { throw "Copy-UmsItem: unknown item kind '$($Item.Kind)'." }
     }
+}
 
-    $newExcludes = @(Add-UmsGitExclude $forkRoot @(Get-UmsForkExcludes $forkRoot $relDirs.ToArray()))
-    foreach ($l in $newExcludes) { Write-Host "added to .git/info/exclude: $l" }
+$forkClaude = Join-Path $ForkUmsDir '.claude'
+$forkSkills = Join-Path $forkClaude 'skills'
+$forkPin = Join-Path $forkSkills 'shared\VENDORED_FROM.md'
+$samplePath = Join-Path $ForkUmsDir 'CLAUDE.md.sample'
 
-    $vanillaPending = $false
-    foreach ($sd in $skillsDirs) {
-        $skillsRel = [IO.Path]::GetRelativePath($forkRoot, $sd)
-        $tracked = Test-UmsTracked $forkRoot "$skillsRel/shared/VENDORED_FROM.md"
-        $mode = Get-UmsVendorPlan $forkPin (Join-Path $sd 'shared\VENDORED_FROM.md') $tracked
-        if ($mode -eq 'vanilla-only') {
-            # A tracked target changing tag: upstream diff first, on its own (design 3.3).
-            Invoke-UmsVendoredDeploy $ForkUmsDir $sd 'vanilla-only'
-            Write-Host "NEXT: commit the vanilla sync in '$skillsRel', then run this script again to mirror the UMS layer and apply the overlays." -ForegroundColor Yellow
-            $vanillaPending = $true
-            continue
+# Install/refresh this layer's git hooks (currently: pre-push, the
+# Publication Contract enforcement boundary - see
+# .claude/hooks/install-git-hooks.ps1) into a target repository. Git hooks
+# are per-repository, not per-agent: called once per run, for Monorepo (the
+# monorepo) and Fork (the fork); UserProfile has no single associated
+# repository - install manually per clone with install-git-hooks.ps1 -RepoRoot.
+# Called AFTER the deployment (never before): FromMonorepo rewrites the hook
+# source under the fork's .claude in the same run. Returns $true only when the
+# installer confirmed the guarantee; a failure never aborts the rest of the run
+# (the caller reports it as a partial result).
+function Install-PublicationHooks([string] $RepoRoot) {
+    $installScript = Join-Path $forkClaude 'hooks\install-git-hooks.ps1'
+    if (-not (Test-Path $installScript)) {
+        Write-Host "warning: install-git-hooks.ps1 not found - the pre-push guarantee is NOT installed into $RepoRoot." -ForegroundColor Yellow
+        return $false
+    }
+    try {
+        $global:LASTEXITCODE = 0
+        & $installScript -RepoRoot $RepoRoot -SourceDir (Join-Path $forkClaude 'hooks') | ForEach-Object { Write-Host "$_" }
+        $code = $LASTEXITCODE
+        # The installer exits non-zero whenever the guarantee is NOT in place
+        # (foreign hook left alone, or the installed copy failed its own proof).
+        if ($code -ne 0) {
+            Write-Host "warning: install-git-hooks.ps1 exited with $code - the pre-push guarantee is NOT confirmed for $RepoRoot (see its output just above)." -ForegroundColor Yellow
+            return $false
         }
-
-        foreach ($name in @(Get-UmsTargetOnlySkills $sd (Join-Path $forkClaude 'skills'))) {
-            Write-Host "warning: '$skillsRel\$name' exists only in the target - it is not part of the layer and stays untouched." -ForegroundColor Yellow
-        }
-        Copy-MirroredShared (Join-Path $forkClaude 'skills\shared') (Join-Path $sd 'shared')
-        Write-Host "deployed skills\shared -> $skillsRel\shared (pin kept)"
-        foreach ($d in Get-ChildItem -LiteralPath (Join-Path $forkClaude 'skills') -Directory -Filter 'mb-*') {
-            Copy-Mirrored $d.FullName (Join-Path $sd $d.Name)
-            Write-Host "deployed skills\$($d.Name) -> $skillsRel\$($d.Name)"
-        }
-
-        if ($claudeTarget -and $sd -ieq $claudeTarget.SkillsDir) {
-            $dstClaude = $claudeTarget.ConfigDir
-            $srcHooks = Join-Path $forkClaude 'hooks'
-            $hooks = if (Test-Path -LiteralPath $srcHooks) {
-                @(Get-ChildItem -LiteralPath $srcHooks -File | ForEach-Object { "hooks\$($_.Name)" })
-            } else { @() }
-            foreach ($rel in @('settings.json', 'scripts\revendor-superpowers.ps1') + $hooks) {
-                Copy-Mirrored (Join-Path $forkClaude $rel) (Join-Path $dstClaude $rel)
-                Write-Host "deployed $rel -> .claude\$rel"
-            }
-        }
-
-        Invoke-UmsVendoredDeploy $ForkUmsDir $sd 'full'
+        return $true
     }
-
-    $others = @($targets | Where-Object { $_.Agent -cne 'claude' } | ForEach-Object { $_.Agent })
-    if ($others.Count -gt 0) {
-        Write-Host "note: Fork scope deploys only skills for $($others -join ', ') - no glue, no agent-session marker, no instructions file (the pre-push guard needs MB_AGENT_SESSION or AI_AGENT set by other means there)." -ForegroundColor DarkGray
+    catch {
+        Write-Host "warning: could not install git hooks into $RepoRoot ($($_.Exception.Message)) - continuing sync without them." -ForegroundColor Yellow
+        return $false
     }
+}
 
-    if ($vanillaPending) {
-        Write-Host 'Fork deploy stopped after the vanilla phase (see NEXT above); git hooks not touched.' -ForegroundColor Yellow
-        return
-    }
-    Install-PublicationHooks $forkRoot
+function Write-WhatIf([string] $Text) { Write-Host "WHATIF would $Text" -ForegroundColor DarkCyan }
 
-    $dirty = @(& git -C $forkRoot status --porcelain -- @($relDirs.ToArray()) 2>$null | Where-Object { $_ })
-    if ($dirty.Count -gt 0) {
-        Write-Host "warning: the deployed directories show up in 'git status' of the fork ($($dirty.Count) entries, e.g. $($dirty[0])) - something in them is tracked or not ignored." -ForegroundColor Yellow
+$failures = [System.Collections.Generic.List[string]]::new()
+
+# Ends the run: exit 5 when a per-agent step failed (partial state), else 0.
+function Complete-Run([string] $What) {
+    if ($Preview) {
+        Write-Host "WhatIf: nothing was written ($What)." -ForegroundColor Cyan
+        exit 0
     }
-    Write-Host "Done (Fork deploy: $($AgentNames -join ', ') -> $forkRoot)." -ForegroundColor Cyan
+    if ($failures.Count -gt 0) {
+        Write-Host "PARTIAL: deployed ($What), but $($failures.Count) step(s) failed:" -ForegroundColor Red
+        foreach ($f in $failures) { Write-Host "  - $f" -ForegroundColor Red }
+        exit 5
+    }
+    Write-Host "Done ($What)." -ForegroundColor Cyan
+    exit 0
 }
 
 # ------------------------------------------------------------------------ run
+foreach ($p in @($forkPin, $samplePath)) {
+    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw "'$p' not found - is '$ForkUmsDir' the fork's ums/ directory?" }
+}
+$AgentList = @(ConvertTo-UmsAgentList $Agent)
+if ($AgentList.Count -eq 0) { $AgentList = @('claude') }
+
+$forkRoot = $null
 if ($Scope -eq 'Fork') {
-    Invoke-UmsForkDeploy $AgentList
+    $top = & git -C $ForkUmsDir rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $top) { throw "-Scope Fork: '$ForkUmsDir' is not inside a git working tree." }
+    $forkRoot = [IO.Path]::GetFullPath(([string]@($top)[0]).Trim())
 }
-else {
-    # Validate every name before the first file is written.
-    $null = @(Get-UmsSyncTargets -Agent $AgentList -Scope $Scope -Root $baseRoot)
-    foreach ($name in $AgentList) { Invoke-UmsAgentSync $name }
+$targetRoot = if ($Scope -eq 'Fork') { $forkRoot } elseif ($Scope -eq 'UserProfile') { $UserProfileRoot } else { $MonorepoRoot }
+if (-not $targetRoot -or -not (Test-Path -LiteralPath $targetRoot -PathType Container)) {
+    $hint = if ($Scope -eq 'Monorepo') { ' - pass -MonorepoRoot (or set UMS_SYNC_MONOREPO_ROOT)' } elseif ($Scope -eq 'UserProfile') { ' - pass -UserProfileRoot' } else { '' }
+    throw "Target root '$targetRoot' (scope $Scope) does not exist$hint."
 }
+$targetRoot = [IO.Path]::GetFullPath($targetRoot)
+
+# Validates every agent name before anything is read or written.
+$targets = @(Get-UmsSyncTargets -Agent $AgentList -Scope $Scope -Root $targetRoot)
+
+if ($Direction -eq 'FromMonorepo' -and -not ($Scope -eq 'Monorepo' -and $AgentList.Count -eq 1 -and $AgentList[0] -ceq 'claude')) {
+    throw "-Direction FromMonorepo pulls the monorepo's changes back into the fork and exists only for -Agent claude -Scope Monorepo (got -Agent $($AgentList -join ',') -Scope $Scope); nothing was written."
+}
+
+$forkSha = ''
+$shaOut = & git -C $ForkUmsDir rev-parse HEAD 2>$null
+if ($LASTEXITCODE -eq 0 -and $shaOut) { $forkSha = ([string]@($shaOut)[0]).Trim() }
+$forkTag = Get-UmsPinTag $forkPin
+
+$previewNote = if ($Preview) { '  [WhatIf: nothing is written]' } else { '' }
+Write-Host "Plan: Direction=$Direction  Scope=$Scope  Agent=$($AgentList -join ',')  Target=$targetRoot  Fork=$ForkUmsDir  Tag=$forkTag$previewNote" -ForegroundColor Cyan
+
+function Get-TargetRel([string] $Path) { return [IO.Path]::GetRelativePath($targetRoot, $Path) }
+
+# The manifest of one plan: its path, whether a file exists there, and its
+# Files map ($null when there is none or it is unreadable).
+function Get-PlanManifest($Plan) {
+    $path = Get-UmsManifestPath $targetRoot "$($Plan.Agent)-$Scope"
+    $exists = Test-Path -LiteralPath $path -PathType Leaf
+    $m = if ($exists) { Read-UmsManifest $path 3>$null } else { $null }
+    $files = if ($null -ne $m) { $m.Files } else { $null }
+    return [pscustomobject]@{ Path = $path; Exists = $exists; Files = $files }
+}
+
+# -------------------------------------------- FromMonorepo (claude + Monorepo)
+# The deliberate pull of changes made in the monorepo back into the fork: the
+# UMS items (settings.json, scripts\revendor-superpowers.ps1, skills\shared -
+# the FORK's pin is kept -, skills\mb-*, hooks\*) and the UMS block of
+# CLAUDE.md into CLAUDE.md.sample. Vendored skills are never pulled. No drift
+# check: this IS the way to take the target's changes (the fork's own diff is
+# reviewable in git). The manifest then records the monorepo as deployed, so
+# the next ToMonorepo sees no drift for what was pulled; vendored entries are
+# carried over from the previous manifest (not blessed - a hand edit in a
+# vendored skill still stops the next ToMonorepo).
+function Invoke-UmsFromMonorepo {
+    $monoClaude = Join-Path $targetRoot '.claude'
+    if (-not (Test-Path -LiteralPath $monoClaude -PathType Container)) { throw "Monorepo .claude not found at $monoClaude" }
+    $monoSkills = Join-Path $monoClaude 'skills'
+    $pulls = [System.Collections.Generic.List[object]]::new()
+    $addPull = { param($Kind, $Rel) $pulls.Add([pscustomobject]@{ Kind = $Kind; Src = (Join-Path $monoClaude $Rel); Dst = (Join-Path $forkClaude $Rel); Rel = $Rel }) }
+    foreach ($rel in @('settings.json', 'scripts\revendor-superpowers.ps1')) {
+        if (Test-Path -LiteralPath (Join-Path $monoClaude $rel) -PathType Leaf) { & $addPull 'Mirror' $rel }
+        else { Write-Host "note: $rel is not in the monorepo - left as it is in the fork." -ForegroundColor DarkGray }
+    }
+    if (Test-Path -LiteralPath (Join-Path $monoSkills 'shared') -PathType Container) { & $addPull 'MirrorShared' 'skills\shared' }
+    if (Test-Path -LiteralPath $monoSkills -PathType Container) {
+        foreach ($d in @(Get-ChildItem -LiteralPath $monoSkills -Directory -Filter 'mb-*' | Sort-Object Name)) { & $addPull 'Mirror' "skills\$($d.Name)" }
+    }
+    $monoHooks = Join-Path $monoClaude 'hooks'
+    if (Test-Path -LiteralPath $monoHooks -PathType Container) {
+        foreach ($h in @(Get-ChildItem -LiteralPath $monoHooks -File | Sort-Object Name)) { & $addPull 'Mirror' "hooks\$($h.Name)" }
+    }
+
+    $monoMd = Join-Path $targetRoot 'CLAUDE.md'
+    $block = if (Test-Path -LiteralPath $monoMd -PathType Leaf) { Get-MarkedBlockContent $monoMd $UmsOwnedHeadings } else { $null }
+
+    foreach ($p in $pulls) {
+        if ($Preview) { Write-WhatIf "pull $($p.Rel) -> ums\.claude\$($p.Rel)" }
+        else { Copy-UmsItem $p; Write-Host "pulled $($p.Rel)" }
+    }
+    if ($null -eq $block) {
+        Write-Host "warning: $monoMd has no UMS block (no markers, no UMS-owned sections) - CLAUDE.md.sample left as it is." -ForegroundColor Yellow
+    }
+    else {
+        $newSample = $block.TrimEnd("`n") + "`n"
+        $oldSample = [IO.File]::ReadAllText($samplePath).Replace("`r`n", "`n")
+        if ($oldSample -ceq $newSample) { Write-Host 'CLAUDE.md.sample already equals the UMS block of CLAUDE.md.' -ForegroundColor DarkGray }
+        elseif ($Preview) { Write-WhatIf 'write the UMS block of CLAUDE.md -> ums\CLAUDE.md.sample' }
+        else {
+            [IO.File]::WriteAllText($samplePath, $newSample, [Text.UTF8Encoding]::new($false))
+            Write-Host 'pulled the UMS block of CLAUDE.md -> CLAUDE.md.sample'
+        }
+    }
+
+    if ($Preview) { Write-WhatIf "install the pre-push hook into $targetRoot" }
+    elseif (-not (Install-PublicationHooks $targetRoot)) { $failures.Add("pre-push hook not confirmed for $targetRoot") }
+
+    # The manifest reflects the ToMonorepo plan against the refreshed fork.
+    $plan = Get-UmsDeployPlan $targets[0] $Scope $forkClaude $targetRoot ([IO.File]::ReadAllText($samplePath)) $MonorepoRoot
+    $man = Get-PlanManifest $plan
+    if ($Preview) { Write-WhatIf "write the manifest $($man.Path)" }
+    else {
+        $files = Get-UmsPlanHashes $plan 'Target'
+        if ($null -ne $man.Files) {
+            foreach ($k in $man.Files.Keys) { if (Test-UmsKeyUnder $k $plan.Vendored) { $files[$k] = $man.Files[$k] } }
+        }
+        else {
+            $vend = Get-UmsTreeHashes $targetRoot @($plan.Vendored)
+            foreach ($k in $vend.Keys) { $files[$k] = $vend[$k] }
+        }
+        Write-UmsManifest $man.Path $files $forkSha
+        Write-Host "manifest written: $($man.Path)" -ForegroundColor DarkGray
+    }
+    Complete-Run "claude, Monorepo, FromMonorepo: $targetRoot -> $ForkUmsDir"
+}
+
+if ($Direction -eq 'FromMonorepo') { Invoke-UmsFromMonorepo }
+
+# ----------------------------------------------------------- ToMonorepo plans
+# Instructions files read by several harnesses are written once, with the
+# block of the first agent that claims them in this run.
+$claimed = @{}
+$plans = @(foreach ($t in $targets) {
+        $plan = Get-UmsDeployPlan $t $Scope $forkClaude $targetRoot ([IO.File]::ReadAllText($samplePath)) $MonorepoRoot
+        if ($plan.Instructions) {
+            $k = $plan.Instructions.ToLowerInvariant()
+            if ($claimed.ContainsKey($k)) { $plan.SharedWith = $claimed[$k].Agent; $plan.Content = $claimed[$k].Content }
+            else { $claimed[$k] = $plan }
+        }
+        $plan
+    })
+
+# ---- 1. drift (design 3.2): nothing is written before this check passes
+$manifests = @{}
+$drifted = [System.Collections.Generic.List[object]]::new()
+foreach ($plan in $plans) {
+    $man = Get-PlanManifest $plan
+    $manifests[$plan.Agent] = $man
+    $d = Get-UmsPlanDrift $plan $man.Files
+    if (@($d.Drifted).Count -gt 0) { $drifted.Add([pscustomobject]@{ Plan = $plan; Manifest = $man; Files = [string[]]@($d.Drifted) }) }
+}
+foreach ($x in $drifted) {
+    $why = if ($x.Manifest.Exists -and $null -eq $x.Manifest.Files) {
+        "the manifest '$($x.Manifest.Path)' exists but is corrupt (unreadable) - treated as missing, every difference from the fork counts"
+    }
+    elseif ($null -eq $x.Manifest.Files) { 'no deployment manifest yet (first run) - every difference from the fork counts' }
+    else { 'changed in the target since the last deployment, and the fork does not have the change' }
+    Write-Host "DRIFT in '$($x.Plan.Agent)' ($Scope, $targetRoot): $($x.Files.Count) file(s) - ${why}:" -ForegroundColor Yellow
+    foreach ($f in $x.Files) { Write-Host "    $f" -ForegroundColor Yellow }
+}
+if ($drifted.Count -gt 0) {
+    if ($Force) {
+        Write-Host '-Force: the drifted files listed above are overwritten.' -ForegroundColor Yellow
+    }
+    elseif ($Preview) {
+        Write-Host 'WhatIf: without -Force this run would STOP here (exit 3); below is what a run with -Force would write.' -ForegroundColor Yellow
+    }
+    else {
+        Write-Host 'STOP: the target has drifted - nothing was written.' -ForegroundColor Red
+        if ($Scope -eq 'Monorepo' -and @($drifted | Where-Object { $_.Plan.Agent -ceq 'claude' }).Count -gt 0) {
+            Write-Host '  take the monorepo changes into the fork first:  -Direction FromMonorepo' -ForegroundColor Red
+        }
+        else {
+            Write-Host "  carry the target's changes into the fork (ums/.claude, ums/CLAUDE.md.sample) by hand," -ForegroundColor Red
+        }
+        Write-Host '  or overwrite them deliberately:                  -Force' -ForegroundColor Red
+        exit 3
+    }
+}
+
+# ---- 2. Fork: .git/info/exclude lines BEFORE the first file lands
+$forkRelDirs = [System.Collections.Generic.List[string]]::new()
+if ($Scope -eq 'Fork') {
+    foreach ($plan in $plans) {
+        if (-not $plan.SkillsDir) { continue }
+        $rel = if ($plan.Agent -ceq 'claude') { '.claude' } else { Get-TargetRel $plan.SkillsDir }
+        if (-not ($forkRelDirs | Where-Object { $_ -ieq $rel })) { $forkRelDirs.Add($rel) }
+    }
+    $needed = @(Get-UmsForkExcludes $forkRoot $forkRelDirs.ToArray())
+    if ($Preview) { foreach ($l in $needed) { Write-WhatIf "add to .git/info/exclude: $l" } }
+    else { foreach ($l in @(Add-UmsGitExclude $forkRoot $needed)) { Write-Host "added to .git/info/exclude: $l" } }
+}
+
+# ---- 3. vendoring plan per skills directory (design 3.3)
+$vendorUnits = [ordered]@{}
+foreach ($plan in $plans) {
+    $pinArg = if ($plan.SkillsDir) { Join-Path $plan.SkillsDir 'shared\VENDORED_FROM.md' } else { '' }
+    $tracked = $false
+    if ($pinArg) {
+        # Tracked is judged on the real target pin, relative to the target's git toplevel.
+        $top = Get-UmsGitTop $plan.SkillsDir
+        if ($top) { $tracked = Test-UmsTracked $top ([IO.Path]::GetRelativePath($top, $pinArg)) }
+    }
+    $mode = Get-UmsVendorPlan $forkPin $pinArg $tracked
+    if ($mode -eq 'none') {
+        Write-Host "note: '$($plan.Agent)' has no skills directory at scope $Scope - no vendored skills." -ForegroundColor DarkGray
+        continue
+    }
+    $k = $plan.SkillsDir.ToLowerInvariant()
+    if (-not $vendorUnits.Contains($k)) { $vendorUnits[$k] = [pscustomobject]@{ Dir = $plan.SkillsDir; Mode = $mode } }
+}
+
+$vanilla = @($vendorUnits.Values | Where-Object { $_.Mode -eq 'vanilla-only' })
+if ($vanilla.Count -gt 0) {
+    # A tag change on a git-tracked target: the upstream diff on its own, NOTHING
+    # else in this run (no UMS items, instructions, marker or hooks), so that the
+    # commit carries only the upstream change.
+    foreach ($u in $vanilla) {
+        $rel = Get-TargetRel $u.Dir
+        $oldTag = Get-UmsPinTag (Join-Path $u.Dir 'shared\VENDORED_FROM.md')
+        if ($Preview) { Write-WhatIf "run ONLY the vanilla phase in $rel (tag $oldTag -> $forkTag on a git-tracked target): revendor without overlays, nothing else" }
+        else {
+            Write-Host "vanilla phase: $rel (tag $oldTag -> $forkTag, git-tracked) - revendor without overlays"
+            Invoke-UmsVendoredDeploy $ForkUmsDir $u.Dir 'vanilla-only'
+        }
+    }
+    foreach ($u in @($vendorUnits.Values | Where-Object { $_.Mode -ne 'vanilla-only' })) {
+        Write-Host "note: $(Get-TargetRel $u.Dir) is left for the next run (the vanilla phase writes nothing else)." -ForegroundColor DarkGray
+    }
+    if ($Preview) {
+        Write-Host 'WhatIf: the run would end after the vanilla phase with exit 4; nothing was written.' -ForegroundColor Cyan
+        exit 0
+    }
+    # Record what the vanilla phase wrote, so the next run does not take it for drift.
+    foreach ($plan in $plans) {
+        if (-not $plan.SkillsDir -or @($vanilla | Where-Object { $_.Dir -ieq $plan.SkillsDir }).Count -eq 0) { continue }
+        $man = $manifests[$plan.Agent]
+        $files = @{}
+        if ($null -ne $man.Files) {
+            foreach ($k in $man.Files.Keys) { if (-not (Test-UmsKeyUnder $k $plan.Vendored)) { $files[$k] = $man.Files[$k] } }
+        }
+        $vend = Get-UmsTreeHashes $targetRoot @($plan.Vendored)
+        foreach ($k in $vend.Keys) { $files[$k] = $vend[$k] }
+        Write-UmsManifest $man.Path $files $forkSha
+    }
+    Write-Host ''
+    Write-Host "VANILLA PHASE DONE: the vendored skills were re-vendored at $forkTag WITHOUT overlays; the UMS layer, instructions, marker and git hooks were NOT touched." -ForegroundColor Yellow
+    Write-Host 'NEXT: commit this in the target as "vanilla sync", then run this script again - it mirrors the UMS layer and applies the overlays (commit "overlay").' -ForegroundColor Yellow
+    exit 4
+}
+
+# ---- 4. full deployment: UMS items, vendored skills, instructions, marker, hooks
+foreach ($u in $vendorUnits.Values) {
+    foreach ($name in @(Get-UmsTargetOnlySkills $u.Dir $forkSkills)) {
+        Write-Host "warning: '$(Get-TargetRel $u.Dir)\$name' exists only in the target - it is not part of the layer and stays untouched." -ForegroundColor Yellow
+    }
+}
+
+$written = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($plan in $plans) {
+    $glue = 0
+    foreach ($it in $plan.Items) {
+        if (-not $written.Add($it.Dst)) { continue }
+        if ($it.Kind -eq 'File') {
+            if (-not $Preview) { Copy-UmsItem $it }
+            $glue++
+            continue
+        }
+        $what = if ($it.Kind -eq 'MirrorShared') { "$($it.Key) (target pin kept)" } else { $it.Key }
+        if ($Preview) { Write-WhatIf "mirror $what" }
+        else { Copy-UmsItem $it; Write-Host "deployed $what" }
+    }
+    if ($glue -gt 0) {
+        $cfgRel = Get-TargetRel $plan.ConfigDir
+        if ($Preview) { Write-WhatIf "merge $glue glue file(s) (hooks/, scripts/) into $cfgRel" }
+        else { Write-Host "deployed $glue glue file(s) (hooks/, scripts/) -> $cfgRel (merged)" }
+    }
+}
+
+foreach ($u in $vendorUnits.Values) {
+    $rel = Get-TargetRel $u.Dir
+    if ($Preview) { Write-WhatIf "vendor ($($u.Mode)) the superpowers skills at $forkTag into $rel" }
+    else {
+        Write-Host "vendoring ($($u.Mode)) -> $rel"
+        Invoke-UmsVendoredDeploy $ForkUmsDir $u.Dir $u.Mode
+    }
+}
+
+foreach ($plan in $plans) {
+    if (-not $plan.Instructions) {
+        if ($Scope -ne 'Fork') {
+            Write-Host "WARNING: agent '$($plan.Agent)' has no known instructions file at scope $Scope - the preference block was NOT deployed; add it to the harness's instructions by hand." -ForegroundColor Yellow
+        }
+        continue
+    }
+    $rel = Get-TargetRel $plan.Instructions
+    if ($plan.SharedWith) {
+        Write-Host "note: '$($plan.Agent)' reads $rel too - written once, with the block of '$($plan.SharedWith)'." -ForegroundColor DarkGray
+        continue
+    }
+    if ($Preview) { Write-WhatIf "write the UMS block into $rel" }
+    else {
+        Set-MarkedBlock $plan.Instructions $plan.Content $plan.Owned
+        Write-Host "deployed preference block -> $rel"
+    }
+}
+
+# Agent-session marker. Who is covered is DATA (Get-UmsSyncTargets .Guarantee),
+# not exception text. A marker writer error other than NotSupportedException is
+# reported for that agent and the run continues (exit 5 at the end).
+foreach ($plan in $plans) {
+    $a = $plan.Agent
+    if ($a -cne 'claude' -and $Scope -ne 'Fork') {
+        Write-Host "note: settings.json not deployed for '$a' (Claude Code registration format) - wire hooks manually there." -ForegroundColor DarkGray
+    }
+    if ($plan.Guarantee -eq 'none') {
+        Write-Host "WARNING: the pre-push guarantee does not bind '$a' (no documented environment-injection mechanism) - the guard recognises an agent session there only if MB_AGENT_SESSION or AI_AGENT is set by other means." -ForegroundColor Yellow
+        continue
+    }
+    if ($plan.Guarantee -eq 'ai-agent-fallback') {
+        Write-Host "note: no marker to write for '$a' - covered by the AI_AGENT fallback of the pre-push guard (the harness sets AI_AGENT itself)." -ForegroundColor DarkGray
+        continue
+    }
+    if ($Scope -eq 'Fork') { continue }
+    if ($plan.Marker -eq 'settings-env') {
+        if ($Scope -eq 'UserProfile') {
+            Write-Host "note: settings.json not deployed - merge hook registration into $(Get-TargetRel $plan.ConfigDir)\settings.json manually if wanted (the guard's CLAUDECODE fallback covers Claude Code)." -ForegroundColor DarkGray
+        }
+        continue
+    }
+    if ($Preview) { Write-WhatIf "write the agent-session marker ($($plan.Marker)) for '$a' into $(Get-TargetRel $plan.ConfigDir)"; continue }
+    try {
+        Set-AgentMarker $plan.ConfigDir $a $Scope
+        Write-Host "note: agent-session marker ($AGENT_MARKER_NAME) written for '$a' ($($plan.Marker)) - without it the pre-push guard disables itself there." -ForegroundColor DarkGray
+    }
+    catch [System.NotSupportedException] {
+        Write-Host "WARNING: no agent-session marker mechanism for '$a' at scope $Scope ($($_.Exception.Message)) - a named, open gap." -ForegroundColor Yellow
+    }
+    catch {
+        $failures.Add("agent-session marker for '$a' NOT written: $($_.Exception.Message)")
+        Write-Host "ERROR: agent-session marker for '$a' NOT written: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+if ($Scope -eq 'Fork') {
+    $others = @($plans | Where-Object { $_.Agent -cne 'claude' } | ForEach-Object { $_.Agent })
+    if ($others.Count -gt 0) {
+        Write-Host "note: Fork scope deploys only skills for $($others -join ', ') - no glue, no agent-session marker, no instructions file (the pre-push guard needs MB_AGENT_SESSION or AI_AGENT set by other means there)." -ForegroundColor DarkGray
+    }
+}
+
+if ($Scope -eq 'UserProfile') {
+    Write-Host 'note: git hook enforcement (pre-push, the Publication Contract boundary) is per-repository and is NOT installed by a UserProfile-scope deploy - run install-git-hooks.ps1 -RepoRoot <repo> manually for each repository you use.' -ForegroundColor Yellow
+}
+elseif ($Preview) { Write-WhatIf "install the pre-push hook into $targetRoot" }
+elseif (-not (Install-PublicationHooks $targetRoot)) { $failures.Add("pre-push hook not confirmed for $targetRoot") }
+
+# ---- 5. manifest: the TARGET's post-deploy hashes (ruling R3)
+foreach ($plan in $plans) {
+    $man = $manifests[$plan.Agent]
+    if ($Preview) { Write-WhatIf "write the manifest $($man.Path)"; continue }
+    Write-UmsManifest $man.Path (Get-UmsPlanTargetState $plan) $forkSha
+    Write-Host "manifest written: $($man.Path)" -ForegroundColor DarkGray
+}
+
+if ($Scope -eq 'Fork' -and -not $Preview) {
+    $dirty = @(& git -C $forkRoot status --porcelain -- @($forkRelDirs.ToArray()) 2>$null | Where-Object { $_ })
+    if ($dirty.Count -gt 0) {
+        Write-Host "warning: the deployed directories show up in 'git status' of the fork ($($dirty.Count) entries, e.g. $($dirty[0])) - something in them is tracked or not ignored." -ForegroundColor Yellow
+    }
+}
+
+Complete-Run "$Direction, $Scope deploy: $($AgentList -join ', ') -> $targetRoot"
