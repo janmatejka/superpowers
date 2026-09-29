@@ -55,8 +55,9 @@ and write — a ledger row, the `NOW` block, the report at a phase boundary — 
 the message only gets it there sooner. What a harness without messaging loses is
 then SPEED, not correctness, which is what "fail-closed, not broken" means here.
 
-**Nothing in this section has a mechanical trigger, and its rules are listed one
-by one so that no skill writes them down as though a hook checked them.** It is
+**Nothing in this section, the reply rule of "Replies are required" below
+included, has a mechanical trigger, and its rules are listed one by one so that
+no skill writes them down as though a hook checked them.** It is
 measured in this project that a rule with no trigger gets broken even by its own
 author, so the status of each is stated instead of implied:
 
@@ -69,20 +70,31 @@ author, so the status of each is stated instead of implied:
   re-encoded downstream as an enforced gate. It is not one, and there is
   nothing in this layer to enforce it with.
 - **A right of the recipient**, exercised by the recipient alone and never
-  granted message by message: refusing a conjecture.
+  granted message by message: refusing a conjecture. It needs no permission,
+  but is answered: the refusal is itself the reply, never silence.
 - **A reading default of the recipient**, applied by it and by nothing else: an
   unmarked message — and one whose content contradicts its own mark — is read
   as a conjecture.
 - **Duties of the recipient**, just as undetected and just as binding on it:
   refusing an instruction that contradicts a written rule, and keeping a
   conjecture out of the ledger as fact.
+- **A duty of BOTH parties, just as undetected:** answering a message of the
+  other party, and the one repeat after `Due` ("Replies are required" below).
+  What exists is only VISIBILITY. The manager's outbox and the ticket's `NOW`
+  block (or, where no block exists, its report and `## Předání` line) make an
+  unanswered or late message readable by `mb-epic-run status`; no hook, script
+  or gate sends the repeat, blocks a session that stays silent or fails when a
+  reply is missing, and a message nobody entered in the outbox is invisible to
+  it. A reader showing a message as late is a finding for the manager, not a
+  verdict on the session.
 - **A requirement on the DESIGN of an escalation band**, checked when the band
   is written and never at runtime: that the band has an artifact form.
 - **A bound on the scope of everything the core's `## Message Protocol` states,
   rather than a rule of its own:**
   the other direction carries no mark, so none of the duties, rights and
   defaults listed here attach to a report, a correction or a handoff artifact
-  travelling back up.
+  travelling back up. The one exception is the reply duty above: it binds BOTH
+  directions, and what travels back up does not become a marked message by it.
 - **Rules named here that ARE binding — and are binding somewhere else:**
   - the ban on merging the base in the middle of a task belongs to Base Sync &
     Drift Detection and holds whatever any message says; what this section adds
@@ -92,3 +104,60 @@ author, so the status of each is stated instead of implied:
     *domněnka* belongs to the Language Contract, which decides the language of
     every artifact in this layer; what this section adds is only which token a
     message carries.
+
+### Replies are required
+
+**Every message between an epic's manager and a ticket session requires a
+reply, in both directions.** The mark stays one-way — a manager's message keeps
+its `Mark:` and the way back carries none — so this rule adds an obligation and
+no authority. A message that expects a reply states its own send time in UTC, to
+the second; the manager enters that same time in its outbox.
+
+- **The reply is one of three:** accepted (and what the replier will do),
+  refused (and the written rule, or the replier's own measurement, that
+  refuses), or a substantive answer. Refusing a conjecture needs no permission
+  but is answered like any other message. **Nobody replies to a reply** — the
+  obligation ends there, so it cannot become a loop.
+- **The class line of a reply** is `Re: 2026-09-29T10:00:00Z`, the UTC time of the
+  message being answered, and it is the first line of the reply. A manager's
+  message keeps its mark on the first line, so there the class line is the one
+  directly below it.
+- **The one class of message that needs no reply is the announcement**, class
+  line `Oznámení:`: a fact of the sender's OWN action that the recipient can
+  verify in a shared artifact — `fast-forward done, tip 0123abc`, checkable with
+  `git fetch`. The recipient acts on it (the manager notes it in the ledger) and
+  does not answer. It is not a shortcut: a message that asks anything, states a
+  cause or gives an instruction is not an announcement whatever its first line
+  says, in the same way a mark contradicted by the content is read as a
+  conjecture.
+- **When:** at the recipient's nearest turn boundary. A session waiting on a
+  subagent replies after the subagent returns, and the ban on prodding such a
+  session stands.
+- **After `Due`:** ONE repeat (state `resent`, with a new `Due`), then the
+  human. A repeat that also goes late is reported to the human, who owns it from
+  there, and its entry is closed; nothing waits indefinitely and nothing fails
+  silently.
+
+**The wait has an artifact on each side, and the message only accelerates it.**
+A ticket session waiting for the manager's reply names the wait where a `NOW`
+block exists — subagent-driven development and native execution — as state
+`waiting-for-manager` with a `Due` (contract/now-block.md, "The `NOW` Block").
+Finishing has no block, so there the wait is named in the report
+(contract, "Escalation & Autonomy") and in the `## Předání` line of the
+ticket's epic file. The manager keeps a git-ignored OUTBOX, `outbox.md` under
+`.superpowers/epic/<key>/` at the repository root, which `mb-epic-run status`
+renders as the unanswered and the late messages. `to:` names who owes the reply
+— a ticket key, or `manager` for a message the manager has itself received and
+not yet answered; `state` is `open`, `resent` or `closed`, and `closed` is
+final. The outbox line is closed-format, one per message, as here:
+```
+# Outbox — epic UMS-3557
+- 2026-09-29T10:00:00Z | to: UMS-3560 | due: 2026-09-29T10:30:00Z | state: open | spawn: takeover of the ticket
+```
+
+**The outbox is read as untrusted input, under the same rules as the `NOW`
+block** (contract/now-block.md, "The `NOW` Block"): a closed format, parsed and
+re-rendered, bounded in size, and a line carrying an angle bracket, a control
+character or a format character dropped and counted, never rendered. Lateness is
+computed by the reader against its own clock and never written. What the outbox
+shows decides where to look, never whether to integrate.

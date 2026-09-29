@@ -1,6 +1,6 @@
 ---
 name: mb-epic-run
-description: Use when a ticket is to be STARTED as its own Claude session in a pool slot, or when you need the state of the machine's slot pool — which slot is free, which slot holds which ticket, whether a session is live in one ("rozjeď tiket UMS-1234 do slotu", "pusť sezení na tiket", "co je volné", "stav poolu", "kde běží ten tiket", "co je připravené rozjet") — and when a finished ticket's handoff arrives and its work is to be fast-forwarded into the epic line by the epic's manager ("integruj tiket UMS-1234 do epikové linie", "zaintegruj předání", "přišlo předání tiketu"). This is about SLOTS, live sessions and the manager's own integration push, not about documents on branches. Companion of mb-epic-elaboration; the pool is a set of linked worktrees the operator provisioned and marked.
+description: Use when a ticket is to be STARTED as its own Claude session in a pool slot, or when you need the state of the machine's slot pool — which slot is free, which slot holds which ticket, whether a session is live in one, which messages between the epic's manager and its ticket sessions still await a reply ("rozjeď tiket UMS-1234 do slotu", "pusť sezení na tiket", "co je volné", "stav poolu", "kde běží ten tiket", "co je připravené rozjet", "na co se čeká", "nezodpovězené zprávy") — and when a finished ticket's handoff arrives and its work is to be fast-forwarded into the epic line by the epic's manager ("integruj tiket UMS-1234 do epikové linie", "zaintegruj předání", "přišlo předání tiketu"). This is about SLOTS, live sessions and the manager's own integration push, not about documents on branches. Companion of mb-epic-elaboration; the pool is a set of linked worktrees the operator provisioned and marked.
 license: MIT
 metadata:
   author: UMS Project
@@ -11,7 +11,11 @@ allowed-tools: Bash(git status:*), Bash(git rev-parse:*), Bash(git log:*), Bash(
 > Contract core: [UMS_MEMORY_BANK_CONTRACT](../shared/UMS_MEMORY_BANK_CONTRACT.md) · References: [epic-line.md](../shared/contract/epic-line.md), [worktree-pool.md](../shared/contract/worktree-pool.md), [now-block.md](../shared/contract/now-block.md), [message-protocol.md](../shared/contract/message-protocol.md), [escalation.md](../shared/contract/escalation.md), [integration.md](../shared/contract/integration.md), [workspace-discipline.md](../shared/contract/workspace-discipline.md). Read the named references before acting.
 >
 > Every message this skill sends to a ticket session is governed by
-> (contract/message-protocol.md, "Message Protocol"), marking included.
+> (contract/message-protocol.md, "Message Protocol"), marking included, and
+> every one of them — like every message a ticket session sends the manager —
+> requires a reply unless it is an `Oznámení:`
+> (contract/message-protocol.md, "Replies are required"). The manager's side of
+> that obligation is the outbox, see "Replies and the outbox" below.
 
 # Command: mb-epic-run
 
@@ -27,7 +31,8 @@ plus the one write that leaves this repository at all: `integrate`'s
 fast-forward push of a ticket's commit onto the epic line, by refspec (iron
 rule 11). The two state files it asks the
 scripts to write (`-Json`) land under this repository's git-ignored
-`.superpowers/`.
+`.superpowers/`, and so does the outbox, `.superpowers/epic/<KEY>/outbox.md`,
+which is written by `spawn` and `integrate` and only READ by `status`.
 
 ## Iron rules
 
@@ -224,6 +229,40 @@ skill's job.
    then `git show` the matching file (contract/epic-backflow.md, "The per-ticket epic file")
    and render the last `## Předání` line if one exists, or empty when the
    ticket has no per-ticket epic file at the base yet.
+8. When an epic is in play, also render the messages that still await a reply,
+   from the epic's outbox — read through the script and never by parsing the
+   file by hand ("Replies and the outbox" below). Run it in
+   `pwsh -NoProfile -Command`, the form `allowed-tools` names:
+
+       . <this skill>/scripts/outbox.ps1
+       $dropped = 0
+       $outbox = @(Get-UmsOutbox -RepoRoot (git rev-parse --show-toplevel) `
+           -EpicKey <EPIK> -NowUtc ([datetime]::UtcNow) -Rejected ([ref] $dropped))
+
+   Render one Czech table, only the rows whose `State` is `open` or `resent`
+   (a `closed` row is answered and is not shown), with exactly these column
+   headers:
+
+| Odpověď dluží | Odesláno | Termín | Stav | Věc |
+
+   `Odpověď dluží` renders `To`, with `manager` as **`správce`**. `Odesláno`
+   and `Termín` render `Sent` and `Due` as given: unlike the JSON `dueAt` above
+   they are already strings, so there is nothing to re-format. `Stav` renders
+   `open` as **`čeká na odpověď`** and `resent` as **`zopakováno, čeká`**, and
+   appends **`(po termínu)`** when `Late` is `true`. **`po termínu` is COMPUTED,
+   never read**: the script derives it against its own clock and nothing in the
+   file can set it. Under a late row say what the rule asks for next: after an
+   `open` one **„zopakuj zprávu jednou"**, after a `resent` one **„předej
+   člověku"** (contract/message-protocol.md, "Replies are required").
+   `Věc` renders `Subject`, which the script has already bounded and checked by
+   character class.
+
+   When `$dropped` is above zero add ONE line, „Outbox: N řádků zahozeno (mimo
+   uzavřený formát)", and never quote a dropped line. When no row is left, say
+   „Podle outboxu nic nečeká na odpověď" — **according to the outbox**, because
+   an absent, empty, over-size or damaged file yields the same empty view, and
+   a message nobody entered is invisible to it. **The table says where to look,
+   never whether to integrate**, exactly as the `Postup v plánu` column does.
 
 ### `ready <EPIK>`
 
@@ -400,7 +439,13 @@ In this order, and the order is the point.
    The prompt is SHORT and one line: what to do, which ticket, **which branch**
    and where to read the rest. Shape:
 
-   `Převezmi tiket <TIKET>. Zbytek si najdi v ledgeru epiku <EPIK> na větvi <elaborační větev>, cesta memory-bank/epics/<epic_snake>/ledger.md, sekce Rozjetí.`
+   `Převezmi tiket <TIKET>. Zbytek si najdi v ledgeru epiku <EPIK> na větvi <elaborační větev>, cesta memory-bank/epics/<epic_snake>/ledger.md, sekce Rozjetí. Odpověz na tuto zprávu, první řádek Re: <SENT>.`
+
+   **The prompt is a message and requires a reply** (contract/message-protocol.md, "Replies are required"),
+   which is what the last sentence asks for. `<SENT>` is the send time in UTC,
+   to the second (`yyyy-MM-ddTHH:mm:ssZ`), taken ONCE before the launch and
+   written into the prompt; the same instant goes into the outbox entry below,
+   so that the ticket session's `Re:` line and the entry name the same message.
 
    **The branch is not optional.** That ledger path exists only on the
    elaboration branch you published in step 3, the intent-line write; the slot
@@ -426,6 +471,22 @@ In this order, and the order is the point.
 
    Report the status word in Czech: `launched` → „spuštěno", `unavailable` →
    „adaptér není k dispozici", `failed` → „spuštění selhalo".
+
+   **On `launched` — and only then, because only then was the message
+   delivered — enter it in the epic's outbox** ("Replies are required" is owed
+   by the ticket session from that moment). Nothing is entered for
+   `unavailable` or `failed`:
+
+       . <this skill>/scripts/outbox.ps1
+       Add-UmsOutboxEntry -RepoRoot (git rev-parse --show-toplevel) -EpicKey <EPIK> `
+           -To <TIKET> -SentUtc <SENT> -DueUtc <SENT + 60 minutes> `
+           -Subject 'spawn: takeover of the ticket'
+
+   The 60 minutes are the manager's own default for a first reply, not a rule
+   of the contract; a ticket session that starts by reading a long ledger can
+   need most of it. The outbox is git-ignored scratch under this repository's
+   `.superpowers/`: this write is not one into a slot (iron rule 3) and needs
+   no commit.
 5. **Mechanical verification, not a process table.** `Get-Process claude`
    returned a pid in all three measured failures, so process existence proves
    nothing. Re-run `pool-status.ps1` and require a record for that slot with
@@ -462,6 +523,39 @@ delivered to a name that later resolved to a different session.
 
 A ruling reaches the ledger before any message mentions it, and the message
 carries the SHA (contract, "Message Protocol").
+
+### Replies and the outbox
+
+Every message between the manager and a ticket session requires a reply, in
+both directions, except an `Oznámení:` — a fact of the sender's own action that
+the recipient can verify in a shared artifact
+(contract/message-protocol.md, "Replies are required"). A manager's message
+keeps its mark on the first line and carries the class line, `Re: <time>` or
+`Oznámení:`, directly below it. **The outbox is the manager's artifact of what
+it is still waiting for and of what it still owes**:
+`.superpowers/epic/<KEY>/outbox.md`, git-ignored, written and read ONLY through
+`scripts/outbox.ps1` — never edited by hand, because its reader drops any line
+outside the closed format and counts it. It records and displays; it sends
+nothing, and nothing stops a session that stays silent.
+
+- **A message goes out** → `Add-UmsOutboxEntry` with `-To <TIKET>` and the send
+  time the message states, once it is delivered. The `Due` is the manager's own
+  estimate of a reasonable first reply; nothing in the contract fixes it.
+- **A message arrives that the manager must answer** (a question, a report
+  asking for a decision, a handoff) → `Add-UmsOutboxEntry` with `-To manager`,
+  the send time it states, and the answer is sent with `Re: <that time>` and the
+  entry closed.
+- **A reply arrives** (`Re: <time>`) → `Set-UmsOutboxState -State closed` with
+  that time. A `Re:` naming a time no open entry carries closes nothing; do not
+  guess which entry it meant, and say so in the report.
+- **`Due` passed** → `status` shows the row as late. ONE repeat: send the message
+  again, saying it is a repeat, and `Set-UmsOutboxState -State resent` with
+  `-NewDueUtc`. A repeat that is also late goes to the human: report it in
+  Czech, name the ticket and the message, and close the entry. Before repeating
+  to a ticket whose `Postup v plánu` cell reads `čekám na subagenta` within its
+  own due time, do not: that session replies after the subagent returns
+  (contract, "Message Protocol"), and a repeat is the prod the contract forbids.
+- **An announcement** is neither entered nor answered.
 
 ### `attach <TIKET>`
 
@@ -506,6 +600,20 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
 
 - **Fetch and read the handoff.** `git fetch origin`, then read the artifact.
   Nothing is judged from a tip remembered from the message.
+- **Enter the handoff in the outbox.** The artifact is a message to the manager
+  and requires a reply (contract/message-protocol.md, "Replies are required");
+  what the outbox tracks here is the answer the manager OWES. `<SENT>` is the
+  time the artifact states as its send time, or its channel shows; take nothing
+  else, because the answer's `Re:` line must name that same instant:
+
+      . <this skill>/scripts/outbox.ps1
+      Add-UmsOutboxEntry -RepoRoot (git rev-parse --show-toplevel) -EpicKey <KLÍČ> `
+          -To manager -SentUtc <SENT> -DueUtc <now + 30 minutes> `
+          -Subject 'handoff <TIKET>'
+
+  When this is a re-run after an earlier STOP the entry already exists and the
+  call refuses it as a duplicate; that refusal is the expected answer, and the
+  entry stays open until the answer below is sent.
 - **Epic checks.** Two mechanical checks that bind the fast-forward to THIS
   epic and to its unconfirmed decisions (contract, Repository
   Configuration, "The epic line"). Dot-source this skill's own script and
@@ -640,16 +748,28 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   SHA; **on a STOP the same answer is owed**, naming the blocking check. Mark
   it per the contract, "Message Protocol" — this answer is the textbook case
   its instruction clause names, a fact of the sender's own action the recipient
-  can verify in a shared artifact. The
-  wire protocol is the epic orchestration's own and arrives with it — do not
-  invent a format here; the obligation to answer is not one.
+  can verify in a shared artifact. It is also the REPLY to the handoff, so its
+  class line is `Re: <SENT>` — the send time the handoff carried, directly
+  below the mark (contract/message-protocol.md, "Replies are required")
+  — and the ticket session does not answer it in turn. The channel is the one
+  the handoff arrived by; do not invent another format.
+
+  **Once the answer is sent, close the outbox entry** — on a landed
+  fast-forward and on a STOP alike, because the answer is owed on both:
+
+      Set-UmsOutboxState -RepoRoot (git rev-parse --show-toplevel) -EpicKey <KLÍČ> `
+          -SentUtc <SENT> -To manager -State closed
 
   Then prompt the OTHER sessions to resynchronize: the epic line has moved, so
   every other ticket branch cut from it is now behind, and a ticket that
   verified against the previous tip is no longer a fast-forward. **That prompt
   is a nudge, not a delivery guarantee** (contract, "Message Protocol") — so it
   is sent and the operation continues; no step here waits for a session to
-  act on it.
+  act on it. Send it as an `Oznámení:` (mark on the first line, `Oznámení:`
+  directly below): the fact that the epic line moved and its new tip, which
+  every recipient can check with `git fetch`, and nothing it asks. An
+  announcement needs no reply and is NOT entered in the outbox (contract/message-protocol.md, "Replies are required"); the
+  sessions resynchronize at their own next phase boundary either way.
 
 **A STOP in this operation leaves the epic line exactly as it was**, which iron
 rule 11 makes trivially true for every step before Fast-forward by refspec.
@@ -689,6 +809,8 @@ no manager.
 | Provision a NEW slot | `pool-provision.ps1` — **operator only**, refuses under an agent-session marker. Its exit `5` means the slot exists but its publication guarantee was NOT confirmed — that is not success |
 | Cross-clone collision | `mb-doc-index` with `-Jira` (declared intent); exit 2 = STOP |
 | Model for sub-dispatches | contract, "Dispatch Model Policy" |
+| Which messages still await a reply | `status` step 8, from the outbox via `Get-UmsOutbox` (`open`/`resent` rows, `Late` computed); the file is `.superpowers/epic/<KEY>/outbox.md`, never edited by hand |
+| Enter, repeat or close a message | `Add-UmsOutboxEntry`, `Set-UmsOutboxState -State resent -NewDueUtc …` (ONE repeat), `-State closed`; an `Oznámení:` is never entered |
 
 ## Rationalizations (all mean: STOP)
 
@@ -704,4 +826,7 @@ no manager.
 | "The branch union said nothing, so the checkout will work" | A prunable worktree keeps its branch reserved while reporting `branch: null`. A refused checkout in the spawned session is a legitimate STOP, not a broken spawn. |
 | "The gate passed for the ticket agent, no need to run it again" | Time passed and the epic line may have moved since. The gate is re-run here against the freshly fetched tip — that is the Handoff gate re-run step, and the contract requires the fresh fetch (Publication Contract, "Integration"). |
 | "It is not a fast-forward, I will just merge it into the epic line" | Iron rule 11: `integrate` never merges. Not a fast-forward means the ticket session resynchronizes and verifies again. |
+| "The ticket session has not answered, I will ask again until it does" | ONE repeat after `Due`, then the human (contract/message-protocol.md, "Replies are required"). And never to a session that waits on a subagent. |
+| "I will mark this message `Oznámení:` so nobody has to answer it" | An announcement is a fact of the sender's OWN action, verifiable in a shared artifact. A message that asks, explains a cause or instructs is not one, whatever its first line says. |
+| "The outbox is empty, so nobody owes an answer" | Empty is also what an absent, damaged or over-size file yields, and a message nobody entered is invisible to it. Say „podle outboxu". |
 | "I will escape the quote in the prompt" | The launcher refuses a double quote before spawning, because it measured both silent dropping and a split prompt. Rewrite the line without one. |

@@ -15,6 +15,18 @@ shells out to.
 | `scripts/pool-launch.ps1` | `-SlotPath` (mandatory), `-Prompt` (mandatory), `-Ticket` (mandatory), `-Adapter` (mandatory, `terminal` or `direct`), `-ClaudeCommand` (test seam), `-TerminalCommand` (test seam) | `0` launched, `2` unavailable, `1` failed or input error |
 | `scripts/pool-provision.ps1` | `-Path` (mandatory), `-Base` (optional; defaults to the repository's configured base, else `origin/develop`), `-RepoPath` (optional; defaults to the toplevel of the current directory), `-Operator` (switch — required to bypass the agent-session guard), `-NoFetch` (switch) | `0` OK, `1` input/script failure, `4` refused by the agent-session guard, `5` the slot was provisioned but the shared pre-push guard's presence could not be confirmed |
 
+### `outbox.ps1` (a library, not a command)
+
+`scripts/outbox.ps1` is dot-sourced, like `epic-gate.ps1`. It holds the epic
+manager's outbox — `.superpowers/epic/<KEY>/outbox.md`, git-ignored — of
+messages that still await a reply (contract/message-protocol.md, "Replies are required"):
+`Add-UmsOutboxEntry`, `Set-UmsOutboxState` (`resent` once, then `closed`) and
+`Get-UmsOutbox`, which computes `Late` against the clock it is given and counts
+the lines it dropped into the `-Rejected` reference. The reader treats the file
+as untrusted input under the `NOW` block's rules; a damaged, absent or over-size
+file is an empty view, never an exception. The suite is
+`tests/outbox.tests.ps1`.
+
 ### Test seams
 
 `-ClaudeCommand`, `-TerminalCommand` and `-RepoPath` exist so the test suites
