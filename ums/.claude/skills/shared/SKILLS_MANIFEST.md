@@ -24,7 +24,7 @@ je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.2](UMS_MEMO
 | Permalink | [shared/scripts/Get-UmsPermalink.ps1](scripts/Get-UmsPermalink.ps1) | Jediný domov tvaru permalinku: z `permalinkTemplate`, jinak odvozený z hostu `origin` |
 | Kontrola popisu tiketu | [shared/scripts/Test-UmsJiraDescription.ps1](scripts/Test-UmsJiraDescription.ps1) | Rozpočet, odkazy, tučné, sekce — před zápisem do Jiry |
 | Konfigurace repa | [shared/scripts/Get-UmsRepoConfig.ps1](scripts/Get-UmsRepoConfig.ps1) | Čtení `ums-repo.json` včetně klíče `permalinkTemplate` |
-| Injektáž jádra | [hooks/contract-inject.ps1](../../hooks/contract-inject.ps1) | Vloží jádro kontraktu do kontextu při startu sezení a s prvním promptem po kompaktaci (marker `.superpowers/contract-reload.flag`); registrován v `settings.json` |
+| Injektáž jádra | `.claude/hooks/contract-inject.ps1` | Vloží jádro kontraktu do kontextu při startu sezení a s prvním promptem po kompaktaci (marker `.superpowers/contract-reload.flag`); registrován v `settings.json` |
 | Sady vrstvy | `shared/tests/*.tests.ps1`, `hooks/tests/*.tests.ps1`, `mb-*/tests/*.tests.ps1` | Bezzávislostní `.ps1` sady s vlastním `_assert.ps1`; nové v 3.0: `contract-move`, `contract-shape`, `permalink`, `jira-description`, `contract-inject` |
 
 ## Vendorované Superpowers skilly (v6.4.2)

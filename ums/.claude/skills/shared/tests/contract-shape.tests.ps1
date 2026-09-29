@@ -168,4 +168,38 @@ $sddRefSet = Get-UmsBannerRefSet $sddOverlay
 $epRefSet = Get-UmsBannerRefSet $epOverlay
 Assert-Match $sddRefSet '^[a-z0-9-]+\.md(,[a-z0-9-]+\.md)*$' 'banner overlaye SDD cituje aspoň jednu referenci'
 Assert-Eq $epRefSet $sddRefSet 'banner overlaye executing-plans cituje stejnou množinu referencí jako banner overlaye SDD'
+
+# --- links in shared/ never leave the skills root -------------------------------
+# `shared/` se nasazuje i do cílů, které nesou JEN skilly (codex `.agents/skills`,
+# profil) — vedle `skills/` tam žádné `hooks/` ani `scripts/` neleží. Relativní
+# odkaz ze `shared/` na cíl mimo kořen skillů pak v takovém cíli visí a ověření
+# revendoru (dangling links) nasazení shodí; tak spadlo první nasazení do kořene
+# forku (Task 20). Cesta mimo kořen skillů se proto píše jako prostý text
+# (`.claude/hooks/...`), ne jako odkaz. Skenují se všechny soubory pod `shared/`,
+# inline odkazy (i ve špičatých závorkách) i referenční definice (v markdownu).
+$skillsRoot = (Resolve-Path (Join-Path $shared '..')).Path.TrimEnd('\', '/')
+$outside = @()
+foreach ($f in @(Get-ChildItem -LiteralPath $shared -Recurse -File)) {
+    $text = Get-Content -LiteralPath $f.FullName -Raw -Encoding utf8
+    if ($null -eq $text) { continue }
+    $targets = @()
+    foreach ($m in [regex]::Matches($text, '\]\(\s*(?:<(?<a>[^>]+)>|(?<t>[^)\s]+))')) {
+        $targets += $(if ($m.Groups['a'].Success) { $m.Groups['a'].Value } else { $m.Groups['t'].Value })
+    }
+    # Referenční definice jen v markdownu: v .ps1 by `[IO.File]::…` na začátku řádku
+    # vypadalo jako definice a dalo falešný cíl.
+    if ($f.Extension -eq '.md') {
+        foreach ($m in [regex]::Matches($text, '(?m)^\s{0,3}\[[^\]]+\]:\s*<?(?<t>[^>\s]+)')) { $targets += $m.Groups['t'].Value }
+    }
+    foreach ($t in $targets) {
+        if ($t -match '^[a-z][a-z0-9+.-]*:' -or $t.StartsWith('/') -or $t.StartsWith('#')) { continue }
+        $p = ($t -split '#', 2)[0]
+        if (-not $p) { continue }
+        $resolved = [IO.Path]::GetFullPath((Join-Path $f.DirectoryName ($p -replace '/', [IO.Path]::DirectorySeparatorChar)))
+        if (-not $resolved.StartsWith($skillsRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            $outside += "$($f.FullName.Substring($skillsRoot.Length + 1)): $t"
+        }
+    }
+}
+Assert-Eq @($outside).Count 0 ("žádný relativní odkaz ve shared/ nemíří mimo kořen skillů: " + ($outside -join '; '))
 Complete-Tests
