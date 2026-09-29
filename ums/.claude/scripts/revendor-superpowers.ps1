@@ -126,18 +126,27 @@ function Write-UmsVendorPin([string] $PinFile, [string] $Tag, [string] $Commit,
         '',
         'The tag and the skill set are read from THIS file; the script has no built-in list.',
         '',
-        '1. `pwsh .claude/scripts/revendor-superpowers.ps1 -PinOnly -Tag <new-tag>` -> rewrites this pin from',
-        '   the tag (Tag, Commit, Skills, Excluded) -> commit. An upstream skill this pin does not know',
-        '   stops the run: decide it with `-Include <name>` (vendor it) or `-Exclude <name>` (record it under',
-        '   Excluded). A skill listed under Excluded stays out until it is passed with `-Include`.',
-        '2. `pwsh .claude/scripts/revendor-superpowers.ps1 -NoOverlays` -> vendors exactly the pinned skills',
-        '   and removes skills that left the pin -> commit (vanilla sync)',
-        '3. `pwsh .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly` -> commit (UMS overlay)',
+        '1. Bump the pin in the fork (run from the fork root):',
+        '   `pwsh ums/.claude/scripts/revendor-superpowers.ps1 -UmsRoot ums -PinOnly -Tag <new-tag>` rewrites',
+        '   this pin from the tag (Tag, Commit, Skills, Excluded) -> commit. An upstream skill this pin does',
+        '   not know stops the run: decide it with `-Include <name>` (vendor it) or `-Exclude <name>` (record',
+        '   it under Excluded). A skill listed under Excluded stays out until it is passed with `-Include`.',
+        '2. Vendor into each deployment target (the sync does this): `pwsh <script> -NoOverlays',
+        '   -SkillsRoot <target> -PinSource <fork pin>` vendors exactly the pinned skills, removes skills that',
+        '   are in the TARGET''s own previous pin but no longer in the new one, deletes present target',
+        '   directories of Excluded skills, and writes the target pin. A tag change on a git-tracked target is',
+        '   two runs: this one -> commit (vanilla sync), then step 3 -> commit (UMS overlay).',
+        '3. `pwsh <script> -OverlaysOnly -SkillsRoot <target>` -> commit (UMS overlay)',
         '4. An `ANCHOR-BEFORE` miss means upstream moved the anchored text - fix the fragment in',
         '   `shared/overlays/` and re-run step 3. Never edit vendored files by hand outside overlay blocks.',
         '',
-        'A sync into a deployment target is two-phase: `-PinOnly` first (or copy the pin), then',
-        '`-NoOverlays -SkillsRoot <target> -PinSource <that pin>` and `-OverlaysOnly -SkillsRoot <target>`.',
+        'Removal of skills that left the pin compares the target''s previous pin with -PinSource, so it needs',
+        'them to be different files. A run whose -PinSource is the target''s own pin (in place) removes',
+        'nothing that merely left the pin; it only deletes directories of Excluded skills.',
+        '',
+        'This file pins the VENDORED UPSTREAM version only. The UMS contract has its own,',
+        'separate version: `Contract-Version` at the top of `UMS_MEMORY_BANK_CONTRACT.md`,',
+        'with the per-version history in shared/CHANGELOG.md.',
         ''
     )
     $dir = Split-Path -Parent $PinFile
@@ -242,7 +251,8 @@ function Invoke-Vendor {
     New-Item -ItemType Directory -Force $SkillsRoot | Out-Null
 
     # The target pin as it stands BEFORE this phase rewrites it: skills that left
-    # the pin are removed from the target.
+    # the pin are removed from the target. (Needs -PinSource != the target pin; when
+    # both are the same file the previous pin already IS the new pin.)
     $previous = Read-UmsVendorPin $PinFile
     $removed = @(Get-UmsRemovedSkills $previous $skills)
     foreach ($r in $removed) {
@@ -250,6 +260,15 @@ function Invoke-Vendor {
         if (Test-Path -LiteralPath $gone) {
             Step "Removing skill '$r' (no longer pinned)"
             Remove-Item -Recurse -Force -LiteralPath $gone
+        }
+    }
+
+    # Excluded skills are never vendored: delete any copy the target still holds.
+    foreach ($x in @($pin.Excluded)) {
+        $excludedDir = Join-Path $SkillsRoot $x
+        if (Test-Path -LiteralPath $excludedDir) {
+            Step "Removing skill '$x' (excluded by the pin)"
+            Remove-Item -Recurse -Force -LiteralPath $excludedDir
         }
     }
 

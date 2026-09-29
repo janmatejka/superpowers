@@ -41,6 +41,11 @@ try {
     Assert-Match $rtText '(?m)^- Excluded:\r?$' 'written pin has the Excluded section'
     Assert-Match $rtText '(?m)^- Vendored on top of repo state: 2026-02-03 ' 'written pin carries the repo-state date'
     Assert-Match $rtText '-PinOnly' 'written pin documents -PinOnly'
+    Assert-Match $rtText '(?m)^This file pins the VENDORED UPSTREAM version only\.' 'written pin keeps the closing paragraph (upstream version only)'
+    Assert-Match $rtText '`Contract-Version` at the top of `UMS_MEMORY_BANK_CONTRACT\.md`' 'written pin keeps the Contract-Version sentence'
+    Assert-Match $rtText '(?m)^with the per-version history in shared/CHANGELOG\.md\.$' 'written pin names shared/CHANGELOG.md as plain text'
+    Assert-True (-not $rtText.Contains('](CHANGELOG.md)')) 'written pin has no CHANGELOG link (would dangle in a foreign SkillsRoot)'
+    Assert-Match $rtText 'TARGET.s own previous pin' 'written procedure ties removal to the target pin'
     Assert-True (-not $rtText.Contains("`r")) 'written pin uses LF'
     Write-UmsVendorPin $rt 'v9' 'abc123' @('alpha') @() '2026-02-03'
     $emptyEx = Read-UmsVendorPin $rt
@@ -107,12 +112,16 @@ try {
     # The target starts as a t1 deployment: pin (beta pinned) plus a beta directory.
     Write-UmsVendorPin (Join-Path $targetShared 'VENDORED_FROM.md') 't1' $fx.T1Commit @('alpha', 'beta', 'subagent-driven-development') @() '2026-01-01'
     Write-FxFile (Join-Path $target 'beta\SKILL.md') "# stale beta`n"
+    # gamma is Excluded by the new pin, yet the target still holds a copy of it.
+    Write-FxFile (Join-Path $target 'gamma\SKILL.md') "# stale gamma`n"
     $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $target, '-PinSource', $pinFile, '-NoOverlays')
     Assert-Eq $res.Exit 0 'vendor into a foreign SkillsRoot succeeds'
     Assert-True (Test-Path (Join-Path $target 'alpha\SKILL.md')) 'alpha vendored'
     Assert-True (Test-Path (Join-Path $target 'subagent-driven-development\scripts\sdd-workspace')) 'subagent-driven-development vendored'
     Assert-True (-not (Test-Path (Join-Path $target 'beta'))) 'beta (left the pin) is removed from the target'
-    Assert-True (-not (Test-Path (Join-Path $target 'gamma'))) 'gamma (excluded) is not vendored'
+    Assert-True (-not (Test-Path (Join-Path $target 'gamma'))) 'gamma (excluded by the pin) is deleted from the target'
+    Assert-Match $res.Out "Removing skill 'beta'" 'console output reports the removal of beta'
+    Assert-Match $res.Out "Removing skill 'gamma' \(excluded by the pin\)" 'console output reports the removal of excluded gamma'
     $targetPin = Read-UmsVendorPin (Join-Path $targetShared 'VENDORED_FROM.md')
     Assert-Eq $targetPin.Tag 't2' 'target pin: Tag t2'
     Assert-Eq $targetPin.Commit $pin2.Commit 'target pin: commit of t2'
@@ -125,12 +134,18 @@ try {
     Assert-True (-not $wsRaw.Contains("`r")) 'bash script stays LF'
     Assert-True (-not (Test-Path (Join-Path $fx.SkillsRoot 'alpha'))) 'the fixture UmsRoot skills were not touched by a foreign-target run'
 
-    Write-Host '== vendor phase into the default SkillsRoot: pin of UmsRoot, git date'
+    Write-Host '== vendor phase in place (default SkillsRoot, -PinSource = the target pin)'
+    # In place the previous pin already IS the new pin, so nothing "leaves the pin":
+    # a hand-made beta directory stays. Excluded skills are still deleted.
+    Write-FxFile (Join-Path $fx.SkillsRoot 'beta\SKILL.md') "# hand-made beta`n"
+    Write-FxFile (Join-Path $fx.SkillsRoot 'gamma\SKILL.md') "# hand-made gamma`n"
     $res = Invoke-Revendor ($common + @('-NoOverlays'))
     Assert-Eq $res.Exit 0 'vendor with the default -PinSource (pin in SkillsRoot) succeeds'
-    Assert-True (-not (Test-Path (Join-Path $fx.SkillsRoot 'beta'))) 'default target: no beta'
-    Assert-True (Test-Path (Join-Path $fx.SkillsRoot 'alpha\SKILL.md')) 'default target: alpha vendored'
+    Assert-True (Test-Path (Join-Path $fx.SkillsRoot 'alpha\SKILL.md')) 'in place: alpha vendored'
+    Assert-True (-not (Test-Path (Join-Path $fx.SkillsRoot 'gamma'))) 'in place: excluded gamma directory is deleted'
+    Assert-True (Test-Path (Join-Path $fx.SkillsRoot 'beta\SKILL.md')) 'in place: removal by previous pin is not possible (documented), beta stays'
     Assert-Match (Get-Content -LiteralPath $pinFile -Raw) '(?m)^- Vendored on top of repo state: 20\d\d-\d\d-\d\d ' 'default target inside git: date from git'
+    Remove-Item -Recurse -Force -LiteralPath (Join-Path $fx.SkillsRoot 'beta')
 
     Write-Host '== -VerifyOnly and -OverlaysOnly still work on the pinned set'
     $res = Invoke-Revendor ($common + @('-VerifyOnly'))
