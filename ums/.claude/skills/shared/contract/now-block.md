@@ -19,12 +19,20 @@ marker pair per ledger; a second pair is not a variant but a malformed block
 **The ledger's home is decided by the workspace's `plan-path` marker, never by
 the directory name.** Upstream `sdd-workspace` writes into each workspace a
 `plan-path` file holding the path of the plan that owns it (repo-relative for a
-plan inside the repository), and when `.superpowers/sdd/<plan-basename>/` is
-already owned by a different plan it creates `<plan-basename>-<parent>/` (then a
-counter) instead — in this layer, the same slug pinned in two Memory Banks. The
-plain basename directory may therefore hold another plan's block. A reader takes
-the workspace whose `plan-path` equals the path of the active pair's
-`plan_<slug>.md`; where no workspace's marker names it, there is no block.
+plan inside the repository; under Git Bash on Windows it is written as the
+repository's absolute path instead, forward-slash or `/c/...` form), and when
+`.superpowers/sdd/<plan-basename>/` is already owned by a different plan it
+creates `<plan-basename>-<parent>/` (then a counter) instead — in this layer,
+the same slug pinned in two Memory Banks. The plain basename directory may
+therefore hold another plan's block. A reader takes the ONE workspace whose
+`plan-path`, trimmed and compared as a string, equals the path of the active
+pair's `plan_<slug>.md` (`<Target MB Pin>proposals/active/plan_<slug>.md`), or
+of the legacy `proposal_<slug>.md` in the same directory, in either spelling
+above for this repository. Two workspaces naming the same plan are ambiguous
+and yield no block. Where no workspace's marker names it, `plan_<slug>/` is
+used only if it has NO `plan-path` file (a workspace from before the marker
+scheme); a `plan_<slug>/` that carries a marker naming another plan is never
+read, and there is no block.
 
 It is AI-facing scratch and therefore English
 (Language Contract), its state class included; `mb-epic-run status` translates
