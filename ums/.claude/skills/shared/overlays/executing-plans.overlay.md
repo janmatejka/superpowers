@@ -36,8 +36,12 @@ only what is specific to executing the plan yourself (Native execution).
   dot-source `shared/scripts/Get-UmsPlaybookChain.ps1`, run
   `Get-UmsPlaybookChain <MB_ROOT> <Target MB Pin> -Out` (the second argument is
   the repository-relative `memory-bank/` directory) and READ the returned
-  `OutPath` before Task 1: its procedures bind every task you work. Take the
-  baseline build and test commands from the chain's
+  `OutPath` at the start of EVERY session, before the first task that session
+  works (Task 1, or the `Next task` of a resumed session), and again after a
+  compaction: its procedures bind every task you work, and a session that has
+  not read it in its own context works without them. Unlike the base sync and
+  the baseline, this reading is per session, not per plan. Take the baseline
+  build and test commands (run before Task 1 of the plan only) from the chain's
   `Když stavíš nebo spouštíš testy` sections (a legacy segment carries them
   elsewhere).
 - **Playbook candidates:** there is no implementer report to copy from — after
