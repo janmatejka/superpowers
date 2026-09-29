@@ -1,5 +1,5 @@
 # Playbook
-<!-- playbook-budget: 600; baseline: 786 (2026-09-24, harvest UMS-3552) -->
+<!-- playbook-budget: 600; baseline: 758 (2026-09-29) -->
 
 Postupy, kterými se tato vrstva staví, testuje a nasazuje. Popisný stav — verze
 a piny, inventář souborů, konfigurace, pasti prostředí — je v
@@ -45,14 +45,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   ověřuj strojově SPUŠTĚNÍM V TOMTO běhu, nikdy převzetím z briefu/review
   ani ruční aritmetikou nad starými čísly.** Proč: loose substring aserce
   i staré review číslo se v praxi rozešly s naměřeným. Důkaz: 7da3545, 3f811a6.
-- **Smyčku přes všechny sady spouštěj jedním FOREGROUND voláním s timeoutem
-  600000 ms, nikdy na pozadí; přesune-li se i tak, nejvýš jeden opakovaný
-  pokus, pak STOP a report.** Proč: notifikace o dokončení jde koordinátorovi,
-  ne subagentovi, který ji nemá jak spotřebovat. Důkaz: 0d40535
-- **Úklid throwaway fixtury přes `rm -rf` volej samostatně, ne zřetězeně
-  `&&`/`;` s dalšími příkazy; odmítne-li nástroj i izolované volání, fixturu
-  v OS temp nech ležet.** Proč: bezpečnostní hlídka reaguje na `rm -rf`
-  v řetězci bez ohledu na cíl. Důkaz: 0d40535
+- **Mazání (`rm -rf`, `Remove-Item`) volej samostatně, ne zřetězeně za
+  zápisem ani s jeho textem v řetězci jiného příkazu; odmítne-li nástroj i
+  izolované volání, fixturu v OS temp nech.** Proč: hlídka zamítla CELÉ volání
+  se zápisem; po zamítnutí ověř stav. Důkaz: 0d40535, upgrade_superpowers_6_4_2.
 - **Hlídka nad `rm -rf` reaguje i na cíl schovaný za `$(...)` substitucí** —
   indirekce ji neobejde. Proč: `rm -rf "$(cat ...)"` bylo zamítnuto stejně
   jako přímá cesta. Důkaz: 4d72c46
@@ -63,9 +59,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
 - **Při bisekci velké sady dělej `sed -n` probe kopie VE STEJNÉM adresáři
   jako originál**, po skončení smaž. Proč: `$PSScriptRoot`-relativní cesty
   jinde vyžadují ruční přepis. Důkaz: 0d40535
-- **Pass/fail českých PowerShellových sad posuzuj z markerů (`FAIL`,
-  `<N> passed`, exit kód), ne z prózy.** Proč: české hlášky se v tomhle
-  prostředí vykreslují jako mojibake kvůli code page. Důkaz: e0eb939
+- **Pass/fail českých PowerShellových sad posuzuj z markerů (`FAIL`, `<N>
+  passed`, exit kód), ne z prózy; text, který hook opakuje a sada na něj
+  asertuje, drž v ASCII.** Proč: české hlášky i em dash se v tomto prostředí
+  vykreslí jako mojibake. Důkaz: e0eb939, upgrade_superpowers_6_4_2.
 - **Obnovu netrackovaného cíle mutace ověřuj hashem, ne gitem**; zálohu a
   její SHA-256 zapiš do trvalého artefaktu, ne jen do transkriptu. Proč: git
   je vůči mutacím netrackovaného souboru slepý oběma směry. Důkaz: e0eb939
@@ -76,6 +73,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   spouštěj z pracovního adresáře cílového repozitáře (`cd "$root" && …`).**
   Proč: běh spuštěný odjinud četl config repa, odkud byl instalátor
   spuštěn, ne fixture repa. Důkaz: 7da3545.
+- **Celou smyčku přes sady (~50, přes 600 s) pouští jen řídicí sezení, na
+  pozadí; subagent pouští jen sady dotčené změnou jedním FOREGROUND voláním.**
+  Proč: celá smyčka přesáhla 600 s a oznámení o dokončení jde koordinátorovi,
+  ne subagentovi. Důkaz: návrh upgrade_superpowers_6_4_2.
 
 ### Když píšeš nebo měníš test
 
@@ -96,10 +97,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   neopravenému kódu / dočasně smaž hlídanou podmínku, čti KTERÉ asercie
   zčervenají, pak soubor obnov. Proč: asercie zelené v obou bězích jsou
   zámek, ne důkaz opravy. Důkaz: 7da3545
-- **Mutaci udělej sebedokazující: smaž podle ČÍSLA ŘÁDKU (ne `sed` s
-  regexem), ověř `grep -c` = 0, teprve pak spusť sadu; kotva musí být
-  víceřádková a jedinečná (grep count 1).** Proč: přerušený řetěz příkazů
-  nechá sadu běžet nemutovanou beze zprávy. Důkaz: 41641a2
+- **Mutaci udělej sebedokazující: smaž podle ČÍSLA ŘÁDKU (ne `sed` s regexem),
+  ověř `grep -c` = 0, teprve pak spusť sadu; kotva musí být jedinečná (grep
+  count 1), u CRLF souboru (`.ps1`) jednořádková.** Proč: přerušený řetěz nechá
+  sadu běžet nemutovanou. Důkaz: 41641a2, upgrade_superpowers_6_4_2.
 - **Negativní běh čti ve TŘECH kategoriích: zčervenalo, zůstalo zeleně
   (zámek), NEPROVEDENO (za bodem přerušení)** — pole možná nepřítomného
   objektu čti přes guardovaný accessor (`-join`), ne přímým `.Pole`. Proč:
@@ -150,9 +151,9 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   rozhodnutí a oprav jen nejužší dotčenou část fixtury. Proč: ruling měl
   správné číslo, ale špatné členství. Důkaz: 4d72c46
 - **U nového kontrolního případu si odpověz, KTERÝ mechanismus na něj
-  dopadá; vyřazuje-li ho jiný, starší mechanismus, je to zámek, ne důkaz** —
-  ověř spuštěním proti kódu před opravou. Proč: zelený případ i bez opravy
-  s opravou nesouvisí. Důkaz: 0d40535
+  dopadá; vyřazuje-li ho starší mechanismus, je to zámek, ne důkaz** — ověř
+  spuštěním proti kódu před opravou, případ dej do čerstvé fixtury. Proč:
+  zelený i bez opravy nedokazuje nic. Důkaz: 0d40535, upgrade_superpowers_6_4_2.
 - **Asertuj proti syrovému textu, který spotřebitel čte, ne proti hodnotě
   parsované zpátky** — drž si RAW vedle parsovaného objektu. Proč:
   `ConvertFrom-Json` tiše přepíše ISO-8601 řetězec na `[datetime]` v locale
@@ -165,10 +166,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   ověř, jestli stejný symptom nepokrývá starší validace nebo call site;
   takový případ hlas jako „nefalzifikovatelný zde“, ne jako nález. Proč:
   case zůstal zelený, protože ho zamítla jiná podmínka dřív. Důkaz: e0eb939
-- **Každá podmínka ANDovaného predikátu potřebuje fixturu, kde rozhoduje
-  JEN ona; ke každému `-cne` přidej case lišící se jen velikostí písmen.**
-  Proč: dvě podmínky odmítající tentýž vstup si dělají alibi a ani jedna
-  není dokázaná. Důkaz: 41641a2
+- **Každá podmínka ANDovaného predikátu potřebuje fixturu, kde rozhoduje JEN
+  ona; ke každému `-cne` přidej case lišící se jen velikostí písmen — v OBSAHU
+  souboru, ne v názvu.** Proč: dvě podmínky si dělají alibi; na Windows je
+  `t2.md` i `T2.md` jeden soubor. Důkaz: 41641a2, upgrade_superpowers_6_4_2.
 - **Asercie `(?m)^slovo$` proti textu z `2>&1 | Out-String` potřebuje na Windows
   `\r?` před `$` — oprav v regexu SADY.** Proč: `Out-String` spojuje řádky přes
   CRLF a .NET `$` kotví jen před holým `\n`. Důkaz: 4d72c46.
@@ -180,6 +181,14 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   hlášky, ne jen kód — nedosažitelná hláška je špatné pořadí.**
   Proč: mazání trefilo dřív chráněnou-větev kontrolu, uživatel dostal
   špatnou hlášku, ačkoli verdikt byl správný. Důkaz: 0d40535.
+- **Helper, který připisuje do textového souboru, testuj i na fixtuře BEZ
+  koncového newline (zapiš ji `[IO.File]::WriteAllText`, ne `Set-Content`).**
+  Proč: `Add-Content` slepil značku s posledním řádkem cizího `.env`.
+  Důkaz: návrh upgrade_superpowers_6_4_2.
+- **Test skriptu bez parametrů, jehož default míří na živý zdroj, dej pod
+  env-var override (`UMS_SYNC_MONOREPO_ROOT`), ověř ho přečtením parametru po
+  dot-sourcingu a jinak vytiskni SKIP.** Proč: RED běh starého skriptu by sáhl
+  na živé monorepo. Důkaz: návrh upgrade_superpowers_6_4_2.
 
 ### Když píšeš PowerShell
 
@@ -194,18 +203,18 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   PowerShell `$null` tiše převede na prázdný řetězec.** Proč: Typová koerce
   zapsala reálný prázdný soubor a vedla bisekci k falešné stopě mimo parametr.
   Důkaz: 3f811a6.
-- **Nikdy nepojmenuj proměnnou `$host` ani jinou automatickou proměnnou
-  (`$error`, `$input`, `$args`, `$matches`, `$pwd`).** Proč: `$host = ...`
-  shodilo sadu na první volání hláškou o proměnné jen pro čtení pod
-  `Set-StrictMode`. Důkaz: 3f811a6.
+- **Proměnnou nepojmenuj jako automatickou (`$host`, `$args`, `$matches`), jako
+  jinou lišící se jen velikostí (`$S`/`$s`) ani jako parametr dot-sourcovaného
+  skriptu (`$Scope`).** Proč: `$s` přepsalo `$S`, ValidateSet `$Scope` odmítl
+  přiřazení. Důkaz: 3f811a6, upgrade_superpowers_6_4_2.
 - **Backtick jako markdown code-span v řetězci v DVOJITÝCH uvozovkách piš
   zdvojený, nebo fixturu postav v JEDNODUCHÝCH.** Proč: Osamocený backtick se v
   double-quoted stringu tiše smaže, takže fixtura nenesla tvar, který tvrdila.
   Důkaz: 3f811a6.
-- **Kolekci obaluj `@()` kolem CELÉHO výrazu (přiřazení, `if/else`), nikdy
-  jen kolem větve; u volitelného pole testuj `$null -eq $Param` PŘED
-  obalením.** Proč: obal jen větve nezachytí prázdnou pipeline ani skalár.
-  Důkaz: 4d72c46, návrh ums_3552_playbook_jadro_a_doklad.
+- **Výsledek funkce obal `@()` kolem CELÉHO výrazu — u volajícího i před
+  přetypováním `[string[]]@(Fn ...)` a indexem `(@(Fn ...))[0]`; u volitelného
+  pole testuj `$null -eq $Param` PŘED obalením.** Proč: prázdná pipeline dala
+  `$null`, jeden řádek skalár. Důkaz: 4d72c46, upgrade_superpowers_6_4_2.
 - **`Mandatory` na `[string[]]` parametru odmítne pole s prázdným řetězcovým
   prvkem — ověř, že to smí být člen kolekce.** Proč: Reálná fixtura přestala
   parsovat, ačkoli stejná funkce bez `Mandatory` totéž pole přijala. Důkaz:
@@ -222,9 +231,10 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   nikdy `awk 'length'` ani `wc -L`, které počítají bajty.** Proč: Em dash
   nafoukne bajtový počet o dva — řádek ohlášený jako 83 znaků měl ve skutečnosti
   79. Důkaz: 41641a2.
-- **Python skript editující soubory téhle vrstvy konce řádků musí DETEKOVAT
-  (`newline=''`), ne předpokládat.** Proč: `.ps1` jsou ve stromu CRLF a `.md`
-  LF, jednosouborový skript nesmí předpokládat ani jedno. Důkaz: 41641a2.
+- **Python skript editující soubory téhle vrstvy dostane `io.open(p,
+  encoding='utf-8', newline='')`; konce řádků DETEKUJ, nepředpokládej.**
+  Proč: `.ps1` jsou CRLF, `.md` LF a výchozí kódování je zde cp1250 (pád
+  `UnicodeDecodeError`). Důkaz: 41641a2, upgrade_superpowers_6_4_2.
 - **Do `[pscustomobject]@{...}` zahrň VŠECHNA pole hned při konstrukci —
   pozdější `$o.c = 2` potřebuje `Add-Member`.** Proč: Výjimka je NEterminující —
   skript doběhl, JSON se zapsal, pole jen tiše chybělo. Důkaz: 4d72c46.
@@ -255,6 +265,14 @@ a piny, inventář souborů, konfigurace, pasti prostředí — je v
   (`-ceq`/`-cne`/`-cmatch`), nikdy defaultním case-insensitive tvarem.** Proč:
   Case-insensitive formulace přijme token ražený pro jinou větev a defekt
   přežije sadu. Důkaz: e0eb939.
+- **Seznamový parametr volaný přes `pwsh -File` nikdy neopatřuj
+  `[ValidateSet]`; rozděl prvky po čárkách a jména ověř až potom.** Proč:
+  `-Agent claude,codex` dorazí jako JEDEN řetězec a ValidateSet ho odmítne dřív
+  než kód. Důkaz: návrh upgrade_superpowers_6_4_2.
+- **Volitelný `[ref]` parametr deklaruj `[ref] $P = ([ref] $null)` a piš do
+  `$P.Value`; default `$null` ani typ `[object]` nefungují.** Proč: `[ref]`
+  odmítne `$null`, `[object]` dostane hodnotu místo reference.
+  Důkaz: návrh upgrade_superpowers_6_4_2.
 
 ### Když píšeš POSIX hook nebo shell
 
@@ -393,18 +411,22 @@ Důkaz: 1a03314
 
 ### Když nasazuješ nebo revendoruješ
 
-- **Revendor spouštěj v monorepu, ne v tomto forku.**
-  Proč: vendorované kopie s overlay bloky vznikají až v cíli nasazení,
-  ne ve forku samotném. Důkaz: 1a03314.
-**Postup revendoru upstreamu (dvoucommitový)**
-1. V tomto forku slouč nový upstream: `git fetch vanila --tags`, pak
-   `git merge vanila/main` (na `main`, odtud do `ums-memory-bank`).
-2. V monorepu: `pwsh .claude/scripts/revendor-superpowers.ps1 -Tag <tag>
-   -NoOverlays` → commit „vanilla sync".
-3. `pwsh .claude/scripts/revendor-superpowers.ps1 -OverlaysOnly` → commit
-   „overlay".
+- **Vendorované skilly vyrábí `sync-with-monorepo.ps1` v každém cíli; revendor
+  ručně spouštěj jen s `-PinOnly` (bump pinu ve forku).** Proč: fork je
+  master, sync spouští revendor s pinem forku proti adresáři skillů cíle.
+  Důkaz: 27aeb69, a507a41.
+**Postup upgradu upstreamu (pin, sync, dva commity)**
+1. V tomto forku slouč nový upstream do TIKETOVÉ větve: `git fetch vanila
+   --tags`, pak `git merge vanila/main` (zrcadlo `main` posouvá člověk:
+   `! git push origin vanila/main:main`).
+2. Bump pinu: `pwsh ums/.claude/scripts/revendor-superpowers.ps1 -UmsRoot ums
+   -PinOnly -Tag <tag>`; nový upstream skill bez rozhodnutí běh zastaví
+   (`-Include` / `-Exclude`).
+3. `pwsh ums/sync-with-monorepo.ps1`: cíl v gitu s jiným tagem dostane jen
+   vanilla fázi (exit 4) → commit „vanilla sync"; druhý běh nasadí vrstvu a
+   overlaye → commit „overlay".
 Proč: první commit nese jen upstream diff, druhý jen zásah UMS.
-Důkaz: 1a03314.
+Důkaz: 1a03314, 27aeb69, a507a41.
 - **Revendorové commity nikdy neslučuj do jednoho.**
   Proč: sloučený commit nejde rozlišit na to, co přinesl upstream
   a co je zásah vrstvy. Důkaz: 1a03314.
@@ -412,54 +434,22 @@ Důkaz: 1a03314.
   `<!-- UMS-OVERLAY BEGIN/END -->` — změnu piš do fragmentu
   `shared/overlays/*.overlay.md`.** Proč: revendor rozbalí upstream
   znovu a ruční úprava mimo bloky se tiše ztratí. Důkaz: 1a03314.
-- **Miss kotvy `ANCHOR-BEFORE` oprav ve fragmentu a spusť revendor
+- **Miss kotvy `ANCHOR-BEFORE` oprav ve fragmentu a spusť sync (revendor)
   znovu — nikdy ji neuvolňuj, aby „prošla".** Proč: je to detektor
   driftu upstreamu, kotva musí matchovat přesně jeden řádek.
-  Důkaz: 1a03314.
-- **Revendor spouštěj z PowerShellu, ne z Git Bash shellu.**
-  Proč: Git Bash zdědí msys `tar` z PATH, který windowsovou cestu čte
-  jako vzdálený host a spadne na „Cannot connect to C: resolve failed".
-  Důkaz: ae2230c.
-**Parametry `sync-with-monorepo.ps1`**
-| Parametr | Hodnoty | Default |
-|---|---|---|
-| `-Agent` | `claude`, `codex`, `gemini`, `kilocode` | `claude` |
-| `-Scope` | `Monorepo`, `UserProfile` | `Monorepo` |
-| `-Direction` | `FromMonorepo`, `ToMonorepo` | `FromMonorepo` |
-| `-MonorepoRoot` | cesta ke klonu monorepa | `D:\_datasys\ums` |
-Důkaz: 1a03314.
-- **Traktuj `claude`+`Monorepo` jako jedinou obousměrnou kombinaci
-  syncu.** Proč: jen ona táhne oběma směry (`FromMonorepo` z
-  monorepa, `ToMonorepo` opačně) — jinak jde vždy jednosměrný
-  deploy z `ums/`. Důkaz: 1a03314.
-**Pořadí `FromMonorepo` → `ToMonorepo` je pevné**
-Před `-Direction ToMonorepo` vždy nejdřív spusť `-Direction FromMonorepo`
-a slouč do forku vše, kde je monorepo napřed — až pak `ToMonorepo`.
-Default skriptu (`FromMonorepo`) tenhle krok neudělá automaticky.
-Proč: přímé `ToMonorepo` by přepsalo 89 řádků, kde byl monorepo napřed
-— `ToMonorepo` zrcadlí každý `mb-*` skill bez ohledu na to, který
-strom je novější.
-Důkaz: 0a13ef1.
-**Kde hledat drift forku a monorepa**
-- Porovnávej jen UMS-vlastněné položky (`skills/mb-*`, `skills/shared`,
-  `hooks/*`) po jednotlivých adresářích, přesně jak je enumeruje
-  `sync-with-monorepo.ps1` — nikdy plošný diff celého `skills` stromu.
-- `hooks/tests/` sync nesynchronizuje nikdy, rozdíl tam je očekávaný.
-- `gemini` a `kilocode` nemají adresář skillů — dostanou jen glue
-  a blok preferencí v instrukčním souboru.
-Proč: plošný diff dal 190 souborů / 203 242 řádků šumu z cizích
-(nevlastněných) skillů, které fork mirror vůbec nemá.
-Důkaz: 0a13ef1.
+  Důkaz: 1a03314, 27aeb69.
+- **Traktuj `claude`+`Monorepo` jako jedinou obousměrnou kombinaci syncu.**
+  Proč: jen ona smí táhnout `FromMonorepo` zpět do forku (a nikdy netáhne
+  vendorované skilly) — jinak jde vždy jednosměrný deploy z `ums/`.
+  Důkaz: 1a03314, df7b110.
 **Co `sync-with-monorepo.ps1` nasazuje a jak**
-- `settings.json` se na ne-Claude cíle nenasazuje — je to registrační
-  soubor Claude Code, přepsal by cizí konfiguraci; u ostatních
-  harnessů se hooky registrují ručně.
-- Glue soubory se do cílového adresáře mergují po souborech, cizí
-  obsah nikdy nemažou. Blok preferencí jde mezi markery
-  `UMS-MEMORY-BANK BEGIN/END`, opakovaný běh ho nahradí na místě.
-- Vendorované superpowers skilly tento skript nesynchronizuje nikdy —
-  vznikají jen revendorem.
-Důkaz: 1a03314.
+- `settings.json` jde jen na `claude`; ne-Claude cíle dostanou glue (`hooks/`,
+  `scripts/`) mergované po souborech, cizí obsah se nikdy nemaže.
+- Blok preferencí jde mezi markery `UMS-MEMORY-BANK BEGIN/END`, běh ho nahradí.
+- Vendorované skilly vyrábí sync v cíli: revendor s pinem forku a overlaye
+  právě zrcadlené do cíle; změna tagu na cíli v gitu jsou dva běhy.
+Proč: `settings.json` je registrace Claude Code, přepsala by cizí konfiguraci.
+Důkaz: 1a03314, 27aeb69.
 - **`cp -r zdroj cíl/` do existujícího adresáře SLUČUJE, nevnořuje**
   — ověř to na dvouřádkové fixture ve scratchpadu, ne odvozením
   z četby příkazu. Proč: ověřeno měřením — cizí soubor v cíli
@@ -479,46 +469,24 @@ Důkaz: 1a03314.
   publikačního kontraktu je aktivní, jen když ji někdo nainstaluje.
   Důkaz: 1a03314.
 - **Při `-Scope UserProfile` spusť instalátor hooků ručně** — při
-  `-Scope Monorepo` ho volá `sync-with-monorepo.ps1` sám.
+  `-Scope Monorepo` i `-Scope Fork` ho volá `sync-with-monorepo.ps1` sám.
   Proč: profil nemá jeden přiřazený repozitář, díky kterému by
-  ho šlo zavolat automaticky. Důkaz: 1a03314.
+  ho šlo zavolat automaticky. Důkaz: 1a03314, df7b110.
 - **Nenulový exit instalátoru hooků neignoruj** — `1` = self-test
   selhal, `2` = ponechán cizí hook, `3` = nainstalováno, ale neověřeno.
   Proč: sync ho jen vypíše jako varování a v dlouhém výpisu zapadne,
   takže nepotvrzená záruka snadno unikne pozornosti. Důkaz: 1a03314.
-- **Po každé změně zdroje v `ums/.claude/` obnov nasazenou kopii
-  (`.claude/`, `.agents/skills/`)** — obojí je netrackované, sezení
-  v tomto repu čte právě je. Proč: jinak agent pracuje podle staré
-  verze kontraktu i skillů. Důkaz: 1a03314.
-**Co je nasazená kopie**
-- UMS obsah (`shared/`, `mb-*`, `hooks/`, `scripts/`, `settings.json`)
-  je prostá kopie z `ums/.claude/` do kořenového `.claude/`; pro Codex
-  ještě `ums/.claude/skills/` do `.agents/skills/`.
-- Kontrola aktuálnosti: `Contract-Version` v
-  `.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md` musí souhlasit
-  se zdrojem a všechny `mb-*` adresáře ze zdroje musí být přítomny.
-Proč: chybějící skill je nejrychlejší příznak zastaralého nasazení.
-Důkaz: 1a03314.
-**Kontrola nasazení odhalí jen chybějící, ne zastaralé**
-`Contract-Version` + přítomnost všech `mb-*` adresářů odhalí jen
-CHYBĚJÍCÍ nasazení. Na staleness (obsah se změnil, ne jen existence)
-použij `diff -rq ums/.claude .claude` — čtyři vendorované skilly s
-overlay bloky srovnávej proti MONOREPO kopii, ne proti `ums/`, kde
-vůbec neleží (nevyrobí se kopií, jen revendorem — `brainstorming`,
-`subagent-driven-development`, `finishing-a-development-branch`,
-`writing-plans`).
-Proč: deployovaná kopie nesla 16řádkový overlay o lokálním merge,
-zatímco zdrojový fragment měl 109 řádků o FF-push integraci — obě
-kontroly to prošly beze zmínky.
-Důkaz: 44ccb57.
-- **Po každém revendoru dorovnej vendorované skilly i v
-  `.agents/skills` kopií z `.claude/skills`** (fork i monorepo).
-  Proč: revendor cílí jen na `.claude/skills`, sync tam
-  nesynchronizuje nikdy. Ověř `diff -rq`. Důkaz: f69c145.
-- **Po editaci overlay fragmentu v `ums/` nejdřív obnov nasazení
-  (kopie do `.claude/`), teprve pak spusť revendor** — revendor čte
-  fragmenty z NASAZENÉ kopie. Ověř grepem na text nové verze.
-  Proč: bez pořadí tiše aplikuje starou verzi. Důkaz: e3dfc90.
+**Nasazení vrstvy do kořene forku (po změně zdroje v `ums/.claude/`)**
+1. Jen na hranici fáze: `pwsh ums/sync-with-monorepo.ps1 -Scope Fork -Agent
+   claude,codex` (kořenový `.claude/` a `.agents/skills/` jsou netrackované).
+2. Exit 3 = drift cíle: porovnej seznam se soubory změněnými od poslední
+   úspěšné dávky, teprve pak `-Force`.
+3. Úspěch = `Verification passed.` u KAŽDÉHO kořene skillů ve skutečném běhu;
+   `-WhatIf` (exit 0) jen vypíše zápisy a drift, revendor ani ověření nespouští.
+4. Po pádu prvního `-Force` běhu čekej znovu drift „prvního běhu": manifest
+   vzniká až na konci úspěšného běhu (řádky `manifest written:`).
+Proč: `-WhatIf` prošel, skutečný běh spadl na ověření; manifest nevznikl.
+Důkaz: návrh upgrade_superpowers_6_4_2.
 - **Grepovou verifikaci vygenerovaného overlay textu ověřuj i
   case-insensitive (`grep -ni`)** dřív, než nulový zásah nahlásíš
   jako anchor-miss STOP. Proč: grep malými písmeny minul frázi
@@ -532,20 +500,23 @@ Proč: Markdown tvrdě zalomil frázi mezi dvěma slovy s odsazením
 přesně uprostřed — druhá, nezávislá třída falešné příčiny vedle
 casingu.
 Důkaz: 0d40535.
-- **Regenerace nasazených vendorovaných skillů po změně fragmentu
-  bez upstream bumpu = plný revendor s pinovaným tagem (`-Tag <pin>`),
-  ne `-OverlaysOnly`.** Proč: `-OverlaysOnly` funguje jen na
-  pristine soubory. Důkaz: 4d72c46.
-**Editaci jen TĚLA overlay fragmentu ověřuj diffem, ne revendorem**
+- **Regenerace nasazených vendorovaných skillů po změně fragmentu bez upstream
+  bumpu = `sync -Scope Fork` (stejný tag = jeden průchod: vrstva, revendor,
+  overlaye).** Proč: sync čte fragmenty z cíle, kam je právě zrcadlil.
+  Důkaz: 4d72c46, 27aeb69.
+**Editaci jen TĚLA overlay fragmentu ověřuj diffem a pak nasazením**
 Zkontroluj: `git diff <báze>..HEAD -- <adresář overlayů> | grep -E
 "^[+-].*(ANCHOR|ASSERT|UMS-OVERLAY)"` je prázdný a každý overlay má
-právě jeden pár `UMS-OVERLAY BEGIN/END`. Revendor je samostatný krok
-nasazení; do jeho proběhnutí drž nasazené vendorované skilly jako
-zastaralé. `sync-with-monorepo.ps1` na tohle není — cílí na monorepo
-nebo profil, ne na kořen tohoto forku.
-Proč: pokus ověřit anchoring přes redeploy neuspěl (tar/PATH pasti),
-selhání nástroje není nález o samotné editaci.
-Důkaz: ae2230c.
+právě jeden pár `UMS-OVERLAY BEGIN/END`. Pak `sync -Scope Fork` (jen na
+hranici fáze): jeho revendor ověří kotvy i značky v nasazeném skillu.
+Proč: diff dokáže, že kotvy a značky zůstaly, nasazení, že se fragment aplikuje.
+Důkaz: ae2230c, 27aeb69.
+**Parametry `sync-with-monorepo.ps1`**
+- `-Direction`: `ToMonorepo` (default) fork → cíl; `FromMonorepo` táhne zpět.
+- `-Scope`: `Monorepo` (default), `UserProfile`, `Fork` (kořen forku).
+- `-Agent`: `claude` (default), čárkou až 15 harnessů; `kilocode` se odmítne.
+- `-WhatIf` jen vypíše zápisy a drift; `-Force` přepíše drift cíle.
+Důkaz: df7b110, 16458f9. Úplný přehled: `ums/README.md`.
 
 ### Když měníš skill nebo overlay
 
@@ -688,10 +659,10 @@ Důkaz: ae2230c.
 - **Před psaním negativní tabulky zjisti, jde-li o novou TŘÍDU konstruktu, nebo
   člena existující — člen dědí pravidlo třídy.** Proč: Sourozenecké konstrukty s
   hodnotou nula už zamítaly stejným způsobem. Důkaz: 0d40535.
-- **Po změně faktu nebo pojmenovaného konceptu grepni CELOU vrstvu na
-  slovník, kterým se o něm mluví — ne jen měněný token — a přečti
-  zasažené sekce celé.** Proč: zúžený sweep opakovaně nechal restatementy
-  jinde neopravené. Důkaz: 7da3545, 0d40535, 3f811a6, e0eb939.
+- **Po změně faktu nebo pojmenovaného konceptu grepni CELOU vrstvu i kořenový
+  `CLAUDE.md` na slovník o něm — všechna hláskování (`kilocode`, `Kilo Code`),
+  čísla slovem i číslicí — a přečti zasažené sekce.** Proč: sweep na jeden token
+  nechal restatementy jinde. Důkaz: 7da3545, 3f811a6, upgrade_superpowers_6_4_2.
 - **Citaci piš přesně podle CELÉHO nadpisu cíle, parenthetical included —
   grepni cílové `^#{2,4} ` nadpisy a opiš doslova.** Proč: zkrácená
   citace bez závorkové části neodpovídá skutečnému nadpisu a sada ji
@@ -758,9 +729,10 @@ Důkaz: ae2230c.
 - **U rozhodovacího ramene popisovaného prózou si opiš konkrétní řádek a
   spočítej podmínky, teprve pak piš větu.** Proč: popis „posture + jedna
   výjimka" svedl k under-claimu — rameno má dvě podmínky. Důkaz: 0d40535.
-- **Popis chování rozhodovací funkce piš až po přečtení CELÉ funkce, nikdy jen z
-  hlavičky nebo rulingů.** Proč: věty sepsané z hlavičky a rulingů byly obě
-  nepravdivé proti kódu ve dvou případech. Důkaz: 0d40535.
+- **Popis chování rozhodovací funkce (i upstreamní, `git show <tag>:<cesta>`)
+  piš až po přečtení CELÉ funkce a projití popsaného případu, nikdy jen z
+  hlavičky, rulingů nebo příkladu z návrhu.** Proč: příklad kolize z návrhu
+  byl nepravdivý. Důkaz: 0d40535, upgrade_superpowers_6_4_2.
 - **Před vložením snippetu nahrazujícího strukturovaný útvar přepiš v něm odkazy
   na strukturu na jméno pravidla.** Proč: snippet vložený doslova odkazoval na
   tabulku, kterou týž krok o kus dál mazal. Důkaz: 0d40535.

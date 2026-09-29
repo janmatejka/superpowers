@@ -630,7 +630,7 @@ Tři příkazy deklarované plánem, spuštěné doslova na HEAD aed57a4:
 
 | Příkaz | Výsledek |
 |---|---|
-| smyčka `for t in $(find ums -name "*.tests.ps1"); …` (Git Bash) | 202 sad, konec `LOOP-DONE exit=0`. `FAILED:` jen u dvou známých selhání prostředí z baseline: `ums/.claude/hooks/tests/contract-inject.tests.ps1` 1/56 (drift warning is the first line of the payload — code page při spuštění pwsh z Git Bash; z PowerShellu sada prochází) a `ums/.claude/skills/mb-epic-run/tests/pool-launch.tests.ps1` 2/41 (Gate 3, skutečné spuštění procesu). Žádné nové selhání. |
+| smyčka `for t in $(find ums -name "*.tests.ps1"); …` (Git Bash) | 49 sad (202 řádků `== ` včetně nadpisů oddílů uvnitř sad), konec `LOOP-DONE exit=0`. `FAILED:` jen u dvou známých selhání prostředí z baseline: `ums/.claude/hooks/tests/contract-inject.tests.ps1` 1/56 (drift warning is the first line of the payload — code page při spuštění pwsh z Git Bash; z PowerShellu sada prochází) a `ums/.claude/skills/mb-epic-run/tests/pool-launch.tests.ps1` 2/41 (Gate 3, skutečné spuštění procesu). Žádné nové selhání. |
 | `pwsh -NoProfile -File ums/.claude/scripts/revendor-superpowers.ps1 -VerifyOnly -UmsRoot .` | exit 0, všech šest kontrol, `Verification passed.` |
 | `pwsh -NoProfile -File ums/sync-with-monorepo.ps1 -Scope Fork -Agent claude,codex -WhatIf` | exit 0, bez driftu (manifesty existují) |
 

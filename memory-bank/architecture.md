@@ -8,9 +8,9 @@ k uživateli**.
 
 | Vrstva | Kde žije | Kdo ji mění |
 |---|---|---|
-| Upstream skill pack | [`skills/`](../skills/) — 14 skillů | jen upstream (`vanila/main` → `main`) |
+| Upstream skill pack | [`skills/`](../skills/) — 15 skillů, z nich 14 se vendoruje (`diagnosing-superpowers` je vyloučený) | jen upstream (`vanila/main` → `main`) |
 | Upstream infrastruktura | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/), `.opencode/`, `.pi/`, `.claude-plugin/`, … | jen upstream |
-| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v3.1, manifest, vendor pin, overlay fragmenty | tato větev |
+| Normativní zdroj UMS | [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) — kontrakt v3.2, manifest, vendor pin, overlay fragmenty | tato větev |
 | Utility skilly UMS | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | tato větev |
 | Lepidlo pro Claude Code | [`ums/.claude/settings.json`](../ums/.claude/settings.json), [`ums/.claude/hooks/`](../ums/.claude/hooks/) | tato větev |
 | Nástroje | [`ums/sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1), [`ums/.claude/scripts/revendor-superpowers.ps1`](../ums/.claude/scripts/) | tato větev |
@@ -24,31 +24,34 @@ byte-identický s upstreamem, proto je merge upstreamu vždy bezkonfliktní.
 ```mermaid
 flowchart LR
     subgraph fork["fork janmatejka/superpowers, vetev ums-memory-bank"]
-        SK["skills/ — upstream, 14 skillu"]
-        UMS["ums/.claude/ — zdroj vrstvy UMS"]
+        SK["skills/ — upstream, 15 skillu, z nich 14 vendorovanych"]
+        UMS["ums/.claude/ — master kopie vrstvy UMS"]
         MB["memory-bank/ — znalost o vyvoji vrstvy"]
         DEP1[".claude/ — netrackovane nasazeni pro Claude Code"]
         DEP2[".agents/skills/ — netrackovane nasazeni pro Codex"]
     end
     subgraph mono["monorepo UMS, d:/_datasys/ums"]
         MSK[".claude/skills/ — vendorovane skilly s overlay bloky"]
-        MUMS[".claude/ — ziva master kopie vrstvy"]
+        MUMS[".claude/ — nasazena kopie vrstvy"]
         MMB["memory-bank/ — Memory Bank produktu UMS"]
     end
     SK -->|revendor, git archive tagu| MSK
     UMS -->|overlay fragmenty| MSK
-    MUMS -->|sync FromMonorepo| UMS
-    UMS -->|sync ToMonorepo| MUMS
-    UMS -->|rucni nasazeni| DEP1
-    UMS -->|sync -Agent codex| DEP2
+    UMS -->|sync ToMonorepo, vychozi smer| MUMS
+    MUMS -.->|sync FromMonorepo, vedome, jen claude+Monorepo| UMS
+    UMS -->|sync -Scope Fork| DEP1
+    UMS -->|sync -Scope Fork -Agent codex| DEP2
     MB -.->|dokumentuje| UMS
 ```
 
 Nasazené kopie v tomto repu (`.claude/`, `.agents/skills/`) jsou **netrackované**
 (upstream `.gitignore` ignoruje každý `.claude/`) a mohou být za zdrojem —
 autoritou je vždy `ums/.claude/`. Sezení v tomto repu ale běží nad nasazenou
-kopií, takže po změně zdroje je nutné nasazení obnovit, jinak agent pracuje se
-starou verzí vrstvy. `mb-state` tento drift hlásí strojově: porovná
+kopií, takže po změně zdroje je nutné nasazení obnovit
+(`sync-with-monorepo.ps1 -Scope Fork`, sekce 7), jinak agent pracuje se starou
+verzí vrstvy. Nasazení strom nešpiní — `.gitignore` zůstává nedotčený (aditivita)
+a nasazené adresáře skrývá `.git/info/exclude` (sekce 7; důvod v [tech.md](tech.md),
+„Pasti prostředí"). `mb-state` tento drift hlásí strojově: porovná
 `Contract-Version` a SHA256 hash všech souborů pod `shared/**`, `mb-*/**`
 a `hooks/**` mezi `ums/.claude/` a `.claude/` a rozdíl vypíše jako nález
 „nasazení za zdrojem" s příkazem obnovy z playbooku; `contract-inject.ps1`
@@ -56,8 +59,11 @@ nese totéž porovnání jen pro jádro kontraktu (viz níže).
 
 ## 2. Workflow Superpowers a body zásahu UMS
 
-Superpowers řídí životní cyklus práce. UMS do něj vstupuje **přesně čtyřmi
-overlay bloky** plus sadou skillů volaných z těchto bloků.
+Superpowers řídí životní cyklus práce. UMS do něj vstupuje **přesně pěti
+overlay cíli** (brainstorming, subagent-driven-development, finishing,
+writing-plans, executing-plans), plus sadou skillů volaných z těchto bloků.
+Každý cíl nese dva fragmenty — tělo a hlavičkový ukazatel (níže, „Hlavičkový
+ukazatel a přežití kompaktace").
 
 ```mermaid
 flowchart TD
@@ -71,17 +77,21 @@ flowchart TD
     ARS --> WP["writing-plans"]
     GATE -->|ne| WP
     WP --> PLAN["plan_slug.md v proposals/active/"]
-    PLAN --> O4{{"OVERLAY 4: tri volby exekuce"}}
-    O4 -->|subagenti| SDD["subagent-driven-development"]
-    O4 -->|inline| EP["executing-plans"]
-    O4 -->|fresh session| BAT1["session-intent.md: Kind plan-execution"]
+    PLAN --> O4{{"OVERLAY 4: metoda Subagent-driven nebo Native, Fresh Session jako modifikator"}}
+    O4 -->|Subagent-driven| SDD["subagent-driven-development"]
+    O4 -->|Native| EP["executing-plans"]
+    O4 -.->|Fresh Session, obe metody| BAT1["session-intent.md: Kind plan-execution"]
     BAT1 -.->|operator: /clear| NEW1["nove sezeni, SessionStart hook cte baton"]
     NEW1 --> SDD
+    NEW1 --> EP
     SDD --> O2{{"OVERLAY 2: bez worktrees, jazyk dispatchu, model guard, pata stop trida"}}
     SDD -.->|rotace kontextu na hranici tasku| BAT2["session-intent.md: Kind plan-resume"]
     BAT2 -.->|operator: /clear| NEW2["nove sezeni, SessionStart hook cte baton"]
     NEW2 --> SDD
-    EP --> FIN["finishing-a-development-branch"]
+    EP --> O5{{"OVERLAY 5: totez pro Native, exekutor sam cte playbook"}}
+    EP -.->|rotace kontextu na hranici tasku| BAT2
+    NEW2 --> EP
+    O5 --> FIN["finishing-a-development-branch"]
     O2 --> FIN
     FIN --> O3{{"OVERLAY 3: Harvest Gate — krok 4.5"}}
     O3 --> HARV["mb-harvest: znalost do MB, archivace navrhu, reset na IDLE"]
@@ -91,10 +101,10 @@ flowchart TD
 
 ### Jádro kontraktu: tři vrstvy, injektáž a bannery
 
-Kontrakt (`ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`, v3.1) není
+Kontrakt (`ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md`, v3.2) není
 jeden soubor — je to **tři vrstvy podle čtenáře**, doplněné historií:
 
-- **Jádro** (soubor výše, 798 řádků, rozpočet 800) nese jen pravidla platná
+- **Jádro** (soubor výše, 799 řádků, rozpočet 800) nese jen pravidla platná
   v každé fázi práce — fail-closed STOPy, eskalační dno, publikační pravidlo,
   Language Contract, Dispatch Model Policy — a mapu `Phase Map`: tabulku
   operace → vlastnící skill/overlay → reference. Jádro se nikdy neodkazuje na
@@ -103,11 +113,24 @@ jeden soubor — je to **tři vrstvy podle čtenáře**, doplněné historií:
   artefakty pro JEDNO téma — čte je skill nebo overlay, který téma provádí,
   ne každé sezení. `Phase Map` v jádře řekne, kterou referenci má který skill
   otevřít; skill sám ji jmenuje ve vlastním banneru.
-- **Doklad** (`shared/contract/doklad/<téma>.md`, 14 souborů) nese zdůvodnění,
+- **Doklad** (`shared/contract/doklad/<téma>.md`, 15 souborů) nese zdůvodnění,
   měření a historii — čte ho autor změny pravidla, na vyžádání, nikdy
   vykonavatel pravidla.
 - **`shared/CHANGELOG.md`** nese verzní historii; jádro si nechává jen aktuální
-  číslo (`Contract-Version: 3.1`) a odkaz na changelog.
+  číslo (`Contract-Version: 3.2`) a odkaz na changelog.
+
+**Pravidla exekuce plánu jsou rozprostřená do referencí svého tématu, ne
+sloučená do jedné.** Obě metody exekuce — subagenti (`subagent-driven-development`)
+i Native (`executing-plans`) — čerpají z téhož: pátá, předávací stop třída
+a zapisovatelé batonu (`session-intent-baton.md`), body přepisu bloku `NOW`
+a domov ledgeru podle markeru `plan-path` (`now-block.md`), soubor kandidátů
+playbooku přežívající smazání pracovního adresáře plánu i to, že u Native
+kandidáty zapisuje exekutor sám (`playbook-contract.md`), a každý rozsah
+proti bázi — balík finálního review, `MERGE_BASE`, průnik při base syncu —
+počítaný z efektivní báze, nikdy z lokálního `main` (`repository-configuration.md`).
+Overlaye obou exekutorů tato pravidla jen citují ve svém banneru (bannery
+obou cílí na stejnou sadu referencí, hlídá `contract-shape.tests.ps1`) a
+přidávají jen to, co je specifické pro daného exekutora.
 
 Tabulkový a souborový rozpad je v [tech.md](tech.md), sekce „Tvar kontraktu:
 jádro, reference, doklad, changelog".
@@ -127,7 +150,18 @@ dřívější pokyn „přečti si kontrakt" v `additionalContext`. Registrace v
 `SessionStart`/`PostCompact`/`UserPromptSubmit` bodech je v [tech.md](tech.md),
 sekce „Konfigurace pro Claude Code". Hook vloží jádro DOSLOVA, řádky
 `context.md` a (existuje-li ledger aktivního slugu) blok `NOW` téhož uzavřeného
-tvaru jako baton (sekce „Session Intent Baton" níže) — a protože `PostCompact`
+tvaru jako baton (sekce „Session Intent Baton" níže). Ledger hledá **podle
+markeru `plan-path`**, který upstream `sdd-workspace` zapisuje do pracovního
+adresáře plánu, ne podle jména adresáře: hodnota markeru se porovnává s cestou
+`plan_<slug>.md` (starší `proposal_<slug>.md`) aktivního páru v repo-relativním
+i absolutním zápisu, včetně msys tvaru, který upstream píše pod Git Bash na
+Windows. Dva adresáře nárokující tentýž plán jsou dvojznačné a blok nedají;
+adresář `plan_<slug>` bez markeru platí jen jako starší tvar před zavedením
+markeru. Pin, slug i hodnota markeru jsou nedůvěryhodný text — prochází
+znakovým whitelistem a ohraničením velikosti dřív, než se sestaví cesta nebo
+porovnání. Pokyn, který hook přidává na konec payloadu, po kompaktaci navíc
+připomíná, že tělo vyvolaného skillu mohlo být znovu vloženo oříznuté a je třeba
+přečíst jeho blok `UMS-OVERLAY` ze souboru. Protože `PostCompact`
 neumí `additionalContext`, jen `systemMessage`, hook si mezi kompaktací a
 dalším promptem nechává vlastní marker (`.superpowers/contract-reload.flag`),
 který `UserPromptSubmit` přečte a jádro dosadí mechanicky s prvním promptem.
@@ -139,10 +173,33 @@ který trvale hlásí `mb-state` (porovnáním `Contract-Version` a SHA256 hash�
 `shared/**`, `mb-*/**` a `hooks/**` mezi `ums/.claude/` a nasazenou kopií
 `.claude/`, viz sekce 1 výše).
 
+### Hlavičkový ukazatel a přežití kompaktace
+
+Claude Code po kompaktaci znovu vloží tělo každého vyvolaného skillu, nejvýš
+5 000 tokenů na skill, a ořez **zachovává začátek souboru** (doklad
+`shared/contract/doklad/compaction.md`, měření velikostí skillů a citace
+dokumentace). Overlay blok stojí na konci nebo blízko konce dlouhých skillů
+(SDD, finishing, brainstorming, executing-plans), takže by ho kompaktace
+odřezala. Proto každý z pěti overlayovaných skillů nese **druhý, malý blok
+`UMS-OVERLAY`** — hlavičkový ukazatel — hned před řádkem H1, generovaný
+fragmentem `<skill>.pointer.overlay.md` s kotvou `ANCHOR-BEFORE` na H1 a
+ASSERTem na ten řádek. Ukazatel říká, že skill v tomto repu nese blok
+`UMS-OVERLAY`, který váže, a že je-li tělo po kompaktaci oříznuté, má se blok
+přečíst ze souboru dřív, než se pokračuje. Pár ukazatel + tělo drží oba směry
+ořezu: zachovaný začátek nese ukazatel, zachovaný konec blok. Souběh dvou
+fragmentů na jeden cíl řeší revendor (fragmenty se aplikují v ordinálním pořadí
+jmen, kontrola „cíl je pristine" běží jednou na cíl) a jeho verifikace vyžaduje,
+aby první `UMS-OVERLAY BEGIN` každého overlayovaného `SKILL.md` začínal v
+prvních 12 000 znacích souboru. Druhá polovina obrany je hook
+`contract-inject.ps1` (výše): jeho pokyn po kompaktaci posílá model číst blok
+`UMS-OVERLAY`. Čerstvé sezení po `/clear` s batonem je pokryté bez těchto
+opatření: baton nese `Instruction:` se jménem skillu, sezení skill vyvolá a
+načte celý `SKILL.md` s overlayem.
+
 ### Overlay 1 — `brainstorming`
 
 Fragment [`brainstorming.overlay.md`](../ums/.claude/skills/shared/overlays/brainstorming.overlay.md),
-ukotvený na konec souboru. Upstream v6.3.0 nejdřív klasifikuje request na tři
+ukotvený na konec souboru. Upstream v6.4.2 nejdřív klasifikuje request na tři
 cesty (spike / bounded / architectural) a fragment je mapuje na dokumentovou
 vrstvu (kontrakt/brainstorming-paths.md, „Brainstorming Paths"): architektonická i bounded
 cesta běží vstupní bránu celou a obě produkují `design_<slug>.md` — bounded
@@ -157,9 +214,13 @@ položky). Zásahy do architektonické cesty:
   model tahu, kandidáti napříč větvemi), aktivovat případný předběžný návrh
   z `proposals/next/` (i na cizí větvi — převzetí je kopie blobu, viz sekce
   3), zeptat se na Jira tiket, **zvolit bázi integrace** — kandidáti jsou
-  chráněné větve reálně existující na `origin` (`Get-UmsBaseCandidates`),
+  chráněné větve a epikové linie reálně existující na `origin`
+  (`Get-UmsBaseCandidates`; epikovou linii pojmenuje jako takovou, sekce 3),
   řazené výchozí první, pak větev, na které sezení stojí, pak (fail-open)
-  zmínka verze v textu tiketu; o volbě rozhoduje vždy uživatel — poté
+  zmínka verze v textu tiketu; v sezení, které rozjel `mb-epic-run spawn`, je
+  doporučením linie jmenovaná v jeho promptu; volný tvar odpovědi ověří
+  `Test-UmsIntegrationBase`, výsledek `none` je fail-closed STOP; o volbě
+  rozhoduje vždy uživatel — poté
   **znovu spustit index s deklarovaným záměrem** (`-Jira`/`-Slug`) pro
   meziclonovou kolizní kontrolu — nález `KOLIZE AKTIVNÍ PRÁCE` je
   fail-closed stop, cizí aktivní práce jiných tiketů je jen informace —
@@ -190,7 +251,12 @@ položky). Zásahy do architektonické cesty:
   návrhu): s navázaným tiketem se VŽDY nabídne design review architektem.
   Přijetí znamená konec workflow v tomto sezení — pokračuje se až režimem
   resume. Na bounded cestě se gate nenabízí — přání review je signál pro
-  upgrade cesty.
+  upgrade cesty. Overlay k tomu jmenovitě upřesňuje upstream HARD-GATE
+  („written-spec approval only permits invoking writing-plans"): mezi schválením
+  zapsaného spec a writing-plans stojí nabídka oponentury a Architect Review
+  Gate, ani jedno není implementační úkon, takže zákaz implementace před
+  schváleným plánem platí beze změny. Upstream krok „Carry intent into the
+  design" se propisuje do sekce `## Cíl` návrhu.
 - **Epic Backflow check** po finálním schválení návrhu (kontrakt/epic-backflow.md,
   sekce „Epic Backflow (design → epic)"): s tiketem a dostupnou Jirou se spustí
   `mb-epic-graph -Check`; nález k tomuto tiketu vždy zafrontuje poznámku do
@@ -202,7 +268,9 @@ položky). Zásahy do architektonické cesty:
 ### Overlay 2 — `subagent-driven-development`
 
 Fragment [`subagent-driven-development.overlay.md`](../ums/.claude/skills/shared/overlays/subagent-driven-development.overlay.md),
-na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
+na konec souboru, doplněný hlavičkovým ukazatelem. Nemění smyčku tasků, jen její
+dispatch pravidla; pravidla exekuce plánu sdílená s Native jsou v jádru a
+referencích (sekce „Jádro kontraktu") a overlay je cituje ve svém banneru:
 
 - **model** — platí upstream Model Selection; UMS jen požaduje explicitní model
   u každého dispatche a nejlevnější tier pro čistě summarizační práci,
@@ -235,9 +303,15 @@ na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
 - **base sync** — báze se mergne do tiketové větve na hranicích fází, nikdy
   uprostřed tasku: povinně před dispatchem prvního tasku (`git fetch origin`
   + `merge <baseRef>`, s posouzením průniku a odstupňovanou verifikací),
+- **rozsahy proti bázi** — kde upstream text píše `git merge-base main HEAD`
+  (`MERGE_BASE` finálního review, množiny průniku), řez se dělá z efektivní
+  báze; lokální `main` je v tomto forku zrcadlo upstreamu, balík by nesl celou
+  historii UMS,
 - **publikace** — agent pushuje vlastní větev po každém commitu (obecné
   pravidlo, sekce 3); před dispatchem prvního tasku je to commit s plánem,
-  vedle povinné baseline build/test kontroly,
+  vedle povinné baseline build/test kontroly; ani na epikovou linii se
+  v průběhu exekuce nepushuje — integrační push patří do finishing po `go`
+  správce (sekce 3),
 - **pátá stop třída — rotace kontextu** — na hranici tasku (po zápisu
   dokončovací řádky do ledgeru a odškrtnutí toda, před dalším dispatchem),
   jeví-li se zbývající kontext jako nedostatečný na další task: napsat baton
@@ -251,15 +325,16 @@ na konec souboru. Nemění smyčku tasků, jen její dispatch pravidla:
   Architect Review Gate. Je to úsudek modelu, ne měření: detektor prahu
   kontextu se nestaví. Obnovené sezení nesmí na základě batonu znovu spustit
   base sync ani baseline — ty patří k tasku 1 plánu, ne k tasku 1 sezení
-  (`Next task: N` v batonu je rozlišující informace). Podrobnosti formátu a
+  (`Next task: N` v batonu je rozlišující informace). Normativní domov pravidla
+  je `session-intent-baton.md`, overlay ho jen cituje; podrobnosti formátu a
   guardů viz podsekce „Session Intent Baton" níže.
 
 ### Overlay 3 — `finishing-a-development-branch`
 
 Fragment [`finishing-a-development-branch.overlay.md`](../ums/.claude/skills/shared/overlays/finishing-a-development-branch.overlay.md),
-vložený **před** řádek `## Step 5: Execute Choice` — jediný fragment s
-kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává krok
-4.5 a přepisuje variantu 1:
+vložený **před** řádek `## Step 5: Execute Choice` (kotva `ANCHOR-BEFORE` s
+ASSERTem na text varianty 1, takže se drift upstreamu ozve hlasitě).
+Přidává krok 4.5 a přepisuje variantu 1:
 
 - u všech tří variant (merge / PR / ponechat) nejprve `mb-harvest`, pak commit
   MB změn a push tiketové větve, teprve potom vlastní varianta,
@@ -272,11 +347,12 @@ kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává kro
   jmenovaných, nikdy číslovaných (kontrakt, Publication Contract,
   „Integration"): **Sync** (`git fetch origin` + `merge <efektivní báze>`
   PŘED harvestem; tahle fáze navíc rozhodne **domov deklarované ověřovací
-  sady** porovnáním cíle proti `epicBranchPattern` — shoda čte `##
+  sady** dotazem na druh báze (`Test-UmsIntegrationBase` vrací `epic-line`, tj.
+  nechráněná větev odpovídající `epicBranchPattern`) — epikový druh čte `##
   Ověřovací sada` ledgeru epiku **po refu z jeho elaborační větve**
   (`Get-UmsEpicLedger.ps1`, `git show <větev>:<cesta>` do git-ignorovaného
   scratche — tiketová větev, odštěpená z epikové LINIE, ledger nenese),
-  neshoda ji čte ze stejné sekce vlastního `plan_<slug>.md`, nebo
+  jiný druh báze ji čte ze stejné sekce vlastního `plan_<slug>.md`, nebo
   `design_<slug>.md` u bounded položky bez plánu; chybějící sada v obou
   domovech je fail-closed STOP) → **Harvest** (`mb-harvest`, commit, push) →
   **Publish** (znovu `fetch` + `merge <efektivní báze>`, báze se mohla
@@ -294,9 +370,16 @@ kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává kro
   fázi Sync, „je efektivní bází epiková linie?": **není správce** → prostý
   lidský příkaz `! git push origin HEAD:<baseBranch>`, refspecový tvar, bez
   úniku, protože obsahové pravidlo `pre-push` hooku (sekce 3) takový
-  fast-forward pustí samo; **je správce** → zpráva správci epiku, který push
-  provede operací `mb-epic-run integrate` (sekce 6) pod výjimkou podle
-  aktéra) → **Confirmation** (tiketové sezení na vlastní větvi, ať push
+  fast-forward pustí samo; **je správce** → zpráva správci epiku, který
+  kontroluje operací `mb-epic-run integrate` (sekce 6), **nepushuje nic** a
+  povinně odpoví `go` (s tipem linie, proti kterému kontroloval) nebo `STOP`;
+  na `go` tiketové sezení samo fetchne, ověří, že tip linie je stále ten
+  zkontrolovaný (jinak resynchronizace a nové předání), pushne
+  `git push origin HEAD:epic/<KLÍČ>` a správci pošle oznámení; bez `go` se
+  nepushuje, a kde žádný správce neodpovídá, spadá artefakt na lidské
+  vykreslení; čekání na správce se jmenuje ve zprávě a v řádku `## Předání`
+  epikového souboru tiketu, protože finishing blok `NOW` nemá) →
+  **Confirmation** (tiketové sezení na vlastní větvi, ať push
   provedl kdokoli, ověří dosažitelnost **z báze** —
   `git merge-base --is-ancestor <sha> <efektivní báze>`, ne `git branch -r
   --contains`, který by nahlásil tiketovou větev, kam už publikační pravidlo
@@ -319,29 +402,70 @@ kotvou `ANCHOR-BEFORE`, tedy jediný citlivý na drift upstreamu. Přidává kro
 ### Overlay 4 — `writing-plans`
 
 Fragment [`writing-plans.overlay.md`](../ums/.claude/skills/shared/overlays/writing-plans.overlay.md),
-kotvený `ANCHOR-BEFORE` na otázku „Which approach?" — druhý fragment citlivý
-na drift upstreamu. Menu exekuce se rozšiřuje ze dvou voleb na tři, žádná
-druhá otázka ani práh počtu tasků se nepřidává:
+kotvený `ANCHOR-BEFORE` na řádek `**When an execution method has already been
+supplied:**` — druhý fragment citlivý na drift upstreamu. Upstream v6.4.2
+nabízí menu dvou metod, **Subagent-driven** a **Native**, s doporučením; overlay
+ho nemění a ASSERTuje obě položky menu i celý řádek „Plan complete and saved
+to … Which execution approach would you prefer?" (v6.4.2 má dva řádky
+začínající „Plan complete…", ASSERT musí trefit právě jeden). Přidává:
 
-- **1. Subagent-Driven** a **2. Inline Execution** — beze změny, upstream.
-- **3. Fresh Session** (doporučeno u větších plánů, nebo když se návrhový
-  dialog protáhl) — agent napíše session intent baton (`Kind: plan-execution`,
-  cesta plánu, cesta specu, větev, slug, tiket), ohlásí česky jedním krátkým
-  odstavcem a skončí — nic nedispatchuje, nenabízí pokračování v tomtéž
-  sezení. Operátor pak napíše `/clear`; příští sezení dostane zkonstruovaný
-  brief místo toho, co si operátor vzpomene napsat, a startuje bez jediného
-  řádku brainstormingového transkriptu.
-- Volba 3 se nabízí jen když platí **precondice zapisovatele** (níže) — jinak
-  menu zůstává na dvou a upstream text platí beze změny.
+- sekci `## Ověřovací sada` v plánu (jeden ohraničený blok, jeden příkaz na
+  řádek — čte ji jediný parser),
+- přepis cesty plánu: upstream věty „Plan complete and saved to …" jmenují
+  `docs/superpowers/plans/`, kdežto plán leží v
+  `<PLAN_MB>/proposals/active/plan_<slug>.md` a ta upstream cesta je blokovaná
+  hookem — overlay obě věty jmenovitě neguje,
+- **Fresh Session jako modifikátor obou metod, ne třetí metoda**: po volbě
+  metody (z menu, nebo už dodané) a po revizi plánu uživatelem jedna
+  doplňující otázka „v tomto sezení / v čerstvém", doporučená u většího plánu
+  nebo když se návrhový dialog protáhl. Volba čerstvého sezení znamená, že
+  agent napíše session intent baton (`Kind: plan-execution`, cesta plánu,
+  cesta specu, větev, slug, tiket a `Instruction:` jmenující zvolený
+  exekutor — `subagent-driven-development` nebo `executing-plans`), ohlásí
+  česky jedním krátkým odstavcem a skončí — nic nedispatchuje, nenabízí
+  pokračování v tomtéž sezení. Operátor pak napíše `/clear`; příští sezení
+  dostane zkonstruovaný brief místo toho, co si operátor vzpomene napsat, a
+  startuje bez jediného řádku brainstormingového transkriptu.
+- Otázka se klade jen když platí **precondice zapisovatele** (níže) a plán už
+  uživatel prošel — jinak metoda běží v tomto sezení přesně podle upstream
+  textu.
 
-Fragment má jedinou kotvu, takže obsluha volby 3 stojí **před** otázkou
-„Which approach?", zatímco obsluhy voleb 1 a 2 stojí za ní — vědomá asymetrie,
-protože menu vyrenderované operátorovi musí být v okamžiku otázky úplné.
+Blok stojí mezi větví handoffu „metoda nedodána" (menu) a větví „metoda už
+dodána", protože přepis cesty i otázka o čerstvém sezení platí pro obě; řádky
+„If … chosen" na konci souboru následují odpověď.
+
+### Overlay 5 — `executing-plans`
+
+Fragment [`executing-plans.overlay.md`](../ums/.claude/skills/shared/overlays/executing-plans.overlay.md),
+kotva `EOF` s ASSERTy na dvě upstream věty, na kterých stojí (větu „Four things
+stop you, and only these…" a větu o workspace a ledgeru sdíleném se SDD).
+Upstream v6.4.2 z `executing-plans` udělal plnohodnotnou **Native exekuci**
+(exekutor plán provádí sám, sdílený ledger a workspace SDD, `task-start` /
+`task-done`); bez overlaye by se u ní tiše vypnuly base sync, publikace,
+playbook, rotace kontextu i blok `NOW`. Banner cituje **stejnou sadu
+referencí** jako overlay SDD a obě pravidla exekuce čerpají z týchž domovů
+(sekce „Jádro kontraktu"). Lokálně overlay říká jen to, co je specifické pro
+exekutora bez implementátora:
+
+- exekutor **čte řetězec playbooků sám**, na začátku KAŽDÉHO sezení (před prvním
+  taskem toho sezení, nikoli jen plánu) a znovu po kompaktaci — není komu ho
+  přiložit; příkazy pro baseline se berou z téhož řetězce,
+- **kandidáty playbooku zapisuje sám** po každém `task-done`, stejným formátem
+  a přes `Find-UmsPlaybookMatch`,
+- **finální reviewer má explicitní model** a balík se staví z efektivní báze,
+  ne z `git merge-base main HEAD`,
+- **izolace:** upstream Setup „use superpowers:using-git-worktrees to create
+  one" se čte jako větev na místě a „a side effect outside this worktree" jako
+  mimo tento klon/workspace; na harnessu bez mechanického zákazu worktree je
+  tento text jediné vynucení,
+- pátá, předávací stop třída se povolí jen po `task-done` a před dalším
+  `task-start`; `Instruction:` batonu jmenuje `executing-plans`. Base sync a
+  baseline běží před taskem 1 plánu, ne před prvním taskem obnoveného sezení.
 
 ### Session Intent Baton
 
-Mechanika, kterou používá Overlay 2 (pátá stop třída) i Overlay 4 (třetí
-volba exekuce), zavedená kontraktem, podsekce „Session Intent Baton"
+Mechanika, kterou používají Overlay 2 a Overlay 5 (pátá stop třída) i Overlay 4
+(Fresh Session), zavedená kontraktem, podsekce „Session Intent Baton"
 (normativní zdroj formátu a guardů). Baton nese záměr **jen uvnitř vlastního
 workspace** — mezi sezeními, která tentýž operátor otevírá ve stejném klonu
 po `/clear`. Záměr do JINÉHO workspace (slot poolu) se nedoručuje batonem
@@ -351,9 +475,9 @@ vůbec, ale argv spuštěného procesu plus tažením z commitnutého ledgeru (s
 - **Soubor:** `<MB_ROOT>/.superpowers/session-intent.md` — git-ignorovaný,
   nikdy se necommituje (fallback při ztrátě je, že operátor napíše záměr
   sám — dnešní chování bez batonu).
-- **Zapisovatelé:** `writing-plans` (volba 3, `Kind: plan-execution`) a
-  `subagent-driven-development` (pátá stop třída, `Kind: plan-resume`), oba
-  vázané precondicí — baton se píše jen když existuje detekovaný konzument
+- **Zapisovatelé:** `writing-plans` (Fresh Session, `Kind: plan-execution`) a
+  oba exekutoři, `subagent-driven-development` i `executing-plans` (pátá stop
+  třída, `Kind: plan-resume`), všichni vázaní precondicí — baton se píše jen když existuje detekovaný konzument
   (neprázdný `CLAUDECODE` a registrovaný hook); jinak zapisovatel ohlásí, že
   se záměr automaticky nedoručí.
 - **Čtenář:** [`ums/.claude/hooks/session-intent.ps1`](../ums/.claude/hooks/session-intent.ps1),
@@ -415,7 +539,7 @@ scope locku Memory Bank.
 Aktéři pracují každý ve svém clonu a tiketové větvi a nevidí se navzájem,
 dokud se něco nesloučí. Vrstva to řeší modelem tahu (dokumenty se hledají, ne
 tlačí) a publikačním invariantem (co se zveřejní, musí být dosažitelné).
-Normativní zdroj: kontrakt v3.1, sekce **Publication Contract** a
+Normativní zdroj: kontrakt v3.2, sekce **Publication Contract** a
 **Cross-Branch Visibility**.
 
 ### Model tahu — `mb-doc-index`
@@ -490,7 +614,7 @@ Vynucení publikace stojí na dvou vrstvách, každá odpovídá na jinou otázk
 
 | Vrstva | Otázka | Dosah |
 |---|---|---|
-| Git `pre-push` hook | **CO** se pushuje | Cokoli běžící v agentní relaci (marker `MB_AGENT_SESSION=1`; u Claude Code fallback na neprázdný `AI_AGENT` nebo `CLAUDECODE=1`), včetně příkazů, které do repa napíše přes `!` sám uživatel |
+| Git `pre-push` hook | **CO** se pushuje | Cokoli běžící v agentní relaci (marker `MB_AGENT_SESSION=1`; fallback na jakékoli neprázdné `AI_AGENT`, které nastavuje kterýkoli harness — Pi ho nastavuje sám —, nebo na `CLAUDECODE=1`), včetně příkazů, které do repa napíše přes `!` sám uživatel |
 | `guard-git-push.mjs` (PreToolUse) | **KDO** pushuje | Jen vlastní tool-cally agenta; příkazy, které uživatel napíše přes `!`, sem nikdy nedorazí |
 
 Uvnitř agentní relace hook na chráněné větvi pustí jen **fast-forward, jehož
@@ -611,16 +735,19 @@ linked worktree a `core.hooksPath`; vícekolovým sebetestem s nastaveným
 markerem ověřuje, že nainstalovaný hook skutečně zamítá i propouští, ne jen
 jedno z toho, a že skutečně čte vygenerovaný seznam, ne jen vestavěný
 fallback), volané i ze
-[`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) při `-Scope
-Monorepo` pro libovolného `-Agent` — ten marker do relace daného harnessu
-doručuje sám (viz [tech.md](tech.md)); instalátor ho pro vlastní ověřovací
-běhy nastavuje rovnou.
+[`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1) při `-Scope Monorepo`
+nebo `-Scope Fork` pro libovolného `-Agent` (git hook je vlastnost repozitáře,
+ne harnessu); marker do relace daného harnessu doručuje sync sám v každém scope kromě `-Scope
+Fork` (viz [tech.md](tech.md)); instalátor ho pro vlastní ověřovací běhy
+nastavuje rovnou.
 
 **Efektivní báze pracovní položky** může být jiná než repozitářová výchozí
 `baseRef` — typicky servisní větev řady `Branches/5.37` místo `develop` —
-a kontrakt vynucuje invariant „integrační větev je vždy chráněná větev":
-efektivní báze musí odpovídat některému vzoru efektivních `protectedBranches`,
-jinak je zvolená báze fail-closed stop s pořadím nápravy (cílený zápis vzoru
+a kontrakt vynucuje invariant „integrační větev je vždy chráněná větev" s
+jedinou jmenovanou výjimkou, epikovou linií (níže): efektivní báze musí
+odpovídat některému vzoru efektivních `protectedBranches`, nebo být nechráněná
+větev odpovídající `epicBranchPattern`; jinak je zvolená báze fail-closed stop
+s pořadím nápravy (cílený zápis vzoru
 do `ums-repo.json` → nový běh `install-git-hooks.ps1` → strojový self-test na
 té konkrétní větvi → teprve pak založení tiketové větve a commit konfigurace
 na ní). Efektivní bázi čte řádek `- **Báze:**` v `context.md` (zapsaný jen
@@ -634,18 +761,27 @@ dělat strojově — proto sdílené skripty vedle
 [`Test-UmsProtectedBranch.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsProtectedBranch.ps1)
 (jméno větve × vzory, vrací `Matched`/`Evaluated`/`BadPatterns` — vadný glob
 jako `Maint/[0-9` se počítá jako neshoda a je jmenovitě nahlášen, ne jen
-tiše přeskočen), [`Get-UmsBaseCandidates.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsBaseCandidates.ps1)
-(chráněné větve reálně existující na `origin`, řazené výchozí → aktuální →
-ostatní) a [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEffectiveBase.ps1)
+tiše přeskočen),
+[`Test-UmsIntegrationBase.ps1`](../ums/.claude/skills/shared/scripts/Test-UmsIntegrationBase.ps1)
+(smí větev sloužit jako báze a jakého druhu: `Kind` je `protected`, `epic-line`
+nebo `none`; chráněná větev vyhrává, i když odpovídá i `epicBranchPattern`;
+oba seznamy prochází přes `Test-UmsProtectedBranch`, takže vadný vzor je
+neshoda a jmenovitě nahlášený), [`Get-UmsBaseCandidates.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsBaseCandidates.ps1)
+(větve reálně existující na `origin`, které `Test-UmsIntegrationBase` povolí —
+chráněné a, dokud není vypnutá, epiková linie s příznakem `IsEpicLine` —
+řazené výchozí → aktuální → ostatní) a [`Get-UmsEffectiveBase.ps1`](../ums/.claude/skills/shared/scripts/Get-UmsEffectiveBase.ps1)
 (řádek `Báze:` s fallbackem na `baseRef`; nesrozumitelný řádek — komentář za
 hodnotou, prázdná hodnota, chybějící diakritika — hlásí v `Malformed` a
-nepočítá se jako „řádek chybí"). Tyto tři skripty čtou (nebo zpřísňují STOP)
-`mb-park`, `mb-state`, `mb-jira-update`, `mb-architect-review`, `mb-harvest`
-a overlay fragmenty `brainstorming`, `subagent-driven-development` a
-`finishing-a-development-branch` — jmenovitě tyto tři, ne všechny čtyři:
-`writing-plans` (Overlay 4) bázi ani chráněné větve neřeší, takže sdílené
-skripty nekonzumuje. `Get-UmsRepoConfig.ps1` se neměnil — per-položková báze
-není konfigurace repozitáře.
+nepočítá se jako „řádek chybí"). Konzumenti: `Get-UmsEffectiveBase` čtou
+`mb-park`, `mb-state`, `mb-jira-update` a overlay `finishing-a-development-branch`;
+`Test-UmsProtectedBranch` `mb-park`, `mb-state` a `mb-architect-review`;
+`Get-UmsBaseCandidates` overlay `brainstorming` a `epic-line.ps1` v `mb-epic-run`;
+`Test-UmsIntegrationBase` overlaye `brainstorming` a `finishing-a-development-branch`,
+`mb-state` a `mb-epic-run`. Overlaye `subagent-driven-development`,
+`writing-plans` a `executing-plans` bázi ani chráněné větve strojově
+neřeší — řídí se jen efektivní bází z kontraktu. Tři stavy klíče
+`epicBranchPattern` v `Get-UmsRepoConfig.ps1` jsou v [tech.md](tech.md),
+sekce „Konfigurace repozitáře"; per-položková báze není konfigurace repozitáře.
 
 Vedle něj běží `guard-git-push.mjs` jako PreToolUse hook (`Bash|PowerShell`)
 — nenese publikační záruku (tou zůstává git `pre-push` hook výše), ale nese
@@ -668,68 +804,88 @@ odhodlanému obejití zůstává ochrana větví na serveru.
 
 ### Epiková linie
 
-Normativní zdroj: kontrakt v3.1, sekce **The epic line** (Repository
-Configuration). Epik dostává **dvě větve** s odlišnými rolemi: **epikovou
-linii** (`epic/<KLÍČ-EPIKU>`, kódová integrační větev — efektivní báze
-každého tiketu odštěpeného pro tento epik, nese kód i sklizené MB dokumenty
-těch tiketů) a **řídicí větev** (existující elaborační větev
-`mb-epic-elaboration`, nese ledger, graf a předběžné návrhy, nikdy pin
-ACTIVE — elaborace je definovaná jako práce bez pinu). Epiková linie
-integruje o úroveň dál, do **dodávkové linie** — sdílené větve, kam epik
-nakonec dodává a kam by každý jeho tiket integroval i bez epikové linie.
+Normativní zdroj: kontrakt v3.2, sekce **The epic line** (kontrakt/epic-line.md).
+Epik dostává **dvě větve** s odlišnými rolemi: **epikovou linii**
+(`epic/<KLÍČ-EPIKU>`, kódová integrační větev — efektivní báze každého tiketu
+odštěpeného pro tento epik, nese kód i sklizené MB dokumenty těch tiketů) a
+**řídicí větev** (existující elaborační větev `mb-epic-elaboration`, nese ledger,
+graf a předběžné návrhy, nikdy pin ACTIVE — elaborace je definovaná jako práce
+bez pinu). Epiková linie integruje o úroveň dál, do **dodávkové linie** —
+sdílené větve, kam epik nakonec dodává a kam by každý jeho tiket integroval i
+bez epikové linie.
 
-Epiková linie **patří mezi `protectedBranches`**, takže invariant
-„integrační větev je vždy chráněná větev" pro ni platí doslova a obě
-vynucovací vrstvy výše ji hlídají obvyklou cestou. **`epicBranchPattern`
-(`ums-repo.json`) neřídí ochranu** — jeho jediná práce je výjimka podle
-aktéra v `guard-git-push.mjs`, která agentovu vlastnímu tool-callu dovolí
-fast-forward na takovou větev; chybějící, prázdná nebo nečitelná hodnota
-znamená **žádnou výjimku**, nikdy „každou větev" — stejná degradace
-k bezpečnější straně jako u ostatních klíčů. Výjimka platí jen když
-**všechny čtyři podmínky** drží zároveň: cíl odpovídá `epicBranchPattern`;
-cíl JE chráněný; cíl NENÍ větev odvozená z `baseRef` (repozitářový
-konfigurační klíč, ne efektivní báze — ani `pre-push`, ani
-`guard-git-push.mjs` pracovní položku v okamžiku vyhodnocení nemají po
-ruce, takže jiná bázová hodnota než `baseRef`ova zůstává mimo tuhle
-podmínku a kryje ji místo toho eskalační dno níž); zdrojem refspecu je
-**surové 40znakové hex SHA** — nikdy `HEAD`, jméno větve, ani chybějící
-zdroj (pojistka proti tomu, že `git switch -c` z `origin/epic/<KLÍČ>`
-nastaví upstream nové větve na epikovou linii, měřeno — bez
-`--unset-upstream` by holý `git push` mohl mířit tam; samotný holý push ale
-stejně zastaví `push.default=simple` a obsahové pravidlo `pre-push`, ne
-tahle výjimka). Model hrozby je vysloven: pattern brání **omylu, ne
-úmyslu**, stejně jako zbytek kontraktu (`MB_HUMAN_PUSH` je taky pravidlo, ne
-mechanismus); čtení hodnoty z báze místo z pracovního stromu bylo zváženo a
-zamítnuto jako složitost bez přínosu za tohoto předpokladu — proto zůstává
-změna `epicBranchPattern` nebo `protectedBranches` v eskalačním dně (sekce
-6), bezpodmínečně u člověka.
+**Epiková linie je nechráněná integrační báze a `epicBranchPattern`
+(`ums-repo.json`) ji identifikuje.** Záměrně **není** v `protectedBranches` a je
+jedinou jmenovanou výjimkou z invariantu „integrační větev je vždy chráněná
+větev": větev odpovídající vzoru je legitimní báze — nabízí se mezi kandidáty
+a volí se bez fail-closed STOPu. **Chráněná epiková linie je nepodporovaná**:
+větev, která odpovídá i chráněnému vzoru, se vyhodnotí jako `protected`, nikdy
+jako linie, takže `mb-epic-run spawn` zastaví a náprava je vyjmout ji z
+`protectedBranches`. Klíč `epicBranchPattern` má výchozí `epic/*` (tři stavy
+klíče jsou v [tech.md](tech.md), sekce „Konfigurace repozitáře"); výslovně
+vypnutý klíč znamená **žádnou linii**, nikdy „každou větev": žádná výjimka a
+báze mimo `protectedBranches` zůstává fail-closed STOP. Každý čtenář se ptá
+`Test-UmsIntegrationBase` (sekce výše), nikdo odpověď neodvozuje ručně.
 
-Tím vzniká **třetí kategorie** vedle „co smí být bází" — „chráněná větev, do
-které agent smí pushovat" — na menším a lépe hlídaném místě, v aktérské
-vrstvě místo ve volbě báze. Licencuje ji **jediný výstup**: epiková linie se
-dostává do dodávkové linie jen lidským fast-forward pushem (stejná dvě
-zaklínadla jako výše), takže moment integrace do dodávkové linie zůstává
-lidský bez ohledu na to, kdo psal kód uvnitř epikové linie. Epiková linie
-**vzniká jen tam, kde tikety epiku nejsou samostatně dodatelné** do
-dodávkové linie — kde jsou, integruje každý tiket sám, jako dnes — a
-**zakládá ji člověk**: první publikace (`remote_sha` nula) obsahové
-pravidlo `pre-push` vždy zamítne, takže agent ji založit nemůže; hook u ní
-nabízí tvar s únikovou proměnnou, ne prostý integrační tvar. Po východu
-epiku se **maže** (lidský úkon; mazání přes push zůstává zakázané pro
-každou větev) — jinak by seznam chráněných větví rostl donekonečna a
-`Get-UmsBaseCandidates` nabízel cizí epikovou linii jako bázi nesouvisející
+**Linii hlídá jen `pre-push` hook**: zakazuje mazání větve i non-fast-forward
+push na každé větvi, kterou hlídá, tedy i na ní, takže do linie se dostane jen
+fast-forward. `guard-git-push.mjs` posuzuje push do linie jako push do
+jakékoli nechráněné větve — žádnou výjimku pro linii nenese a nečte
+`epicBranchPattern` ani `baseRef`. Výjimku podle aktéra, kterou dřív guard
+nesl (čtyři podmínky včetně surového SHA jako zdroje refspecu), vrstva
+nemá; dělá z linie totéž co z kterékoli jiné nechráněné větve, na kterou smí
+agent fast-forwardovat.
+
+**Založení.** `mb-epic-run spawn` při prvním rozjetí tiketu epiku, když
+`origin/epic/<KLÍČ>` neexistuje, linii založí z dodávkové linie
+(`New-UmsEpicLine` v `epic-line.ps1`: `git fetch origin`, pak
+`git push origin <sha dodávkové linie>:refs/heads/epic/<KLÍČ>` — jen založení,
+existující linie se nikdy neposouvá) a zapíše dodávkovou linii do hlavičky
+ledgeru epiku (`- **Dodávková linie:** origin/develop`). Tiketové větve epiku
+mají `Báze: origin/epic/<KLÍČ>` a spawn bázi jmenuje v promptu tiketového
+sezení, takže volba báze ve vstupní bráně má doporučení, ne hádání. Epiková
+linie **vzniká jen tam, kde tikety epiku nejsou samostatně dodatelné** do
+dodávkové linie — kde jsou, integruje každý tiket sám, jako dnes — a **končí
+lidským úkonem**: výstup epiku do dodávkové linie a smazání linie po výstupu
+(mazání přes push je zakázané pro každou větev) zůstávají v eskalačním dně;
+jinak by každá další volba báze nabízela cizí linii jako bázi nesouvisející
 práci.
+
+**Integrace „tiket po `go` správce".** Fáze Handoff a Confirmation (sekce 2,
+Overlay 3) běží na epikové linii v tomto pořadí: tiket pošle artefakt předání
+správci a čeká (čekání jmenuje blok `NOW` `waiting-for-manager`, ve finishing
+řádek `## Předání`); správce operací `mb-epic-run integrate` provede epikové
+kontroly (`spawn-epic`, `decision-ack`), úsudkovou kontrolu nad evidencí epiku
+a bránu předání proti čerstvému tipu linie, **sám nepushuje** a povinně
+odpoví — `go` s tipem linie, proti kterému kontroloval, nebo `STOP` s
+blokující kontrolou (jedno předání, jedna odpověď; po `STOP` tiket řeší
+příčinu a pošle NOVÉ předání); na `go` tiket `git fetch`, ověří, že tip linie
+je stále ten jmenovaný v `go` (jinak je `go` spotřebované: resynchronizace a
+nové předání), pushne `git push origin HEAD:epic/<KLÍČ>`, ověří dosažitelnost
+z báze a pošle správci oznámení, které správce zapíše do ledgeru jako
+poznámku. Integrace je fronta, ne merge (sekce 6).
+
+**Přijaté zbytkové riziko: `go` je pravidlo kontraktu, ne mechanismus.**
+Mechanicky nic nesváže to, co správce zkontroloval, s tím, co do linie dojde —
+hook pustí jakýkoli fast-forward z jakéhokoli agentního sezení, i bez `go` a i
+commit přidaný po předání. Ověření tipu tiketem je jeho POVINNOST, ne brána.
+Rozhodl to člověk při návrhu a kontrakt to zapisuje jako přijaté riziko
+(doklad `epic-line.md`), aby pravidlo nevypadalo vynucené; výstup do dodávkové
+linie zůstává lidský. Model hrozby je vysloven: vzor i chráněné větve brání
+**omylu, ne úmyslu**, stejně jako zbytek kontraktu (`MB_HUMAN_PUSH` je taky
+pravidlo, ne mechanismus), proto zůstává změna `epicBranchPattern` nebo
+`protectedBranches` v eskalačním dně (sekce 6), bezpodmínečně u člověka.
 
 Zapojení do zbytku vrstvy: `mb-jira-update` finalizace se spouští přímo
 ověřeným FF pushem do báze; overlay `finishing-a-development-branch`
 nahrazuje Option 1 integrací FF pushem (výše) místo publikace lokálního
-`develop`; overlay `subagent-driven-development` pushuje po každém zeleném
-tasku a mergne bázi před prvním dispatchem; `mb-architect-review` krok 4
-(handoff push) odkazuje na tento invariant místo vlastního pravidla.
+`develop`; overlaye obou exekutorů pushují po každém zeleném tasku a mergnou
+bázi před taskem 1; `mb-architect-review` krok 4 (handoff push) odkazuje na
+tento invariant místo vlastního pravidla.
 
 ## 4. Dokumentová vrstva
 
-Normativní zdroj: [kontrakt v3.1](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
+Normativní zdroj: [kontrakt v3.2](../ums/.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md).
 
 **Trojvrstvý model adresářů**
 
@@ -953,7 +1109,7 @@ flowchart LR
 | `mb-epic-elaboration` | Iterativní rozpracování epiku po ohraničených oknech: evidence ledger, dirty-set, invarianty, předběžné návrhy do `next/`. Framing okna čte i poznámky zpětného toku z návrhů (dirty řádky `návrh <slug>`, `notes.md`). Uzávěrka okna (fáze 7, Close) po publikaci nabízí pool přes `mb-epic-run`. | ručně |
 | `mb-epic-graph` | Graf závislostí epiku z Jira linků nebo z hlaviček návrhů, plus orákulum konzistence text ↔ linky a `-IndexFile` findings o cizích větvích. Read-only skript. | z `mb-epic-elaboration`, nebo ručně |
 | `mb-doc-index` | Read-only index MB dokumentů napříč větvemi `origin` (model tahu); kolizní findings pro discovery, elaboraci i `mb-state`. | z brainstormingu (discovery), z `mb-epic-elaboration`, z `mb-state`, nebo ručně |
-| `mb-epic-run` | Mechanika poolu (sekce 6): derivovaný stav slotů, obě orákula připravenosti na jednom místě (`ready`), spuštění sezení na tiket do volného slotu se strojovým ověřením (`spawn`), dohledání slotu, který tiket drží (`attach`), a strana správce při předání tiketu (`integrate` — dvě epikové kontroly a fast-forward do epikové linie). Read-only vůči slotům; trackované zápisy jsou řádky v ledgeru epiku na elaborační větvi (záměr `spawn`, poznámka o integraci). | z uzávěrky `mb-epic-elaboration` (nabídka), z předání tiketového sezení, nebo ručně |
+| `mb-epic-run` | Mechanika poolu (sekce 6): derivovaný stav slotů, obě orákula připravenosti na jednom místě (`ready`), spuštění sezení na tiket do volného slotu se strojovým ověřením (`spawn`), dohledání slotu, který tiket drží (`attach`), a strana správce při předání tiketu (`integrate` — dvě epikové kontroly a povinná odpověď `go`/`STOP`; nepushuje, do epikové linie fast-forwarduje tiket sám). `spawn` navíc při prvním rozjetí tiketu epiku založí epikovou linii. Read-only vůči slotům; trackované zápisy jsou řádky v ledgeru epiku na elaborační větvi (záměr `spawn`, dodávková linie v hlavičce, poznámka o integraci), netrackovaný je outbox správce. | z uzávěrky `mb-epic-elaboration` (nabídka), z předání tiketového sezení, nebo ručně |
 | `mb-migrate-docs` | Migruje Memory Banky v zadaném rozsahu na aktuální sadu dokumentů — sloučí `product.md` do `brief.md`, přejmenuje `tasks.md` na `playbook.md`, přepíše relativní odkazy; MB s `KONFLIKT PLAYBOOKU` (`tasks.md` i `playbook.md` současně) přeskočí a nahlásí. | ručně, pro repozitáře ve starém tvaru |
 | `mb-plan`, `mb-act` | Deprecated stuby v1 — jen přesměrují na Superpowers workflow. | zpětná kompatibilita |
 
@@ -974,7 +1130,7 @@ instrukční Markdown.
 
 ## 6. Pool: mechanika slotů a spuštění sezení na tiket
 
-Normativní zdroj: kontrakt v3.1, sekce **Worktree Policy** (výjimka pro
+Normativní zdroj: kontrakt v3.2, sekce **Worktree Policy** (výjimka pro
 slot poolu a její přepsané měření disku), **Workspace Discipline** (podsekce
 „A pool slot's freedom is derived from per-worktree signals only") a
 **Session Intent Baton** (proč záměr do slotu baton nenese). Mechanika
@@ -1050,10 +1206,12 @@ jsou anglické vývojářské nástroje): `status` (tabulka stavu slotů + pohle
 epiku), `ready <EPIK>` (obě existující orákula — `mb-epic-graph` a
 `ledger-status.ps1` — vedle tabulky poolu, bez vlastního verdiktu), `spawn
 <TIKET>` (způsobilost → volba slotu → zápis řádku záměru → launch →
-mechanické ověření, v tomto pořadí), `attach <TIKET>` (dohledá a **vytiskne**
+mechanické ověření, v tomto pořadí; u epiku navíc založení epikové linie, sekce
+3, a zápis do outboxu), `attach <TIKET>` (dohledá a **vytiskne**
 další akci, nespouští nic za operátora) a `integrate <TIKET>` (strana správce:
-dvě epikové kontroly, průřezový úsudek, přeběhnutí brány předání a
-fast-forward refspecem do epikové linie). `allowed-tools` v jeho frontmatteru
+dvě epikové kontroly, průřezový úsudek, přeběhnutí brány předání a povinná
+odpověď `go`/`STOP` — nepushuje nic, fast-forward do epikové linie provede
+po `go` tiket sám). `allowed-tools` v jeho frontmatteru
 **restringuje** dostupné nástroje (ne jen je předschvaluje) — proto je
 záměrně širší než read-only, protože `spawn` píše, commitne a publikuje
 řádek ve VLASTNÍM repozitáři skillu, ne ve slotu. Bezpečnost slotů nese
@@ -1064,9 +1222,9 @@ nemerguje, …), ne `allowed-tools`.
 
 **Správce a tiketový agent sdílejí jednu proceduru integrace** (sekce 3,
 Overlay 3) a liší se jen ve vykreslení artefaktu předání; správcova strana
-je operace `integrate` výše. Mandát správce je **pozornost, průřezová paměť
-a pořadí fronty** — rozhodovací pravomoc má jen tam, kde nic mechanického
-stát nemůže. **Integrace je fronta, ne merge**: když dva tikety ověří proti
+je operace `integrate` výše, push provádí tiket. Mandát správce je
+**pozornost, průřezová paměť a pořadí fronty** — rozhodovací pravomoc má jen
+tam, kde nic mechanického stát nemůže. **Integrace je fronta, ne merge**: když dva tikety ověří proti
 témuž tipu epikové linie a první se integruje, druhý přestává být
 fast-forward a musí se resynchronizovat a ověřit znovu — proto instrukce
 „dokonči a integruj" drží správce vždy jen u jednoho tiketu najednou.
@@ -1123,7 +1281,8 @@ zapsaný do `design_<slug>.md` dotčeného tiketu — nikdy jen zpráva.
 **Eskalace má tři pásma, dvě z nich pevná.** Dno (vždy člověk, žádná úroveň
 autonomie to nezvedá): publikace do dodávkové linie, nevratná nebo
 destruktivní operace, bezpečnostně citlivá akce, volba báze, která není
-chráněná větev, a **změna `epicBranchPattern` nebo `protectedBranches`** —
+chráněná větev ani epiková linie, a **změna `epicBranchPattern` nebo
+`protectedBranches`** —
 poslední řádek není nedůvěra k agentovi, jen odmítá číst rozšíření
 autonomie jako licenci tuhle konfiguraci posunout. Vždy správce (dolů to
 nejde, protože přesně tohle se sundávalo z člověka): pořadí a fronta
@@ -1164,8 +1323,40 @@ spoušť (mimo právo odmítnout domněnku a povinnost odmítnout rozporný poky
 a jsou v kontraktu záměrně označená tak, aby je implementátor nezapsal do
 skillu, jako by je hlídala brána.
 
-**Blok `NOW`** žije na začátku `.superpowers/sdd/<plan-basename>/progress.md`
-(git-ignorovaný scratch SDD), přesně jeden pár strojových značek na ledger —
+**Každá zpráva mezi správcem a tiketovou session vyžaduje odpověď, v obou
+směrech** (kontrakt/message-protocol.md, „Replies are required"). Značka
+zůstává jednosměrná — zpráva správce nese `Mark:`, zpětný směr ji nenese —,
+takže povinnost odpovědi přidává závazek, ne autoritu. Odpověď má první řádek
+`Re: <čas UTC původní zprávy>` a je jedna ze tří: přijato (a co odpovídající
+udělá), odmítnuto (a písemné pravidlo nebo vlastní měření, které odmítá), nebo
+věcná odpověď; **na odpověď se neodpovídá**, takže z povinnosti nevznikne
+smyčka. Jediná pojmenovaná třída bez povinné odpovědi je **oznámení**
+(`Oznámení:` na prvním řádku): fakt o VLASTNÍM úkonu odesílatele ověřitelný
+příjemcem ve sdíleném artefaktu (typicky „fast-forward proběhl, tip `<SHA>`",
+ověřitelné `git fetch`); příjemce na něj jedná, ale neodpovídá — bez této
+třídy by potvrzení po pushi tiketu bylo odpovědí na odpověď. Odpověď přichází
+na nejbližší hranici tahu příjemce (sezení čekající na subagenta odpoví po jeho
+návratu a zákaz šťouchání do něj platí dál); po `Due` se jednou zopakuje, pak
+eskalace člověku. Čekání má **artefakt na každé straně, zpráva ho jen
+zrychluje**: tiketová strana ho jmenuje v bloku `NOW` (`waiting-for-manager` s
+`Due`), ve finishing v hlášení a v řádku `## Předání`; správce vede
+git-ignorovaný **outbox** `.superpowers/epic/<KLÍČ>/outbox.md`
+([`outbox.ps1`](../ums/.claude/skills/mb-epic-run/scripts/outbox.ps1)), jeden
+řádek na zprávu uzavřeného tvaru (čas odeslání, `to:` — kdo odpověď dluží,
+tiket nebo `manager` —, `due:`, `state:` `open`/`resent`/`closed`, předmět),
+který `mb-epic-run status` vykreslí jako nezodpovězené a opožděné zprávy.
+Outbox se čte jako nedůvěryhodný vstup stejnými pravidly jako blok `NOW`
+(uzavřený formát, parsuje se a znovu vykresluje, ohraničená velikost, řádek s
+špičatou závorkou, řídicím nebo formátovacím znakem se zahodí a spočítá),
+zpoždění počítá čtenář vůči vlastním hodinám a nikdy se nezapisuje. Pravidlo
+odpovědi nemá mechanickou spoušť: outbox a blok `NOW` ho jen dělají viditelným,
+zpráva, kterou nikdo do outboxu nezapsal, je pro `status` neviditelná, a to,
+že je zpráva opožděná, je nález pro správce, ne rozsudek nad sezením.
+
+**Blok `NOW`** žije na začátku `progress.md` v pracovním adresáři plánu pod
+`.superpowers/sdd/` (git-ignorovaný scratch SDD sdílený oběma exekutory; adresář
+se určuje podle markeru `plan-path`, ne podle jména, viz „Jádro kontraktu"),
+přesně jeden pár strojových značek na ledger —
 **není druhý Session Intent Baton**: baton nese, co má po restartu UDĚLAT
 nové sezení, blok nese, na CO SE ČEKÁ právě teď. Šest povinných řádků
 `Klíč: hodnota` v pevném pořadí: `State` (uzavřený výčet čtyř tříd —
@@ -1196,7 +1387,7 @@ vytáhne, ne jen na blok samotný. Blok rozhoduje **kam se podívat, nikdy
 jestli integrovat** — fast-forward stojí na bráně předání a na kontrolách
 `integrate`, nikdy na tom, co blok tvrdí (měřené selhání: blok jednou tvrdil
 běžící review hodiny poté, co se review vrátilo se čtyřmi nálezy Critical).
-Blok existuje jen po dobu SDD exekuce plánu — `pool-status.ps1` ho renderuje
+Blok existuje jen po dobu exekuce plánu, SDD i Native — `pool-status.ps1` ho renderuje
 jen dokud slot nese ACTIVE pin; v brainstormingu, psaní plánu, design
 review a celém dokončování včetně integrace blok **neexistuje** a čekání se
 jmenuje jen v hlášení (sekce „Eskalace" výše, první operační pravidlo).
@@ -1207,34 +1398,126 @@ jmenuje jen v hlášení (sekce „Eskalace" výše, první operační pravidlo)
 flowchart TD
     UP["upstream obra/superpowers"] -->|git fetch vanila, merge| MAIN["vetev main — ciste zrcadlo"]
     MAIN -->|merge vanila/main| BR["vetev ums-memory-bank"]
-    BR --> SKILLS["skills/ v tomto repu"]
-    SKILLS -->|revendor -Tag X -NoOverlays| VEND["monorepo .claude/skills — vanilla sync"]
-    FRAG["shared/overlays/*.overlay.md"] -->|revendor -OverlaysOnly| VEND
-    VEND --> VERIFY{"verifikacni pass"}
+    BR --> PIN["revendor -PinOnly -Tag X — pin ve forku: tag, commit, skilly, vyloucene"]
+    PIN --> SYNC["sync-with-monorepo.ps1 — do kazdeho ciloveho adresare skillu"]
+    SKILLS["skills/ v tomto repu"] -->|revendor, sada skillu z pinu| SYNC
+    FRAG["shared/overlays/*.overlay.md, telo + ukazatel"] --> SYNC
+    SYNC -->|zmena tagu u cile trackovaneho gitem| VAN["1. beh: jen vanilla faze, exit 4, commit vanilla sync"]
+    VAN -->|druhy beh| OVL["zrcadleni vrstvy + overlaye, commit overlay"]
+    SYNC -->|stejny tag nebo necommitovany cil| ONE["jeden pruchod"]
+    OVL --> VERIFY{"verifikacni pass"}
+    ONE --> VERIFY
     VERIFY -->|selze| FIXFRAG["oprav fragment nebo pin, spust znovu"]
-    VERIFY -->|projde| LIVE["ziva vrstva v monorepu"]
-    LIVE -->|sync-with-monorepo.ps1 FromMonorepo| BR
-    BR -->|sync -Agent codex/gemini/kilocode| OTHER["jine harnessy"]
-    BR -->|sync -Scope UserProfile| PROF["profil uzivatele"]
+    VERIFY -->|projde| LIVE["nasazena vrstva: monorepo, profil, koren forku"]
+    LIVE -.->|FromMonorepo, vedome, jen claude+Monorepo| BR
 ```
 
-Pipeline má dvě fáze. **Vendoring** vyrábí kopie upstream skillů s overlay
-bloky, a to až v cíli nasazení (klíčová hranice, sekce 1); jeho výstup propouští
-až verifikační pass. Fragment smí vedle kotvy nést direktivy
-`<!-- ASSERT: <přesný řádek> -->` na nosné věty cílového souboru — miss je
-hard error stejně jako u `ANCHOR-BEFORE`, takže i fragmenty ukotvené na `EOF`
-detekují drift upstreamu. **Sync vrstvy** (`sync-with-monorepo.ps1`) rozváží vrstvu
-samotnou; cíle popisuje tabulka `$AgentTargets` — skills dir / config dir /
-instrukční soubor pro `claude`, `codex`, `gemini`, `kilocode` × `Monorepo`,
-`UserProfile`.
+Pipeline má tři části. **Pin** (`shared/VENDORED_FROM.md` ve forku) je **jediný
+zdroj pravdy o tagu i o sadě vendorovaných skillů**; skript `revendor-superpowers.ps1`
+žádný seznam skillů ani tag nenese. Pin obsahuje kromě `Tag`/`Commit`/`Skills` i
+seznam `Excluded:` — skilly, které se vědomě nevendorují. `-PinOnly -Tag <nový>`
+přepíše pin z `git ls-tree` tagu (v tomto forku `-UmsRoot ums`). **Nový upstream
+skill, který není ani v `Skills:`, ani v `Excluded:`, revendor zastaví** a
+vyžádá si rozhodnutí (`-Include <jméno>` ho vendoruje, `-Exclude <jméno>` ho
+zapíše mezi vyloučené) — nic se nevendoruje potichu; skill, který upstream
+mezi piny zruší, se z cíle smaže podle řádků `Skills:` předchozího pinu v cíli.
+`diagnosing-superpowers` je vyloučený: čte transkripty sezení a po schválení
+zakládá issue nebo archiv na GitHubu, což je v proprietárním monorepu kanál
+pro únik kódu, a hlásil by upstreamu chování, které overlay záměrně deformuje.
+
+**Vendoring** vyrábí kopie upstream skillů s overlay bloky, a to až v cíli
+nasazení (klíčová hranice, sekce 1); jeho výstup propouští až verifikační pass.
+Cílový adresář skillů určuje `-SkillsRoot` (fragmenty čte z
+`<SkillsRoot>/shared/overlays`, pin cíle píše do `<SkillsRoot>/shared/VENDORED_FROM.md`),
+čtený pin `-PinSource`; sync je používá pro každý harness zvlášť. Fragment smí
+vedle kotvy nést direktivy `<!-- ASSERT: <přesný řádek> -->` na nosné věty
+cílového souboru — miss je hard error stejně jako u `ANCHOR-BEFORE`, takže i
+fragmenty ukotvené na `EOF` detekují drift upstreamu. **Anchor-miss je detektor
+driftu upstreamu, ne chyba k obejití** — vyjmenuje přesně ty bloky, které
+potřebují pozornost. Několik fragmentů na jeden cíl (tělo + ukazatel) se
+aplikuje v ordinálním pořadí jmen, kontrola „cíl je pristine" běží jednou na
+cíl. Verifikace (`-VerifyOnly`) vždy běží jako poslední a shodí skript při
+jakémkoli nálezu: visící relativní odkazy, zbytky v5 souborů, chybějící v6
+soubory pinovaných skillů (mj. `executing-plans/scripts/task-start`/`task-done`),
+nevyvážené overlay značky, CRLF v bashových skriptech, poloha prvního
+overlay bloku (viz „Hlavičkový ukazatel") a funkční test `sdd-workspace` v Git
+Bash — ten se v cíli mimo git repozitář (profil uživatele) přeskočí s
+ohlášením, ne potichu. Relativní odkazy ve `shared/` míří jen uvnitř kořene
+skillů: `shared/` se nasazuje i do cílů, které nesou jen skilly, takže cesta
+mimo něj (`hooks/`, `scripts/`) je ve `shared/` prostý text, ne odkaz.
+
+**Sync vrstvy** (`sync-with-monorepo.ps1`) rozváží vrstvu samotnou **včetně
+vendorovaných skillů** a **fork je master kopie**: výchozí směr `ToMonorepo`
+nasazuje fork → cíl pro každý scope (`Monorepo`, `UserProfile`, `Fork`),
+`FromMonorepo` je vědomé stažení změn z monorepa zpět a existuje jen pro
+`claude` + `Monorepo` (vendorované skilly zpět netáhne nikdy). Cíle popisuje
+jediná tabulka `Get-UmsSyncTargets` — 15 harnessů (skills dir / config dir /
+instrukční soubor / mechanismus markeru per scope; cesty a mechanismy jsou v
+[tech.md](tech.md)); `-Agent` přijme seznam a sdílený cíl (`.agents/skills`,
+`AGENTS.md`) se zapíše jednou. Jeden běh zapisuje per cíl: položky vrstvy
+(`shared/`, `mb-*`; u `claude` v Monorepo/Fork i `settings.json`, hooky a
+`revendor-superpowers.ps1`, u ostatních harnessů lepidlo `hooks/` a `scripts/`
+přimergované soubor po souboru bez mazání cizího), vendorované skilly
+(revendor forku proti adresáři skillů cíle s pinem FORKU a fragmenty právě
+zrcadlenými do cíle, takže nevzniká past „revendor čte zastaralou kopii
+fragmentů"), blok UMS v instrukčním souboru, marker `MB_AGENT_SESSION`,
+`pre-push` hook (Monorepo a Fork; profil žádný jediný repozitář nemá) a
+manifest driftu.
+
+**Vendoring cíle má dva plány.** Stejný tag, nebo cíl netrackovaný gitem, je
+jeden průchod: zrcadlení položek vrstvy, pak revendor s overlayi. **Změna tagu u
+cíle trackovaného gitem** (monorepo) jsou dva běhy: první provede **jen vanilla
+fázi** — revendor nového tagu bez overlayů, nic dalšího — a skončí exit 4 s
+pokynem commitnout „vanilla sync" v cíli a spustit znovu, takže commit nese jen
+upstream diff; druhý běh zrcadlí vrstvu a aplikuje overlaye — commit „overlay".
+Drift vypsaný prvním během se v něm nepřepisuje a druhý běh se na týchž
+souborech zastaví znovu, dokud se drift nepřepíše `-Force`.
+
+**Ochrana proti driftu.** Po každém úspěšném běhu (i `FromMonorepo`) se zapíše
+**manifest**: cesta relativní k cíli → SHA256 obsahu po normalizaci na LF, SHA
+commitu forku a čas. Leží v `git rev-parse --git-dir` cíle, tedy **per worktree**,
+ne ve sdíleném common dir — `.claude/` i `.agents/` jsou v monorepu trackované,
+takže pool sloty na jiných větvích nesou jiný obsah a sdílený manifest by u
+každého hlásil falešný drift; cíl bez gitu má manifest v config adresáři.
+Před zápisem se porovnají tři stavy — cíl, manifest, fork: soubor změněný v
+cíli od posledního nasazení, jehož změnu fork nemá, je STOP (exit 3) se
+seznamem souborů a nabídkou `-Direction FromMonorepo` nebo `-Force`; bez
+manifestu (první běh) je STOP na každý rozdíl; vendorované skilly se posuzují
+jen cíl × manifest (jejich obsah ve forku vzniká až revendorem), takže ruční
+úprava v cíli se chytí; blok instrukčního souboru se porovnává obsahem; `mb-*`
+adresář jen v cíli je varování. `-WhatIf` vypíše, co by se zapsalo, a ohlásí
+drift, nic nezmění (žádný soubor, manifest, exclude řádek ani hook) a končí
+exit 0. Návratové kódy: `0` hotovo, `1` chyba, `3` drift STOP, `4` hotová
+vanilla fáze, `5` nasazeno, ale selhal krok jednoho agenta (zápis markeru,
+nepotvrzený `pre-push`).
+
+**Instrukční soubor cíle.** Sync spravuje **jen blok mezi markery**
+`UMS-MEMORY-BANK BEGIN/END`, jehož obsahem je přesně `ums/CLAUDE.md.sample`
+(kontrakt, preference a zákaz worktree — sekce „WF engine" a další projektová
+pravidla monorepa tam nepatří a sync je nechává být); `UserProfile` blok
+předsazuje řádkem s dosahem. Soubor bez markerů (starší ruční tvar) se **při
+prvním běhu migruje na místě**: sync najde sekce, jejichž nadpisy patří bloku,
+nahradí je blokem na místě první z nich a zbytek souboru ponechá bajtově
+shodný; liší-li se od sample, je to drift. `FromMonorepo` do sample vrací jen
+obsah bloku.
+
+**`-Scope Fork`** nasazuje vrstvu do kořene samotného forku (git toplevel):
+`claude` → `.claude/` (`settings.json`, hooky, `scripts/`, `shared/`, `mb-*`,
+vendorované skilly), ostatní harnessy jen svůj adresář skillů; instaluje
+`pre-push`; **nezapisuje žádný instrukční soubor ani marker** — `CLAUDE.md` forku
+je fork-vlastní (`@AGENTS.md` + blok UMS) a `AGENTS.md` je upstream soubor. Do
+`.git/info/exclude` zapíše (idempotentně) řádek pro každý nasazený adresář, který
+git neignoruje, aby strom zůstal čistý (sekce 1). Tím je nasazená kopie v tomto
+repu obnovitelná jedním příkazem.
 
 Příkazy obou fází, jejich pořadí i pravidla o tom, co se kam nenasazuje, jsou
 v [playbook.md](playbook.md).
 
 ## 8. Invarianty, na kterých vrstva stojí
 
-1. **Aditivnost.** Mimo `ums/` (plus `CLAUDE.md` sekci a `memory-bank/`) se na
-   této větvi nic nemění → upstream merge nikdy nekonfliktuje.
+1. **Aditivnost.** Mimo `ums/` (plus fork-vlastní `CLAUDE.md` a `memory-bank/`,
+   soubory, které v upstreamu neexistují) se na této větvi nic nemění →
+   upstream merge nikdy nekonfliktuje.
 2. **Jeden normativní zdroj.** Pravidla jsou v kontraktu; skilly a overlaye na
    něj odkazují. Změna pravidla začíná v kontraktu.
 3. **Fail-closed.** Chybějící git, chybějící `memory-bank/`, nedefinovaný
@@ -1252,7 +1535,9 @@ v [playbook.md](playbook.md).
    `pre-push` hook navíc uvnitř agentní relace posuzuje OBSAH pushe: na
    chráněné větvi pustí jen fast-forward, jehož tip tento klon už vidí
    zveřejněný. Lidská úniková cesta `MB_HUMAN_PUSH=1` zvedá celou ochranu
-   hooku najednou. Viz sekce 3.
+   hooku najednou. Jediná sdílená větev, kam smí agent (tiketové sezení),
+   je nechráněná epiková linie, a to jen fast-forwardem po `go` správce. Viz
+   sekce 3.
 7. **Jazykový kontrakt.** Trvalé a uživatelské texty česky, AI-facing anglicky
    (vývojářské nástroje vrstvy — `install-git-hooks.ps1`,
    `sync-with-monorepo.ps1`, `revendor-superpowers.ps1` — jsou výjimkou a

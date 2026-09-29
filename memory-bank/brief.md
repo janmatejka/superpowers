@@ -8,8 +8,8 @@ projektem Superpowers** (upstream `obra/superpowers`, v tomto repu remote
 `vanila`).
 
 Superpowers je knihovna skillů pro kódovací agenty (Claude Code, Codex, Cursor,
-Gemini CLI, Copilot CLI, Kimi, OpenCode, pi, Devin CLI, Hermes Agent) — řídí
-pracovní postup
+Gemini CLI, Copilot CLI, Kimi, OpenCode, Pi, Devin CLI, Hermes Agent, Qwen Code,
+Factory Droid, Grok Build, Antigravity, Muse) — řídí pracovní postup
 brainstorming → writing-plans → subagent-driven-development → finishing.
 UMS vrstva k tomu přidává **dokumentovou a znalostní vrstvu** (Memory Bank),
 napojení na Jira a pravidla specifická pro monorepo UMS.
@@ -25,10 +25,12 @@ proti nové upstream verzi.
 | `main` | Čisté read-only zrcadlo upstreamu — fast-forward na `vanila/main`. Nikdy nenese UMS obsah. Zdroj vendoringu a základna pro případné upstream PR. |
 | `ums-memory-bank` | Jediná větev s UMS obsahem, výhradně v adresáři [`ums/`](../ums/) (aditivní model). Díky tomu je `git merge vanila/main` vždy bezkonfliktní. |
 
-Výjimky mimo `ums/` na větvi `ums-memory-bank`: sekce „Integrace s UMS Memory
-Bank" na konci [CLAUDE.md](../CLAUDE.md) a tato Memory Bank
-([memory-bank/](.)). Obojí jsou nové soubory, které v upstreamu neexistují, takže
-merge zůstává bezkonfliktní.
+Výjimky mimo `ums/` na větvi `ums-memory-bank`: [CLAUDE.md](../CLAUDE.md)
+forku a tato Memory Bank ([memory-bank/](.)). Obojí jsou soubory, které
+v upstreamu neexistují, takže merge zůstává bezkonfliktní. `CLAUDE.md` je
+fork-vlastní — upstream ho smazal, aby Claude Code četl `AGENTS.md`, takže fork
+nese první řádek `@AGENTS.md` (import upstream návodů) a za ním blok
+„Integrace s UMS Memory Bank".
 
 Historie: vrstva v5 je archivovaná v tagu `archive/mb-integrace-v5-era`, větev
 `origin/mb-integrace` je obsoletní.
@@ -37,12 +39,12 @@ Historie: vrstva v5 je archivovaná v tagu `archive/mb-integrace-v5-era`, větev
 
 | Cesta | Role |
 |---|---|
-| [`skills/`](../skills/) | Vendorovatelný upstream skill pack (14 skillů). Na této větvi se needituje. |
-| [`ums/`](../ums/) | UMS vrstva — zrcadlo živé kopie z monorepa, jediné místo pro změny na této větvi. |
-| [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v3.1, manifest, vendor pin, overlay fragmenty. |
+| [`skills/`](../skills/) | Upstream skill pack (15 skillů, z nich 14 se vendoruje; `diagnosing-superpowers` je vyloučený). Na této větvi se needituje. |
+| [`ums/`](../ums/) | UMS vrstva — master kopie, jediné místo pro změny na této větvi; do monorepa, profilu i kořene forku se nasazuje skriptem. |
+| [`ums/.claude/skills/shared/`](../ums/.claude/skills/shared/) | Normativní zdroj vrstvy: kontrakt v3.2, manifest, vendor pin, overlay fragmenty. |
 | [`ums/.claude/skills/mb-*/`](../ums/.claude/skills/) | Utility skilly Memory Bank (18 aktivních + 2 deprecated stuby). |
 | [`memory-bank/`](.) | Memory Bank tohoto repozitáře — orchestrační kořen (`CTX_DIR`) i cílová MB (`PLAN_MB`). |
-| `.claude/`, `.agents/` | Netrackovaná **nasazení** vrstvy pro práci v tomto repu (viz [architecture.md](architecture.md), obnova v [playbook.md](playbook.md)). |
+| `.claude/`, `.agents/` | Netrackovaná **nasazení** vrstvy pro práci v tomto repu, vyrábí je `sync-with-monorepo.ps1 -Scope Fork` (viz [architecture.md](architecture.md), postup v [playbook.md](playbook.md)). |
 | [`hooks/`](../hooks/), [`tests/`](../tests/), [`docs/`](../docs/) | Upstream infrastruktura (bootstrap hooky, testy, dokumentace portování). |
 
 ## Pro koho a hodnota
@@ -102,15 +104,20 @@ mechanicky, aniž to bylo poznat na první pohled.
 
 Práce rozjetých tiketů se skládá dohromady na **epikové lince**
 (`epic/<KLÍČ>`, kódová integrační větev epiku) — vzniká, jen když tikety
-epiku nejsou samostatně dodatelné do sdílené větve, a agent do ní smí
-výhradně fast-forwardovat; jediný lidský úkon zůstává její založení a
-zánik po východu epiku. Tiketové sezení a správce epiku (sezení držící
-elaborační větev) prochází stejnou integrační procedurou jako práce mimo
-epik, liší se jen v tom, komu se práce předává. Konflikty mezi sousedními
-tikety a nálezy, které patří jednomu tiketu, ale mění cizí rozhodnutí, řeší
-mechanický registr rozhodnutí v ledgeru epiku a eskalační tabulka se třemi
-úrovněmi autonomie — ne paměť správce (mechanika viz
-[architecture.md](architecture.md), sekce 6).
+epiku nejsou samostatně dodatelné do sdílené větve. Linie je **nechráněná
+větev** rozpoznaná vzorem `epicBranchPattern` (výchozí `epic/*`): zakládá ji
+`mb-epic-run spawn` při prvním rozjetí tiketu a fast-forward do ní pushuje
+tiketové sezení samo, až když mu správce epiku (sezení držící elaborační
+větev) po kontrole předání odpoví `go`. Lidské zůstává jen to, co je dnem
+kontraktu: výstup epiku do dodávkové linie a smazání linie po výstupu.
+Tiketové sezení a správce prochází stejnou integrační procedurou jako práce
+mimo epik, liší se jen v tom, komu se předání adresuje. Každá zpráva mezi
+správcem a tiketovým sezením vyžaduje odpověď v obou směrech (výjimkou je
+oznámení o vlastním ověřitelném úkonu); čekání dělá viditelným outbox správce
+a blok `NOW` tiketu. Konflikty mezi sousedními tikety a nálezy, které patří
+jednomu tiketu, ale mění cizí rozhodnutí, řeší mechanický registr rozhodnutí
+v ledgeru epiku a eskalační tabulka se třemi úrovněmi autonomie — ne paměť
+správce (mechanika viz [architecture.md](architecture.md), sekce 3 a 6).
 
 ## Podporované harnessy
 
@@ -124,8 +131,12 @@ v instrukčním souboru. Detailní matici má
 rozpad [tech.md](tech.md).
 
 Nasazení k uživateli dělá [`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1)
-— do monorepa nebo do profilu uživatele, pro agenty `claude`, `codex`, `gemini`
-a `kilocode`; parametry, směry a to, co se kam záměrně nenasazuje, popisuje
+— z forku (master kopie) do monorepa (výchozí), do profilu uživatele nebo do
+kořene samotného forku (`-Scope Fork`), pro 15 harnessů, které Superpowers
+podporuje; nasazuje i vendorované skilly s overlayi a chrání cíl před tichým
+přepsáním ruční změny. Cílové cesty a mechanismy markeru per harness jsou v
+[tech.md](tech.md), pipeline v [architecture.md](architecture.md) (sekce 7),
+parametry, směry a to, co se kam záměrně nenasazuje, popisuje
 [playbook.md](playbook.md).
 
 ## Co vrstva záměrně nedělá
@@ -149,7 +160,9 @@ a `kilocode`; parametry, směry a to, co se kam záměrně nenasazuje, popisuje
   `develop`/`main`/`master`/`release/*`) agent svým vlastním tool-callem
   nepushuje nikdy — připraví příkaz a čeká na uživatele (lidská úniková cesta
   `MB_HUMAN_PUSH=1`). Vlastní tiketovou větev agent pushuje sám po každém
-  commitu, ale vždy ohlásí branch a commity; force push je zakázaný vždy.
+  commitu, ale vždy ohlásí branch a commity; nechráněnou epikovou linii smí
+  fast-forwardovat tiketové sezení po `go` správce epiku; force push a mazání
+  větve jsou zakázané vždy.
   Vynucuje to git `pre-push` hook, ale jen uvnitř agentní relace — mimo ni
   nevynucuje nic vlastního; kdo agentovým tool-callem sahá na chráněnou větev
   nebo na únikovou proměnnou, hlídá navíc PreToolUse guard
@@ -158,10 +171,13 @@ a `kilocode`; parametry, směry a to, co se kam záměrně nenasazuje, popisuje
 
 ## Vztah k monorepu UMS
 
-Živá (master) kopie vrstvy je v monorepu UMS (`d:\_datasys\ums`, Bitbucket
-`datasyscz/ums`) v jeho `.claude/` a `CLAUDE.md`. Adresář `ums/` v tomto forku
-je její **redistribuovatelné zrcadlo** — synchronizuje se skriptem
-[`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1).
+Master kopie vrstvy je adresář `ums/` v tomto forku. Monorepo UMS
+(`d:\_datasys\ums`, Bitbucket `datasyscz/ums`) je její **nasazená kopie** v jeho
+`.claude/` a `CLAUDE.md` (v `CLAUDE.md` skript spravuje jen blok mezi markery,
+projektová pravidla monorepa nechává být). Nasazuje se skriptem
+[`sync-with-monorepo.ps1`](../ums/sync-with-monorepo.ps1); změny udělané v
+monorepu se táhnou zpět vědomě (`-Direction FromMonorepo`, jen pro `claude` +
+`Monorepo`, vendorované skilly nikdy).
 
 Monorepo má vlastní Memory Bank (`d:\_datasys\ums\memory-bank\`) pro produkt
 UMS; s touto Memory Bank se nemíchá — tato dokumentuje **vývoj vrstvy**, ta
@@ -169,7 +185,7 @@ druhá **produkt, na kterém se vrstva používá**.
 
 ## Stav
 
-Vrstva je v provozu (kontrakt v3.1, vendor pin upstream v6.3.0), s playbookem
+Vrstva je v provozu (kontrakt v3.2, vendor pin upstream v6.4.2), s playbookem
 jako stromem podle hierarchie Memory Bank (dvě části podle dosahu, rozpočet
 a ráčna jako eskalační práh místo tvrdého limitu, harvestová brána v2
 a konsolidační skill `mb-playbook-consolidate`). Práce na této větvi má přes
