@@ -402,6 +402,141 @@ function Get-UmsSyncTargets(
     }
 }
 
+# ------------------------------------------------- drift protection (design 3.2)
+# Pure building blocks: none of them decides WHEN it runs. The main body
+# records the TARGET's post-deploy hashes in the manifest and compares three
+# states (target / manifest / fork) before it writes anything.
+
+# Maps every file below the given items to the SHA-256 of its content with
+# CRLF normalised to LF (so a CRLF checkout equals an LF one). Keys are paths
+# relative to -Root with '\' separators; an item may be a file or a directory
+# (walked recursively, hidden files included); a missing item is skipped.
+function Get-UmsTreeHashes([string] $Root, [string[]] $RelItems) {
+    $hashes = @{}
+    foreach ($item in $RelItems) {
+        $full = Join-Path $Root $item
+        $files = if (Test-Path -LiteralPath $full -PathType Container) {
+            @(Get-ChildItem -LiteralPath $full -Recurse -File -Force)
+        }
+        elseif (Test-Path -LiteralPath $full -PathType Leaf) {
+            @(Get-Item -LiteralPath $full -Force)
+        }
+        else { @() }
+        foreach ($f in $files) {
+            $rel = [IO.Path]::GetRelativePath($Root, $f.FullName).Replace('/', '\')
+            # Latin-1 maps bytes 1:1 to chars, so the replace never corrupts
+            # non-text content.
+            $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($f.FullName)).Replace("`r`n", "`n")
+            $bytes = [Text.Encoding]::Latin1.GetBytes($text)
+            $hashes[$rel] = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+        }
+    }
+    return $hashes
+}
+
+# Where the deployment manifest of a target lives. It is per git WORKTREE
+# (--absolute-git-dir, not the shared common dir): pool slots on other branches
+# carry different tracked content, a shared manifest would report false drift
+# for each of them. Outside git the manifest sits in the target root itself.
+# -Key identifies the deployment, '<Agent>-<Scope>'.
+function Get-UmsManifestPath([string] $TargetRoot, [string] $Key) {
+    $name = "ums-sync-manifest-$Key.json"
+    $gitDir = $null
+    try {
+        $out = & git -C $TargetRoot rev-parse --absolute-git-dir 2>$null
+        if ($LASTEXITCODE -eq 0 -and $out) { $gitDir = [IO.Path]::GetFullPath(([string]@($out)[0]).Trim()) }
+    }
+    catch { $gitDir = $null }
+    if ($gitDir) { return (Join-Path $gitDir $name) }
+    return (Join-Path $TargetRoot ".$name")
+}
+
+# Returns @{ Files = [hashtable]; ForkSha; Written } or $null when the file is
+# missing or unusable (unreadable JSON, wrong shape). A broken manifest counts
+# as no manifest - the safe direction, drift checks then stop on every
+# difference. Written is always the ISO-8601 UTC string.
+function Read-UmsManifest([string] $Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try { $json = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable }
+    catch { Write-Warning "Read-UmsManifest: '$Path' is not valid JSON - treated as no manifest."; return $null }
+    if ($json -isnot [hashtable] -or $json['Files'] -isnot [hashtable]) {
+        Write-Warning "Read-UmsManifest: '$Path' has an unexpected shape - treated as no manifest."
+        return $null
+    }
+    $files = @{}
+    foreach ($k in $json['Files'].Keys) { $files[[string]$k] = [string]$json['Files'][$k] }
+    $written = $json['Written']
+    # ConvertFrom-Json turns an ISO-8601 string into a [datetime]; turn it back.
+    if ($written -is [datetime]) { $written = $written.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [cultureinfo]::InvariantCulture) }
+    return @{ Files = $files; ForkSha = [string]$json['ForkSha']; Written = [string]$written }
+}
+
+# Writes the manifest deterministically (ordinally sorted keys, LF, UTF-8
+# without BOM) so a diff of it stays readable. -Files is path -> hash as
+# returned by Get-UmsTreeHashes; the caller decides whose hashes those are.
+function Write-UmsManifest([string] $Path, [hashtable] $Files, [string] $ForkSha) {
+    $keys = [string[]]@($Files.Keys)
+    [Array]::Sort($keys, [StringComparer]::Ordinal)
+    $sorted = [ordered]@{}
+    foreach ($k in $keys) { $sorted[$k] = [string]$Files[$k] }
+    $doc = [ordered]@{
+        Files   = $sorted
+        ForkSha = $ForkSha
+        Written = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [cultureinfo]::InvariantCulture)
+    }
+    $text = ($doc | ConvertTo-Json -Depth 5) -replace "`r`n", "`n"
+    $dir = Split-Path -Parent $Path
+    if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    [IO.File]::WriteAllText($Path, $text + "`n", [Text.UTF8Encoding]::new($false))
+}
+
+# Three-state drift comparison. -Target, -Manifest and -Fork are path -> hash
+# maps; -Manifest is the manifest's Files map, or $null when there is none.
+#   no manifest   - Drifted = files present in the target whose hash differs
+#                   from the fork's (a file the fork lacks differs too);
+#   with manifest - Drifted = files where target differs from manifest AND
+#                   target differs from fork: changed in the target since the
+#                   last deployment and not yet in the fork. A file in the
+#                   manifest but missing in the target was deleted there and
+#                   counts as drift unless the fork dropped it as well.
+# Returns @{ Drifted = [string[]] (sorted); NoManifest = [bool] }.
+function Test-UmsDeployDrift([hashtable] $Target, [hashtable] $Manifest, [hashtable] $Fork) {
+    $noManifest = ($null -eq $Manifest)
+    $paths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($k in $Target.Keys) { [void]$paths.Add([string]$k) }
+    if (-not $noManifest) { foreach ($k in $Manifest.Keys) { [void]$paths.Add([string]$k) } }
+    $drifted = [System.Collections.Generic.List[string]]::new()
+    foreach ($p in $paths) {
+        $t = if ($Target.ContainsKey($p)) { [string]$Target[$p] } else { $null }
+        $f = if ($Fork.ContainsKey($p)) { [string]$Fork[$p] } else { $null }
+        if ($noManifest) {
+            if ($null -ne $t -and $t -cne $f) { $drifted.Add($p) }
+        }
+        else {
+            $m = if ($Manifest.ContainsKey($p)) { [string]$Manifest[$p] } else { $null }
+            if ($t -cne $m -and $t -cne $f) { $drifted.Add($p) }
+        }
+    }
+    $sortedDrift = [string[]]$drifted.ToArray()
+    [Array]::Sort($sortedDrift, [StringComparer]::Ordinal)
+    return @{ Drifted = $sortedDrift; NoManifest = $noManifest }
+}
+
+# Names of mb-* skill directories that exist in the target but not in the fork
+# (someone's own skill would be wiped by the mirror, or a fork-side rename
+# left an orphan) - the caller only warns about them. Sorted; output is
+# unrolled, wrap the call in @().
+function Get-UmsTargetOnlySkills([string] $TargetSkills, [string] $ForkSkills) {
+    if (-not (Test-Path -LiteralPath $TargetSkills -PathType Container)) { return }
+    $inFork = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if (Test-Path -LiteralPath $ForkSkills -PathType Container) {
+        foreach ($d in Get-ChildItem -LiteralPath $ForkSkills -Directory -Filter 'mb-*') { [void]$inFork.Add($d.Name) }
+    }
+    $names = @(Get-ChildItem -LiteralPath $TargetSkills -Directory -Filter 'mb-*' |
+        Where-Object { -not $inFork.Contains($_.Name) } | ForEach-Object { $_.Name })
+    [string[]]$names | Sort-Object -CaseSensitive
+}
+
 # Tests need only the function definitions, not the full sync run.
 if ($DotSourceOnly) { return }
 
