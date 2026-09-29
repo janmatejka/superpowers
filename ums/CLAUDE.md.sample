@@ -1,5 +1,3 @@
-# CLAUDE.md
-
 ## Memory Bank contract
 
 Na začátku práce (a znovu po jakékoli kompaktaci/sumarizaci kontextu) načti a dodržuj **jádro** kontraktu v [.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md](.claude/skills/shared/UMS_MEMORY_BANK_CONTRACT.md). Definuje `MB_ROOT` discovery, třívrstvý model adresářů (`CTX_DIR`/`PLAN_MB`/`AFFECTED_MBS`), pár návrh+plán (work item) a jeho granularitu, Target-MB discovery, způsobilost sezení, publikaci, message protocol, harvest a fail-closed chování.

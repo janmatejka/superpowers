@@ -45,8 +45,13 @@ try {
     Assert-Eq (Count-Of $sample '**Exekuce plánu (SDD i Native):**') 1 'sample: odrážka "Exekuce plánu (SDD i Native)" právě jednou'
     Assert-True ($sample -cnotmatch '\*\*Exekuce plánu \(SDD\):\*\*') 'sample: stará odrážka "Exekuce plánu (SDD)" pryč'
     foreach ($h in $UmsOwnedHeadings) {
-        Assert-Eq (Count-Of $sample ("`n" + $h + "`n")) 1 "sample: nadpis '$h' právě jednou"
+        Assert-Eq (Count-Of ("`n" + $sample) ("`n" + $h + "`n")) 1 "sample: nadpis '$h' právě jednou"
     }
+    # Sample = přesně obsah bloku: tři vlastněné sekce, bez titulku souboru.
+    Assert-True ($sample.StartsWith("## Memory Bank contract`n")) 'sample: začíná první vlastněnou sekcí'
+    Assert-True ($sample -cnotmatch '(?m)^# ') 'sample: žádný H1 řádek (titulek souboru patří mimo blok)'
+    $sampleHeadings = @([regex]::Matches($sample, '(?m)^## .*$') | ForEach-Object { $_.Value.TrimEnd() })
+    Assert-Eq ($sampleHeadings -join '|') ($UmsOwnedHeadings -join '|') 'sample: nadpisy ## jsou právě tři vlastněné, v pořadí'
 
     # --- (a) legacy soubor: migrace na místě --------------------------------
     $legacy = (Read-Raw (Join-Path $PSScriptRoot 'fixtures\claude-md-legacy.md')) -replace "`r`n", "`n"
@@ -63,6 +68,9 @@ try {
     Assert-Eq (Count-Of $r1 "`n## Memory Bank contract`n") 1 '(a) nadpis "## Memory Bank contract" právě jednou'
     Assert-Eq (Count-Of $r1 "`n## Zákaz git worktree`n") 1 '(a) nadpis "## Zákaz git worktree" právě jednou'
     Assert-True ($r1.StartsWith("# CLAUDE.md`n`n" + $begin + "`n")) '(a) titulek zůstal první, blok hned za ním na místě první vlastněné sekce'
+    Assert-Eq (Count-Of $r1 "`n# ") 0 '(a) žádný další H1 řádek uvnitř souboru'
+    Assert-Eq ([regex]::Matches($r1, '(?m)^# ').Count) 1 '(a) právě jeden H1 řádek - vlastní titulek souboru, mimo blok'
+    Assert-True ($r1.IndexOf('# CLAUDE.md') -lt $r1.IndexOf($begin)) '(a) jediný H1 leží před BEGIN markerem'
     $iEnd = $r1.IndexOf($end)
     Assert-True ($r1.IndexOf('## WF engine') -gt $iEnd) '(a) sekce WF engine leží MIMO blok (za END)'
     Assert-True ($r1.EndsWith("`n`n" + $wfSection)) '(a) WF engine sekce je byte-identická a oddělená prázdným řádkem'
@@ -92,6 +100,20 @@ try {
     $iWf = $legacy.IndexOf('## WF engine')
     Assert-Eq $gl ($legacy.Substring($iFirst, $iWf - $iFirst).TrimEnd("`n")) '(c) legacy: tři sekce doslova ve pořadí souboru'
     Assert-Eq (Get-Sha $legacyFile) (Get-Sha (Write-Raw 'legacy-copy.md' $legacy)) '(c) čtení soubor nezměnilo'
+
+    # (c2) bez falešného driftu: legacy soubor nesoucí AKTUÁLNÍ obsah sample a
+    #      ten samý soubor po migraci dávají z Get-MarkedBlockContent totéž,
+    #      a to je sample. Rovnost = text s LF konci, bez koncových newline
+    #      (obsah bloku se vždy vrací bez nich).
+    $legacyCurrent = "# CLAUDE.md`n`n" + $sample.TrimEnd("`n") + "`n`n" + $wfSection
+    $fc = Write-Raw 'legacy-current.md' $legacyCurrent
+    $readLegacy = Get-MarkedBlockContent $fc $UmsOwnedHeadings
+    Assert-Eq $readLegacy ($sample.TrimEnd("`n")) '(c2) legacy soubor s aktuálním obsahem: čtení = sample'
+    Set-MarkedBlock $fc $sample $UmsOwnedHeadings
+    $readMigrated = Get-MarkedBlockContent $fc $UmsOwnedHeadings
+    Assert-Eq $readMigrated $readLegacy '(c2) čtení legacy == čtení migrovaného souboru'
+    Assert-Eq $readMigrated ($sample.TrimEnd("`n")) '(c2) čtení migrovaného souboru = sample'
+    Assert-Eq ([regex]::Matches((Read-Raw $fc), '(?m)^# ').Count) 1 '(c2) migrovaný soubor: právě jeden H1'
 
     # (d) konce řádků se zachovávají: CRLF legacy -> CRLF výsledek, idempotentně
     $legacyCrlf = $legacy -replace "`n", "`r`n"
