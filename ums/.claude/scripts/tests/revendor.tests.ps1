@@ -122,6 +122,7 @@ try {
     Assert-True (-not (Test-Path (Join-Path $target 'gamma'))) 'gamma (excluded by the pin) is deleted from the target'
     Assert-Match $res.Out "Removing skill 'beta'" 'console output reports the removal of beta'
     Assert-Match $res.Out "Removing skill 'gamma' \(excluded by the pin\)" 'console output reports the removal of excluded gamma'
+    Assert-Match $res.Out 'SKIP: sdd-workspace functional test \(target is not inside a git repository\)' 'target outside git: the sdd-workspace functional test is skipped with a SKIP line'
     $targetPin = Read-UmsVendorPin (Join-Path $targetShared 'VENDORED_FROM.md')
     Assert-Eq $targetPin.Tag 't2' 'target pin: Tag t2'
     Assert-Eq $targetPin.Commit $pin2.Commit 'target pin: commit of t2'
@@ -152,6 +153,76 @@ try {
     Assert-Eq $res.Exit 0 '-VerifyOnly passes on the vendored target'
     $res = Invoke-Revendor ($common + @('-OverlaysOnly'))
     Assert-Eq $res.Exit 0 '-OverlaysOnly with no fragments passes'
+
+    Write-Host '== Test-UmsOverlayPointerPosition'
+    $ppDir = Join-Path $fx.Root 'pointer-pos'
+    $blockText = "<!-- UMS-OVERLAY BEGIN (x) -->`nb`n<!-- UMS-OVERLAY END -->`n"
+    Write-FxFile (Join-Path $ppDir 'late.md') (('x' * 13000) + "`n" + $blockText)
+    Write-FxFile (Join-Path $ppDir 'early.md') ("# H1`n" + $blockText + ('x' * 13000) + "`n" + $blockText)
+    Write-FxFile (Join-Path $ppDir 'none.md') ("# H1`nno block here`n")
+    Write-FxFile (Join-Path $ppDir 'edge.md') (('x' * 11990) + "`n" + $blockText)
+    Assert-True ((Test-UmsOverlayPointerPosition (Join-Path $ppDir 'late.md')) -eq $false) 'first block after 12000 chars: pointer position check fails'
+    Assert-True ((Test-UmsOverlayPointerPosition (Join-Path $ppDir 'early.md')) -eq $true) 'first block near the start passes even if a later block is far away'
+    Assert-True ((Test-UmsOverlayPointerPosition (Join-Path $ppDir 'none.md')) -eq $true) 'file without any block passes'
+    Assert-True ((Test-UmsOverlayPointerPosition (Join-Path $ppDir 'edge.md')) -eq $true) 'first block at 11991 is within the default 12000'
+    Assert-True ((Test-UmsOverlayPointerPosition (Join-Path $ppDir 'edge.md') -MaxChars 5000) -eq $false) '-MaxChars narrows the limit'
+
+    Write-Host '== several fragments per target: body first, pointer second, verified'
+    $gt = Join-Path $fx.Root 'git-target'
+    New-Item -ItemType Directory -Force $gt | Out-Null
+    Invoke-FxGit $gt @('init', '-q', '-b', 'main') | Out-Null
+    Write-FxFile (Join-Path $gt 'README.md') "git target`n"
+    Invoke-FxGit $gt @('add', 'README.md') | Out-Null
+    Invoke-FxGit $gt @('commit', '-q', '-m', 'init') | Out-Null
+    $gtSkills = Join-Path $gt '.claude\skills'
+    Add-RevendorFixtureOverlays (Join-Path $gtSkills 'shared\overlays')
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile)
+    Assert-Eq $res.Exit 0 'full run (vendor + overlays + verify) into a target inside git succeeds'
+    $gtAlpha = Join-Path $gtSkills 'alpha\SKILL.md'
+    $gtRaw = [IO.File]::ReadAllText($gtAlpha)
+    Assert-Eq ([regex]::Matches($gtRaw, 'UMS-OVERLAY BEGIN').Count) 2 'alpha/SKILL.md carries two BEGIN markers'
+    Assert-Eq ([regex]::Matches($gtRaw, 'UMS-OVERLAY END').Count) 2 'alpha/SKILL.md carries two END markers'
+    $iPointer = $gtRaw.IndexOf('UMS pointer:'); $iH1 = $gtRaw.IndexOf('# Alpha'); $iBody = $gtRaw.IndexOf('Alpha body block.')
+    Assert-True (($iPointer -ge 0) -and ($iPointer -lt $iH1)) 'pointer block sits before the H1'
+    Assert-True (($iH1 -ge 0) -and ($iH1 -lt $iBody)) 'body block sits after the H1, at the end of the file'
+    Assert-True ($gtRaw.TrimEnd().EndsWith('<!-- UMS-OVERLAY END -->')) 'file ends with the body block'
+    Assert-True ((Test-UmsOverlayPointerPosition $gtAlpha) -eq $true) 'overlayed alpha/SKILL.md passes the pointer position check'
+    $posBody = $res.Out.IndexOf('applied alpha.overlay.md'); $posPointer = $res.Out.IndexOf('applied alpha.pointer.overlay.md')
+    Assert-True (($posBody -ge 0) -and ($posBody -lt $posPointer)) 'fragments of one target are applied alphabetically by file name'
+    Assert-True (-not $res.Out.Contains('SKIP: sdd-workspace')) 'target inside git: the sdd-workspace functional test is not skipped'
+    Assert-True (-not (Test-Path (Join-Path $gt '.superpowers\sdd\.superpowers-revendor-verify'))) 'the functional test leaves no plan workspace behind'
+    Assert-True (-not (Test-Path (Join-Path $gt '.superpowers-revendor-verify.md'))) 'the functional test leaves no throwaway plan file behind'
+
+    Write-Host '== second -OverlaysOnly on an overlayed target: one pristine-file failure'
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-OverlaysOnly')
+    Assert-True ($res.Exit -ne 0) 'overlays over an already overlayed target fail'
+    Assert-Eq ([regex]::Matches($res.Out, 'already contains an overlay block').Count) 1 'the pristine failure is reported once per target, not once per fragment'
+    Assert-True ([IO.File]::ReadAllText($gtAlpha) -ceq $gtRaw) 'the failed run left the target untouched'
+
+    Write-Host '== verify: a far-away first block fails the pointer position check'
+    $farRaw = ('x' * 13000) + "`n" + $blockText
+    [IO.File]::WriteAllText($gtAlpha, $farRaw, [Text.UTF8Encoding]::new($false))
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-VerifyOnly')
+    Assert-True ($res.Exit -ne 0) '-VerifyOnly fails when the overlay block starts after the first 12000 chars'
+    Assert-Match $res.Out 'overlay block of alpha\\SKILL\.md starts after' 'output names the skill and the pointer position problem'
+    [IO.File]::WriteAllText($gtAlpha, $gtRaw, [Text.UTF8Encoding]::new($false))
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-VerifyOnly')
+    Assert-Eq $res.Exit 0 '-VerifyOnly passes again once the file is restored'
+
+    Write-Host '== verify: required v6.4.2 files follow the pin'
+    $vt = Join-Path $fx.Root 'verify-target'
+    Write-UmsVendorPin (Join-Path $vt 'shared\VENDORED_FROM.md') 't2' 'abc123' @('executing-plans', 'writing-plans') @() '2026-01-01'
+    Write-FxFile (Join-Path $vt 'executing-plans\SKILL.md') "# executing-plans`n"
+    Write-FxFile (Join-Path $vt 'writing-plans\SKILL.md') "# writing-plans`n"
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $vt, '-VerifyOnly')
+    Assert-True ($res.Exit -ne 0) 'pinned executing-plans without its scripts fails verification'
+    Assert-Match $res.Out 'required v6 file missing: executing-plans\\scripts\\task-start' 'executing-plans/scripts/task-start is required'
+    Assert-Match $res.Out 'required v6 file missing: executing-plans\\scripts\\task-done' 'executing-plans/scripts/task-done is required'
+    Assert-True (-not $res.Out.Contains('plan-document-reviewer-prompt')) 'writing-plans/plan-document-reviewer-prompt.md is no longer required'
+    Write-FxFile (Join-Path $vt 'executing-plans\scripts\task-start') "#!/usr/bin/env bash`nexit 0`n"
+    Write-FxFile (Join-Path $vt 'executing-plans\scripts\task-done') "#!/usr/bin/env bash`nexit 0`n"
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $vt, '-VerifyOnly')
+    Assert-Eq $res.Exit 0 'with the executing-plans scripts present verification passes (and no plan-document-reviewer-prompt)'
 
     Write-Host '== a pinned skill missing in the tag is a failure'
     $badPin = Join-Path $fx.Root 'bad\VENDORED_FROM.md'

@@ -36,3 +36,31 @@ comparison as `ANCHOR-BEFORE`). A miss is a hard error — this is how an
 `ANCHOR: EOF` fragment still detects upstream drift: assert the upstream
 sentences the overlay's semantics stand on, and the next upstream change to
 them fails the re-vendor loudly instead of applying cleanly.
+
+## Several fragments for one target
+
+A target file may be overlayed by more than one fragment — typically a small
+header pointer block plus the body block. Fragments with the same `TARGET` are
+grouped and applied in alphabetical (ordinal) order of their file names, each
+against the file as the previous fragment left it, so its `ANCHOR-BEFORE` and
+`ASSERT` lines are matched against that intermediate text. Name them so the
+order is the one you want: `alpha.overlay.md` sorts before
+`alpha.pointer.overlay.md`, so the body is appended first and the pointer is
+inserted second. A pointer fragment can therefore `ASSERT` a line of the body
+that must already be there.
+
+The "target already carries an overlay block" (pristine file) check runs once
+per target, before its first fragment, and fails with one message for the
+target — never once per fragment.
+
+## Header pointer block
+
+Claude Code re-injects only the first ~5,000 tokens of a skill after
+compaction. A body block appended at the end of a long `SKILL.md` falls behind
+that cut, so every overlayed skill carries a short pointer block near the top
+— `ANCHOR-BEFORE` the skill's H1 heading, in a fragment named
+`<skill>.pointer.overlay.md`. The verification step of the re-vendor script
+requires the first `UMS-OVERLAY BEGIN` of every overlayed `SKILL.md` to start
+within the first 12,000 characters (`Test-UmsOverlayPointerPosition`) and
+fails otherwise. The count of applied blocks must equal the count of
+fragments.

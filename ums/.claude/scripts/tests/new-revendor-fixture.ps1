@@ -30,7 +30,7 @@ function New-RevendorFixture {
     # ---- Superpowers mirror, tag t1
     Invoke-FxGit $sp @('init', '-q', '-b', 'main') | Out-Null
     # alpha is committed with CRLF on purpose: the vendor phase must normalize it to LF.
-    Write-FxFile (Join-Path $sp 'skills/alpha/SKILL.md') "# alpha`r`nline two`r`n"
+    Write-FxFile (Join-Path $sp 'skills/alpha/SKILL.md') "# Alpha`r`nline two`r`n"
     Write-FxFile (Join-Path $sp 'skills/beta/SKILL.md') "# beta`n"
     $sdd = 'skills/subagent-driven-development'
     Write-FxFile (Join-Path $sp "$sdd/SKILL.md") "# subagent-driven-development`n"
@@ -83,6 +83,28 @@ function New-RevendorFixture {
         SkillsRoot = $skillsRoot
         T1Commit   = $t1Commit
     }
+}
+
+# Writes the two fragments that overlay one target (alpha/SKILL.md) into an
+# overlays directory: a body block appended at EOF and a header pointer block
+# before the H1. By file name the body fragment sorts first (alpha.overlay.md <
+# alpha.pointer.overlay.md), so the pointer's ASSERT on a body line only holds
+# when the fragments of one target are applied in that order.
+function Add-RevendorFixtureOverlays([string] $OverlaysDir) {
+    Write-FxFile (Join-Path $OverlaysDir 'alpha.overlay.md') (
+        "<!-- TARGET: alpha/SKILL.md -->`n" +
+        "<!-- ANCHOR: EOF -->`n" +
+        "<!-- ASSERT: line two -->`n" +
+        "<!-- UMS-OVERLAY BEGIN (fixture body) -->`n" +
+        "Alpha body block.`n" +
+        "<!-- UMS-OVERLAY END -->`n")
+    Write-FxFile (Join-Path $OverlaysDir 'alpha.pointer.overlay.md') (
+        "<!-- TARGET: alpha/SKILL.md -->`n" +
+        "<!-- ANCHOR-BEFORE: # Alpha -->`n" +
+        "<!-- ASSERT: Alpha body block. -->`n" +
+        "<!-- UMS-OVERLAY BEGIN (fixture pointer) -->`n" +
+        "UMS pointer: the overlay body is at the end of this file.`n" +
+        "<!-- UMS-OVERLAY END -->`n")
 }
 
 function Remove-RevendorFixture($Fixture) {

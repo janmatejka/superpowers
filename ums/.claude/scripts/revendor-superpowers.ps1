@@ -32,6 +32,10 @@
       <!-- ANCHOR-BEFORE: <exact line text> -->     (insert before that line)
     An anchor that no longer matches upstream text is a HARD ERROR - that is the
     upstream-drift detector: it enumerates exactly the blocks needing attention.
+    Several fragments may share one TARGET (a header pointer block plus the body
+    block): they apply in ordinal file-name order, the pristine check runs once
+    per target, and verification requires the first block of every overlayed
+    SKILL.md within the first 12000 characters.
 
 .NOTES
     Verification always runs last and fails the script on any problem:
@@ -293,12 +297,24 @@ function Invoke-Vendor {
 }
 
 # --------------------------------------------------------------- overlays ---
+# Claude Code re-injects only the first ~5,000 tokens of a skill after compaction, so
+# the first overlay block of a skill must start within $MaxChars characters (a header
+# pointer block). A file without any block passes.
+function Test-UmsOverlayPointerPosition([string] $SkillFile, [int] $MaxChars = 12000) {
+    $raw = Get-Content -LiteralPath $SkillFile -Raw
+    if ([string]::IsNullOrEmpty($raw)) { return $true }
+    $first = $raw.IndexOf('UMS-OVERLAY BEGIN', [StringComparison]::Ordinal)
+    if ($first -lt 0) { return $true }
+    return ($first -lt $MaxChars)
+}
+
 function Invoke-Overlays {
     Step "Applying overlay fragments from $OverlaysDir"
     $fragments = @(Get-ChildItem -Path $OverlaysDir -Filter '*.overlay.md' -ErrorAction SilentlyContinue)
     if ($fragments.Count -eq 0) { Write-Host '    (no fragments found - nothing to apply)'; return }
 
-    foreach ($frag in $fragments) {
+    # Parse every fragment first, so a malformed one fails before anything is written.
+    $parsed = foreach ($frag in $fragments) {
         $lines = Get-Content -Path $frag.FullName
         if ($lines[0] -notmatch '^<!-- TARGET: (.+?) -->$') { Fail "$($frag.Name): first line must be '<!-- TARGET: <skill>/<file> -->'." }
         $targetRel = $Matches[1].Trim()
@@ -316,34 +332,51 @@ function Invoke-Overlays {
         if ($body -notmatch 'UMS-OVERLAY BEGIN' -or $body -notmatch 'UMS-OVERLAY END') {
             Fail "$($frag.Name): body must contain '<!-- UMS-OVERLAY BEGIN ... -->' and '<!-- UMS-OVERLAY END -->' markers."
         }
+        [pscustomobject]@{
+            Name = $frag.Name; TargetRel = $targetRel; Target = $target
+            AnchorLine = $anchorLine; Asserts = $asserts; Body = $body
+        }
+    }
 
+    # One pass per target: fragments of the same target apply in ordinal file-name order
+    # (alpha.overlay.md before alpha.pointer.overlay.md), each against the file as the
+    # previous fragment left it. The target is written once, after its last fragment.
+    $groups = @($parsed | Group-Object -Property TargetRel)
+    foreach ($groupName in (Sort-UmsOrdinal @($groups.Name))) {
+        $group = $groups | Where-Object { $_.Name -ceq $groupName }
+        $ordered = @(foreach ($n in (Sort-UmsOrdinal @($group.Group.Name))) { $group.Group | Where-Object { $_.Name -ceq $n } })
+        $targetRel = $groupName
+        $target = $ordered[0].Target
         $content = (Get-Content -Path $target -Raw) -replace "`r`n", "`n"
-        $targetLines = $content -split "`n"
-        foreach ($a in $asserts) {
-            $hits = @($targetLines | Where-Object { $_.TrimEnd() -eq $a }).Count
-            if ($hits -ne 1) { Fail "$($frag.Name): ASSERT '$a' matched $hits lines in target (need exactly 1). Upstream drift - update the fragment." }
-        }
+
+        # Pristine check: once per target, before its first fragment.
         if ($content -match 'UMS-OVERLAY BEGIN') {
-            Fail "$($frag.Name): '$targetRel' already contains an overlay block. Re-vendor first (vendored files must be pristine before overlay application)."
+            Fail "${targetRel}: already contains an overlay block. Re-vendor first (vendored files must be pristine before overlay application)."
         }
 
-        if ($anchorLine -match '^<!-- ANCHOR: EOF -->$') {
-            $newContent = $content.TrimEnd("`n") + "`n`n" + $body + "`n"
-        }
-        elseif ($anchorLine -match '^<!-- ANCHOR-BEFORE: (.+?) -->$') {
-            $anchor = $Matches[1]
-            $contentLines = $content -split "`n"
-            $hits = @(0..($contentLines.Count - 1) | Where-Object { $contentLines[$_].TrimEnd() -eq $anchor })
-            if ($hits.Count -ne 1) { Fail "$($frag.Name): anchor '$anchor' matched $($hits.Count) lines in target (need exactly 1). Upstream drift - update the fragment." }
-            $i = $hits[0]
-            $before = if ($i -gt 0) { $contentLines[0..($i - 1)] } else { @() }
-            $after  = $contentLines[$i..($contentLines.Count - 1)]
-            $newContent = (($before + ($body -split "`n") + '' + $after) -join "`n")
-        }
-        else { Fail "$($frag.Name): second line must be '<!-- ANCHOR: EOF -->' or '<!-- ANCHOR-BEFORE: <line> -->'." }
+        foreach ($f in $ordered) {
+            $targetLines = $content -split "`n"
+            foreach ($a in $f.Asserts) {
+                $hits = @($targetLines | Where-Object { $_.TrimEnd() -eq $a }).Count
+                if ($hits -ne 1) { Fail "$($f.Name): ASSERT '$a' matched $hits lines in target (need exactly 1). Upstream drift - update the fragment." }
+            }
 
-        Set-Content -Path $target -NoNewline -Value $newContent
-        Write-Host "    applied $($frag.Name)"
+            if ($f.AnchorLine -match '^<!-- ANCHOR: EOF -->$') {
+                $content = $content.TrimEnd("`n") + "`n`n" + $f.Body + "`n"
+            }
+            elseif ($f.AnchorLine -match '^<!-- ANCHOR-BEFORE: (.+?) -->$') {
+                $anchor = $Matches[1]
+                $hits = @(0..($targetLines.Count - 1) | Where-Object { $targetLines[$_].TrimEnd() -eq $anchor })
+                if ($hits.Count -ne 1) { Fail "$($f.Name): anchor '$anchor' matched $($hits.Count) lines in target (need exactly 1). Upstream drift - update the fragment." }
+                $i = $hits[0]
+                $before = if ($i -gt 0) { $targetLines[0..($i - 1)] } else { @() }
+                $after  = $targetLines[$i..($targetLines.Count - 1)]
+                $content = (($before + ($f.Body -split "`n") + '' + $after) -join "`n")
+            }
+            else { Fail "$($f.Name): second line must be '<!-- ANCHOR: EOF -->' or '<!-- ANCHOR-BEFORE: <line> -->'." }
+            Write-Host "    applied $($f.Name)"
+        }
+        Set-Content -Path $target -NoNewline -Value $content
     }
 }
 
@@ -368,7 +401,8 @@ function Invoke-Verify {
                      'subagent-driven-development\scripts\sdd-workspace',
                      'requesting-code-review\code-reviewer.md',
                      'brainstorming\spec-document-reviewer-prompt.md',
-                     'writing-plans\plan-document-reviewer-prompt.md')) {
+                     'executing-plans\scripts\task-start',
+                     'executing-plans\scripts\task-done')) {
         if ($pinned -cnotcontains ($f -split '\\')[0]) { continue }
         if (-not (Test-Path (Join-Path $SkillsRoot $f))) { $problems.Add("required v6 file missing: $f") }
     }
@@ -387,6 +421,17 @@ function Invoke-Verify {
     if (-not $NoOverlays -and -not $VerifyOnly -and $appliedBegin -ne $fragments.Count) {
         $problems.Add("overlay count mismatch: $($fragments.Count) fragments but $appliedBegin applied blocks")
     }
+
+    Step 'Verify: overlay pointer block within the re-injection window'
+    # Every overlayed skill must open its first overlay block near the top of SKILL.md.
+    Get-ChildItem -Path $SkillsRoot -Recurse -File -Filter 'SKILL.md' |
+        Where-Object { $_.FullName -notlike "*\shared\*" } |
+        ForEach-Object {
+            $raw = Get-Content -Path $_.FullName -Raw
+            if ($raw -and $raw.Contains('UMS-OVERLAY BEGIN') -and -not (Test-UmsOverlayPointerPosition $_.FullName)) {
+                $problems.Add("overlay block of $($_.FullName.Substring($SkillsRoot.Length + 1)) starts after the first 12000 characters - add a header pointer fragment (<skill>.pointer.overlay.md)")
+            }
+        }
 
     Step 'Verify: no dangling relative links in vendored/shared markdown'
     $linkScanDirs = @()
@@ -432,18 +477,37 @@ function Invoke-Verify {
     # creates .superpowers/sdd/<plan-basename>/. Feed it a throwaway plan file.
     $sddPath = Join-Path $SkillsRoot 'subagent-driven-development\scripts\sdd-workspace'
     if ($pinned -ccontains 'subagent-driven-development' -and (Test-Path -LiteralPath $sddPath)) {
-        # Relative to UmsRoot (the cwd below): a `bash` that is WSL's cannot open
-        # C:/... absolute paths, but resolves relative ones. Different drive = absolute.
-        $sddWs = [IO.Path]::GetRelativePath($UmsRoot, $sddPath) -replace '\\', '/'
-        Push-Location $UmsRoot
-        try {
+        # The script keeps its workspace in the git working tree of the TARGET, so the test
+        # runs from that repository's root; a target outside git has nothing to test in.
+        $gitTop = $null
+        if (Test-Path -LiteralPath $SkillsRoot) {
+            $gitTop = git -C $SkillsRoot rev-parse --show-toplevel 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not $gitTop) { $gitTop = $null }
+        }
+        if ($null -eq $gitTop) {
+            Write-Host 'SKIP: sdd-workspace functional test (target is not inside a git repository)'
+        }
+        else {
+            $gitTop = ([IO.Path]::GetFullPath(($gitTop | Select-Object -First 1))).TrimEnd('\', '/')
+            # Relative to the repository root (the cwd below): a `bash` that is WSL's cannot
+            # open C:/... absolute paths, but resolves relative ones. git reports the path of
+            # SkillsRoot inside the repository, which avoids comparing two spellings of a path.
+            $prefix = (git -C $SkillsRoot rev-parse --show-prefix 2>$null | Select-Object -First 1)
+            $sddWs = ($prefix + 'subagent-driven-development/scripts/sdd-workspace')
+            Push-Location $gitTop
             $planFile = '.superpowers-revendor-verify.md'
-            Set-Content -Path (Join-Path $UmsRoot $planFile) -Value '# revendor verify plan' -NoNewline
-            $out = bash $sddWs $planFile 2>&1
-            if ($LASTEXITCODE -ne 0 -or -not $out) { $problems.Add("sdd-workspace failed (exit $LASTEXITCODE): $out") }
-            elseif (-not (Test-Path (Join-Path $UmsRoot '.superpowers\sdd\.superpowers-revendor-verify'))) { $problems.Add('sdd-workspace did not create the plan workspace') }
-            Remove-Item -Path (Join-Path $UmsRoot $planFile) -Force -ErrorAction SilentlyContinue
-        } finally { Pop-Location }
+            $workspace = Join-Path $gitTop '.superpowers\sdd\.superpowers-revendor-verify'
+            try {
+                Set-Content -Path (Join-Path $gitTop $planFile) -Value '# revendor verify plan' -NoNewline
+                $out = bash $sddWs $planFile 2>&1
+                if ($LASTEXITCODE -ne 0 -or -not $out) { $problems.Add("sdd-workspace failed (exit $LASTEXITCODE): $out") }
+                elseif (-not (Test-Path $workspace)) { $problems.Add('sdd-workspace did not create the plan workspace') }
+            } finally {
+                Remove-Item -Path (Join-Path $gitTop $planFile) -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path $workspace -Recurse -Force -ErrorAction SilentlyContinue
+                Pop-Location
+            }
+        }
     }
 
     if ($problems.Count -gt 0) {
