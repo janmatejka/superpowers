@@ -22,8 +22,9 @@
     `to:` names WHO OWES THE REPLY: a ticket key for a message the manager
     sent to that ticket session, or `manager` for a message the manager
     received and still owes an answer to. `state`: open -> resent (the ONE
-    repeat after Due, with a new Due) -> closed (answered, or handed to the
-    human); closed is final. Times are ISO-8601 UTC. Lateness is COMPUTED by
+    repeat after Due, with a new Due; only for an entry addressed to a ticket -
+    an answer the manager owes is answered, not repeated) -> closed (answered,
+    or handed to the human); closed is final. Times are ISO-8601 UTC. Lateness is COMPUTED by
     the reader against its own clock and is never written into the file.
 
     Reader safety follows contract/now-block.md, "The `NOW` Block" (the
@@ -237,7 +238,10 @@ function Set-UmsOutboxState {
     if ($rec.State -ceq 'closed') { throw "Outbox: entry sent at $sentText is closed and closed is final" }
     if ($State -ceq 'resent') {
         # ONE repeat after Due, then the human (contract/message-protocol.md,
-        # "Replies are required").
+        # "Replies are required"). Only a message the manager SENT can be sent
+        # again; an entry addressed to `manager` is an answer the manager owes,
+        # and that is answered, not repeated.
+        if ($rec.To -ceq 'manager') { throw "Outbox: entry sent at $sentText is addressed to manager; the manager owes that answer and there is nothing to repeat" }
         if ($rec.State -ceq 'resent') { throw "Outbox: entry sent at $sentText was already resent once; the next step is the human" }
         if ($null -ne $NewDueUtc) {
             $newDue = ConvertTo-UmsOutboxUtc ([datetime] $NewDueUtc)

@@ -24,12 +24,12 @@ try {
     # --- two entries; Now past the FIRST one's Due -------------------------------
     $root = New-OutboxRoot; $roots += $root
     Add-UmsOutboxEntry -RepoRoot $root -EpicKey $Epic -To 'UMS-1234' -SentUtc $T0 -DueUtc $T0.AddMinutes(30) -Subject 'spawn: prevzeti tiketu'
-    Add-UmsOutboxEntry -RepoRoot $root -EpicKey $Epic -To 'manager' -SentUtc $T0.AddMinutes(5) -DueUtc $T0.AddMinutes(90) -Subject 'handoff UMS-1234'
+    Add-UmsOutboxEntry -RepoRoot $root -EpicKey $Epic -To 'UMS-1235' -SentUtc $T0.AddMinutes(5) -DueUtc $T0.AddMinutes(90) -Subject 'resync request'
 
     $raw = Get-Content -LiteralPath (Get-OutboxPath $root) -Raw -Encoding utf8
     Assert-Match $raw '^# Outbox — epic UMS-1000\n' 'soubor začíná titulkem s em dash a klíčem epiku'
     Assert-Match $raw '(?m)^- 2026-09-29T10:00:00Z \| to: UMS-1234 \| due: 2026-09-29T10:30:00Z \| state: open \| spawn: prevzeti tiketu$' 'první záznam má uzavřený tvar'
-    Assert-Match $raw '(?m)^- 2026-09-29T10:05:00Z \| to: manager \| due: 2026-09-29T11:30:00Z \| state: open \| handoff UMS-1234$' 'druhý záznam míří na manager'
+    Assert-Match $raw '(?m)^- 2026-09-29T10:05:00Z \| to: UMS-1235 \| due: 2026-09-29T11:30:00Z \| state: open \| resync request$' 'druhý záznam míří na druhý tiket'
 
     $rej = 0
     $items = @(Get-UmsOutbox -RepoRoot $root -EpicKey $Epic -NowUtc $T0.AddMinutes(45) -Rejected ([ref] $rej))
@@ -96,6 +96,26 @@ try {
     $threw = $false
     try { Set-UmsOutboxState -RepoRoot $rootD -EpicKey $Epic -SentUtc $T0 -To 'UMS-1234' -State resent -NewDueUtc $T0.AddMinutes(120) } catch { $threw = $true }
     Assert-True $threw 'jedno zopakování: druhé resent je odmítnuto'
+
+    # A reply the MANAGER owes is answered, never repeated: resent is refused for
+    # `to: manager` (with or without a new Due) and the entry can still be closed.
+    $rootM = New-OutboxRoot; $roots += $rootM
+    Add-UmsOutboxEntry -RepoRoot $rootM -EpicKey $Epic -To 'manager' -SentUtc $T0 -DueUtc $T0.AddMinutes(30) -Subject 'handoff UMS-1234'
+    $threw = $false
+    try { Set-UmsOutboxState -RepoRoot $rootM -EpicKey $Epic -SentUtc $T0 -State resent -NewDueUtc $T0.AddMinutes(60) } catch { $threw = $true }
+    Assert-True $threw 'to: manager: resent s novým Due je odmítnuto'
+    $threw = $false
+    try { Set-UmsOutboxState -RepoRoot $rootM -EpicKey $Epic -SentUtc $T0 -State resent } catch { $threw = $true }
+    Assert-True $threw 'to: manager: resent bez nového Due je odmítnuto'
+    $mItems = @(Get-UmsOutbox -RepoRoot $rootM -EpicKey $Epic -NowUtc $T0.AddMinutes(45))
+    Assert-Eq $mItems[0].State 'open' 'to: manager: odmítnuté resent stav nezměnilo'
+    Assert-True ($mItems[0].Late -eq $true) 'to: manager po Due je Late (odpověz)'
+    Set-UmsOutboxState -RepoRoot $rootM -EpicKey $Epic -SentUtc $T0 -State closed
+    Assert-Eq @(Get-UmsOutbox -RepoRoot $rootM -EpicKey $Epic -NowUtc $T0.AddMinutes(45))[0].State 'closed' 'to: manager: odpovězená zpráva se uzavře'
+    # one message, one reply: closing an answered handoff again is refused
+    $threw = $false
+    try { Set-UmsOutboxState -RepoRoot $rootM -EpicKey $Epic -SentUtc $T0 -State closed } catch { $threw = $true }
+    Assert-True $threw 'uzavřený handoff se podruhé neuzavírá (jedna zpráva, jedna odpověď)'
 
     # --- a line with markup in the subject is rejected and counted ---------------
     $root2 = New-OutboxRoot; $roots += $root2

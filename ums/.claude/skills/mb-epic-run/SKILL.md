@@ -251,9 +251,13 @@ skill's job.
    `open` as **`čeká na odpověď`** and `resent` as **`zopakováno, čeká`**, and
    appends **`(po termínu)`** when `Late` is `true`. **`po termínu` is COMPUTED,
    never read**: the script derives it against its own clock and nothing in the
-   file can set it. Under a late row say what the rule asks for next: after an
-   `open` one **„zopakuj zprávu jednou"**, after a `resent` one **„předej
-   člověku"** (contract/message-protocol.md, "Replies are required").
+   file can set it. Under a late row say what the rule asks for next, and the
+   next step depends on WHO owes the reply (contract/message-protocol.md, "Replies are required"):
+   for a row addressed to a ticket, after an `open` one **„zopakuj zprávu
+   jednou"** and after a `resent` one **„předej člověku"**; for a row addressed
+   to the manager (`správce`) the manager owes the answer, so the next step is
+   **„odpověz"** — there is nothing to repeat, and `resent` never occurs on such
+   a row.
    `Věc` renders `Subject`, which the script has already bounded and checked by
    character class.
 
@@ -548,13 +552,18 @@ nothing, and nothing stops a session that stays silent.
 - **A reply arrives** (`Re: <time>`) → `Set-UmsOutboxState -State closed` with
   that time. A `Re:` naming a time no open entry carries closes nothing; do not
   guess which entry it meant, and say so in the report.
-- **`Due` passed** → `status` shows the row as late. ONE repeat: send the message
-  again, saying it is a repeat, and `Set-UmsOutboxState -State resent` with
-  `-NewDueUtc`. A repeat that is also late goes to the human: report it in
-  Czech, name the ticket and the message, and close the entry. Before repeating
-  to a ticket whose `Postup v plánu` cell reads `čekám na subagenta` within its
-  own due time, do not: that session replies after the subagent returns
-  (contract, "Message Protocol"), and a repeat is the prod the contract forbids.
+- **`Due` passed on a row addressed to a ticket** → `status` shows the row as
+  late. ONE repeat: send the message again, saying it is a repeat, and
+  `Set-UmsOutboxState -State resent` with `-NewDueUtc`. A repeat that is also
+  late goes to the human: report it in Czech, name the ticket and the message,
+  and close the entry. Before repeating to a ticket whose `Postup v plánu` cell
+  reads `čekám na subagenta` within its own due time, do not: that session
+  replies after the subagent returns (contract, "Message Protocol"), and a
+  repeat is the prod the contract forbids.
+- **`Due` passed on a row addressed to `manager`** → the manager itself owes the
+  answer: send it (with `Re: <time>`) and close the entry. `resent` applies only
+  to a row addressed to a ticket — repeating a message to oneself has no
+  meaning — and `Set-UmsOutboxState` refuses it for `manager`.
 - **An announcement** is neither entered nor answered.
 
 ### `attach <TIKET>`
@@ -587,8 +596,8 @@ below by these names and never by number.
 them out of the artifact as given: do not reconstruct a field the ticket
 session did not send, and do not accept a summary in place of the verification
 output (same section, for why that field is what it is). **A missing field is a
-STOP:** report which one is missing and ask the ticket session to resend the
-artifact — the epic line stays untouched, as it does on every STOP here. What
+STOP:** report which one is missing and ask the ticket session to send a new
+handoff (a new message, with a new send time) — the epic line stays untouched, as it does on every STOP here. What
 the artifact does NOT carry is the epic: derive it exactly as `spawn`'s eligibility step
 does, by scanning `memory-bank/epics/*/ledger.md` for the ticket code, where
 zero and more than one match are each a STOP. **The ledger that matched is the
@@ -602,18 +611,32 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
   Nothing is judged from a tip remembered from the message.
 - **Enter the handoff in the outbox.** The artifact is a message to the manager
   and requires a reply (contract/message-protocol.md, "Replies are required");
-  what the outbox tracks here is the answer the manager OWES. `<SENT>` is the
-  time the artifact states as its send time, or its channel shows; take nothing
-  else, because the answer's `Re:` line must name that same instant:
+  what the outbox tracks here is the answer the manager OWES. Do it as soon as
+  Input has derived the epic and before any further STOP, so that every answer
+  — a missing field included — has an entry to close; where the epic itself
+  cannot be derived there is no outbox, and that STOP is answered without one.
+  `<SENT>` is the time the artifact states as its send time, or its channel
+  shows; take nothing else, because the answer's `Re:` line must name that same
+  instant:
 
       . <this skill>/scripts/outbox.ps1
       Add-UmsOutboxEntry -RepoRoot (git rev-parse --show-toplevel) -EpicKey <KLÍČ> `
           -To manager -SentUtc <SENT> -DueUtc <now + 30 minutes> `
           -Subject 'handoff <TIKET>'
 
-  When this is a re-run after an earlier STOP the entry already exists and the
-  call refuses it as a duplicate; that refusal is the expected answer, and the
-  entry stays open until the answer below is sent.
+  **One handoff gets ONE answer, and the answer closes its entry.** A STOP is
+  answered like a landed fast-forward (see the answer below), so after a STOP
+  the entry is `closed` and closed is final. The next attempt is therefore a NEW
+  handoff, which the ticket session sends after it has dealt with the cause and
+  which carries a NEW send time; that is a new message with its own entry and
+  its own single `Re:`. If the call above refuses the entry as a duplicate,
+  read the entry back (`Get-UmsOutbox`, the row with `To` `manager` and this
+  `<SENT>`) before going on: `open` means an earlier run of THIS operation
+  ended before it answered — continue and answer at the end; `closed` means
+  this handoff has already been answered — do not run `integrate` on it again,
+  do not send a second `Re:` and do not call the closing command below (it would
+  refuse, closed being final); report in Czech „Toto předání už dostalo
+  odpověď; počkej na nové předání s novým časem odeslání" and STOP.
 - **Epic checks.** Two mechanical checks that bind the fast-forward to THIS
   epic and to its unconfirmed decisions (contract, Repository
   Configuration, "The epic line"). Dot-source this skill's own script and
@@ -655,7 +678,8 @@ matched, and how a path that resolves to nothing turns into a trivial pass.
       a mismatch. The owner is the epic's manager (this session) and the
       remedy is ordinary ledger maintenance on the ELABORATION branch:
       restore the header line from `ledger-template.md`, commit it with
-      `mb-git-commit`, publish, and re-run `integrate`. Never pass the
+      `mb-git-commit`, publish, and ask the ticket session for a new handoff:
+      the STOP was answered, and one handoff gets one answer. Never pass the
       check by supplying `<KLÍČ>` from memory.
     - **no `## Rozjetí` row for `<TIKET>`** — this ticket was never spawned
       into THIS epic's pool. Owner: this session; remedy: re-derive the
@@ -797,7 +821,7 @@ no manager.
 | Start a ticket in a slot | `spawn <TIKET>` |
 | Where does a ticket run | `attach <TIKET>` |
 | Land a finished ticket in the epic line | `integrate <TIKET>` |
-| The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a resend |
+| The four fields of a handoff artifact | contract, Publication Contract, "Integration" (Handoff phase) — a missing field is a STOP, ask for a new handoff (new send time) |
 | Answer the handing-over ticket session | mandatory, both on a landed fast-forward and on a STOP; without it that session's Confirmation phase never runs |
 | Re-run the handoff gate | `Test-UmsHandoffGate -RepoRoot … -Sha … -BaseRef origin/epic/<KLÍČ>` — `-BaseRef` always explicit |
 | Run the epic checks | `Test-UmsEpicGate -RepoRoot … -LedgerPath $ledgerPath -Ticket <TIKET> -Epic <KLÍČ>` — the path Input matched, `-RepoRoot` always passed; `spawn-epic` and `decision-ack`, both mechanical, both pure (contract/epic-line.md, "The epic line") |
@@ -827,6 +851,6 @@ no manager.
 | "The gate passed for the ticket agent, no need to run it again" | Time passed and the epic line may have moved since. The gate is re-run here against the freshly fetched tip — that is the Handoff gate re-run step, and the contract requires the fresh fetch (Publication Contract, "Integration"). |
 | "It is not a fast-forward, I will just merge it into the epic line" | Iron rule 11: `integrate` never merges. Not a fast-forward means the ticket session resynchronizes and verifies again. |
 | "The ticket session has not answered, I will ask again until it does" | ONE repeat after `Due`, then the human (contract/message-protocol.md, "Replies are required"). And never to a session that waits on a subagent. |
-| "I will mark this message `Oznámení:` so nobody has to answer it" | An announcement is a fact of the sender's OWN action, verifiable in a shared artifact. A message that asks, explains a cause or instructs is not one, whatever its first line says. |
+| "I will mark this message `Oznámení:` so nobody has to answer it" | An announcement is a fact of the sender's OWN action, verifiable in a shared artifact. A message that asks the recipient to do anything, sets a boundary for its work or explains a cause is not one, whatever its first line says. |
 | "The outbox is empty, so nobody owes an answer" | Empty is also what an absent, damaged or over-size file yields, and a message nobody entered is invisible to it. Say „podle outboxu". |
 | "I will escape the quote in the prompt" | The launcher refuses a double quote before spawning, because it measured both silent dropping and a split prompt. Rewrite the line without one. |

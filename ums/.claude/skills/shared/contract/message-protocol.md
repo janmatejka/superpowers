@@ -123,20 +123,26 @@ the second; the manager enters that same time in its outbox.
   message keeps its mark on the first line, so there the class line is the one
   directly below it.
 - **The one class of message that needs no reply is the announcement**, class
-  line `Oznámení:`: a fact of the sender's OWN action that the recipient can
-  verify in a shared artifact — `fast-forward done, tip 0123abc`, checkable with
+  line `Oznámení:` — the first line, or directly below the mark on a manager's
+  message: a fact of the sender's OWN action that the recipient can verify in a
+  shared artifact — `fast-forward done, tip 0123abc`, checkable with
   `git fetch`. The recipient acts on it (the manager notes it in the ledger) and
-  does not answer. It is not a shortcut: a message that asks anything, states a
-  cause or gives an instruction is not an announcement whatever its first line
-  says, in the same way a mark contradicted by the content is read as a
-  conjecture.
+  does not answer. A manager sends it under `Mark: instruction`, because the
+  marking counts a fact of the sender's own action as an instruction; that mark
+  sets no boundary for the recipient and does not make the message an order. It
+  is not a shortcut: a message that asks the recipient to do anything, sets a
+  boundary for its work or states a cause is not an announcement whatever its
+  first line says, in the same way a mark contradicted by the content is read
+  as a conjecture.
 - **When:** at the recipient's nearest turn boundary. A session waiting on a
   subagent replies after the subagent returns, and the ban on prodding such a
   session stands.
-- **After `Due`:** ONE repeat (state `resent`, with a new `Due`), then the
-  human. A repeat that also goes late is reported to the human, who owns it from
-  there, and its entry is closed; nothing waits indefinitely and nothing fails
-  silently.
+- **After `Due`:** for a reply owed by the OTHER party, ONE repeat (state
+  `resent`, with a new `Due`), then the human. A repeat that also goes late is
+  reported to the human, who owns it from there, and its entry is closed;
+  nothing waits indefinitely and nothing fails silently. A reply the MANAGER
+  owes (`to: manager`) has no repeat and no `resent` state: past its `Due` it is
+  a late answer, and the manager gives it.
 
 **The wait has an artifact on each side, and the message only accelerates it.**
 A ticket session waiting for the manager's reply names the wait where a `NOW`
@@ -148,8 +154,9 @@ ticket's epic file. The manager keeps a git-ignored OUTBOX, `outbox.md` under
 `.superpowers/epic/<key>/` at the repository root, which `mb-epic-run status`
 renders as the unanswered and the late messages. `to:` names who owes the reply
 — a ticket key, or `manager` for a message the manager has itself received and
-not yet answered; `state` is `open`, `resent` or `closed`, and `closed` is
-final. The outbox line is closed-format, one per message, as here:
+not yet answered; `state` is `open`, `resent` (a ticket-addressed entry only)
+or `closed`, and `closed` is final: one message gets one reply, so a new
+attempt after an answered one is a new message with a new send time. The outbox line is closed-format, one per message, as here:
 ```
 # Outbox — epic UMS-3557
 - 2026-09-29T10:00:00Z | to: UMS-3560 | due: 2026-09-29T10:30:00Z | state: open | spawn: takeover of the ticket
