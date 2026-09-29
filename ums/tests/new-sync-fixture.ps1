@@ -10,8 +10,10 @@
 #           sync-with-monorepo.ps1 and revendor-superpowers.ps1 copied from the
 #           working tree, and .claude/ with settings.json, shared/ (pin at t2,
 #           contract stub, overlays/ = the two revendor-fixture fragments for
-#           alpha), mb-demo, and hooks/ (only an install-git-hooks.ps1 stub -
-#           the sync copies hooks as they are, it needs nothing else here).
+#           alpha), mb-demo, and hooks/ (the REAL install-git-hooks.ps1 and
+#           pre-push, plus the real Get-UmsRepoConfig.ps1 loader under
+#           shared/scripts - a stub installer would let -Scope Fork claim a
+#           pre-push it never installed).
 #   Mono    git repo with a LOCAL bare origin (MonoBare, cloned from Mono, so
 #           no push is needed): CLAUDE.md, .claude/settings.json and a TRACKED
 #           .claude/skills/ deployed at t1 - shared/ (pin t1, the same
@@ -66,7 +68,16 @@ function New-SyncFixture {
     Write-FxFile (Join-Path $forkShared 'UMS_MEMORY_BANK_CONTRACT.md') "# contract stub`n`nContract-Version: fixture`n"
     Add-RevendorFixtureOverlays (Join-Path $forkShared 'overlays')
     Write-FxFile (Join-Path $forkClaude 'skills/mb-demo/SKILL.md') "---`nname: mb-demo`n---`n# mb-demo`n"
-    Write-FxFile (Join-Path $forkClaude 'hooks/install-git-hooks.ps1') "param([string] `$RepoRoot, [string] `$SourceDir)`nexit 0`n"
+    # Real installer, hook and config loader (copied byte for byte from the working tree):
+    # -Scope Fork installs pre-push into the fixture fork, and the tests prove it landed.
+    foreach ($pair in @(
+            @{ From = '.claude\hooks\install-git-hooks.ps1';                To = 'hooks\install-git-hooks.ps1' },
+            @{ From = '.claude\hooks\pre-push';                             To = 'hooks\pre-push' },
+            @{ From = '.claude\skills\shared\scripts\Get-UmsRepoConfig.ps1'; To = 'skills\shared\scripts\Get-UmsRepoConfig.ps1' })) {
+        $dst = Join-Path $forkClaude $pair.To
+        New-Item -ItemType Directory -Force (Split-Path -Parent $dst) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $ums $pair.From) -Destination $dst
+    }
 
     Invoke-FxGit $fork @('add', '.gitignore', 'CLAUDE.md', 'AGENTS.md', '.agents', 'ums') | Out-Null
     Invoke-FxGit $fork @('commit', '-q', '-m', 'ums layer') | Out-Null
