@@ -537,6 +537,89 @@ function Get-UmsTargetOnlySkills([string] $TargetSkills, [string] $ForkSkills) {
     [string[]]$names | Sort-Object -CaseSensitive
 }
 
+# ------------------------------------------------- vendored skills (design 3.3)
+# The sync never copies the vendored superpowers skills: it calls the fork's
+# revendor per target. Building blocks only - the main body decides when.
+
+# Tag of a pin file (the "- Tag: <tag>" line), or '' when the file is missing
+# or carries none.
+function Get-UmsPinTag([string] $PinFile) {
+    if (-not $PinFile -or -not (Test-Path -LiteralPath $PinFile -PathType Leaf)) { return '' }
+    foreach ($line in ((Get-Content -LiteralPath $PinFile -Raw) -split '\r?\n')) {
+        if ($line -match '^- Tag:\s*(\S+)\s*$') { return $Matches[1] }
+    }
+    return ''
+}
+
+# $true when git tracks anything at RelPath below Root (a file, or a directory
+# with tracked files in it); $false for an untracked or missing path and for a
+# Root outside git.
+function Test-UmsTracked([string] $Root, [string] $RelPath) {
+    $rel = $RelPath.Replace('\', '/')
+    $out = & git -C $Root ls-files -- $rel 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    return (@($out | Where-Object { $_ }).Count -gt 0)
+}
+
+# How to vendor into one target. ForkPin and TargetPin are PIN FILE paths (the
+# shared\VENDORED_FROM.md of the fork and of the target).
+#   'none'         - the target has no skills directory. Signalled by an EMPTY
+#                    TargetPin (the caller passes '' when Get-UmsSyncTargets
+#                    gives it no SkillsDir; a [string] parameter turns $null
+#                    into '' anyway). A target that HAS a skills directory but
+#                    no pin yet (first deployment) is not 'none'.
+#   'vanilla-only' - the fork pin's tag differs from the target pin's tag AND
+#                    the target is tracked by git: vendor the new tag without
+#                    overlays and nothing else, so the commit carries only the
+#                    upstream diff; the overlay run follows after that commit.
+#   'full'         - everything else: one pass, vendor plus overlays.
+# The tags are compared case-sensitively. A missing target pin file has no tag,
+# so it never forces 'vanilla-only'. A missing fork pin is an error.
+function Get-UmsVendorPlan([string] $ForkPin, [string] $TargetPin, [bool] $Tracked) {
+    if (-not $TargetPin) { return 'none' }
+    $forkTag = Get-UmsPinTag $ForkPin
+    if (-not $forkTag) { throw "Get-UmsVendorPlan: fork pin '$ForkPin' is missing or has no '- Tag:' line." }
+    $targetTag = Get-UmsPinTag $TargetPin
+    if ($Tracked -and $targetTag -and ($forkTag -cne $targetTag)) { return 'vanilla-only' }
+    return 'full'
+}
+
+# Runs the fork's revendor as a PowerShell process over one target skills
+# directory: -SpRepo <fork root> -SkillsRoot <target> -PinSource <fork pin>
+# (plus -NoOverlays for 'vanilla-only'). The revendor reads tag and skill set
+# from the fork pin, overlays from the TARGET's shared\overlays, and owns the
+# target's shared\VENDORED_FROM.md: it reads it as the previous pin before
+# rewriting it, so a mirror of shared\ done before this call MUST leave that
+# file alone (else no skill dropped upstream is ever removed). Mode 'none'
+# does nothing. A non-zero exit throws with the tail of the revendor's output.
+function Invoke-UmsVendoredDeploy(
+    [string] $ForkUmsDir,
+    [string] $SkillsRoot,
+    [Parameter(Mandatory)] [ValidateSet('full', 'vanilla-only', 'none')] [string] $Mode
+) {
+    if ($Mode -eq 'none') { return }
+    $revendor = Join-Path $ForkUmsDir '.claude\scripts\revendor-superpowers.ps1'
+    $forkPin = Join-Path $ForkUmsDir '.claude\skills\shared\VENDORED_FROM.md'
+    foreach ($p in @($revendor, $forkPin)) {
+        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw "Invoke-UmsVendoredDeploy: '$p' not found." }
+    }
+    $forkRoot = $null
+    $top = & git -C $ForkUmsDir rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -eq 0 -and $top) { $forkRoot = [IO.Path]::GetFullPath(([string]@($top)[0]).Trim()) }
+    if (-not $forkRoot) { $forkRoot = [IO.Path]::GetFullPath((Split-Path -Parent $ForkUmsDir)) }
+
+    $revArgs = @('-NoProfile', '-File', $revendor, '-SpRepo', $forkRoot, '-SkillsRoot', $SkillsRoot, '-PinSource', $forkPin)
+    if ($Mode -eq 'vanilla-only') { $revArgs += '-NoOverlays' }
+    $pwshExe = (Get-Process -Id $PID).Path
+    $lines = @(& $pwshExe @revArgs 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        $tail = ($lines | Select-Object -Last 20) -join [Environment]::NewLine
+        throw "Invoke-UmsVendoredDeploy: revendor-superpowers.ps1 ($Mode) exited with $code for '$SkillsRoot'. Output tail:$([Environment]::NewLine)$tail"
+    }
+    foreach ($l in $lines) { Write-Host "    [revendor] $l" }
+}
+
 # Tests need only the function definitions, not the full sync run.
 if ($DotSourceOnly) { return }
 
