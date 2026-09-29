@@ -3,7 +3,7 @@ Part of contract 3.x — the core is ../UMS_MEMORY_BANK_CONTRACT.md; cite as (co
 
 ### Brainstorming Paths (spike / bounded / architectural)
 
-Upstream brainstorming (v6.3.0) classifies each request before its first
+Upstream brainstorming (v6.4.2) classifies each request before its first
 question and announces the path. The document layer asks a single question
 of that classification: **will the result integrate?**
 

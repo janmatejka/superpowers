@@ -2,19 +2,19 @@
 
 ## Přehled
 
-Skill pack MB v2: Superpowers (vendorované, v6.3.0) řídí workflow, Memory Bank
-je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.1](UMS_MEMORY_BANK_CONTRACT.md).
+Skill pack MB v2: Superpowers (vendorované, v6.4.2) řídí workflow, Memory Bank
+je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.2](UMS_MEMORY_BANK_CONTRACT.md).
 
 ## Sdílené prostředky
 
 | Prostředek | Cesta | Popis |
 |---|---|---|
-| Kontrakt 3.1 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár) a jeho granularita, způsobilost sezení, publikace, message protocol, eskalace, fail-closed, Phase Map a citační forma — jediné, co nese `Contract-Version`; rozpočet řádků vynucuje `tests/contract-shape.tests.ps1` |
-| Kontrakt 3.1 (reference) | [shared/contract/](contract/) | 17 per-tématických referencí vyňatých z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon + Publication mechanics, epic-line, epic-backflow, worktree-pool, now-block, message-protocol, escalation, architect-review, cross-branch-visibility, brainstorming-paths, jira); načítá je vlastnící skill podle `Phase Map` v jádře, citovat jako `(contract/<soubor>.md, "Sekce")` |
+| Kontrakt 3.2 (jádro) | [shared/UMS_MEMORY_BANK_CONTRACT.md](UMS_MEMORY_BANK_CONTRACT.md) | MB_ROOT, sada dokumentů, vlastnictví faktu, work item (design+plan pár) a jeho granularita, způsobilost sezení, publikace, message protocol, eskalace, fail-closed, Phase Map a citační forma — jediné, co nese `Contract-Version`; rozpočet řádků vynucuje `tests/contract-shape.tests.ps1` |
+| Kontrakt 3.2 (reference) | [shared/contract/](contract/) | 17 per-tématických referencí vyňatých z jádra (Target-MB discovery, Repository Configuration, Workspace Discipline, Session Intent Baton, Playbook Contract, Harvest Contract, Integration & Abandon + Publication mechanics, epic-line, epic-backflow, worktree-pool, now-block, message-protocol, escalation, architect-review, cross-branch-visibility, brainstorming-paths, jira); načítá je vlastnící skill podle `Phase Map` v jádře, citovat jako `(contract/<soubor>.md, "Sekce")` |
 | Doklad ke kontraktu | [shared/contract/doklad/](contract/doklad/) | Evidenční vrstva (měření, historie rozhodnutí, zdůvodnění) vyňatá z jádra a referencí; čte se na vyžádání a nikdy se necituje jako normativní zdroj |
-| Changelog kontraktu | [shared/CHANGELOG.md](CHANGELOG.md) | Historie verzí kontraktu (v1 → v2 → 3.0); jediný domov per-verzní historie, jádro nese jen `Contract-Version` |
-| Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů a re-vendor postup |
-| Overlay fragmenty | [shared/overlays/](overlays/README.md) | UMS bloky aplikované do vendorovaných skillů |
+| Changelog kontraktu | [shared/CHANGELOG.md](CHANGELOG.md) | Historie verzí kontraktu (v1 → v2 → 3.0 → 3.1 → 3.2); jediný domov per-verzní historie, jádro nese jen `Contract-Version` |
+| Vendor pin | [shared/VENDORED_FROM.md](VENDORED_FROM.md) | Upstream tag/commit vendorovaných superpowers skillů, seznam `Skills:` a vyloučených `Excluded:` (v6.4.2: `diagnosing-superpowers`) a re-vendor postup; jediný zdroj pravdy o tagu |
+| Overlay fragmenty | [shared/overlays/](overlays/README.md) | UMS bloky aplikované do vendorovaných skillů — pět overlayů (`*.overlay.md`), každý s hlavičkovým ukazatelem (`*.pointer.overlay.md`) kvůli zkrácení skillu po kompaktaci |
 
 ## Sdílené skripty a sady
 
@@ -27,11 +27,15 @@ je dokumentová/znalostní vrstva. Normativní pravidla: [kontrakt 3.1](UMS_MEMO
 | Injektáž jádra | [hooks/contract-inject.ps1](../../hooks/contract-inject.ps1) | Vloží jádro kontraktu do kontextu při startu sezení a s prvním promptem po kompaktaci (marker `.superpowers/contract-reload.flag`); registrován v `settings.json` |
 | Sady vrstvy | `shared/tests/*.tests.ps1`, `hooks/tests/*.tests.ps1`, `mb-*/tests/*.tests.ps1` | Bezzávislostní `.ps1` sady s vlastním `_assert.ps1`; nové v 3.0: `contract-move`, `contract-shape`, `permalink`, `jira-description`, `contract-inject` |
 
-## Vendorované Superpowers skilly (v6.3.0)
+## Vendorované Superpowers skilly (v6.4.2)
 
-14 skillů vendorovaných z obra/superpowers — viz `VENDORED_FROM.md`.
-UMS overlay bloky mají přesně 4: `brainstorming`, `subagent-driven-development`,
-`finishing-a-development-branch` a `writing-plans`. Ostatní jsou byte-identické s upstreamem.
+14 skillů vendorovaných z obra/superpowers — viz `VENDORED_FROM.md`. Vyloučen je
+`diagnosing-superpowers` (čte transkripty sezení a po schválení zakládá issue nebo
+archiv na GitHubu — v proprietárním monorepu kanál pro únik kódu).
+UMS overlay bloky má pět skillů: `brainstorming`, `subagent-driven-development`,
+`finishing-a-development-branch`, `writing-plans` a `executing-plans`; každý nese
+navíc hlavičkový ukazatel. Ostatní jsou byte-identické s upstreamem. Vendorované
+skilly vznikají v cíli nasazení skriptem `sync-with-monorepo.ps1` (master je fork).
 
 ## Aktivní mb-* skilly
 
