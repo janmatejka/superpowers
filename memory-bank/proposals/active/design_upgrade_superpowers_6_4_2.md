@@ -578,3 +578,175 @@ ověřené proti kódu, žádný odmítnutý.
   chování pod overlayem, riziko úniku kódu), odtud explicitní `Excluded:`
   a STOP na nový neznámý upstream skill; F12 — chybějící
   `epicBranchPattern` = vestavěný default `epic/*`.
+
+## Verifikační evidence
+
+Měřeno 2026-09-29 na větvi `upgrade-superpowers-6-4-2`. Cesty `soubor:řádek`
+bez prefixu jsou relativní k NASAZENÉMU `.claude/skills/` kořene forku.
+
+### Nasazení do kořene forku (`-Scope Fork`)
+
+- **Nanečisto** (`sync-with-monorepo.ps1 -Scope Fork -Agent claude,codex -WhatIf`):
+  exit 0. Protože manifest ještě neexistoval (první běh), nahlásil drift 35
+  souborů pro `claude` a 31 pro `codex` vůči dosavadnímu ručnímu nasazení.
+  Všechny ležely pod `.claude/` nebo `.agents/skills/` a žádný nebyl
+  trackovaný gitem.
+- **První ostré nasazení s `-Force` selhalo (exit 1)** na ověření revendoru
+  v `.agents/skills`: „dangling link in shared\SKILLS_MANIFEST.md:
+  ../../hooks/contract-inject.ps1".
+  - Odkaz ze `shared/` mířil mimo kořen skillů. Resolvuje jen v rozložení
+    Claude Code, kde `hooks/` leží vedle `skills/`. Cíl codex nese podle
+    návrhu jen skilly (sekce 3.5), takže tam visel.
+  - Ruční nasazení verifikaci nad `.agents/skills` nikdy nespouštělo.
+    Fixtura `sync-fork.tests.ps1` odkaz tohoto tvaru nemá, proto ho testy
+    neodhalily. `-WhatIf` verifikaci revendoru nespouští.
+  - **Oprava v aed57a4:** každá cesta mimo kořen skillů je ve `shared/`
+    prostý text, ne odkaz. `contract-shape.tests.ps1` nově hlídá, že žádný
+    relativní odkaz ve `shared/` nemíří mimo kořen skillů (RED 1/31, GREEN
+    31/31). Verifikace revendoru zůstala beze změny.
+- **Opakované nasazení s `-Force`** proběhlo s exit 0.
+  - Stále to byl první běh, protože nepovedený běh manifest nezapsal. Drift
+    proto obsahoval jen dva soubory změněné opravou.
+  - `Verification passed.` pro `.claude\skills` i `.agents\skills`.
+  - `pre-push` nainstalovaný a ověřený naživo. Seznam chráněných větví je
+    v `.git/ums-protected-branches`.
+  - Manifesty zapsané do `.git/ums-sync-manifest-claude-Fork.json`
+    a `.git/ums-sync-manifest-codex-Fork.json`.
+  - `.git/info/exclude` nedostal nový řádek: `/.agents/skills/` tam už byl
+    právě jednou.
+  - `git status --porcelain` zůstal prázdný.
+- **Stav nasazení:**
+  - V `.claude/skills` i `.agents/skills` je po 38 adresářích: 20 `mb-*`,
+    `shared`, 14 vendorovaných skillů v6.4.2 a 3 cizí pozůstatky ručního
+    nasazení (Kroky pro uživatele).
+  - `diagnosing-superpowers` chybí.
+  - V každém z pěti overlayovaných skillů jsou právě 2 bloky
+    `UMS-OVERLAY BEGIN` (ukazatel a tělo).
+  - `.claude/settings.json` je bajtově shodný se zdrojem.
+
+### Ověřovací sada
+
+Tři příkazy deklarované plánem, spuštěné doslova na HEAD aed57a4:
+
+| Příkaz | Výsledek |
+|---|---|
+| smyčka `for t in $(find ums -name "*.tests.ps1"); …` (Git Bash) | 202 sad, konec `LOOP-DONE exit=0`. `FAILED:` jen u dvou známých selhání prostředí z baseline: `ums/.claude/hooks/tests/contract-inject.tests.ps1` 1/56 (drift warning is the first line of the payload — code page při spuštění pwsh z Git Bash; z PowerShellu sada prochází) a `ums/.claude/skills/mb-epic-run/tests/pool-launch.tests.ps1` 2/41 (Gate 3, skutečné spuštění procesu). Žádné nové selhání. |
+| `pwsh -NoProfile -File ums/.claude/scripts/revendor-superpowers.ps1 -VerifyOnly -UmsRoot .` | exit 0, všech šest kontrol, `Verification passed.` |
+| `pwsh -NoProfile -File ums/sync-with-monorepo.ps1 -Scope Fork -Agent claude,codex -WhatIf` | exit 0, bez driftu (manifesty existují) |
+
+### Opravy návrhu (rozhodnutí controlleru)
+
+- **Sekce 2.7 a riziko „Směr ořezu 5 000 tokenů po kompaktaci není
+  zdokumentovaný":** dokumentace Claude Code (context window) směr uvádí —
+  „Truncation keeps the start of the file". Přežije tedy polovina
+  s hlavičkovým ukazatelem. Mechanismus zůstává beze změny (doklad
+  [compaction.md](../../../ums/.claude/skills/shared/contract/doklad/compaction.md)).
+- **Kolizní příklad v sekci 2.6** (slug znovu rozjetý po `mb-abort` vede na
+  `plan_<slug>-<rodič>/`) je chybný.
+  - Upstream `sdd-workspace` přiřazuje workspace podle uloženého
+    `plan-path`. Znovu rozjetý slug na téže aktivní cestě proto starý
+    workspace i ledger ZNOVU POUŽIJE.
+  - Hledání ledgeru podle `plan-path` opravuje jinou kolizi: stejný
+    basename ve dvou Memory Bank.
+  - Zastaralý workspace po abortu je následná práce (`mb-abort` plan
+    workspace nemaže).
+  - Pod Git Bash na Windows zapisuje upstream do `plan-path` ABSOLUTNÍ msys
+    cestu; `contract-inject` ji přijímá (Task 9).
+
+### Cold-reader průchod nasazených skillů
+
+Otázka zní: vede vygenerovaný text čtenáře bez kontextu ke správným krokům
+UMS? Metoda exekuce existuje jen tam, kde je plán (architektonická cesta).
+Bounded a spike plán nepíšou, proto metodu nemají.
+
+| Cesta | Metoda | Pokračování | Verdikt | Doklad |
+|---|---|---|---|---|
+| architektonická | SDD | čerstvé sezení s batonem | ano | `writing-plans/SKILL.md:220–248`: baton `Kind: plan-execution`, `Instruction:` = `subagent-driven-development`, stop česky. `.claude/hooks/session-intent.ps1:176–205` ověří `Instruction` proti adresářům nasazení, `:321–325` pustí nejdřív bootstrap. Overlay SDD: base sync a baseline před prvním taskem `subagent-driven-development/SKILL.md:642–646`, řetězec playbooků k dispatchi `:625–634`, NOW `:612–613`, explicitní model `:586–589`. |
+| architektonická | SDD | rotace kontextu (baton `plan-resume`) | ano | `subagent-driven-development/SKILL.md:594–600`. Base sync ani baseline se neopakují (`shared/contract/session-intent-baton.md:146–150`). |
+| architektonická | SDD | kompaktace | ano | Ukazatel `subagent-driven-development/SKILL.md:6–12` začíná na znaku 147; tělo overlaye až na znaku 32 806, tedy za oknem 5 000 tokenů. Nese ho zachovaný začátek. `.claude/hooks/contract-inject.ps1:14` přikazuje přečíst blok UMS-OVERLAY, `:88–135` najde ledger s blokem NOW podle `plan-path`. |
+| architektonická | Native | čerstvé sezení s batonem | ano | `writing-plans/SKILL.md:241–242` (`Instruction:` = `executing-plans`). Overlay: base sync `executing-plans/SKILL.md:445–449`, řetězec playbooků čte exekutor sám v každém sezení `:411–423`, NOW `:409–410`, izolace místo worktree `:438–444`, finální review s explicitním modelem a efektivní bází `:430–434`. |
+| architektonická | Native | rotace kontextu (baton `plan-resume`) | ano | Pátá stop třída `executing-plans/SKILL.md:392–399` zužuje upstream `:47` („Four things stop you, and only these"). |
+| architektonická | Native | kompaktace | ano | Ukazatel `executing-plans/SKILL.md:6–12` začíná na znaku 220, tělo na znaku 20 697. Playbook se znovu čte i po kompaktaci (`:418`). Ledger podle upstream `:139–145`. |
+| bounded | — | čerstvé sezení | **mezera (pojmenovaná)** | Baton nemá druh pro bounded: vyžaduje `Plan` (`.claude/hooks/session-intent.ps1:34`, `:209`) a zapisují ho jen `writing-plans` a exekutoři plánu (`shared/contract/session-intent-baton.md:74–79`). Pokračování nese pin v `context.md`, který `contract-inject` vykreslí, a záměr, který operátor napíše sám. Nic se neztratí, ale nic se ani nedoručí automaticky. |
+| bounded | — | kompaktace | **mezera (menší)** | Ukazatele `brainstorming/SKILL.md:6–12` a `finishing-a-development-branch/SKILL.md:6–12` platí, dokud dané skilly běží. Implementace mezi nimi jde „normálním workflow" (`brainstorming/SKILL.md:177`, `:194–196`) bez overlayovaného skillu; `contract-inject` vrátí jádro a pin. Hranice fází v jádře (`shared/UMS_MEMORY_BANK_CONTRACT.md:154–160`) ale před implementací bounded práce žádnou nemají. Base sync a baseline před prvním commitem tak text nikde nepožaduje (u SDD i Native ano). Integraci jistí fáze Sync ve finishing (`finishing-a-development-branch/SKILL.md:150–153`). |
+| spike | — | čerstvé sezení / kompaktace | ano | Nepinuje a nezapisuje do `proposals/` (`brainstorming/SKILL.md:306–312`, `:324–329`). Terminální stav je doporučení bez finishing (`:564`). Po kompaktaci platí ukazatel `:6–12`; čerstvé sezení nemá co nést. |
+| všechny integrující | finishing | kompaktace | ano | Ukazatel `finishing-a-development-branch/SKILL.md:6–12` výslovně počítá s ořezem UVNITŘ dlouhého bloku (`:92–553`). Kontrola záruky publikace je první `:97–111`, harvest `:112–127`. Bounded bez plánu je očekávaný tvar (`:124–127`). |
+
+**Verdikt:** architektonická cesta vede ke správným krokům UMS pro obě metody
+(SDD i Native) a pro všechny tři druhy pokračování; spike také. Bounded má
+dvě pojmenované mezery: chybí baton pro čerstvé sezení a před implementací
+není předepsaný base sync ani baseline. Obě jsou starší než tento upgrade
+a patří do následné práce, ne do této položky.
+
+### Tabulka uzavření rozporů (přepočtená proti nasazení)
+
+Výchozí je tabulka z Task 8, která vznikla nad dočasnou generací. Řádky jsou
+přepočtené proti nasazenému `.claude/skills`. „Upstream" znamená pristine
+v6.4.2; ve vygenerovaném souboru je každý overlayovaný `SKILL.md` posunutý
+o 8 řádků hlavičkovým ukazatelem.
+
+| # | Řádek návrhu | Upstream v6.4.2 → nasazeno | Věta vrstvy v nasazení | Stav |
+|---|---|---|---|---|
+| 1 | `writing-plans`: menu Subagent-driven / Native | `:189` → `writing-plans/SKILL.md:197` („…Which execution approach would you prefer?**"); položky `:199`, `:200`; „When an execution method has already been supplied" `:271`; druhé „Plan complete…" `:273` | blok `:204–269` (ASSERTy `:197`, `:199`, `:200`): `## Ověřovací sada` `:205–210`, přepis cesty plánu (neguje obě věty `:197` a `:273`) `:212–218`, Fresh Session jako modifikátor obou metod `:220–234`, baton `:236–242`, český stop `:243–248`, pokračování v tomto sezení `:250–251` | uzavřeno |
+| 2 | `executing-plans` jako Native exekuce | „Four things stop you…" `:39` → `executing-plans/SKILL.md:47`; worktree `:111` → `:118–119`; sdílený ledger `:121` → `:129–131`; `git merge-base main HEAD` `:238` → `:246` | blok `:383–458`: pátá stop třída `:392–399`, rulingy `:400–403`, autorita Spec `:404–408`, NOW `:409–410`, playbook `:411–423`, kandidáti `:424–429`, finální review `:430–434`, jazyk `:435–437`, izolace `:438–444`, base sync `:445–449`, publikace `:450–455`, konec `:456–457`; ukazatel `:6–12` | uzavřeno |
+| 3 | smazaný `plan-document-reviewer-prompt.md` | v6.4.2 ho nemá | `writing-plans/` v nasazení nese jen `SKILL.md`; požadované soubory revendoru přidávají `executing-plans\scripts\task-start` / `task-done` (`.claude/scripts/revendor-superpowers.ps1:404–405`); test `ums/.claude/scripts/tests/revendor.tests.ps1:230`, `:234` | uzavřeno |
+| 4 | nový `diagnosing-superpowers` | adresář v6.4.2 existuje | `shared/VENDORED_FROM.md:22–23` („- Excluded:" / „diagnosing-superpowers"); adresář chybí v `.claude/skills` i `.agents/skills`; pin nese 14 skillů | uzavřeno |
+| 5 | brainstorming: Establish Shared Understanding, HARD-GATE | HARD-GATE `:49` → `brainstorming/SKILL.md:57`; „Carry intent into the design" `:29` → `:37` | dodatek k HARD-GATE `:524–533` (oponentura a Architect Review Gate mezi schválením spec a writing-plans; ani jedno není implementační úkon); věta do `## Cíl` `:469–474`; doplnění terminálních stavů `:557–564` | uzavřeno |
+| 6 | `MERGE_BASE` např. `git merge-base main HEAD` | `subagent-driven-development/SKILL.md:457`; `executing-plans/SKILL.md:246`; `requesting-code-review/SKILL.md:28` („# or: git merge-base origin/main HEAD", mimo overlay, viz řádek 8) | `subagent-driven-development/SKILL.md:647–649` a `executing-plans/SKILL.md:430–434` → efektivní báze | uzavřeno |
+| 7 | upstream smazal kořenový `CLAUDE.md` | v6.4.2 soubor nemá | mimo vendorovaný strom: `CLAUDE.md:1` forku `@AGENTS.md`, `:3` blok UMS-MEMORY-BANK | uzavřeno (mimo vygenerovaný strom) |
+| 8 | TDD celá sada; review „Declined to judge"; SDD marker `plan-path`; skripty přes interpret | `test-driven-development/SKILL.md:185`; `requesting-code-review/code-reviewer.md:43`; `subagent-driven-development/scripts/sdd-workspace:13`, `:62–66` | bez overlaye (návrh: bez zásahu). Ledger podle markeru: `.claude/hooks/contract-inject.ps1:88–135`, domov popsaný v `shared/contract/now-block.md:19–33` | **uzavřeno — Task 9 (351888e, f45d75d)**; v Task 8 byla změna hooku ještě otevřená |
+| C | kompaktace zachová ZAČÁTEK skillu (≤ 5 000 tokenů) | — (dokumentace: „Truncation keeps the start of the file") | ukazatel `:6–12` v pěti skillech. První `UMS-OVERLAY BEGIN` je na znaku 248 (brainstorming), 220 (executing-plans), 166 (finishing), 147 (SDD) a 132 (writing-plans), všude pod limitem 12 000 z verifikace revendoru. Pokyn po kompaktaci je v `.claude/hooks/contract-inject.ps1:14`. | uzavřeno |
+
+**Grep sweepy nad nasazením:**
+
+- Vzor `Inline Execution|Two execution options|Which approach?` (rozlišuje
+  velikost písmen) nad `*/SKILL.md` má **0 zásahů**.
+- Bez rozlišení velikosti padají zásahy jen do upstream řádků mimo bloky:
+  `executing-plans/SKILL.md:3`, `:22`, `:36`, `:56`, `:63`, `:70` (bloky
+  `:6–12`, `:383–458`) a `writing-plans/SKILL.md:202` (bloky `:6–12`,
+  `:204–269`).
+- Ve skillech a hoocích nasazení (bez testů, CHANGELOG a dokladů) se
+  `four overlays`, `přesně 4`, `plan-document-reviewer` ani `kilocode`
+  nevyskytují.
+- `v6.3.0` zbývá jen jako „(v6.3.0+)" v `shared/UMS_MEMORY_BANK_CONTRACT.md:726`.
+  To je zobecnění podle sekce 2.8, ne pozůstatek.
+
+## Kroky pro uživatele
+
+Připravené příkazy. Agent je nespouští, protože jde o chráněné větve nebo
+monorepo. Kroky 2 až 5 se týkají monorepa `D:\_datasys\ums`.
+
+1. **Fast-forward zrcadla `main`.** Chráněná větev, `origin/main` je 55
+   commitů za `vanila/main` (tip `8ca22db`, v6.4.2):
+   `! git push origin vanila/main:main`
+2. **Cílová větev monorepa je na tobě.** Monorepo teď stojí na tiketové
+   větvi `UMS-2890-pipeline-prichozich-udalosti`. Před prvním nasazením
+   přepni na větev, kam má vrstva jít.
+3. **První nasazení do monorepa.** Nejdřív nanečisto:
+   `pwsh ums/sync-with-monorepo.ps1 -Agent claude -Scope Monorepo -WhatIf`
+   - Čekej **exit 3**: bez manifestu je drift každý rozdíl. Projdi seznam
+     driftu a teprve pak rozhodni o `-Force`.
+   - STOP při prvním běhu nabízí `-Direction FromMonorepo`. **Tuto nabídku
+     pro tento upgrade nepřijímej.** Bez manifestu je směr neznámý
+     a přepsal by novější UMS položky forku (např. overlaye pro v6.4.2)
+     staršími z monorepa.
+4. **Dvoufázové nasazení při změně tagu (v6.3.0 → v6.4.2).**
+   - Běh s `-Force`, který skončí **exit 4**, zapsal JEN vanilla revendor.
+     Commitni ho v monorepu jako „vanilla sync".
+   - Druhý běh se na týchž nevendorovaných souborech zastaví znovu
+     a potřebuje `-Force` znovu. Hlášení prvního běhu tvrdí, že byly
+     přepsané, ale to ještě neplatí.
+   - Po druhém běhu commitni „overlay".
+5. **Při prvním nasazení se migruje `CLAUDE.md` monorepa** na blok mezi
+   markery. Sekce patřící vrstvě se nahradí na místě; projektové sekce
+   (např. „WF engine") zůstanou nedotčené. Zkontroluj diff před commitem
+   „overlay".
+6. **V cílech UMS neinstaluj superpowers zároveň jako plugin.** Skilly by
+   byly dvakrát, jednou bez overlaye.
+7. **Cizí adresáře v kořeni forku jsou na tvém rozhodnutí.** V `.claude/skills`
+   i `.agents/skills` zůstaly z dřívějšího ručního nasazení `vs-mcp-debugging`,
+   `wf-bpmn-authoring` a `wf-element-dev`. Nejsou v pinu a sync je nevlastní
+   (nemaže je). Chceš-li je odstranit:
+   ```powershell
+   Remove-Item -Recurse -Force .claude/skills/vs-mcp-debugging, .claude/skills/wf-bpmn-authoring, .claude/skills/wf-element-dev, .agents/skills/vs-mcp-debugging, .agents/skills/wf-bpmn-authoring, .agents/skills/wf-element-dev
+   ```
