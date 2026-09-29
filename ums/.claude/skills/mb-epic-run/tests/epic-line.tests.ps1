@@ -77,14 +77,18 @@ $hookDir = Join-Path $bare 'hooks'
 New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
 $hook = Join-Path $hookDir 'pre-receive'
 [IO.File]::WriteAllText($hook, "#!/bin/sh`nexit 1`n")
-$canHook = $true
-try { & chmod +x $hook 2>$null } catch { $canHook = $false }
+# chmod is only needed where the exec bit matters (POSIX); Git for Windows runs
+# a hook that starts with a shebang without it, and pwsh started outside Git
+# Bash may not have chmod on PATH at all. Its absence must not turn the case
+# off - the OUTCOME decides: if the hook took effect the ref is absent and the
+# call has to have thrown; only if the hook did not run is the case skipped.
+if (Get-Command chmod -ErrorAction SilentlyContinue) { & chmod +x $hook 2>$null }
 $threw = $false
 try { New-UmsEpicLine $work 'UMS-4' 'origin/develop' | Out-Null } catch { $threw = $true }
-if ($canHook -and (@(Invoke-Git $work @('ls-remote', 'origin', 'refs/heads/epic/UMS-4')).Count) -eq 0) {
+if (@(Invoke-Git $work @('ls-remote', 'origin', 'refs/heads/epic/UMS-4')).Count -eq 0) {
     Assert-True $threw 'odmitnuty push: vyjimka'
 } else {
-    Write-Host '  skip: pre-receive hook na tomto stroji nespusti (bez chmod), odmitnuty push se neoveruje'
+    Write-Host '  skip: pre-receive hook na tomto stroji nebezel, odmitnuty push se neoveruje'
 }
 Remove-Item -LiteralPath $hook -Force
 
