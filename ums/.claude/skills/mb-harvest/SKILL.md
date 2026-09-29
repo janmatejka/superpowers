@@ -63,9 +63,10 @@ git fetch origin
 git diff --name-only $(git merge-base <effective base> HEAD)..HEAD
 ```
 
-`<effective base>` is the work item's effective base (contract, "Repository
-Configuration": the `- **Báze:**` line of `<CTX_DIR>/context.md` when present,
-else `baseRef` from `<CTX_DIR>/ums-repo.json`) — this is a READ site, so
+`<effective base>` is the work item's effective base
+(contract/repository-configuration.md, "Repository Configuration"): the
+`- **Báze:**` line of `<CTX_DIR>/context.md` when present, else `baseRef` from
+`<CTX_DIR>/ums-repo.json` — this is a READ site, so
 whichever of the two resolves it is used as-is and never prefixed with `origin/`
 a second time. A local base branch is NOT used: a ticket workspace need not have
 one, and a stale one would silently widen `AFFECTED_MBS` with foreign paths.

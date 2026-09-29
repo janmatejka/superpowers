@@ -142,8 +142,8 @@ Adjustments to the checklist above:
      in the "Write design doc" phase below). When the
      **Jira ticket** step answered
      "none", the kebab slug alone names the branch — the ticket code is part of the
-     name only when there is one (contract, "Active Work Item (Design + Plan Pair)",
-     branch name derived from the slug). Test the creation postcondition here and
+     name only when there is one (contract, "Active Work Item (Design + Plan Pair)");
+     the branch name is derived from the slug. Test the creation postcondition here and
      only here: `proposals/active/` empty or absent and `context.md` IDLE.
   6. **Activation**, only when the **Target-MB discovery** step matched a
      queued draft: now move ALL files of

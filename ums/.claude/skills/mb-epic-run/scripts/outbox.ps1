@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     Every message between an epic's manager and a ticket session requires a
-    reply, except the named `Oznámení:` class (contract/message-protocol.md,
-    "Replies are required"). This file is the manager's ARTIFACT of that
+    reply, except the named `Oznámení:` class
+    (contract/message-protocol.md, "Replies are required"). This file is the manager's ARTIFACT of that
     obligation: it makes an unanswered or late message visible to
     `mb-epic-run status` without anybody reading a transcript. It records;
     it decides nothing and detects nothing by itself — the reply rule has no
@@ -237,8 +237,8 @@ function Set-UmsOutboxState {
     $rec = ConvertFrom-UmsOutboxLine $lines[$idx]
     if ($rec.State -ceq 'closed') { throw "Outbox: entry sent at $sentText is closed and closed is final" }
     if ($State -ceq 'resent') {
-        # ONE repeat after Due, then the human (contract/message-protocol.md,
-        # "Replies are required"). Only a message the manager SENT can be sent
+        # ONE repeat after Due, then the human
+        # (contract/message-protocol.md, "Replies are required"). Only a message the manager SENT can be sent
         # again; an entry addressed to `manager` is an answer the manager owes,
         # and that is answered, not repeated.
         if ($rec.To -ceq 'manager') { throw "Outbox: entry sent at $sentText is addressed to manager; the manager owes that answer and there is nothing to repeat" }

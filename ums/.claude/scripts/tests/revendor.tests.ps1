@@ -218,6 +218,15 @@ try {
     Assert-Match $res.Out 'dangling link in alpha\\SKILL\.md: \.\./no-such-dir/x\.md' 'output names the vendored file and the dangling link'
     [IO.File]::WriteAllText($gtAlpha, $gtRaw, [Text.UTF8Encoding]::new($false))
 
+    Write-Host '== verify: a literal marker string in a fragment body is reported with its cause'
+    # A fragment body quoting "UMS-OVERLAY BEGIN" is counted as a marker: BEGIN and END no longer balance.
+    [IO.File]::WriteAllText($gtAlpha, $gtRaw + "`nquoted marker: UMS-OVERLAY BEGIN`n", [Text.UTF8Encoding]::new($false))
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-VerifyOnly')
+    Assert-True ($res.Exit -ne 0) '-VerifyOnly fails when a literal marker string unbalances the counts'
+    Assert-Match $res.Out 'unbalanced overlay markers: 3 BEGIN vs 2 END' 'output names the marker counts'
+    Assert-Match $res.Out 'overlay fragment body must not contain the literal marker strings' 'output says a fragment body must not contain the literal marker strings'
+    [IO.File]::WriteAllText($gtAlpha, $gtRaw, [Text.UTF8Encoding]::new($false))
+
     Write-Host '== verify: required v6.4.2 files follow the pin'
     $vt = Join-Path $fx.Root 'verify-target'
     Write-UmsVendorPin (Join-Path $vt 'shared\VENDORED_FROM.md') 't2' 'abc123' @('executing-plans', 'writing-plans') @() '2026-01-01'

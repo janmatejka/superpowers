@@ -1,5 +1,5 @@
 #Requires -Version 7
-# Contract core injector (contract, "Session Eligibility"; design UMS-3551, §3).
+# Contract core injector (contract, "Session Eligibility"); design UMS-3551, §3.
 # SessionStart and UserPromptSubmit(after a compaction marker) inject the core
 # as additionalContext; PostCompact cannot carry additionalContext (Claude Code
 # hooks reference), so it writes a marker and a systemMessage instead.

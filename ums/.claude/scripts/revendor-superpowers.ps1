@@ -417,9 +417,12 @@ function Invoke-Verify {
             $appliedBegin += ([regex]::Matches($raw, 'UMS-OVERLAY BEGIN')).Count
             $appliedEnd   += ([regex]::Matches($raw, 'UMS-OVERLAY END')).Count
         }
-    if ($appliedBegin -ne $appliedEnd) { $problems.Add("unbalanced overlay markers: $appliedBegin BEGIN vs $appliedEnd END") }
+    # The counts are plain substring counts, so a fragment BODY that quotes a marker literally
+    # ('UMS-OVERLAY BEGIN' / 'UMS-OVERLAY END') is counted as a marker too - name that cause.
+    $markerHint = "an overlay fragment body must not contain the literal marker strings 'UMS-OVERLAY BEGIN' / 'UMS-OVERLAY END' (they are counted as markers)"
+    if ($appliedBegin -ne $appliedEnd) { $problems.Add("unbalanced overlay markers: $appliedBegin BEGIN vs $appliedEnd END - $markerHint") }
     if (-not $NoOverlays -and -not $VerifyOnly -and $appliedBegin -ne $fragments.Count) {
-        $problems.Add("overlay count mismatch: $($fragments.Count) fragments but $appliedBegin applied blocks")
+        $problems.Add("overlay count mismatch: $($fragments.Count) fragments but $appliedBegin applied blocks - $markerHint")
     }
 
     Step 'Verify: overlay pointer block within the re-injection window'

@@ -378,8 +378,9 @@ commit is already on `origin` regardless of whether the base ever received it.
    git merge-base --is-ancestor <sha> <effective base>   # non-zero exit = not on the base
    ```
 
-   `<effective base>` is `$base.Ref` — the work item's own CHOSEN base (contract,
-   "Repository Configuration", the effective base) — running this gate against the
+   `<effective base>` is `$base.Ref` — the work item's own CHOSEN base
+   (contract/repository-configuration.md, "Repository Configuration"), the
+   effective base — running this gate against the
    default `baseRef` instead would,
    for work integrating into a maintenance branch, pass or fail for the wrong
    reason: it would be asking the question about a branch this work item was never

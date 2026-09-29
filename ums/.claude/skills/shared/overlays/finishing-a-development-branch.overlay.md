@@ -110,8 +110,8 @@ After the user chooses and BEFORE executing the choice:
       of its tickets measures the identical thing. **That ledger sits on the
       epic's ELABORATION branch, and this working tree does not carry it** —
       this branch was cut from the epic LINE, which carries code and harvested
-      documents and none of the elaboration branch's documents (contract,
-      "The epic line"). Read it BY REF, after the `git fetch origin` this
+      documents and none of the elaboration branch's documents
+      (contract/epic-line.md, "The epic line"). Read it BY REF, after the `git fetch origin` this
       phase has already run:
 
       ```powershell
@@ -159,8 +159,9 @@ After the user chooses and BEFORE executing the choice:
       **Which document depends on what this work item HAS**, and that is the
       only choice here: `plan_<slug>.md` where there is a plan,
       `design_<slug>.md` for a **bounded** work item, which writes no plan at
-      all (contract/integration.md, "Integration"; the verification-set
-      homes; and "Brainstorming Paths" for why the design half always exists).
+      all (contract/integration.md, "Integration") for the verification-set
+      homes, and (contract/brainstorming-paths.md, "Brainstorming Paths") for
+      why the design half always exists.
       A missing plan on this path is the EXPECTED shape and never by itself a
       STOP. **This is the ONE call — do not run a plan-only variant first:**
 
@@ -431,8 +432,8 @@ After the user chooses and BEFORE executing the choice:
   for it is the contract's Publication Contract, subsection "Abandon", which the
   `mb-abort` skill follows too:
   1. move the active work item pair to `proposals/abandoned/` — BOTH halves,
-     unchanged, nothing deleted (contract, "Active Work Item (Design + Plan
-     Pair)", archival asymmetry) — and reset `memory-bank/context.md` to IDLE,
+     unchanged, nothing deleted, per the archival asymmetry of
+     (contract, "Active Work Item (Design + Plan Pair)") — and reset `memory-bank/context.md` to IDLE,
   2. **commit** that move on the ticket branch (Czech commit message) and **push**
      the branch,
   3. only then delete the LOCAL branch — and since git cannot delete the branch you
@@ -442,8 +443,8 @@ After the user chooses and BEFORE executing the choice:
 
   The order is the point, twice over. Deleting the branch before the commit would
   destroy the abandon move itself, which exists nowhere else — uncommitted work is
-  non-recoverable, and the agent never deletes non-recoverable content (contract,
-  "Workspace Discipline"). And because every earlier commit was pushed, `origin`
+  non-recoverable, and the agent never deletes non-recoverable content
+  (contract/workspace-discipline.md, "Workspace Discipline"). And because every earlier commit was pushed, `origin`
   still carries this branch with an ACTIVE pin and the pair still in `active/`
   until the commit-and-push of that move lands: `mb-doc-index` enumerates with
   declared intent over `origin` and would keep reporting `KOLIZE AKTIVNÍ PRÁCE`

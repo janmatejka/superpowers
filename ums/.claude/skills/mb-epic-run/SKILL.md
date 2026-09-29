@@ -109,8 +109,8 @@ that is the guarantee, and the field never was.
 
 **The duplicated `Bash(...)` and `PowerShell(...)` entries are not
 redundancy — do not prune them.** This fork's sessions run on the PowerShell
-tool (contract, "Publication Contract", where the same fact decides how the
-push guard reads a redirection), while the same commands are also issued
+tool (contract, "Publication Contract"), where the same fact decides how the
+push guard reads a redirection, while the same commands are also issued
 through the Bash tool. A restricting list names a tool AND its frame, so an
 entry present in only one frame leaves the command unusable in the other, and
 `git commit` issued through the PowerShell tool would break `spawn`'s step 3,

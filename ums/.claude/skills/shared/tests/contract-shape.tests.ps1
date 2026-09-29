@@ -129,6 +129,34 @@ Assert-True ($count -gt 50) "nalezeno dost citací ke kontrole ($count)"
 Assert-Eq @($bad).Count 0 ("každá citace má cíl: " + ($bad -join '; '))
 Assert-Eq @($legacy).Count 0 ("žádný legacy tvar citace: " + ($legacy -join '; '))
 
+# --- citation shape: nothing but the strict form is a citation ------------------
+# Ověření výše hledá JEN přesný tvar, takže citace s dovětkem UVNITŘ závorky
+# (`(contract, "X", kvalifikátor)`, `(contract, "X"; dovětek)`) nebo zalomená mezi
+# čárkou a názvem sekce (`(contract/f.md,` + nový řádek + `"X")`) nevyhoví žádnému
+# z regexů a zůstane tiše NEOVĚŘENÁ — nikdo ji nenahlásí. Proto se hledá každý
+# výskyt tvaru citace (`(contract`, volitelné `/soubor`, čárka, otevírací uvozovka
+# názvu sekce) a na TOMTÉŽ místě se vyžaduje striktní tvar `(contract[/f.md], "X")`
+# na jedné fyzické řádce se zavřenou závorkou hned za uvozovkou. Kvalifikátor patří
+# ZA závorku. Neuvozený název (`(contract, Document Ownership)`) a věcné závorky
+# (`(contract core)`, `(contract: …)`) tvar citace nemají a sem nepatří.
+$strictCite = [regex]::new('\G\(contract(/[^,)]+\.md)?, "[^"\r\n]+"\)')
+$citeShaped = [regex]::new('\(contract(?:/[^\s,)]+)?,\s*"')
+$shapeBad = @()
+$shapeCount = 0
+foreach ($f in $scan) {
+    $text = Get-Content -LiteralPath $f.FullName -Raw -Encoding utf8
+    if ($null -eq $text) { continue }
+    foreach ($m in $citeShaped.Matches($text)) {
+        $shapeCount++
+        if (-not $strictCite.Match($text, $m.Index).Success) {
+            $lineNo = ($text.Substring(0, $m.Index) -split "`n").Count
+            $shapeBad += ("{0}:{1}" -f $f.FullName.Substring($layer.Path.Length + 1), $lineNo)
+        }
+    }
+}
+Assert-True ($shapeCount -gt 50) "nalezeno dost výskytů tvaru citace ke kontrole ($shapeCount)"
+Assert-Eq @($shapeBad).Count 0 ("každý výskyt tvaru citace má striktní tvar (kvalifikátor patří za závorku): " + ($shapeBad -join '; '))
+
 # --- every reference has a consumer -------------------------------------------
 # Reference se cituje sama ve své hlavičce (`cite as (contract/<jméno>.md, …)`),
 # a `$scan` obsahuje i soubory referencí — takže bez vyloučení VLASTNÍHO souboru
