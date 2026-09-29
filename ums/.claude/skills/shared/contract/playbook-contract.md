@@ -119,6 +119,59 @@ Recorded extensions (a Memory Bank's own `Když …` sections):
   nebo overlay` when it passed 40 items (UMS-3552): `Když měníš skill nebo
   overlay`, `Když měníš kontrakt nebo referenci`, `Když píšeš report nebo
   komentář`.
+- `memory-bank/` of the monorepo root, round 1 of consolidation (UMS-3588):
+  `Když přepínáš větev, commituješ nebo pushuješ`, `Když edituješ nebo
+  obnovuješ soubor`, `Když voláš MCP nástroj nebo čteš výstup harnessu`.
+- `Common/EventStore/memory-bank/` round 1 of consolidation (UMS-3588): `Když
+  rozšiřuješ nebo měníš implementaci EventStore`.
+- `Common/UmsConfigBackup/memory-bank/` round 1 of consolidation (UMS-3588):
+  `` Když přidáváš `.reg` export do archivu ``.
+- `MobilChange/MXKernel/memory-bank/` round 1 of consolidation (UMS-3588):
+  `Když píšeš kód MXKernelu`.
+- `MobilChange/MxService/memory-bank/` round 1 of consolidation (UMS-3588):
+  `Když měříš výkon REST endpointu`.
+- `MobilChange/MxServicePoints/memory-bank/` round 1 of consolidation
+  (UMS-3588): `Když implementuješ chování service pointu`, `Když píšeš
+  interpretaci nebo kontrakt service pointu`, `Když zabezpečuješ nebo ověřuješ
+  service point`, `Když zakládáš nový service point nebo soubor v projektu`.
+- `MobilChange/SMSInfo3/memory-bank/` round 1 of consolidation (UMS-3588):
+  `Když měníš DB schéma nebo mazání entity`, `Když měníš sdílený kód nebo jeho
+  signaturu`, `Když píšeš autorizaci nebo scope kontrolu`, `Když píšeš český
+  text nebo hlášku`, `Když píšeš dotaz v linq2db nebo SQL`, `Když píšeš Razor
+  view, JavaScript nebo CSS`, `Když přidáváš lokalizační klíč nebo resource`,
+  `Když spouštíš smoke test KIC kampaně`, `Když tvrdíš něco o kódu nebo
+  dokumentu`.
+- `Setup/KicSetup/memory-bank/` round 1 of consolidation (UMS-3588): `Když
+  stavíš instalátor`.
+- `Setup/UmsSetup/memory-bank/` round 1 of consolidation (UMS-3588): `Když
+  píšeš nebo ověřuješ SQL deltu`.
+- `MobilChange/SMSInfo3/KicIvr/memory-bank/` round 1 of consolidation
+  (UMS-3588): `Když měníš síťové rozhraní`.
+- `MobilChange/SMSInfo3/KicWorkflow/memory-bank/` round 1 of consolidation
+  (UMS-3588): `` Když edituješ BPMN, Lua nebo layout v `BpmnData` ``, `Když
+  píšeš grain, stream nebo souběžný kód`, `Když píšeš pin nebo mutační důkaz`,
+  `Když píšeš silo test`, `Když pracuješ s ESL nebo FreeSWITCH`, `Když sdílíš
+  nebo umisťuješ kód mezi projekty`, `Když tvrdíš něco o kódu nebo dokumentu`,
+  `Když vyšetřuješ běh kampaně nebo prostředí KICDEV`.
+- `MobilChange/SMSInfo3/PCInfo/memory-bank/` round 1 of consolidation
+  (UMS-3588): `Když ladíš PCInfo klienta nebo KicInfo relaci`, `Když měníš nebo
+  stavíš WiX instalátor`, `Když měníš REST/OpenAPI kontrakt`, `Když ověřuješ
+  instalaci MSI`.
+- `MobilChange/SMSInfo3/SMSInfo3Database/memory-bank/` round 1 of
+  consolidation (UMS-3588): `Když píšeš databázovou migraci`.
+- `MobilChange/SMSInfo3/KicWorkflow/workflow-dashboard/memory-bank/` round 1
+  of consolidation (UMS-3588): `Když měníš síťové rozhraní`.
+- `MobilChange/SMSInfo3/KicWorkflow/WfKic/KicInfo/memory-bank/` round 1 of
+  consolidation (UMS-3588): `Když měníš síťové rozhraní`.
+- `MobilChange/SMSInfo3/KicWorkflow/WfKic/WfKicSilo/BpmnData/memory-bank/`
+  round 1 of consolidation (UMS-3588): `` Když edituješ BPMN, Lua nebo layout v
+  `BpmnData` ``.
+- `Setup/UmsSetup/memory-bank/` round 2 of consolidation (UMS-3588): `Když
+  edituješ nebo obnovuješ soubor`.
+- `MobilChange/WwwSms/memory-bank/` round 2 of consolidation (UMS-3588): `Když
+  edituješ nebo obnovuješ soubor`.
+- `MobilChange/SMSInfo3/memory-bank/` round 2 of consolidation (UMS-3588):
+  `Když měníš síťové rozhraní`.
 
 `Proč:` cites the incident in one sentence, not as a story; the story stays
 in git and in the archived design `Důkaz:` points to. The shape check tests
