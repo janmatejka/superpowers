@@ -34,9 +34,10 @@ what identifies it.** It is deliberately NOT in `protectedBranches`, and it is
 the ONE named exception to the invariant of contract/repository-configuration.md
 that an integration branch is always a protected branch: a branch that matches
 `epicBranchPattern` is a legitimate base — offered among the base candidates and
-chosen without the fail-closed STOP. A branch matching a protected pattern as
-well is protected; protection wins, and such a line is integrated by a human like
-any protected base. **A missing key means the built-in default `epic/*`** — a
+chosen without the fail-closed STOP. **A protected epic line is UNSUPPORTED**: a
+branch matching a protected pattern as well resolves as `protected`, never as
+an epic line, so `mb-epic-run spawn` STOPs on it and the remedy is to remove it
+from `protectedBranches`. **A missing key means the built-in default `epic/*`** — a
 widening a human decided when this model was designed, so that an epic runs with
 no extra configuration step. An explicitly empty, blank or non-string value
 means **no epic line at all**, never "every branch": no exception, and a base

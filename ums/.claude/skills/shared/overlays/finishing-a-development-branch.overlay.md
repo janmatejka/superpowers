@@ -94,9 +94,15 @@ After the user chooses and BEFORE executing the choice:
     `$baseKind -eq 'epic-line'` is that test: an UNPROTECTED branch matching
     `$cfg.EpicBranchPattern` — the built-in `epic/*` when the key is missing,
     no epic line at all when it is explicitly empty or not a string, never
-    "every branch" (contract/epic-line.md, "The epic line"). A branch that is
-    also protected comes back `protected`, and a human integrates it like any
-    protected base. The gate itself never resolves this
+    "every branch" (contract/epic-line.md, "The epic line"). **A protected
+    epic line is unsupported** (same section): it comes back `protected`, never
+    `epic-line`. So a ticket that belongs to an epic (Jira `parent`, or the
+    design header's `- **Epic:**` line) with `$baseKind` `protected` and
+    `$base.Branch` being that epic's line `epic/<KEY>` is a **STOP** here —
+    report in Czech that the line has to leave `protectedBranches` in
+    `memory-bank/ums-repo.json` (the operator's change), and do NOT go on to
+    read the verification set from this work item's own plan or design, where
+    the epic's shared set is not. The gate itself never resolves this
     (contract/integration.md, "Integration"): it only compares what it
     is handed, so finding the set's home is this phase's job, not the gate's.
     - **The base is an epic line** (a ticket that belongs to an epic) → the set lives

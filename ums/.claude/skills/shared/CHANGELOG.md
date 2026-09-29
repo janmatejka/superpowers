@@ -18,7 +18,9 @@
   is the built-in `epic/*`, an explicitly empty or non-string value means no
   epic line) — the one named exception to "an integration branch is always a
   protected branch", offered among the base candidates and created by
-  `mb-epic-run spawn` from the delivery line; the four-condition actor-rule
+  `mb-epic-run spawn` from the delivery line; a protected epic line is
+  unsupported (spawn STOPs with the remedy of removing it from
+  `protectedBranches`); the four-condition actor-rule
   exception in `guard-git-push.mjs` is removed. A ticket integrates into the
   line only after the manager's `go`: `mb-epic-run integrate` checks and
   answers `go` (with the checked tip) or `STOP` and pushes nothing, the ticket
@@ -26,7 +28,18 @@
   that `go` is not mechanically enforced is recorded as an accepted residual
   risk (`epic-line.md` and its doklad). The escalation floor keeps the exit
   into the delivery line and deleting the line with a human. The Publication
-  Contract no longer calls the `AI_AGENT` fallback Claude-Code-only.
+  Contract no longer calls the `AI_AGENT` fallback Claude-Code-only. Every
+  message between an epic's manager and a ticket session now requires a reply,
+  in both directions (`message-protocol.md`, "Replies are required"): the
+  reply's first line is `Re: <UTC send time>` (directly below the mark on a
+  manager's message), nobody replies to a reply, one handoff gets one answer
+  and a retry after `STOP` is a new handoff with a new send time; the one class
+  without a reply is the announcement, `Oznámení:` — a fact of the sender's own
+  action verifiable in a shared artifact. The wait is visible on both sides: the
+  ticket's `NOW` block (`waiting-for-manager`, or in finishing the report and
+  the `## Předání` line) and the manager's git-ignored outbox
+  `.superpowers/epic/<KEY>/outbox.md`, rendered by `mb-epic-run status`; after
+  `Due` one repeat, then the human.
 - 3.1 — playbook tree and ancestor chain, file and item shape, escalation
   threshold with a ratchet, legacy mode, harvest gate v2, consolidation of one
   Memory Bank and of the whole tree, Scope Lock exceptions for playbook writes

@@ -407,11 +407,17 @@ In this order, and the order is the point.
    `none` — the configuration switched the epic line off (`epicBranchPattern`
    explicitly empty) or names another pattern — is a STOP with that reason: a
    ticket branch cut from a base the entry gate would refuse cannot start.
-   `protected` — a legacy configuration that still lists the line in
-   `protectedBranches` — creates nothing: where `origin/epic/<EPIK>` is absent
-   that is a STOP (a human creates a protected branch), and where it exists the
-   tickets integrate into it by a human's command, so no `go` of yours moves
-   it — say so in the report. A thrown `New-UmsEpicLine` (failed fetch,
+   `protected` — the configuration still lists the line in
+   `protectedBranches` — is UNSUPPORTED and a STOP too, whether or not
+   `origin/epic/<EPIK>` exists: the epic line is an unprotected base
+   (contract/epic-line.md, "The epic line"), and a protected one would send its
+   tickets past the epic's verification set and its `go` alike. Nothing is
+   created and nothing is written. Report the remedy in Czech: „Linie
+   `epic/<EPIK>` je v `memory-bank/ums-repo.json` mezi `protectedBranches`.
+   Linie epiku je nechráněná báze — odeber z `protectedBranches` vzor, který ji
+   chrání (typicky `epic/*`), znovu spusť `install-git-hooks.ps1` a pak spawn
+   zopakuj." A change to `protectedBranches` is the human's (the Escalation
+   floor), so offer the remedy, never apply it. A thrown `New-UmsEpicLine` (failed fetch,
    unresolvable delivery line, malformed key, refused push) is a STOP; never
    name a base that does not exist.
    `$line.Created` → report „linie epiku založena z <delivery line> na
