@@ -296,6 +296,21 @@ function Invoke-Vendor {
     Write-UmsVendorPin $PinFile $useTag $commit $skills @($pin.Excluded) (Get-UmsRepoStateDate $SkillsRoot)
 }
 
+# The bash that runs the SDD scripts in verification. On Windows it is the Git Bash of
+# the git installation (<Git>\bin\bash.exe next to <Git>\cmd\git.exe), never the `bash`
+# on PATH: that is often the WSL launcher, and WSL cannot read the Windows gitdir path
+# in the .git FILE of a linked worktree (a pool slot) - git there fails with "not a git
+# repository". $null on Windows when no Git Bash is found; `bash` elsewhere.
+function Resolve-UmsGitBash {
+    if (-not $IsWindows) { return 'bash' }
+    $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $git) { return $null }
+    $gitRoot = Split-Path (Split-Path $git.Source -Parent) -Parent
+    $candidate = Join-Path $gitRoot 'bin\bash.exe'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    return $null
+}
+
 # --------------------------------------------------------------- overlays ---
 # Claude Code re-injects only the first ~5,000 tokens of a skill after compaction, so
 # the first overlay block of a skill must start within $MaxChars characters (a header
@@ -493,8 +508,12 @@ function Invoke-Verify {
             $gitTop = git -C $SkillsRoot rev-parse --show-toplevel 2>$null
             if ($LASTEXITCODE -ne 0 -or -not $gitTop) { $gitTop = $null }
         }
+        $gitBash = Resolve-UmsGitBash
         if ($null -eq $gitTop) {
             Write-Host 'SKIP: sdd-workspace functional test (target is not inside a git repository)'
+        }
+        elseif ($null -eq $gitBash) {
+            Write-Host 'SKIP: sdd-workspace functional test (Git Bash not found)'
         }
         else {
             $gitTop = ([IO.Path]::GetFullPath(($gitTop | Select-Object -First 1))).TrimEnd('\', '/')
@@ -508,7 +527,7 @@ function Invoke-Verify {
             $workspace = Join-Path $gitTop '.superpowers\sdd\.superpowers-revendor-verify'
             try {
                 Set-Content -Path (Join-Path $gitTop $planFile) -Value '# revendor verify plan' -NoNewline
-                $out = bash $sddWs $planFile 2>&1
+                $out = & $gitBash $sddWs $planFile 2>&1
                 if ($LASTEXITCODE -ne 0 -or -not $out) { $problems.Add("sdd-workspace failed (exit $LASTEXITCODE): $out") }
                 elseif (-not (Test-Path $workspace)) { $problems.Add('sdd-workspace did not create the plan workspace') }
             } finally {

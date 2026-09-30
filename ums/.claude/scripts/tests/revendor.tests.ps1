@@ -195,6 +195,32 @@ try {
     Assert-True (-not (Test-Path (Join-Path $gt '.superpowers\sdd\.superpowers-revendor-verify'))) 'the functional test leaves no plan workspace behind'
     Assert-True (-not (Test-Path (Join-Path $gt '.superpowers-revendor-verify.md'))) 'the functional test leaves no throwaway plan file behind'
 
+    Write-Host '== Resolve-UmsGitBash: Git Bash, never the WSL launcher on PATH'
+    if (-not (Get-Command Resolve-UmsGitBash -ErrorAction SilentlyContinue)) {
+        Assert-True $false 'Resolve-UmsGitBash exists'
+    }
+    elseif ($IsWindows) {
+        $gb = Resolve-UmsGitBash
+        Assert-True (($null -ne $gb) -and ($gb -match 'bash\.exe$') -and (Test-Path -LiteralPath $gb)) 'Windows: Resolve-UmsGitBash returns an existing bash.exe'
+        Assert-True (($null -ne $gb) -and ($gb -notmatch '\\WindowsApps\\')) 'Windows: not the WSL launcher from WindowsApps'
+    }
+    else {
+        Assert-Eq (Resolve-UmsGitBash) 'bash' 'non-Windows: bash from PATH'
+    }
+
+    Write-Host '== verify in a target that is a LINKED worktree (a pool slot)'
+    # The .git of a linked worktree is a FILE holding a Windows gitdir path; a WSL bash
+    # cannot read it and git inside it fails with "not a git repository".
+    $slot = Join-Path $fx.Root 'linked-slot'
+    Invoke-FxGit $gt @('worktree', 'add', '-q', '-b', 'slot', $slot) | Out-Null
+    $slotSkills = Join-Path $slot '.claude\skills'
+    Add-RevendorFixtureOverlays (Join-Path $slotSkills 'shared\overlays')
+    $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $slotSkills, '-PinSource', $pinFile)
+    Assert-Eq $res.Exit 0 'full run into a linked-worktree target succeeds'
+    Assert-True (-not $res.Out.Contains('sdd-workspace failed')) 'linked worktree: the sdd-workspace functional test does not fail'
+    Assert-True (-not $res.Out.Contains('SKIP: sdd-workspace')) 'linked worktree: the functional test ran, it was not skipped'
+    Assert-True (-not (Test-Path (Join-Path $slot '.superpowers\sdd\.superpowers-revendor-verify'))) 'linked worktree: no plan workspace left behind'
+
     Write-Host '== second -OverlaysOnly on an overlayed target: one pristine-file failure'
     $res = Invoke-Revendor @('-SpRepo', $fx.SpRepo, '-UmsRoot', $fx.UmsRoot, '-SkillsRoot', $gtSkills, '-PinSource', $pinFile, '-OverlaysOnly')
     Assert-True ($res.Exit -ne 0) 'overlays over an already overlayed target fail'
