@@ -59,6 +59,38 @@ try {
     Assert-Eq (Get-Guarantee hermes Monorepo) 'none' '(data) hermes v projektu: zaruka neváže (mechanismus jen v profilu)'
     Assert-Eq (Get-Guarantee hermes UserProfile) 'marker' '(data) hermes v profilu: marker'
 
+    # --- nabidka cile: rozhoduji jen parametry cile, ne -Force/-WhatIf ------------------
+    # Guarded: a missing function must fail the assertion, not kill the suite.
+    function Get-NeedsMenu([string[]] $Keys) {
+        if (-not (Get-Command Test-UmsNeedsTargetMenu -ErrorAction SilentlyContinue)) { return '<missing>' }
+        return [string](Test-UmsNeedsTargetMenu -BoundKeys $Keys)
+    }
+    Assert-Eq (Get-NeedsMenu @()) 'True' '(menu) bez parametru: nabidka'
+    Assert-Eq (Get-NeedsMenu @('Force')) 'True' '(menu) jen -Force: nabidka (neprebere vychozi cil)'
+    Assert-Eq (Get-NeedsMenu @('WhatIf')) 'True' '(menu) jen -WhatIf: nabidka'
+    Assert-Eq (Get-NeedsMenu @('Force', 'WhatIf', 'DotSourceOnly')) 'True' '(menu) -Force -WhatIf -DotSourceOnly: nabidka'
+    foreach ($k in 'Agent', 'Scope', 'MonorepoRoot', 'UserProfileRoot', 'Direction', 'ForkUmsDir') {
+        Assert-Eq (Get-NeedsMenu @($k, 'Force')) 'False' "(menu) -$k zadan (i s -Force): bez nabidky"
+    }
+
+    # --- drift: rozhodnuti a odpoved na dotaz ------------------------------------------
+    function Get-DriftAction([bool] $HasDrift, [bool] $Force, [bool] $Preview, [bool] $Interactive) {
+        if (-not (Get-Command Get-UmsDriftAction -ErrorAction SilentlyContinue)) { return '<missing>' }
+        return [string](Get-UmsDriftAction -HasDrift $HasDrift -Force $Force -Preview $Preview -Interactive $Interactive)
+    }
+    Assert-Eq (Get-DriftAction $false $false $false $true) 'proceed' '(drift) bez driftu: pokracovat'
+    Assert-Eq (Get-DriftAction $true $true $false $false) 'proceed' '(drift) -Force: pokracovat bez dotazu'
+    Assert-Eq (Get-DriftAction $true $true $true $true) 'proceed' '(drift) -Force -WhatIf: pokracovat (nahled bez STOP hlasky)'
+    Assert-Eq (Get-DriftAction $true $false $true $true) 'preview' '(drift) -WhatIf: nahled'
+    Assert-Eq (Get-DriftAction $true $false $false $true) 'ask' '(drift) interaktivne bez -Force: zeptat se'
+    Assert-Eq (Get-DriftAction $true $false $false $false) 'stop' '(drift) neinteraktivne bez -Force: STOP'
+    function Get-DriftAnswer([string] $Answer) {
+        if (-not (Get-Command ConvertFrom-UmsDriftAnswer -ErrorAction SilentlyContinue)) { return '<missing>' }
+        return [string](ConvertFrom-UmsDriftAnswer $Answer)
+    }
+    foreach ($a in 'y', 'Y', 'yes', ' y ') { Assert-Eq (Get-DriftAnswer $a) 'proceed' "(drift) odpoved '$a': prepsat" }
+    foreach ($a in '', 'n', 'no', 'x') { Assert-Eq (Get-DriftAnswer $a) 'stop' "(drift) odpoved '$a': STOP" }
+
     # ============ fixtura A: monorepo na t1, fork na t2 (pripad 6, pak 4 a -WhatIf) ============
     $fxA = New-SyncFixture
     $monoA = $fxA.Mono
@@ -70,6 +102,8 @@ try {
     Assert-Eq $r.Code 4 '(6) cil t1, fork t2: exit 4'; Show-OnFail $r 4
     Assert-Match $r.Output 'vanilla sync' '(6) vypis vybidne commitnout "vanilla sync"'
     Assert-Match $r.Output 'run (this script )?again' '(6) vypis vybidne spustit znovu'
+    Assert-Match $r.Output '(?i)exit 4 is not an error' '(6) hlaska exit 4 rika, ze nejde o chybu'
+    Assert-Match $r.Output ('(?i)delete the manifest.*' + [regex]::Escape((Get-MonoManifest $fxA))) '(6) hlaska exit 4: pri revertu smazat manifest (s cestou)'
     Assert-Eq (Read-Text (Join-Path $skA 'alpha\SKILL.md')) "# Alpha`nline two`n" '(6) alpha je pristine t2 (bez overlaye)'
     Assert-True (Test-Path -LiteralPath (Join-Path $skA 'gamma\SKILL.md')) '(6) gamma z t2 je v cili'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $skA 'beta'))) '(6) beta (v t2 pryc) z cile zmizela'
@@ -236,6 +270,25 @@ try {
         Assert-Match (Read-Text $forkMbB) 'fork edit \(case 1\)' '(1) fork zustal (nic se netahalo zpet)'
     }
     else { Write-Host '  SKIP: (1) parameter-free run skipped - the default monorepo root did not resolve to the fixture' }
+
+    # (9) neinteraktivni -Force BEZ cile: odmitnuto (exit 1), nic se nezapise;
+    #     -WhatIf bez cile zustava na vychozich hodnotach (exit 0)
+    if ($defaultRoot -eq $monoB) {
+        Add-Text $forkMbB 'fork edit (case 9)'
+        $treeB9 = Get-TreeState $monoB
+        $manB9 = Read-Text $manB
+        $out = & $pwshExe -NoProfile -NonInteractive -File $scriptB -Force 2>&1 | ForEach-Object { "$_" } | Out-String
+        $code = $LASTEXITCODE
+        Assert-Eq $code 1 '(9) neinteraktivni -Force bez cile: exit 1'; if ($code -ne 1) { Write-Host $out }
+        Assert-Match $out '(?i)-Force needs an explicit target' '(9) hlaska: -Force potrebuje explicitni cil'
+        Assert-Eq (Get-TreeState $monoB) $treeB9 '(9) cil nezmenen'
+        Assert-Eq (Read-Text $manB) $manB9 '(9) manifest nezmenen'
+        $out = & $pwshExe -NoProfile -NonInteractive -File $scriptB -WhatIf 2>&1 | ForEach-Object { "$_" } | Out-String
+        $code = $LASTEXITCODE
+        Assert-Eq $code 0 '(9) neinteraktivni -WhatIf bez cile: exit 0 (vychozi hodnoty)'; if ($code -ne 0) { Write-Host $out }
+        Assert-Eq (Get-TreeState $monoB) $treeB9 '(9) -WhatIf bez cile: cil nezmenen'
+    }
+    else { Write-Host '  SKIP: (9) skipped - the default monorepo root did not resolve to the fixture' }
     $env:UMS_SYNC_MONOREPO_ROOT = $envBefore
     Remove-SyncFixture $fxB; $fxB = $null
 

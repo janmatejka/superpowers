@@ -73,17 +73,25 @@
 
     -WhatIf prints what the run would write and the drift, writes nothing
     (no file, no manifest, no exclude line, no hook) and exits 0.
-    -Force deploys over drift.
+    -Force deploys over drift. In an interactive console a run without -Force
+    that finds drift lists it and asks ONCE whether to overwrite it (y = the
+    same as -Force, anything else = STOP, exit 3), so nothing has to be typed
+    again.
 
-    Exit codes: 0 done; 1 error (nothing or part written - read the output);
-    3 drift STOP (nothing written); 4 vanilla phase done (commit "vanilla sync"
-    in the target, run again); 5 deployed, but a per-agent step failed (marker
-    writer error, pre-push not confirmed) - the summary names it.
+    Exit codes: 0 done; 1 error (nothing or part written - read the output),
+    including a non-interactive -Force without a target parameter; 3 drift
+    STOP (nothing written); 4 vanilla phase done - not an error (commit
+    "vanilla sync" in the target, run again; if you revert the target instead,
+    delete the manifest the output names); 5 deployed, but a per-agent step
+    failed (marker writer error, pre-push not confirmed) - the summary names it.
 
-    Run WITHOUT parameters in an interactive console to be prompted for each
-    parameter with its default offered (Enter accepts the default). In a
-    non-interactive process (redirected stdin, pwsh -NonInteractive) the
-    defaults apply silently: claude, Monorepo, ToMonorepo.
+    Target parameters are -Agent, -Scope, -MonorepoRoot, -UserProfileRoot,
+    -Direction and -ForkUmsDir. With none of them given, an interactive console
+    prompts for each parameter with its default offered (Enter accepts the
+    default) - also when only -Force or -WhatIf is given. In a non-interactive
+    process (redirected stdin, pwsh -NonInteractive) the defaults apply
+    silently (claude, Monorepo, ToMonorepo), except that -Force without a
+    target parameter is refused with exit 1.
 #>
 #Requires -Version 7
 [CmdletBinding()]
@@ -1105,6 +1113,33 @@ function Get-UmsPlanDrift($Plan, [hashtable] $ManifestFiles) {
     return (Test-UmsDeployDrift $target $ManifestFiles $fork)
 }
 
+# ------------------------------------------- target choice and the drift answer
+# Only these parameters choose the target of a run; -Force, -WhatIf and
+# -DotSourceOnly never do. With none of them bound an interactive run shows the
+# target menu (even with -Force or -WhatIf alone), and a non-interactive -Force
+# is refused instead of running against the default target.
+function Test-UmsNeedsTargetMenu([string[]] $BoundKeys) {
+    $targetParameters = @('Agent', 'Scope', 'MonorepoRoot', 'UserProfileRoot', 'Direction', 'ForkUmsDir')
+    foreach ($k in @($BoundKeys)) { if ($targetParameters -contains $k) { return $false } }
+    return $true
+}
+
+# What a run does about drift: 'proceed' (no drift, or -Force), 'preview'
+# (-WhatIf lists it and writes nothing), 'ask' (interactive: one question for the
+# whole run) or 'stop' (non-interactive without -Force: exit 3).
+function Get-UmsDriftAction([bool] $HasDrift, [bool] $Force, [bool] $Preview, [bool] $Interactive) {
+    if (-not $HasDrift -or $Force) { return 'proceed' }
+    if ($Preview) { return 'preview' }
+    if ($Interactive) { return 'ask' }
+    return 'stop'
+}
+
+# The answer to the drift question: only an explicit yes overwrites.
+function ConvertFrom-UmsDriftAnswer([string] $Answer) {
+    if ("$Answer".Trim() -in @('y', 'yes')) { return 'proceed' }
+    return 'stop'
+}
+
 # Tests need only the function definitions, not the full sync run.
 if ($DotSourceOnly) { return }
 
@@ -1119,11 +1154,20 @@ function Read-WithDefault([string]$Prompt, [string]$Default) {
 $isNonInteractive = [Console]::IsInputRedirected -or
     ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
 $Preview = [bool]$WhatIf
+$needsTargetMenu = Test-UmsNeedsTargetMenu @($PSBoundParameters.Keys)
 
-# The menu appears only in an interactive session started WITHOUT parameters.
-# A non-interactive process without parameters runs the defaults silently
-# (claude, Monorepo, ToMonorepo), so automation keeps working.
-if ($PSBoundParameters.Count -eq 0 -and -not $isNonInteractive) {
+# A non-interactive -Force must name its target: the defaults point at a live
+# monorepo, and overwriting it by accident is exactly what -Force must not do.
+if ($Force -and $needsTargetMenu -and $isNonInteractive) {
+    Write-Host '-Force needs an explicit target in a non-interactive run: pass -Scope with -MonorepoRoot or -UserProfileRoot (or -Agent) - nothing was written.' -ForegroundColor Red
+    exit 1
+}
+
+# The menu appears in an interactive session whenever no target parameter was
+# given - -Force or -WhatIf alone do not skip it. A non-interactive process
+# without parameters runs the defaults silently (claude, Monorepo, ToMonorepo),
+# so automation keeps working.
+if ($needsTargetMenu -and -not $isNonInteractive) {
     Write-Host 'No parameters given - interactive setup (Enter = default):' -ForegroundColor Cyan
 
     # Agent names only: a scratch root, so a missing default drive (D:) cannot throw here.
@@ -1431,10 +1475,19 @@ foreach ($x in $drifted) {
     foreach ($f in $x.Files) { Write-Host "    $f" -ForegroundColor Yellow }
 }
 if ($drifted.Count -gt 0) {
-    if ($Force) {
+    $driftAction = Get-UmsDriftAction -HasDrift $true -Force ([bool]$Force) -Preview $Preview -Interactive (-not $isNonInteractive)
+    if ($driftAction -eq 'ask') {
+        if (@($drifted | Where-Object { $null -eq $_.Manifest.Files }).Count -gt 0) {
+            Write-Host 'Note: without a manifest the direction of these differences is unknown - -Direction FromMonorepo would overwrite newer fork content with the target''s.' -ForegroundColor Yellow
+        }
+        $driftAction = ConvertFrom-UmsDriftAnswer (Read-Host 'Overwrite the drifted files listed above (same as -Force)? [y/N]')
+        # A yes is -Force for the rest of the run (the vanilla branch and the overwrite note read it).
+        if ($driftAction -eq 'proceed') { $Force = $true }
+    }
+    if ($driftAction -eq 'proceed') {
         # Says nothing yet: whether the drift is overwritten depends on the vanilla decision below.
     }
-    elseif ($Preview) {
+    elseif ($driftAction -eq 'preview') {
         Write-Host 'WhatIf: without -Force this run would STOP here (exit 3); below is what a run with -Force would write.' -ForegroundColor Yellow
     }
     else {
@@ -1521,6 +1574,11 @@ if ($vanilla.Count -gt 0) {
     Write-Host ''
     Write-Host "VANILLA PHASE DONE: the vendored skills were re-vendored at $forkTag WITHOUT overlays; the UMS layer, instructions, marker and git hooks were NOT touched." -ForegroundColor Yellow
     Write-Host 'NEXT: commit this in the target as "vanilla sync", then run this script again - it mirrors the UMS layer and applies the overlays (commit "overlay").' -ForegroundColor Yellow
+    Write-Host 'The vanilla phase finished successfully - exit 4 is not an error, it asks for that commit and a second run.' -ForegroundColor Yellow
+    foreach ($plan in $plans) {
+        if (-not $plan.SkillsDir -or @($vanilla | Where-Object { $_.Dir -ieq $plan.SkillsDir }).Count -eq 0) { continue }
+        Write-Host "If you revert the target instead of committing it, delete the manifest $($manifests[$plan.Agent].Path) first - otherwise the next run reports the reverted skills as drift." -ForegroundColor Yellow
+    }
     exit 4
 }
 

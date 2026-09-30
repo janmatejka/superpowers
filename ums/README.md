@@ -221,10 +221,13 @@ below).
 **The fork is the master copy.** The default `-Direction ToMonorepo` deploys
 fork → target for every scope; `-Direction FromMonorepo` is the deliberate pull
 of monorepo changes back into the fork and exists only for `-Agent claude
--Scope Monorepo` (it never pulls the vendored skills). Run bare in an
-interactive console the script asks for agent(s), scope and direction (Enter =
-default); in a non-interactive process the defaults apply silently (`claude`,
-`Monorepo`, `ToMonorepo`).
+-Scope Monorepo` (it never pulls the vendored skills). Run in an interactive
+console without any target parameter (`-Agent`, `-Scope`, `-MonorepoRoot`,
+`-UserProfileRoot`, `-Direction`, `-ForkUmsDir`) the script asks for agent(s),
+scope and direction (Enter = default) — also when only `-Force` or `-WhatIf` is
+given, so neither ever picks the default target silently. In a non-interactive
+process the defaults apply silently (`claude`, `Monorepo`, `ToMonorepo`), except
+that `-Force` without a target parameter is refused (exit 1).
 
 ```powershell
 pwsh ums/sync-with-monorepo.ps1                              # interactive
@@ -266,8 +269,10 @@ target's git directory, so per worktree — outside git in the target root). Bef
 writing, target, manifest and fork are compared: a file changed in the target
 since the last deployment whose change the fork does not have stops the run
 (exit 3) with the file list; resolve it with `-Direction FromMonorepo` (claude +
-Monorepo) or overwrite deliberately with `-Force`. A first run without a
-manifest stops on every difference. A hand edit of a vendored skill is caught
+Monorepo) or overwrite deliberately with `-Force`. In an interactive console a
+run without `-Force` lists the drift and asks once whether to overwrite it (`y` =
+the same as `-Force`, anything else = the STOP), so the parameters need not be
+typed again. A first run without a manifest stops on every difference. A hand edit of a vendored skill is caught
 the same way; an `mb-*` directory present only in the target is a warning.
 
 **A tag change on a git-tracked target is two runs.** The first run does only
@@ -277,9 +282,12 @@ run mirrors the layer and applies the overlays: commit "overlay". A target with
 the same tag, or one not tracked by git, is deployed in one pass.
 
 **Exit codes:** `0` done; `1` error (read the output — nothing or part was
-written); `3` drift STOP (nothing written); `4` vanilla phase done (commit and
-run again); `5` deployed, but a per-agent step failed (marker writer error,
-`pre-push` not confirmed) — the summary names it.
+written), including a non-interactive `-Force` without a target parameter; `3`
+drift STOP (nothing written); `4` vanilla phase done — not an error (commit and
+run again; if you revert the target instead, delete the manifest the output
+names first, or the next run reports the reverted skills as drift); `5`
+deployed, but a per-agent step failed (marker writer error, `pre-push` not
+confirmed) — the summary names it.
 
 **`-Scope Fork` deploys the layer into this fork's own root** (the git
 toplevel), which replaces refreshing the working copy by hand: `claude` gets
