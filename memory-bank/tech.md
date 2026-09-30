@@ -335,15 +335,16 @@ diakritiku v textu varování; spuštěná přímo z PowerShellu sada prochází
   parametrů přesměruje kořen monorepa proměnnou `UMS_SYNC_MONOREPO_ROOT` na
   fixturu a před během ověří, že default opravdu míří na fixturu).
 - [`ums/.claude/scripts/tests/`](../ums/.claude/scripts/tests/) —
-  `revendor.tests.ps1` (108) s `_assert.ps1` a `new-revendor-fixture.ps1`
+  `revendor.tests.ps1` (117) s `_assert.ps1` a `new-revendor-fixture.ps1`
   (offline „upstream" je lokální git repo se dvěma tagy): čtení a zápis pinu
   (Tag, Commit, Skills, Excluded), `-PinOnly` (bez rozhodnutí o novém skillu
   selže a jmenuje ho, `-Exclude`, idempotence), vendor fáze čtoucí tag i sadu
   skillů z pinu (`-SkillsRoot` mimo `UmsRoot`, `-PinSource`, bez `-Tag`),
   mazání skillů, které opustily pin, poloha hlavičkového ukazatele, víc
   fragmentů na cíl (tělo první, ukazatel druhý, jedna hláška „cíl není
-  pristine"), požadované soubory podle pinu a zvlášť vyjmutý funkční test
-  `sdd-workspace` mimo git repo.
+  pristine"), požadované soubory podle pinu, funkční test `sdd-workspace`
+  pod Git Bash i v cíli, který je linked worktree (pool slot), `Resolve-UmsGitBash`
+  a zvlášť vyjmutý funkční test mimo git repo.
 
 - [`mb-epic-graph/tests/`](../ums/.claude/skills/mb-epic-graph/tests/) —
   `e2e.tests.ps1` (12), `graph-generation.tests.ps1` (27),
@@ -543,8 +544,12 @@ jeho Python (ruff, ty).
   poziční argumenty a běží nad jiným filesystémem. `install-git-hooks.ps1`
   proto Git Bash hledá explicitně (`bin\bash.exe`/`usr\bin\bash.exe` vedle
   `git.exe`), nikdy přes `bash` z PATH. WSL `bash` z PATH navíc nečte absolutní
-  windowsovou cestu (`C:/…`): skript předaný takovou cestou z pwsh skončí
-  exit 127, proto `revendor-superpowers.ps1` volá `bash` cestou relativní.
+  windowsovou cestu (`C:/…`) — skript předaný takovou cestou z pwsh skončí
+  exit 127 — a v linked worktree nepřečte windowsový `gitdir` v souboru `.git`
+  (`fatal: not a git repository`, exit 128). `revendor-superpowers.ps1` proto
+  spouští funkční test `sdd-workspace` pod Git Bash z instalace gitu
+  (`Resolve-UmsGitBash`: `<Git>\bin\bash.exe` vedle `<Git>\cmd\git.exe`); bez
+  Git Bash na Windows test ohlášeně přeskočí.
 - **`sdd-workspace` pod Git Bash zapíše do markeru `plan-path` absolutní msys
   cestu** (`/c/Users/…`), ne windowsovou (`C:/…`). Kdo marker čte, musí
   akceptovat oba tvary; test `contract-inject.tests.ps1` proto pokrývá i msys

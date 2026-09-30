@@ -1441,8 +1441,9 @@ jakémkoli nálezu: visící relativní odkazy, zbytky v5 souborů, chybějící
 soubory pinovaných skillů (mj. `executing-plans/scripts/task-start`/`task-done`),
 nevyvážené overlay značky, CRLF v bashových skriptech, poloha prvního
 overlay bloku (viz „Hlavičkový ukazatel") a funkční test `sdd-workspace` v Git
-Bash — ten se v cíli mimo git repozitář (profil uživatele) přeskočí s
-ohlášením, ne potichu. Relativní odkazy ve `shared/` míří jen uvnitř kořene
+Bash z instalace gitu, ne v `bash` z PATH, takže projde i v pool slotu (linked
+worktree) — v cíli mimo git repozitář (profil uživatele) nebo bez Git Bash se
+přeskočí s ohlášením, ne potichu. Relativní odkazy ve `shared/` míří jen uvnitř kořene
 skillů: `shared/` se nasazuje i do cílů, které nesou jen skilly, takže cesta
 mimo něj (`hooks/`, `scripts/`) je ve `shared/` prostý text, ne odkaz.
 
