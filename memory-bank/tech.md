@@ -325,12 +325,15 @@ diakritiku v textu varování; spuštěná přímo z PowerShellu sada prochází
   náhrada bloku na místě, migrace souboru bez markerů podle nadpisů sekcí
   s bajtově nedotčeným zbytkem), `sync-fork.tests.ps1` (61; `-Scope Fork` —
   nesahá na `CLAUDE.md` ani `AGENTS.md`, zapíše `.git/info/exclude` tak, že
-  `git status --porcelain` zůstane prázdný) a `sync-e2e.tests.ps1` (116; tělo
+  `git status --porcelain` zůstane prázdný) a `sync-e2e.tests.ps1` (148; tělo
   skriptu jako proces nad fixturou — výchozí směr, drift STOP exit 3, `-Force`,
-  `-WhatIf` bez zápisu, vanilla fáze exit 4, `FromMonorepo` bez vendorovaných
-  skillů, varování o záruce, částečné selhání exit 5; případ bez parametrů
-  přesměruje kořen monorepa proměnnou `UMS_SYNC_MONOREPO_ROOT` na fixturu a
-  před během ověří, že default opravdu míří na fixturu).
+  `-WhatIf` bez zápisu, vanilla fáze exit 4 a její hláška, `FromMonorepo` bez
+  vendorovaných skillů, varování o záruce, částečné selhání exit 5,
+  neinteraktivní `-Force` bez cíle exit 1; jednotkově `Test-UmsNeedsTargetMenu`,
+  `Get-UmsDriftAction` a `ConvertFrom-UmsDriftAnswer` — samotné interaktivní
+  dotazy procesem ověřit nejdou, sady běží s přesměrovaným vstupem; případ bez
+  parametrů přesměruje kořen monorepa proměnnou `UMS_SYNC_MONOREPO_ROOT` na
+  fixturu a před během ověří, že default opravdu míří na fixturu).
 - [`ums/.claude/scripts/tests/`](../ums/.claude/scripts/tests/) —
   `revendor.tests.ps1` (108) s `_assert.ps1` a `new-revendor-fixture.ps1`
   (offline „upstream" je lokální git repo se dvěma tagy): čtení a zápis pinu

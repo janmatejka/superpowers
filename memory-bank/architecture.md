@@ -1471,7 +1471,10 @@ fázi** — revendor nového tagu bez overlayů, nic dalšího — a skončí ex
 pokynem commitnout „vanilla sync" v cíli a spustit znovu, takže commit nese jen
 upstream diff; druhý běh zrcadlí vrstvu a aplikuje overlaye — commit „overlay".
 Drift vypsaný prvním během se v něm nepřepisuje a druhý běh se na týchž
-souborech zastaví znovu, dokud se drift nepřepíše `-Force`.
+souborech zastaví znovu, dokud se drift nepřepíše `-Force`. Exit 4 není chyba:
+hláška to říká výslovně a jmenuje manifest, který je nutné smazat, když se cíl
+místo commitu revertne — manifest vanilla fáze jinak vydává revertnuté
+vendorované skilly za drift.
 
 **Ochrana proti driftu.** Po každém úspěšném běhu (i `FromMonorepo`) se zapíše
 **manifest**: cesta relativní k cíli → SHA256 obsahu po normalizaci na LF, SHA
@@ -1485,11 +1488,22 @@ seznamem souborů a nabídkou `-Direction FromMonorepo` nebo `-Force`; bez
 manifestu (první běh) je STOP na každý rozdíl; vendorované skilly se posuzují
 jen cíl × manifest (jejich obsah ve forku vzniká až revendorem), takže ruční
 úprava v cíli se chytí; blok instrukčního souboru se porovnává obsahem; `mb-*`
-adresář jen v cíli je varování. `-WhatIf` vypíše, co by se zapsalo, a ohlásí
-drift, nic nezmění (žádný soubor, manifest, exclude řádek ani hook) a končí
-exit 0. Návratové kódy: `0` hotovo, `1` chyba, `3` drift STOP, `4` hotová
-vanilla fáze, `5` nasazeno, ale selhal krok jednoho agenta (zápis markeru,
-nepotvrzený `pre-push`).
+adresář jen v cíli je varování. V interaktivní konzoli se běh bez `-Force` při
+driftu jednou zeptá, zda drift přepsat (`y` = totéž co `-Force`, jinak STOP),
+takže se parametry nezadávají znovu; u prvního běhu dotaz varuje, že směr změny
+neznámý a `FromMonorepo` by přepsal novější fork. `-WhatIf` vypíše, co by se
+zapsalo, a ohlásí drift, nic nezmění (žádný soubor, manifest, exclude řádek ani
+hook) a končí exit 0.
+
+**Volba cíle.** Cíl běhu určují jen parametry `-Agent`, `-Scope`,
+`-MonorepoRoot`, `-UserProfileRoot`, `-Direction` a `-ForkUmsDir`; `-Force` ani
+`-WhatIf` ho nikdy nevyberou. Chybí-li všechny, interaktivní konzole nabídne
+výběr parametrů (i při samotném `-Force` nebo `-WhatIf`); neinteraktivní proces
+použije výchozí hodnoty (`claude`, `Monorepo`, `ToMonorepo`) — kromě `-Force`,
+které bez parametru cíle odmítne (exit 1) místo přepsání výchozího monorepa.
+Návratové kódy: `0` hotovo, `1` chyba (včetně neinteraktivního `-Force` bez
+cíle), `3` drift STOP, `4` hotová vanilla fáze (není chyba), `5` nasazeno, ale
+selhal krok jednoho agenta (zápis markeru, nepotvrzený `pre-push`).
 
 **Instrukční soubor cíle.** Sync spravuje **jen blok mezi markery**
 `UMS-MEMORY-BANK BEGIN/END`, jehož obsahem je přesně `ums/CLAUDE.md.sample`
