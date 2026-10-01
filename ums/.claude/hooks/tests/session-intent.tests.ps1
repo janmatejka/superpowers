@@ -827,4 +827,30 @@ try {
 }
 finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
 
+# j) harness-shaped run: windowless child (OEM console code page), stdout read
+# as raw bytes. A baton value outside the code page (→ „ “) and the em dash of
+# the fixed initialUserMessage must reach the harness as strict JSON, intact —
+# through a cp852 console they became control bytes / bare quotes / '-'.
+$fx = New-BatonFixture 'raw-encoding'
+try {
+    New-PlanFile $fx.Work; Write-Pin $fx.Work 'x'
+    $nonAscii = -join ([char[]] @(0x2192, 0x20, 0x201E, 0x6F, 0x76, 0x11B, 0x159, 0x65, 0x6E, 0xED, 0x201C))
+    # (?=\r?$): the here-string carries CRLF in a CRLF checkout, and $ alone does not match before \r.
+    $body = (New-ValidBatonBody $fx.Work) -replace '(?m)^Slug: x(?=\r?$)', "Slug: x`nNext task: 3 $nonAscii"
+    Assert-Match $body "Next task: 3 $nonAscii" 'raw: fixture baton carries the non-ASCII value'
+    Write-Baton $fx.Work $body
+    $raw = Invoke-PwshHookRaw $HookPath $fx.Work '{"hook_event_name":"SessionStart","source":"startup"}'
+    Assert-Eq $raw.Code 0 'raw: exits 0'
+    $bad = @($raw.Bytes | Where-Object { $_ -gt 0x7e -or ($_ -lt 0x20 -and $_ -notin 0x0d, 0x0a) }).Count
+    Assert-True ($raw.Bytes.Length -gt 0) 'raw: the baton is delivered'
+    Assert-Eq $bad 0 'raw: stdout is 7-bit ASCII without control bytes'
+    $strict = Test-StrictHookJson $raw.Bytes
+    Assert-True $strict.Ok "raw: stdout parses as strict JSON  $($strict.Error)"
+    if ($strict.Ok) {
+        Assert-True ($strict.Json.hookSpecificOutput.additionalContext.Contains("Next task: 3 $nonAscii")) 'raw: non-ASCII baton value survives the round trip'
+        Assert-True ($strict.Json.hookSpecificOutput.initialUserMessage.Contains([string][char]0x2014)) 'raw: the em dash of initialUserMessage survives the round trip'
+    }
+}
+finally { Remove-Item -Recurse -Force $fx.Root -ErrorAction SilentlyContinue }
+
 Complete-Tests

@@ -44,8 +44,11 @@ history is [`shared/CHANGELOG.md`](.claude/skills/shared/CHANGELOG.md).
 **The core reaches a session through a hook, not through a reading habit.**
 `.claude/hooks/contract-inject.ps1` is registered in `settings.json` and injects
 the core as `additionalContext` at session start and again with the first prompt
-after a compaction (it tracks that with the marker file
-`.superpowers/contract-reload.flag`). A harness with no session-start injection
+after a compaction (it tracks that with one marker file per part,
+`.superpowers/contract-reload.part<k>.flag`). Claude Code caps each hook's
+`additionalContext` at 10,000 characters, so the hook is registered once per
+part (`-Part 1..7`) and each part emits one line-boundary slice of the payload.
+A harness with no session-start injection
 falls back to the instructions-file rule in `CLAUDE.md.sample` — the layer's
 harness compatibility matrix below says which is which.
 

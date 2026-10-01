@@ -334,7 +334,11 @@ try {
     # Emit FIRST, rename after: a crash between the two replays the baton next
     # start, which the guards and the age instruction bound; the reverse order
     # would lose it with nothing emitted.
-    Write-Output ($payload | ConvertTo-Json -Depth 5 -Compress)
+    # EscapeNonAscii: stdout goes through the console code page, which under
+    # Claude Code on Windows is the OEM one (e.g. 852), not UTF-8 — a baton value
+    # outside it (→ „ “) would turn into control bytes or bare quotes and the
+    # harness would reject the payload. 7-bit ASCII is identical in every code page.
+    Write-Output ($payload | ConvertTo-Json -Depth 5 -Compress -EscapeHandling EscapeNonAscii)
     Move-Aside $batonPath 'session-intent.consumed.md'
 }
 catch {

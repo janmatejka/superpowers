@@ -175,9 +175,9 @@ lepidlo Claude Code (pravidla jeho nasazení jsou v
 | Klíč | Obsah |
 |---|---|
 | `env` | `MB_AGENT_SESSION: "1"` — vstupní marker agentní relace; bez něj `pre-push` hook nevynucuje nic vlastního (viz níže) |
-| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) spouští `contract-inject.ps1`, který emituje `additionalContext`: jádro kontraktu doslova, řádky `context.md` a (existuje-li ledger slugu z pinu) blok `NOW`, plus pokyn vyvolat `using-superpowers` a spustit fázi 0 vstupní brány (jádro, sekce „Způsobilost sezení" — fail-closed ověření verze `pre-push` hooku a obě poloviny jeho syntetického self-checku). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
-| `hooks.PostCompact` | Spouští `contract-inject.ps1`; protože `PostCompact` `additionalContext` nepřijímá (jen `systemMessage`), hook zapíše marker `.superpowers/contract-reload.flag` a vrátí `systemMessage` s pokynem jednat podle shrnutí a znovu vyvolat vykonávaný skill |
-| `hooks.UserPromptSubmit` | Spouští `contract-inject.ps1`; s markerem z `PostCompact` vloží jádro stejným `additionalContext` jako `SessionStart` a marker smaže, bez markeru mlčí — jádro se tak mechanicky vrací s prvním promptem po kompaktaci |
+| `hooks.SessionStart` | Dva záznamy. První (bez matcheru, na každý zdroj startu) spouští `contract-inject.ps1` sedmkrát (`-Part 1..7` — strop 10 000 znaků na `additionalContext` jednoho hooku, viz [architecture.md](architecture.md), sekce „Jádro kontraktu"), dohromady emituje `additionalContext`: jádro kontraktu doslova, řádky `context.md` a (existuje-li ledger slugu z pinu) blok `NOW`, plus pokyn vyvolat `using-superpowers` a spustit fázi 0 vstupní brány (jádro, sekce „Způsobilost sezení" — fail-closed ověření verze `pre-push` hooku a obě poloviny jeho syntetického self-checku). Druhý, matcher `clear\|startup`, spouští `session-intent.ps1` — čtenáře session intent batonu (viz [architecture.md](architecture.md), sekce Session Intent Baton); `resume`, `compact` a `fork` matcher vynechává, protože takové sezení si nese vlastní transkript i baton, který samo napsalo |
+| `hooks.PostCompact` | Spouští `contract-inject.ps1`; protože `PostCompact` `additionalContext` nepřijímá (jen `systemMessage`), hook zapíše markery `.superpowers/contract-reload.flag` a `contract-reload.part<k>.flag` (jeden na díl) a vrátí `systemMessage` s pokynem jednat podle shrnutí a znovu vyvolat vykonávaný skill |
+| `hooks.UserPromptSubmit` | Spouští `contract-inject.ps1` po dílech jako `SessionStart`; každý díl se svým markerem z `PostCompact` vloží svůj řez a svůj marker smaže, bez markeru mlčí — jádro se tak mechanicky vrací s prvním promptem po kompaktaci |
 | `hooks.PreToolUse` (`Write|Edit`) | `deny-superpowers-docs.mjs` — blokuje zápis do `docs/superpowers/**` a `docs/plans/**` |
 | `hooks.PreToolUse` (`Bash|PowerShell`) | `guard-git-push.mjs` — nese pravidlo podle AKTÉRA (jen vlastní tool-cally agenta, ne příkazy uživatele psané přes `!`): na rozpoznaný `git push` leans fail-CLOSED (nečitelný cíl zamítá, nečeká na vyjasnění), zamítá push agenta na chráněnou větev včetně integračního fast-forwardu, obě jména únikové proměnné v POSIX i PowerShellovém zápisu a `--no-verify` bez kontextu, na epikovou linii (nechráněná báze) žádnou výjimku nenese a nečte `epicBranchPattern` ani `baseRef`; NENÍ záruka publikace — tou zůstává git `pre-push` hook (níže), který navíc vynucuje jen uvnitř agentní relace |
 | `hooks.PostToolUse` (`Write|Edit`) | `bpmn-validate.ps1` — validace BPMN v monorepu |
@@ -301,14 +301,16 @@ v [playbook.md](playbook.md).
 **UMS vrstva** — bezzávislostní PowerShell testy vedle skillů (sady sync
 skriptu v [`ums/tests/`](../ums/tests/), sada revendoru v
 [`ums/.claude/scripts/tests/`](../ums/.claude/scripts/tests/)), 49 sad,
-dohromady 2889 asercí (naměřeno během harvestu smyčkou přes celou vrstvu z
+dohromady 2973 asercí (naměřeno 1. 10. 2026 smyčkou přes celou vrstvu z
 PowerShellu, ne aritmetikou). Tři asercie selhávají kvůli prostředí, ne kvůli
 kódu: dvě v `pool-launch.tests.ps1` — Gate 3, „cíl Start-Process, který reálně
 nespustí proces" — protože sandbox neumožňuje ověřit skutečné spuštění
 procesu, a jedna v `contract-inject.tests.ps1` („varování o rozchodu je první
 řádek payloadu"), která při spuštění s přesměrovaným výstupem (smyčka z Git
-Bash, `Start-Process` s přesměrováním) narazí na kódovou stránku a
-diakritiku v textu varování; spuštěná přímo z PowerShellu sada prochází:
+Bash, `Start-Process` s přesměrováním) narazila na kódovou stránku a
+diakritiku v textu varování. Šlo o tutéž chybu kódování, kvůli které harness
+odmítal výstup hooku (viz „Pasti prostředí"); od opravy výstupu na čisté
+ASCII by měla procházet. Spuštěná přímo z PowerShellu sada prochází:
 
 - [`ums/tests/`](../ums/tests/) — šest sad `sync-with-monorepo.ps1` se
   společným `_assert.ps1`, fixture builderem `new-sync-fixture.ps1` (fork
@@ -480,7 +482,11 @@ diakritiku v textu varování; spuštěná přímo z PowerShellu sada prochází
   `-Baseline`, `-Resume` odvozený z trailerů `Playbook-Consolidation:
   <běh>/<dávka>` v `git log`, `-Stats`, `-Tree`) s vlastním `_assert.ps1`.
 - [`hooks/tests/`](../ums/.claude/hooks/tests/) — `contract-inject.tests.ps1`
-  (56; platný JSON, jádro přítomné celé, blok `NOW` jen s ledgerem slugu
+  (90; platný JSON i jako surové bajty z dítěte bez okna (striktní parser,
+  čisté ASCII, ne-ASCII text jádra přežije), doručení po dílech (reálné jádro
+  ve více dílech pod stropem 10 000 znaků, spojené díly = celý payload,
+  kapacita při bajtovém stropu, neřezatelný řádek → fallback, marker po
+  kompaktaci na díl, registrace `-Part 1..N`), jádro přítomné celé, blok `NOW` jen s ledgerem slugu
   z pinu a jen v uzavřeném tvaru, ledger nalezený podle markeru `plan-path`
   (včetně dvou Memory Bank se stejným basename plánu, dvojznačnosti dvou
   nárokujících adresářů a msys tvaru cesty), pokyn po kompaktaci o
@@ -508,7 +514,7 @@ diakritiku v textu varování; spuštěná přímo z PowerShellu sada prochází
   `sync-marker.tests.ps1` (61; `Set-AgentMarker` per harness — Codex
   `config.toml`, Gemini a Qwen `.env`, plugin OpenCode, Hermes `env_passthrough`
   jen v profilu, Pi bez zápisu; harnessy bez mechanismu hlásí
-  `NotSupportedException` a nezapisují nic) a `session-intent.tests.ps1` (129; čtenář session intent
+  `NotSupportedException` a nezapisují nic) a `session-intent.tests.ps1` (136; čtenář session intent
   batonu — uzavřený formát s re-renderem, branch a slug guard
   case-sensitive, existence `Plan`, věk bez tvrdé expirace, consume-on-read
   vč. replay okna mezi emisí a přejmenováním, čtyři regresní zámky
@@ -643,3 +649,16 @@ jeho Python (ruff, ty).
   předtím. S `core.autocrlf=true` to git při `git add` normalizuje zpátky —
   relevantní zvlášť pro běh nad monorepem, kde `core.autocrlf` bývá zapnuté
   a playbooky dosud nemají `text eol=lf` v `.gitattributes`.
+- **PowerShell hook pod Claude Code na Windows píše stdout v OEM kódové
+  stránce (852), ne v UTF-8.** Harness spouští hook bez okna, `pwsh` dostane
+  vlastní konzoli s OEM stránkou a `Write-Output` kóduje podle
+  `[Console]::OutputEncoding`. `ConvertTo-Json` ne-ASCII neescapuje, takže
+  `→` se zapíše jako bajt 0x1A, `…` jako 0x07 a `„ “` jako holé `"`. Harness
+  (Bun) payload odmítne hláškou „Hook output looks like a JSON object but is
+  not valid JSON — JSON Parse error: Unterminated string" a sezení začne bez
+  jádra kontraktu (1. 10. 2026, Claude Code 2.1.286). Hook proto emituje JSON
+  přes `ConvertTo-Json -EscapeHandling EscapeNonAscii` (čisté ASCII, stejné
+  v každé stránce). Ruční test `& pwsh … | Out-String` chybu nevidí, protože
+  dekóduje stejnou stránkou, jakou dítě kódovalo. Výstup hooku ověřuj jako
+  surové bajty z dítěte s `CreateNoWindow` striktním parserem
+  (`Invoke-PwshHookRaw` + `Test-StrictHookJson` v `hooks/tests/_assert.ps1`).

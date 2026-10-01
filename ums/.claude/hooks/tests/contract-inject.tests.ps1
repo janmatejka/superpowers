@@ -275,4 +275,111 @@ Assert-True (-not ((($res.Out | ConvertFrom-Json).PSObject.Properties.Name) -con
 
 Remove-Item -Recurse -Force $dm, $rm, $rl, $ro, $rp, $rc, $rb, $rb2, $rw, $rz, $ra, $rh
 
+# 17. harness-shaped run: windowless child, stdin event, stdout read as raw bytes.
+# The real core carries characters outside the OEM code page (→ … „ “); written
+# through a cp852 console they became 0x1A/0x07 control bytes and bare quotes,
+# and Claude Code rejected the whole payload ("JSON Parse error: Unterminated
+# string"), so the session started without the core. The output must be strict
+# JSON whatever the console code page is — 7-bit ASCII with \u escapes — and
+# must still carry the non-ASCII text intact.
+$nonAscii = -join ([char[]] @(0x2192, 0x20, 0x2026, 0x20, 0x201E, 0x63, 0x201C, 0x20, 0x2014, 0x20, 0x11B, 0x161, 0x10D, 0x159, 0x17E))
+$dn = New-Deployment ($core + "- Chain: brainstorming $nonAscii writing-plans`n")
+$rn = New-Repo $ctxActive
+foreach ($evt in @('SessionStart', 'PostCompact', 'UserPromptSubmit')) {
+    $raw = Invoke-PwshHookRaw (Join-Path $dn 'hooks\contract-inject.ps1') $rn ('{"hook_event_name":"' + $evt + '","source":"startup"}')
+    Assert-Eq $raw.Code 0 "raw ${evt}: exits 0"
+    Assert-True ($raw.Bytes.Length -gt 0) "raw ${evt}: emits a payload"
+    $bad = @($raw.Bytes | Where-Object { $_ -gt 0x7e -or ($_ -lt 0x20 -and $_ -notin 0x0d, 0x0a) }).Count
+    Assert-Eq $bad 0 "raw ${evt}: stdout is 7-bit ASCII without control bytes"
+    $strict = Test-StrictHookJson $raw.Bytes
+    Assert-True $strict.Ok "raw ${evt}: stdout parses as strict JSON  $($strict.Error)"
+    if ($evt -ne 'PostCompact' -and $strict.Ok) {
+        Assert-True ($strict.Json.hookSpecificOutput.additionalContext.Contains($nonAscii)) "raw ${evt}: non-ASCII core text survives the round trip"
+    }
+}
+Remove-Item -Recurse -Force $dn, $rn
+
+# 18. delivery in parts. Claude Code caps each hook's additionalContext at 10,000
+# characters (longer → file path + 2,000-character preview, measured with a real
+# session: the 46,729-character payload arrived cut at "## MB_ROOT Discovery").
+# Each -Part k emits one slice under the cap; the slices joined are the payload.
+$partCount = [int] [regex]::Match((Get-Content -LiteralPath $hookSrc -Raw), '(?m)^\$PartCount\s*=\s*(?<n>\d+)').Groups['n'].Value
+Assert-True ($partCount -ge 2) "hook declares PartCount ($partCount)"
+function Invoke-HookPart([string] $Deployment, [string] $Repo, [string] $Event, [int] $Part) {
+    Push-Location $Repo
+    try { $out = & pwsh -NoProfile -File (Join-Path $Deployment 'hooks\contract-inject.ps1') -Event $Event -Part $Part 2>&1 | Out-String; $code = $LASTEXITCODE }
+    finally { Pop-Location }
+    return @{ Out = $out; Code = $code }
+}
+# Runs every part; returns @{ Whole; Slices; Lengths; Headers; Silent } where Silent counts empty parts.
+function Get-PartRun([string] $Deployment, [string] $Repo, [string] $Event = 'SessionStart') {
+    $wholeOut = (Invoke-HookPart $Deployment $Repo $Event 0).Out
+    $whole = if ([string]::IsNullOrWhiteSpace($wholeOut)) { $null } else { ($wholeOut | ConvertFrom-Json).hookSpecificOutput.additionalContext }
+    $slices = @(); $lengths = @(); $headers = @(); $silent = 0
+    foreach ($k in 1..$partCount) {
+        $res = Invoke-HookPart $Deployment $Repo $Event $k
+        if ([string]::IsNullOrWhiteSpace($res.Out)) { $silent++; continue }
+        $ac = ($res.Out | ConvertFrom-Json).hookSpecificOutput.additionalContext
+        $lengths += $ac.Length
+        $nl = $ac.IndexOf("`n")
+        $headers += $ac.Substring(0, $nl)
+        $slices += $ac.Substring($nl + 1)
+    }
+    return @{ Whole = $whole; Slices = $slices; Lengths = $lengths; Headers = $headers; Silent = $silent }
+}
+
+# 18a. the real contract core: needs several parts, each under the cap, and the
+# joined slices are exactly the whole payload (nothing dropped, nothing doubled).
+$realCore = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\skills\shared\UMS_MEMORY_BANK_CONTRACT.md') -Raw -Encoding utf8
+$dr = New-Deployment $realCore; $rr = New-Repo $ctxActive
+$run = Get-PartRun $dr $rr
+Assert-Match $run.Whole '<contract-core>' 'parts/real core: -Part 0 still emits the whole payload'
+Assert-True ($run.Slices.Count -ge 2) "parts/real core: split into $($run.Slices.Count) parts"
+Assert-True (@($run.Lengths | Where-Object { $_ -gt 10000 }).Count -eq 0) "parts/real core: every part is under the 10,000-character cap ($($run.Lengths -join ', '))"
+Assert-True (($run.Slices -join "`n") -ceq $run.Whole) 'parts/real core: the slices joined are exactly the whole payload'
+Assert-Eq $run.Silent ($partCount - $run.Slices.Count) 'parts/real core: parts beyond the last slice are silent'
+$n = $run.Slices.Count
+$hdrOk = $true; for ($i = 0; $i -lt $n; $i++) { if ($run.Headers[$i] -notmatch "^\[UMS session context, part $($i + 1) of $n\b") { $hdrOk = $false } }
+Assert-True $hdrOk 'parts/real core: each part names its position (part k of N)'
+Assert-Match $run.Slices[$n - 1] 'read that skill''s UMS-OVERLAY block from its SKILL\.md\.\s*$' 'parts/real core: the instruction closes the last part'
+
+# 18b. capacity: a core at the byte cap with long lines still fits the parts.
+$line = ('w' * 199)
+$fill = [Text.StringBuilder]::new("# UMS Memory Bank Contract`n- **Contract-Version:** 3.0`n")
+while ([Text.Encoding]::UTF8.GetByteCount($fill.ToString()) -lt (49152 - 1024 - 200)) { [void] $fill.Append($line + "`n") }
+$dc = New-Deployment $fill.ToString()
+$run = Get-PartRun $dc $rr
+Assert-True (($run.Slices -join "`n") -ceq $run.Whole) "parts/capacity: a core at the byte cap is delivered whole in $($run.Slices.Count) of $partCount parts"
+Assert-True (@($run.Lengths | Where-Object { $_ -gt 10000 }).Count -eq 0) 'parts/capacity: every part is under the cap'
+
+# 18c. a single line longer than a part has no clean cut → part 1 falls back, the rest are silent.
+$dl = New-Deployment ($core + ('z' * 9500) + "`n")
+$p1 = (Invoke-HookPart $dl $rr 'SessionStart' 1).Out | ConvertFrom-Json
+Assert-Match $p1.hookSpecificOutput.additionalContext '^Read .*\(contract core\)' 'parts/uncuttable line: part 1 emits the read instruction'
+Assert-True ([string]::IsNullOrWhiteSpace((Invoke-HookPart $dl $rr 'SessionStart' 2).Out)) 'parts/uncuttable line: part 2 is silent'
+
+# 18d. after compaction every part re-injects once, consuming only its own marker.
+Invoke-Hook $dr $rr 'PostCompact' | Out-Null
+foreach ($k in 0..$partCount) { if (-not (Test-Path -LiteralPath (Join-Path $rr ('.superpowers\' + $(if ($k -eq 0) { 'contract-reload.flag' } else { "contract-reload.part$k.flag" }))))) { Assert-True $false "PostCompact writes marker for part $k" } }
+$a = Invoke-HookPart $dr $rr 'UserPromptSubmit' 1
+Assert-Match (($a.Out | ConvertFrom-Json).hookSpecificOutput.additionalContext) '^\[UMS session context, part 1 of' 'parts/compaction: part 1 re-injects with the first prompt'
+Assert-True ([string]::IsNullOrWhiteSpace((Invoke-HookPart $dr $rr 'UserPromptSubmit' 1).Out)) 'parts/compaction: part 1 is silent on the next prompt'
+$b = Invoke-HookPart $dr $rr 'UserPromptSubmit' 2
+Assert-Match (($b.Out | ConvertFrom-Json).hookSpecificOutput.additionalContext) '^\[UMS session context, part 2 of' 'parts/compaction: part 1 did not consume part 2''s marker'
+$run = Get-PartRun $dr $rr 'UserPromptSubmit'
+Assert-Eq $run.Slices.Count ($n - 2) 'parts/compaction: the parts not yet consumed still re-inject'
+$run = Get-PartRun $dr $rr 'UserPromptSubmit'
+Assert-Eq $run.Slices.Count 0 'parts/compaction: nothing is re-injected twice'
+
+# 18e. registration: SessionStart and UserPromptSubmit name every part exactly
+# once, in order; PostCompact runs the hook once, without -Part.
+foreach ($evt in @('SessionStart', 'UserPromptSubmit')) {
+    $cmds = @($settings.hooks.$evt[0].hooks | ForEach-Object { $_.command })
+    $want = @(1..$partCount | ForEach-Object { "-Part $_" })
+    $got = @($cmds | ForEach-Object { if ($_ -match 'contract-inject\.ps1"?\s+(?<p>-Part \d+)\s*$') { $Matches['p'] } else { "?? $_" } })
+    Assert-Eq ($got -join ',') ($want -join ',') "registration: $evt runs contract-inject once per part"
+}
+Assert-True (@($settings.hooks.PostCompact[0].hooks).Count -eq 1 -and $settings.hooks.PostCompact[0].hooks[0].command -notmatch '-Part') 'registration: PostCompact runs contract-inject once, without -Part'
+Remove-Item -Recurse -Force $dr, $rr, $dc, $dl
+
 Complete-Tests

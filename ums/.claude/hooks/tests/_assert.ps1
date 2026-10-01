@@ -54,3 +54,49 @@ function Invoke-HookFull([string] $PayloadJson) {
         Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
 }
+
+# Runs a PowerShell hook the way Claude Code does on Windows: a windowless child
+# (CREATE_NO_WINDOW gives it a fresh console with the OEM code page, e.g. 852,
+# not the parent's), stdin piped, stdout redirected and read as RAW BYTES. The
+# `& pwsh ... | Out-String` capture used elsewhere decodes with the same console
+# code page the child encoded with, so it round-trips and hides a code-page
+# corruption that the harness's UTF-8 JSON parser does see.
+function Invoke-PwshHookRaw([string] $Script, [string] $WorkDir, [string] $StdinText = '', [string[]] $ExtraArgs = @()) {
+    $psi = [Diagnostics.ProcessStartInfo]::new('pwsh')
+    foreach ($a in @('-NoProfile', '-File', $Script) + $ExtraArgs) { $psi.ArgumentList.Add($a) }
+    $psi.WorkingDirectory = $WorkDir
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.Environment['CLAUDE_PROJECT_DIR'] = $WorkDir
+    $p = [Diagnostics.Process]::Start($psi)
+    $ms = [IO.MemoryStream]::new()
+    $copy = $p.StandardOutput.BaseStream.CopyToAsync($ms)
+    $errTask = $p.StandardError.ReadToEndAsync()
+    $inBytes = [Text.UTF8Encoding]::new($false).GetBytes($StdinText)
+    $p.StandardInput.BaseStream.Write($inBytes, 0, $inBytes.Length)
+    $p.StandardInput.Close()
+    $p.WaitForExit()
+    $copy.Wait()
+    return @{ Bytes = $ms.ToArray(); Code = $p.ExitCode; Err = $errTask.Result }
+}
+
+# Validates hook stdout bytes the way the harness consumes them: strict UTF-8,
+# then a strict JSON parser (System.Text.Json rejects raw control characters in
+# strings, as JavaScriptCore does: "JSON Parse error: Unterminated string").
+# Returns @{ Ok; Error; Json } — Json is the ConvertFrom-Json object when Ok.
+function Test-StrictHookJson([byte[]] $Bytes) {
+    try {
+        $text = [Text.UTF8Encoding]::new($false, $true).GetString($Bytes)
+        $doc = [Text.Json.JsonDocument]::Parse($text)
+        $doc.Dispose()
+        return @{ Ok = $true; Error = ''; Json = ($text | ConvertFrom-Json) }
+    }
+    catch {
+        $offset = -1
+        for ($i = 0; $i -lt $Bytes.Length; $i++) { if (($Bytes[$i] -lt 0x20 -and $Bytes[$i] -notin 0x0d, 0x0a) -or $Bytes[$i] -gt 0x7e) { $offset = $i; break } }
+        return @{ Ok = $false; Error = "$($_.Exception.Message) (first suspicious byte at offset $offset)"; Json = $null }
+    }
+}

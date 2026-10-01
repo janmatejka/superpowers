@@ -161,10 +161,19 @@ markeru. Pin, slug i hodnota markeru jsou nedůvěryhodný text — prochází
 znakovým whitelistem a ohraničením velikosti dřív, než se sestaví cesta nebo
 porovnání. Pokyn, který hook přidává na konec payloadu, po kompaktaci navíc
 připomíná, že tělo vyvolaného skillu mohlo být znovu vloženo oříznuté a je třeba
-přečíst jeho blok `UMS-OVERLAY` ze souboru. Protože `PostCompact`
-neumí `additionalContext`, jen `systemMessage`, hook si mezi kompaktací a
-dalším promptem nechává vlastní marker (`.superpowers/contract-reload.flag`),
-který `UserPromptSubmit` přečte a jádro dosadí mechanicky s prvním promptem.
+přečíst jeho blok `UMS-OVERLAY` ze souboru. Payload se doručuje **po dílech**:
+Claude Code ořezává `additionalContext` každého hooku na 10 000 znaků (delší
+nahradí cestou k souboru a náhledem 2 000 znaků a model soubor číst nevyzve),
+proto `settings.json` registruje hook jednou na díl (`-Part 1..7`, strop platí
+na hook). Každý díl sestaví týž payload a vydá svůj řez po řádcích s hlavičkou
+„part k of N"; spojené řezy jsou celý payload. Výstup je JSON s escapovaným
+ne-ASCII (`-EscapeHandling EscapeNonAscii`), protože stdout hooku jde přes OEM
+kódovou stránku konzole (viz [tech.md](tech.md), „Pasti prostředí").
+Protože `PostCompact` neumí `additionalContext`, jen `systemMessage`, hook si
+mezi kompaktací a dalším promptem nechává markery, jeden na díl
+(`.superpowers/contract-reload.part<k>.flag`; díly běží paralelně a každý
+spotřebuje jen svůj), které `UserPromptSubmit` přečte a jádro dosadí
+mechanicky s prvním promptem.
 Hook je fail-open na každé chybové cestě (chybějící jádro, mez 48 kB, chybějící
 git) — nikdy nezablokuje start sezení, jen se vrátí k pokynu „přečti si". Když
 zdrojové jádro ve forku existuje a liší se hashem od nasazené kopie, hook
